@@ -1,0 +1,111 @@
+/* SDL-88 Multi-Block Industrial Safety PLC Emergency Shutdown Interlock */
+SYSTEM SafetyPlcInterlock;
+  SIGNAL SensorSample(Integer), HighAlarm, ResetReq, TripCmd, OpenCmd, ValveClosed, ValveOpen;
+
+  CHANNEL C_SensToPlc
+    FROM SensorBlock TO LogicSolverBlock WITH HighAlarm;
+  ENDCHANNEL C_SensToPlc;
+
+  CHANNEL C_PlcToValve
+    FROM LogicSolverBlock TO ActuatorBlock WITH TripCmd, OpenCmd;
+    FROM ActuatorBlock TO LogicSolverBlock WITH ValveClosed, ValveOpen;
+  ENDCHANNEL C_PlcToValve;
+
+  BLOCK SensorBlock;
+    SIGNALROUTE SR_Sens
+      FROM PressureMonitor TO ENV WITH HighAlarm;
+    CONNECT C_SensToPlc AND SR_Sens;
+
+    PROCESS PressureMonitor(1, 1);
+      DCL pressure Integer := 0;
+      DCL tripLimit Integer := 120;
+
+      START;
+        NEXTSTATE Monitoring;
+
+      STATE Monitoring;
+        INPUT SensorSample(pressure);
+          DECISION pressure >= tripLimit;
+            (TRUE):
+              OUTPUT HighAlarm VIA SR_Sens;
+              NEXTSTATE Monitoring;
+            ELSE:
+              NEXTSTATE Monitoring;
+          ENDDECISION;
+      ENDSTATE Monitoring;
+    ENDPROCESS PressureMonitor;
+  ENDBLOCK SensorBlock;
+
+  BLOCK LogicSolverBlock;
+    SIGNALROUTE SR_FromSens
+      FROM ENV TO SafetySolver WITH HighAlarm;
+    CONNECT C_SensToPlc AND SR_FromSens;
+
+    SIGNALROUTE SR_ToValve
+      FROM SafetySolver TO ENV WITH TripCmd, OpenCmd;
+      FROM ENV TO SafetySolver WITH ValveClosed, ValveOpen;
+    CONNECT C_PlcToValve AND SR_ToValve;
+
+    PROCESS SafetySolver(1, 1);
+      TIMER T_Stroke;
+
+      START;
+        NEXTSTATE NormalRun;
+
+      STATE NormalRun;
+        INPUT HighAlarm;
+          OUTPUT TripCmd VIA SR_ToValve;
+          SET(NOW + 2.0, T_Stroke);
+          NEXTSTATE Tripping;
+      ENDSTATE NormalRun;
+
+      STATE Tripping;
+        INPUT ValveClosed;
+          RESET(T_Stroke);
+          NEXTSTATE SafeShutdown;
+        INPUT T_Stroke;
+          OUTPUT TripCmd VIA SR_ToValve;
+          NEXTSTATE SafeShutdown;
+      ENDSTATE Tripping;
+
+      STATE SafeShutdown;
+        INPUT ResetReq;
+          OUTPUT OpenCmd VIA SR_ToValve;
+          NEXTSTATE Restarting;
+      ENDSTATE SafeShutdown;
+
+      STATE Restarting;
+        INPUT ValveOpen;
+          NEXTSTATE NormalRun;
+        INPUT HighAlarm;
+          OUTPUT TripCmd VIA SR_ToValve;
+          SET(NOW + 2.0, T_Stroke);
+          NEXTSTATE Tripping;
+      ENDSTATE Restarting;
+    ENDPROCESS SafetySolver;
+  ENDBLOCK LogicSolverBlock;
+
+  BLOCK ActuatorBlock;
+    SIGNALROUTE SR_Valve
+      FROM ENV TO EsdValve WITH TripCmd, OpenCmd;
+      FROM EsdValve TO ENV WITH ValveClosed, ValveOpen;
+    CONNECT C_PlcToValve AND SR_Valve;
+
+    PROCESS EsdValve(1, 1);
+      START;
+        NEXTSTATE OpenPos;
+
+      STATE OpenPos;
+        INPUT TripCmd;
+          OUTPUT ValveClosed VIA SR_Valve;
+          NEXTSTATE ClosedPos;
+      ENDSTATE OpenPos;
+
+      STATE ClosedPos;
+        INPUT OpenCmd;
+          OUTPUT ValveOpen VIA SR_Valve;
+          NEXTSTATE OpenPos;
+      ENDSTATE ClosedPos;
+    ENDPROCESS EsdValve;
+  ENDBLOCK ActuatorBlock;
+ENDSYSTEM SafetyPlcInterlock;

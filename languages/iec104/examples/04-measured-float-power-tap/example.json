@@ -1,0 +1,11 @@
+{
+  "id": "iec104-04-measured-float-power-tap",
+  "lang": "iec104",
+  "subFormats": ["iec104"],
+  "difficulty": 4,
+  "title": "Measured Short-Float Power Flow & Transformer Tap Control",
+  "description": "345/138 kV autotransformer substation IEC 104 profile exposing IEEE 754 short-float power flows (M_ME_NC_1), OLTC step position (M_ST_NA_1), and regulating step commands.",
+  "category": "Power Systems SCADA",
+  "tags": ["iec104", "short-float", "oltc", "transformer", "power-flow"],
+  "activeFile": "power_tap.iec104"
+}

@@ -3,8 +3,10 @@
 import { createWasmParser } from "@modelscript/dsl/bindings";
 import type { IndexerBatchError, IndexerBatchRequest, IndexerBatchResponse } from "./indexer-protocol.js";
 
+type WorkerWasmParser = Awaited<ReturnType<typeof createWasmParser>>["parser"];
+
 /** Cache of initialized WebAssembly GLR parser instances keyed by language identifier. */
-const parsers = new Map<string, any>();
+const parsers = new Map<string, WorkerWasmParser>();
 
 /**
  * Lazily initializes WebAssembly parsers inside the worker thread for any languages

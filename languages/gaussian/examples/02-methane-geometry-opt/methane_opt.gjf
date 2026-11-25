@@ -1,0 +1,17 @@
+%chk=methane_opt.chk
+%mem=2GB
+%nprocshared=4
+#p B3LYP/6-31G(d) Opt
+
+Tetrahedral methane DFT geometry optimization (Z-matrix)
+
+0 1
+C
+H  1  rCH
+H  1  rCH  2  aHCH
+H  1  rCH  2  aHCH  3  120.0
+H  1  rCH  2  aHCH  3 -120.0
+Variables:
+rCH = 1.0930
+aHCH = 109.4712
+

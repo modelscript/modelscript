@@ -34,7 +34,36 @@ export const getArtifactViewers = async (name: string, version: string): Promise
   }
 };
 
-export const createArtifactView = async (artifactData: Record<string, any>): Promise<any> => {
+export interface ArtifactViewRecord {
+  id: number | string;
+  view_type: string;
+  artifact_type?: string | undefined;
+  view_config?: Record<string, unknown> | string | undefined;
+  config?: Record<string, unknown> | string | undefined;
+  title?: string | null | undefined;
+  description?: string | null | undefined;
+  thumbnail_url?: string | null | undefined;
+  author_id?: number | undefined;
+  user_id?: number | undefined;
+  parent_artifact_id?: number | string | null | undefined;
+  created_at?: string | undefined;
+  updated_at?: string | undefined;
+  artifact?: ArtifactViewRecord | undefined;
+  [key: string]: unknown;
+}
+
+export interface StorageUploadResponse {
+  url: string;
+  path?: string | undefined;
+  key?: string | undefined;
+  filename?: string | undefined;
+  mimeType?: string | undefined;
+  size?: number | undefined;
+  hash?: string | undefined;
+  [key: string]: unknown;
+}
+
+export const createArtifactView = async (artifactData: Record<string, unknown>): Promise<ArtifactViewRecord> => {
   const { data } = await api.post("/social/artifact-views", artifactData);
   return data;
 };
@@ -43,7 +72,7 @@ export const createArtifactView = async (artifactData: Record<string, any>): Pro
 export const updateArtifactView = async (
   id: string | number,
   patch: { view_config: Record<string, unknown> | string; artifact_type?: string; title?: string },
-): Promise<any> => {
+): Promise<ArtifactViewRecord> => {
   const { data } = await api.put(`/social/artifact-views/${encodeURIComponent(String(id))}`, {
     ...patch,
     view_config: typeof patch.view_config === "string" ? patch.view_config : JSON.stringify(patch.view_config),
@@ -73,20 +102,20 @@ export const listMyArtifactViews = async (options?: {
   return (data?.items ?? []) as ArtifactViewSummary[];
 };
 
-export const getArtifactView = async (id: string | number, embedToken?: string | null): Promise<any> => {
+export const getArtifactView = async (id: string | number, embedToken?: string | null): Promise<ArtifactViewRecord> => {
   const { data } = await api.get(`/social/artifact-views/${encodeURIComponent(String(id))}`, {
     params: embedToken ? { embed_token: embedToken } : undefined,
   });
   return data;
 };
 
-export const createMorselShortLink = async (payload: {
+export const createAnsatzShortLink = async (payload: {
   code: string;
   dialect?: string;
   title?: string;
   view?: string;
 }): Promise<{ id: string; embedUrl: string; dialect: string; title: string | null; view: string }> => {
-  const { data } = await api.post("/morsels", payload);
+  const { data } = await api.post("/ansatz-snippets", payload);
   return data;
 };
 
@@ -106,7 +135,7 @@ export const uploadArtifactThumbnail = async (
   return data;
 };
 
-export const uploadStorageFile = async (formData: FormData): Promise<any> => {
+export const uploadStorageFile = async (formData: FormData): Promise<StorageUploadResponse> => {
   const { data } = await api.post("/storage/upload", formData);
   return data;
 };
@@ -145,7 +174,7 @@ export interface SolutionRelease {
   tauri_windows_url?: string | null;
   tauri_linux_url?: string | null;
   tauri_darwin_url?: string | null;
-  manifest?: Record<string, any> | null;
+  manifest?: Record<string, unknown> | null;
   created_at: string;
 }
 

@@ -1,0 +1,19 @@
+`include "disciplines.vams"
+
+module temp_resistor(p, n);
+  inout p, n;
+  electrical p, n;
+
+  parameter real R0 = 1000.0 from (0:inf);
+  parameter real TC1 = 0.0039;
+  parameter real TC2 = 1.0e-6;
+  parameter real Tnom = 300.15 from (0:inf);
+
+  real dT, Reff;
+
+  analog begin
+    dT = $temperature - Tnom;
+    Reff = R0 * (1.0 + TC1 * dT + TC2 * dT * dT);
+    V(p, n) <+ I(p, n) * Reff;
+  end
+endmodule

@@ -508,7 +508,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
         if (Array.isArray(parsed)) {
           alsoKnownAs = parsed.map(String).filter(Boolean);
         }
-      } catch {}
+      } catch {
+        // Ignore malformed also_known_as JSON
+      }
     }
 
     let propertyAttachments: Record<string, unknown>[] = [];
@@ -525,7 +527,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
               verified_at: f.verified_at ?? null,
             }));
         }
-      } catch {}
+      } catch {
+        // Ignore malformed profile_fields JSON
+      }
     }
 
     const brandName = db.getInstanceSettings().instanceName || "Ansatz";
@@ -768,7 +772,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
       if (!remoteDomain && signedActor) {
         try {
           remoteDomain = new URL(signedActor).hostname.toLowerCase();
-        } catch {}
+        } catch {
+          // Ignore invalid actor URI when deriving remote domain
+        }
       }
 
       const followerActors = remoteDomain
@@ -1154,7 +1160,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
               : null;
         try {
           db.createPostPoll(newPost.id, parsedOptions, expiresAt, Boolean(anyOf));
-        } catch {}
+        } catch {
+          // Poll creation is best-effort for federated Question objects
+        }
       }
     }
 
@@ -1167,8 +1175,7 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
 
     // Check for cryptographic DataIntegrityProof on inbound note
     const proof = (note["proof"] || (note["object"] as Record<string, unknown> | undefined)?.["proof"]) as
-      | Record<string, unknown>
-      | undefined;
+      Record<string, unknown> | undefined;
     if (proof) {
       try {
         const verifyResult = verifyInboundNoteProof(note, authorUserId, db);
@@ -1241,7 +1248,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
     let remoteDomain = "unknown";
     try {
       remoteDomain = new URL(remoteActorUrl).hostname.toLowerCase();
-    } catch {}
+    } catch {
+      // Keep default "unknown" domain if actor URL is invalid
+    }
 
     // Upsert the remote user in our database
     const remoteUser = db.getOrCreateRemoteUser(remoteActorUrl as string, remoteActorProfile);
@@ -1366,7 +1375,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
               try {
                 const parsed = JSON.parse(info.also_known_as);
                 if (Array.isArray(parsed)) targetAlsoKnownAs = parsed.map(String);
-              } catch {}
+              } catch {
+                // Ignore malformed also_known_as JSON on migration target
+              }
             }
           } else {
             try {
@@ -1386,7 +1397,9 @@ export function federationRouter(db: LibraryDatabase, _worker?: FederationWorker
                   publicKey: pk?.publicKeyPem,
                 };
               }
-            } catch {}
+            } catch {
+              // Proceed with actor move even if remote target profile fetch fails
+            }
           }
 
           db.executeInboundActorMove(remoteActorUrl, targetActorUrl, targetAlsoKnownAs, targetProfile);

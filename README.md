@@ -347,19 +347,19 @@ ModelScript is managed with **Nx** and **pnpm workspaces**:
 | [`@modelscript/ide-client`](./packages/ide/)              | VS Code Desktop & Web Extension client, DAP equation debugger, 3-Tier AI Copilot, `.monb` notebooks, 54 registered viewTypes/panels, custom editors, and 3D verification viewport overlays                   |
 | [`@modelscript/embed`](./packages/embed/)                 | Embeddable `<modelscript-viewer>` Web Component, iframe postMessage RPC client, and compressed permalink URL codec                                                                                           |
 | [`@modelscript/design-tokens`](./packages/design-tokens/) | Shared CSS design tokens (`--ms-*`), runtime theme helpers, and primitive `.ms-btn` / `.ms-chip` styles for the docs site, web app, and IDE webviews                                                         |
-| [`@modelscript/editor`](./packages/editor/)               | Host-agnostic visual modeling & code editor core (`EditorLspTransport`, `EditorHostProvider`, workbench components) for web, embeds, and single-language playgrounds                                         |
+| [`@modelscript/editor`](./packages/editor/)               | Host-agnostic visual modeling & code editor core (`EditorLspTransport`, `EditorHostProvider`, workbench components) for web, embeds, and single-language Ansatz Editor environments                          |
 | [`@modelscript/react`](./packages/react/)                 | React SDK & engineering UI widgets (`ModelScriptProvider`, `BlackboxInspector`, `StepResponseTestbench`, WebWorker/WASM hooks)                                                                               |
 | [`@modelscript/examples`](./packages/examples/)           | 8 end-to-end polyglot reference workspaces (`alm-gitops`, `asme-bpvc-viii-1`, `drone-chassis`, `drone-reachability`, `emt-screening-pack`, `pscad-microgrid`, `sysml-wasm-pack`, and `telecom-co-microgrid`) |
 
 ### Applications (`apps/`)
 
-| Package                             | Responsibility                                                                                                                                      |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@modelscript/cli`](./apps/cli/)   | `modelscript` (`msx`) unified command-line toolchain — 146 commands across compilation, simulation, verification, grid/water/telecom, and domains   |
-| [`@modelscript/api`](./apps/api/)   | Ansatz & ModelScript backend — REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub, SysML v2 REST, Slurm HPC, and MCP SSE                            |
-| [`@modelscript/ide`](./apps/ide/)   | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling                                |
-| [`@modelscript/web`](./apps/web/)   | Ansatz (`ansatz.social`) web platform — package registry, federated engineering network, scholarly citations, Git vault, Cloud HPC, & `/playground` |
-| [`@modelscript/docs`](./apps/docs/) | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                                             |
+| Package                             | Responsibility                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`@modelscript/cli`](./apps/cli/)   | `modelscript` (`msx`) unified command-line toolchain — 146 commands across compilation, simulation, verification, grid/water/telecom, and domains |
+| [`@modelscript/api`](./apps/api/)   | Ansatz & ModelScript backend — REST, GraphQL, SPARQL, Git Smart HTTP, ActivityPub, SysML v2 REST, Slurm HPC, and MCP SSE                          |
+| [`@modelscript/ide`](./apps/ide/)   | Browser-based VS Code Web engineering workbench with GitHub virtual filesystem (`github://`) and static CDN bundling                              |
+| [`@modelscript/web`](./apps/web/)   | Ansatz (`ansatz.social`) web platform — package registry, federated engineering network, scholarly citations, Git vault, Cloud HPC, & `/editor`   |
+| [`@modelscript/docs`](./apps/docs/) | Unified `modelscript.org` documentation portal (VitePress) and automated PDF Reference Manual generator                                           |
 
 ### Enterprise Edition (`ee/`)
 
@@ -436,10 +436,10 @@ pnpm run dev
 
 This launches the primary development stack:
 
-| Service | Port / URL              | Description                                                                        |
-| ------- | ----------------------- | ---------------------------------------------------------------------------------- |
-| **API** | `http://localhost:3000` | REST / GraphQL / SPARQL / MCP SSE API server & embedded VS Code Web IDE host       |
-| **Web** | `http://localhost:3001` | Unified package registry, social hub, `/playground`, `/ide`, and VitePress `/docs` |
+| Service | Port / URL              | Description                                                                    |
+| ------- | ----------------------- | ------------------------------------------------------------------------------ |
+| **API** | `http://localhost:3000` | REST / GraphQL / SPARQL / MCP SSE API server & embedded VS Code Web IDE host   |
+| **Web** | `http://localhost:3001` | Unified package registry, social hub, `/editor`, `/ide`, and VitePress `/docs` |
 
 #### Browser-Local AI Assistant (Optional)
 
@@ -531,12 +531,12 @@ pnpm run docker:up
 
 ### Deployed Services & Ports
 
-| Service         | Port           | Protocol | Description                                                                        |
-| --------------- | -------------- | -------- | ---------------------------------------------------------------------------------- |
-| **API**         | `3000`         | HTTP     | Backend simulation, GraphQL, SPARQL, verification API, and VS Code Web IDE host    |
-| **Web**         | `3001`         | HTTP     | Unified library registry, hub, `/playground`, `/ide`, and VitePress docs (`/docs`) |
-| **MQTT**        | `1883`, `9001` | TCP, WS  | Eclipse Mosquitto broker for event bus & telemetry streaming                       |
-| **TimescaleDB** | `5432`         | TCP      | Time-series database for telemetry historian & simulation trajectories             |
+| Service         | Port           | Protocol | Description                                                                     |
+| --------------- | -------------- | -------- | ------------------------------------------------------------------------------- |
+| **API**         | `3000`         | HTTP     | Backend simulation, GraphQL, SPARQL, verification API, and VS Code Web IDE host |
+| **Web**         | `3001`         | HTTP     | Unified library registry, hub, `/editor`, `/ide`, and VitePress docs (`/docs`)  |
+| **MQTT**        | `1883`, `9001` | TCP, WS  | Eclipse Mosquitto broker for event bus & telemetry streaming                    |
+| **TimescaleDB** | `5432`         | TCP      | Time-series database for telemetry historian & simulation trajectories          |
 
 ---
 

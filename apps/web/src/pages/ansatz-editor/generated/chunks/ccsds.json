@@ -1,0 +1,79 @@
+[
+  {
+    "id": "ccsds-01-iss-mean-elements",
+    "lang": "ccsds",
+    "subFormats": ["omm"],
+    "difficulty": 1,
+    "title": "ISS Zarya Mean Orbital Elements (CCSDS OMM)",
+    "description": "CCSDS Orbit Mean-Elements Message (OMM v2.0) encoding SGP4 mean Keplerian elements, BSTAR atmospheric drag term, and spacecraft mass for the International Space Station in low Earth orbit.",
+    "category": "Orbital Mechanics",
+    "tags": ["ccsds", "omm", "sgp4", "leo", "iss"],
+    "activeFile": "iss_zarya.omm",
+    "fileNames": ["iss_zarya.omm"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "CCSDS_OMM_VERS = 2.0\nCREATION_DATE = 2026-10-26T00:00:00.000\nORIGINATOR = NASA_JSC_FOD\n\nCOMMENT International Space Station (ZARYA) SGP4 Mean Elements\n\nOBJECT_NAME = ISS_ZARYA\nOBJECT_ID = 1998-067A\nCENTER_NAME = EARTH\nREF_FRAME = TEME\nTIME_SYSTEM = UTC\nMEAN_ELEMENT_THEORY = SGP4\n\nEPOCH = 2026-10-26T00:00:00.000\nMEAN_MOTION = 15.49560532\nECCENTRICITY = 0.0006703\nINCLINATION = 51.6416\nRA_OF_ASC_NODE = 247.4627\nARG_OF_PERICENTER = 130.5360\nMEAN_ANOMALY = 325.0288\n\nEPHEMERIS_TYPE = 0\nCLASSIFICATION_TYPE = U\nNORAD_CAT_ID = 25544\nELEMENT_SET_NO = 999\nREV_AT_EPOCH = 53842\nBSTAR = 0.00010270\nMEAN_MOTION_DOT = 0.00016717\nMEAN_MOTION_DDOT = 0.0\n\nMASS = 420000.0\nDRAG_AREA = 1600.0\nDRAG_COEFF = 2.2\n"
+  },
+  {
+    "id": "ccsds-02-sso-leo-state-vector",
+    "lang": "ccsds",
+    "subFormats": ["opm"],
+    "difficulty": 2,
+    "title": "Sun-Synchronous LEO State Vector and Maneuver (OPM)",
+    "description": "CCSDS Orbit Parameter Message (OPM) for a Sentinel-class Earth-observation spacecraft in a 693 km sun-synchronous orbit with GCRF state vector, osculating Keplerian elements, and spacecraft drag/SRP parameters.",
+    "category": "Earth Observation Orbits",
+    "tags": ["ccsds", "opm", "sun-synchronous", "state-vector"],
+    "activeFile": "sso_leo.opm",
+    "fileNames": ["sso_leo.opm"],
+    "fileCount": 1,
+    "code": "CCSDS_OPM_VERS = 2.0\nCREATION_DATE = 2026-11-24T00:00:00.000\nORIGINATOR = ESA_ESOC\n\nOBJECT_NAME = SENTINEL_1A\nOBJECT_ID = 2014-016A\nCENTER_NAME = EARTH\nREF_FRAME = GCRF\nTIME_SYSTEM = UTC\n\nEPOCH = 2026-11-24T12:00:00.000\nX = 7071.000\nY = 0.000\nZ = 0.000\nX_DOT = 0.000\nY_DOT = -1.068\nZ_DOT = 7.432\n\nSEMI_MAJOR_AXIS = 7071.000\nECCENTRICITY = 0.00012\nINCLINATION = 98.181\nRA_OF_ASC_NODE = 45.250\nARG_OF_PERICENTER = 90.000\nTRUE_ANOMALY = 0.000\n\nMASS = 2157.0\nSOLAR_RAD_AREA = 12.0\nSOLAR_RAD_COEFF = 1.30\nDRAG_AREA = 8.5\nDRAG_COEFF = 2.20\n"
+  },
+  {
+    "id": "ccsds-03-gto-ephemeris",
+    "lang": "ccsds",
+    "subFormats": ["oem"],
+    "difficulty": 3,
+    "title": "Geostationary Transfer Orbit Ephemeris (OEM)",
+    "description": "CCSDS Orbit Ephemeris Message (OEM) recording time-ordered EME2000 inertial position and velocity state vectors during perigee passage of a Geostationary Transfer Orbit (GTO) telecom satellite.",
+    "category": "Orbital Ephemerides",
+    "tags": ["ccsds", "oem", "gto", "ephemeris"],
+    "activeFile": "gto_orbit.oem",
+    "fileNames": ["gto_orbit.oem"],
+    "fileCount": 1,
+    "code": "CCSDS_OEM_VERS = 2.0\nCREATION_DATE = 2026-11-24T00:00:00.000\nORIGINATOR = CNES_TOULOUSE\n\nMETA_START\nOBJECT_NAME = TELECOM_GTO_SAT\nOBJECT_ID = 2026-042A\nCENTER_NAME = EARTH\nREF_FRAME = EME2000\nTIME_SYSTEM = UTC\nSTART_TIME = 2026-11-24T06:00:00.000\nSTOP_TIME = 2026-11-24T06:04:00.000\nINTERPOLATION = HERMITE\nINTERPOLATION_DEGREE = 5\nMETA_STOP\n\nDATA_START\n2026-11-24T06:00:00.000 6628.137 0.000 0.000 0.000 10.225 0.000\n2026-11-24T06:01:00.000 6611.810 612.950 0.000 -0.544 10.198 0.000\n2026-11-24T06:02:00.000 6563.020 1222.840 0.000 -1.084 10.118 0.000\n2026-11-24T06:03:00.000 6482.340 1826.620 0.000 -1.615 9.985 0.000\n2026-11-24T06:04:00.000 6370.710 2421.310 0.000 -2.132 9.802 0.000\nDATA_STOP\n"
+  },
+  {
+    "id": "ccsds-04-deep-space-doppler-tdm",
+    "lang": "ccsds",
+    "subFormats": ["tdm"],
+    "difficulty": 4,
+    "title": "Deep-Space Ground Station Doppler Tracking Data (CCSDS TDM)",
+    "description": "CCSDS Tracking Data Message (TDM v2.0) recording NASA Deep Space Network Goldstone DSS-14 X-band two-way coherent Doppler frequency and sequential ranging observables for a deep-space cruise spacecraft.",
+    "category": "Deep-Space Navigation",
+    "tags": ["ccsds", "tdm", "dsn", "doppler", "ranging"],
+    "activeFile": "dsn_doppler.tdm",
+    "fileNames": ["dsn_doppler.tdm"],
+    "fileCount": 1,
+    "code": "CCSDS_TDM_VERS = 2.0\nCREATION_DATE = 2026-10-26T14:30:00.000\nORIGINATOR = NASA_JPL_DSN\n\nCOMMENT Two-way X-band coherent Doppler and ranging pass from Goldstone DSS-14\n\nMETA_START\nTIME_SYSTEM = UTC\nSTART_TIME = 2026-10-26T14:00:00.000\nSTOP_TIME = 2026-10-26T14:05:00.000\nPARTICIPANT_1 = DSS-14\nPARTICIPANT_2 = PSYCHE_SC\nMODE = SEQUENTIAL\nPATH = 1,2,1\nTRANSMIT_BAND = X\nRECEIVE_BAND = X\nTURNAROUND_NUMERATOR = 880\nTURNAROUND_DENOMINATOR = 749\nINTEGRATION_INTERVAL = 60.0\nINTEGRATION_REF = MIDDLE\nRANGE_MODE = COHERENT\nRANGE_MODULUS = 1048576.0\nRANGE_UNITS = RU\nDATA_QUALITY = VALIDATED\nMETA_STOP\n\nDATA_START\nTRANSMIT_FREQ_1 = 2026-10-26T14:00:00.000 7168542100.000\nRECEIVE_FREQ_1 = 2026-10-26T14:00:30.000 8421498312.415\nRECEIVE_FREQ_1 = 2026-10-26T14:01:30.000 8421498298.742\nRECEIVE_FREQ_1 = 2026-10-26T14:02:30.000 8421498284.910\nRECEIVE_FREQ_1 = 2026-10-26T14:03:30.000 8421498271.105\nRECEIVE_FREQ_1 = 2026-10-26T14:04:30.000 8421498257.338\nRANGE = 2026-10-26T14:01:00.000 412894.521\nRANGE = 2026-10-26T14:03:00.000 413108.944\nRANGE = 2026-10-26T14:05:00.000 413323.389\nDATA_STOP\n"
+  },
+  {
+    "id": "ccsds-05-lunar-gateway-mission-bundle",
+    "lang": "ccsds",
+    "subFormats": ["oem", "opm", "tdm", "xtce"],
+    "difficulty": 5,
+    "title": "Lunar Gateway Mission Operations Bundle",
+    "description": "Complete multi-format CCSDS spaceflight operations package for the Lunar Gateway station combining an OEM ephemeris, OPM station-keeping state vector, DSN X-band TDM tracking pass, and XTCE telemetry/telecommand dictionary.",
+    "category": "Cislunar Mission Operations",
+    "tags": ["ccsds", "lunar-gateway", "xtce", "oem", "multi-file"],
+    "activeFile": "orbit.oem",
+    "fileNames": ["orbit.oem", "maneuver.opm", "dsn_track.tdm", "telemetry.xtce"],
+    "fileCount": 4,
+    "code": "CCSDS_OEM_VERS = 2.0\nCREATION_DATE = 2026-11-24T00:00:00.000\nORIGINATOR = NASA_JSC_FOD\n\nMETA_START\nOBJECT_NAME = LUNAR_GATEWAY_PPE_HALO\nOBJECT_ID = 2027-001A\nCENTER_NAME = EARTH\nREF_FRAME = EME2000\nTIME_SYSTEM = UTC\nSTART_TIME = 2026-11-24T00:00:00.000\nSTOP_TIME = 2026-11-24T00:20:00.000\nMETA_STOP\n\nDATA_START\n2026-11-24T00:00:00.000 384400.000 0.000 12500.000 -0.120 1.022 0.045\n2026-11-24T00:10:00.000 384328.000 613.200 12527.000 -0.121 1.021 0.044\n2026-11-24T00:20:00.000 384255.400 1225.800 12553.400 -0.122 1.020 0.043\nDATA_STOP\n",
+    "files": {
+      "orbit.oem": "CCSDS_OEM_VERS = 2.0\nCREATION_DATE = 2026-11-24T00:00:00.000\nORIGINATOR = NASA_JSC_FOD\n\nMETA_START\nOBJECT_NAME = LUNAR_GATEWAY_PPE_HALO\nOBJECT_ID = 2027-001A\nCENTER_NAME = EARTH\nREF_FRAME = EME2000\nTIME_SYSTEM = UTC\nSTART_TIME = 2026-11-24T00:00:00.000\nSTOP_TIME = 2026-11-24T00:20:00.000\nMETA_STOP\n\nDATA_START\n2026-11-24T00:00:00.000 384400.000 0.000 12500.000 -0.120 1.022 0.045\n2026-11-24T00:10:00.000 384328.000 613.200 12527.000 -0.121 1.021 0.044\n2026-11-24T00:20:00.000 384255.400 1225.800 12553.400 -0.122 1.020 0.043\nDATA_STOP\n",
+      "maneuver.opm": "CCSDS_OPM_VERS = 2.0\nCREATION_DATE = 2026-11-24T00:00:00.000\nORIGINATOR = NASA_JSC_FOD\n\nOBJECT_NAME = LUNAR_GATEWAY_PPE_HALO\nOBJECT_ID = 2027-001A\nCENTER_NAME = EARTH\nREF_FRAME = EME2000\nTIME_SYSTEM = UTC\n\nEPOCH = 2026-11-24T00:00:00.000\nX = 384400.000\nY = 0.000\nZ = 12500.000\nX_DOT = -0.120\nY_DOT = 1.022\nZ_DOT = 0.045\n\nSEMI_MAJOR_AXIS = 385000.0\nECCENTRICITY = 0.055\nINCLINATION = 28.5\nRA_OF_ASC_NODE = 15.0\nARG_OF_PERICENTER = 90.0\nTRUE_ANOMALY = 0.0\n\nMASS = 18500.0\nSOLAR_RAD_AREA = 140.0\nSOLAR_RAD_COEFF = 1.35\nDRAG_AREA = 65.0\nDRAG_COEFF = 2.20\n",
+      "dsn_track.tdm": "CCSDS_TDM_VERS = 2.0\nCREATION_DATE = 2026-11-24T00:00:00.000\nORIGINATOR = NASA_JPL_DSN\n\nMETA_START\nTIME_SYSTEM = UTC\nSTART_TIME = 2026-11-24T00:00:00.000\nSTOP_TIME = 2026-11-24T00:10:00.000\nPARTICIPANT_1 = DSS_63_MADRID\nPARTICIPANT_2 = LUNAR_GATEWAY_PPE_HALO\nMODE = SEQUENTIAL\nPATH = 1,2,1\nTRANSMIT_BAND = X\nRECEIVE_BAND = X\nMETA_STOP\n\nDATA_START\nRECEIVE_FREQ_1 = 2026-11-24T00:00:00.000 8420105400.20\nRECEIVE_FREQ_1 = 2026-11-24T00:05:00.000 8420105382.10\nRECEIVE_FREQ_1 = 2026-11-24T00:10:00.000 8420105364.05\nDATA_STOP\n",
+      "telemetry.xtce": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<SpaceSystem name=\"LunarGateway_PPE\" xmlns=\"http://www.omg.org/spec/XTCE/20180204\">\n  <TelemetryMetaData>\n    <ParameterSet>\n      <Parameter name=\"SolarArrayPowerKw\" parameterTypeRef=\"Float32Type\" units=\"kW\" />\n      <Parameter name=\"SepThrusterCurrentA\" parameterTypeRef=\"Float32Type\" units=\"A\" />\n      <Parameter name=\"XenonTankPressureBar\" parameterTypeRef=\"Float32Type\" units=\"bar\" />\n      <Parameter name=\"HaloCabinPressureKpa\" parameterTypeRef=\"Float32Type\" units=\"kPa\" />\n    </ParameterSet>\n    <ContainerSet>\n      <SequenceContainer name=\"GatewayHealthTelemetry\">\n        <EntryList>\n          <ParameterRefEntry parameterRef=\"SolarArrayPowerKw\" />\n          <ParameterRefEntry parameterRef=\"SepThrusterCurrentA\" />\n          <ParameterRefEntry parameterRef=\"XenonTankPressureBar\" />\n          <ParameterRefEntry parameterRef=\"HaloCabinPressureKpa\" />\n        </EntryList>\n      </SequenceContainer>\n    </ContainerSet>\n  </TelemetryMetaData>\n  <CommandMetaData>\n    <MetaCommand name=\"ExecuteOrbitMaintenanceBurn\">\n      <ArgumentList>\n        <Argument name=\"BurnDurationSec\" argumentTypeRef=\"uint32\" />\n        <Argument name=\"ThrustLevelPct\" argumentTypeRef=\"uint16\" />\n      </ArgumentList>\n    </MetaCommand>\n  </CommandMetaData>\n</SpaceSystem>\n"
+    }
+  }
+]

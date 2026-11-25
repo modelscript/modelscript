@@ -1,0 +1,11 @@
+{
+  "id": "gdsii-05-sram-4x4-subarray",
+  "lang": "gdsii",
+  "subFormats": ["gds"],
+  "difficulty": 5,
+  "title": "4x4 SRAM Sub-Array with Wordline and Bitline Routing",
+  "description": "Hierarchical 4x4 SRAM memory sub-array macro in ASCII GDSII tiling a 6T bitcell via AREF, encircled by substrate guard rings, horizontal wordline buses, and vertical bitline columns.",
+  "category": "Memory Macro Layout",
+  "tags": ["gdsii", "sram-array", "aref", "guard-ring", "routing"],
+  "activeFile": "sram_4x4.gds"
+}

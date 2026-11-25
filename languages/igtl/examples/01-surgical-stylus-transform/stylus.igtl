@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenIGTLinkStream version="3.0">
+  <IgtlMessage Type="TRANSFORM" DeviceName="StylusTipToStylus" Matrix="1 0 0 0.0  0 1 0 0.0  0 0 1 148.5  0 0 0 1" Error="0.32" Timestamp="1732480000.100"/>
+  <IgtlMessage Type="TRANSFORM" DeviceName="StylusToTracker" Matrix="1 0 0 42.5  0 1 0 -18.2  0 0 1 612.0  0 0 0 1" Error="0.25" Timestamp="1732480000.116"/>
+</OpenIGTLinkStream>

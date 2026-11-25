@@ -1,0 +1,43 @@
+$$ External Profile of Pump Mounting Flange with Tangent Corner Fillets
+PARTNO PUMP_FLANGE_103
+MACHIN / MILL, 1
+UNITS / INCHES
+INTOL / 0.0005
+OUTTOL / 0.0005
+CUTTER / 0.5
+SPINDL / 2400, CLW
+FEDRAT / 14.0
+COOLNT / ON
+
+$$ Flange corner centers and perimeter lines
+SETPT = POINT / -1.5, -1.5, 1.5
+P1 = POINT / 0.0, 0.0, 0.0
+P2 = POINT / 6.0, 0.0, 0.0
+P3 = POINT / 6.0, 4.0, 0.0
+P4 = POINT / 0.0, 4.0, 0.0
+C2CTR = POINT / 5.25, 0.75, 0.0
+C3CTR = POINT / 5.25, 3.25, 0.0
+
+L1 = LINE / P1, P2
+L2 = LINE / P2, P3
+L3 = LINE / P3, P4
+L4 = LINE / P4, P1
+C2 = CIRCLE / CENTER, C2CTR, RADIUS, 0.75
+C3 = CIRCLE / CENTER, C3CTR, RADIUS, 0.75
+PL1 = PLANE / 0, 0, 1, 0
+
+$$ Continuous tangent contour around flange perimeter
+FROM / SETPT
+RAPID
+GO / TO, L1, TO, PL1, TO, L4
+GORGT / L1, TANTO, C2
+GOFWD / C2, TANTO, L2
+GOFWD / L2, TANTO, C3
+GOFWD / C3, TANTO, L3
+GOFWD / L3, PAST, L4
+GOLFT / L4, PAST, L1
+RAPID
+GOTO / SETPT
+COOLNT / OFF
+SPINDL / OFF
+FINI

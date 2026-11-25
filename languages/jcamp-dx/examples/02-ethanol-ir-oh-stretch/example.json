@@ -1,0 +1,11 @@
+{
+  "id": "jcamp-dx-02-ethanol-ir-oh-stretch",
+  "lang": "jcamp-dx",
+  "subFormats": ["jcamp-dx-4.24"],
+  "difficulty": 2,
+  "title": "Ethanol FTIR Absorbance Spectrum (O-H & C-H Stretch)",
+  "description": "JCAMP-DX 4.24 liquid-phase ethanol infrared absorbance spectrum capturing the broad hydrogen-bonded O-H stretch centered at 3350 cm-1 and aliphatic C-H band near 2970 cm-1.",
+  "category": "Infrared Spectroscopy",
+  "tags": ["jcamp-dx", "ethanol", "absorbance", "oh-stretch"],
+  "activeFile": "ethanol_ir.jdx"
+}

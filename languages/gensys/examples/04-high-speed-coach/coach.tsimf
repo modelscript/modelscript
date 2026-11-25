@@ -1,0 +1,26 @@
+# GENSYS Model: Full 4-Axle High-Speed Passenger Coach (250 km/h)
+# Pivot distance = 19.0 m, bogie wheelbase = 2.50 m
+set m_car = 34000.0
+set m_bogie = 2750.0
+set m_ws = 1480.0
+
+body carbody m_car 68000.0 1920000.0 1850000.0 0.0 0.0 1.72
+body bogie_front m_bogie 1900.0 1700.0 3150.0 9.5 0.0 0.55
+body bogie_rear m_bogie 1900.0 1700.0 3150.0 -9.5 0.0 0.55
+
+wheelset ws1 m_ws 1.435 0.46 0.05 "S1002_hs.wheel"
+wheelset ws2 m_ws 1.435 0.46 0.05 "S1002_hs.wheel"
+wheelset ws3 m_ws 1.435 0.46 0.05 "S1002_hs.wheel"
+wheelset ws4 m_ws 1.435 0.46 0.05 "S1002_hs.wheel"
+
+# Secondary air springs & yaw dampers
+spring sec_front carbody bogie_front 150000 145000 410000 26000 30000 38000
+spring sec_rear carbody bogie_rear 150000 145000 410000 26000 30000 38000
+
+# Primary axlebox suspensions
+spring prim_1 bogie_front ws1 9500000 4200000 1200000 15000 12000 20000
+spring prim_2 bogie_front ws2 9500000 4200000 1200000 15000 12000 20000
+spring prim_3 bogie_rear ws3 9500000 4200000 1200000 15000 12000 20000
+spring prim_4 bogie_rear ws4 9500000 4200000 1200000 15000 12000 20000
+
+sub track_irreg

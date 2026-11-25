@@ -1,0 +1,54 @@
+(edif half_adder_hierarchy
+  (edifVersion 2 0 0)
+  (edifLevel 0)
+  (keywordMap (keywordLevel 0))
+  (status
+    (written
+      (timeStamp 2026 11 24 16 0 0)
+      (author "Ansatz EDA")
+      (program "edif-gen" (version "2.0.0"))
+      (comment "Hierarchical Half-Adder Built from NAND2 and INV Primitives")))
+  (external STDCELLS
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell NAND2X1
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port B (direction INPUT))
+          (port Y (direction OUTPUT)))))
+    (cell INVX1
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port Y (direction OUTPUT))))))
+  (library WORK
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell HALF_ADDER
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port B (direction INPUT))
+          (port SUM (direction OUTPUT))
+          (port CARRY (direction OUTPUT)))
+        (contents
+          (instance U_N1 (viewRef netlist (cellRef NAND2X1 (libraryRef STDCELLS))))
+          (instance U_N2 (viewRef netlist (cellRef NAND2X1 (libraryRef STDCELLS))))
+          (instance U_N3 (viewRef netlist (cellRef NAND2X1 (libraryRef STDCELLS))))
+          (instance U_N4 (viewRef netlist (cellRef NAND2X1 (libraryRef STDCELLS))))
+          (instance U_INV (viewRef netlist (cellRef INVX1 (libraryRef STDCELLS))))
+          (net N_A (joined (portRef A) (portRef A (instanceRef U_N1)) (portRef A (instanceRef U_N2))))
+          (net N_B (joined (portRef B) (portRef B (instanceRef U_N1)) (portRef B (instanceRef U_N3))))
+          (net N_AB (joined (portRef Y (instanceRef U_N1)) (portRef B (instanceRef U_N2)) (portRef A (instanceRef U_N3)) (portRef A (instanceRef U_INV))))
+          (net N_2 (joined (portRef Y (instanceRef U_N2)) (portRef A (instanceRef U_N4))))
+          (net N_3 (joined (portRef Y (instanceRef U_N3)) (portRef B (instanceRef U_N4))))
+          (net N_SUM (joined (portRef Y (instanceRef U_N4)) (portRef SUM)))
+          (net N_CARRY (joined (portRef Y (instanceRef U_INV)) (portRef CARRY)))))))
+  (design HalfAdderDesign (cellRef HALF_ADDER (libraryRef WORK))))

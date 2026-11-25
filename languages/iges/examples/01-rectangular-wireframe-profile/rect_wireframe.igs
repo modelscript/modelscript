@@ -1,0 +1,18 @@
+IGES 5.3 2D Rectangular Wireframe Profile (100 mm x 60 mm)              S      1
+1H,,1H;,12HRECT_PROFILE,18Hrect_wireframe.igs,15HModelScript-CAD,15HModeG      1
+lScript 1.0,32,38,6,308,15,12HRECT_PROFILE,1.0,2,2HMM,1,0.0,15H20260101.G      2
+000000,1.0E-6,1000.0,10HAnsatz CAD,23HModelScript Engineering,11,0,15H20G      3
+260101.000000;                                                          G      4
+     110       1       0       1       0       0       0       000000000D      1
+     110       0       0       1       0                  BOTTOM       0D      2
+     110       2       0       1       0       0       0       000000000D      3
+     110       0       0       1       0                   RIGHT       0D      4
+     110       3       0       1       0       0       0       000000000D      5
+     110       0       0       1       0                     TOP       0D      6
+     110       4       0       1       0       0       0       000000000D      7
+     110       0       0       1       0                    LEFT       0D      8
+110,0,0,0,100,0,0;                                                     1P      1
+110,100,0,0,100,60,0;                                                  3P      2
+110,100,60,0,0,60,0;                                                   5P      3
+110,0,60,0,0,0,0;                                                      7P      4
+S0000001G0000004D0000008P0000004                                        T      1

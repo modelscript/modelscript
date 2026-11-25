@@ -18,10 +18,12 @@ import {
   Variability,
   VarType,
   type QueryDB,
+  type SymbolEntry,
   type SymbolId,
 } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getFlatteningState, setExprArrayShape } from "../support/state.js";
+import type { ComponentInstanceData, FlattenerCstNode, FlattenerHostLike } from "../types.js";
 import {
   extractComponentNameFromClauseCst,
   isValidDottedComponentPath,
@@ -906,7 +908,7 @@ export function broadcastElemBinOp(
   leftId: number,
   rightId: number,
   dae: DAEBuilder,
-  flattener?: any,
+  flattener?: FlattenerHostLike | null,
   isTopLevel = false,
 ): number {
   const lK = dae.getExprKind(leftId);
@@ -1142,24 +1144,53 @@ export function areExpressionsEqual(dae: DAEBuilder, id1: number, id2: number, a
   }
 }
 
-export function findOperatorRecordComponentType(
-  baseName: string,
-  dae: DAEBuilder,
-  db: QueryDB | undefined,
-  flattener: any,
-): {
+interface OperatorRecordInfo {
   name: string;
   symId: SymbolId;
   isArray: boolean;
   arrayDim?: number | undefined;
   arrayDims?: number[] | undefined;
-} | null {
+}
+
+interface OperatorParamInfo {
+  name?: string | undefined;
+  typeSpec?: string | undefined;
+  isArray?: boolean | undefined;
+  hasDefault?: boolean | undefined;
+  defaultValue?: string | number | undefined;
+}
+
+interface OperatorOverloadInfo {
+  qualifiedName: string;
+  funcSymId: SymbolId;
+  outputType?: string | undefined;
+  inputParams: OperatorParamInfo[];
+}
+
+interface ComponentMetaLike {
+  typeSpecifier?: string | undefined;
+  isArray?: boolean | undefined;
+}
+
+type RawArrayDimEntry = number | { value?: number | undefined } | null | undefined;
+type FunctionDaeWithOutputs = DAEBuilder & {
+  outputs?: readonly { customType?: string | undefined }[] | undefined;
+};
+type SimpleNameResolver = (name: string) => SymbolEntry | null | undefined;
+
+export function findOperatorRecordComponentType(
+  baseName: string,
+  dae: DAEBuilder,
+  db: QueryDB | undefined,
+  flattener: FlattenerHostLike | null | undefined,
+): OperatorRecordInfo | null {
   if (!db) return null;
-  const extractDims = (rawDims: any): number[] | undefined => {
+  const extractDims = (rawDims: readonly RawArrayDimEntry[] | null | undefined): number[] | undefined => {
     if (!Array.isArray(rawDims) || rawDims.length === 0) return undefined;
-    return rawDims.map((d: any) => (typeof d === "number" ? d : typeof d?.value === "number" ? d.value : 0));
+    return rawDims.map((d) => (typeof d === "number" ? d : typeof d?.value === "number" ? d.value : 0));
   };
-  const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
+  const flattenerOpt = flattener ?? undefined;
+  const currentPrefix = getFlatteningState(dae, flattenerOpt).currentPrefix ?? flattener?.currentPrefix;
   let vIdx = dae.getVarIdxByName(baseName);
   if (vIdx < 0 && currentPrefix) {
     vIdx = dae.getVarIdxByName(`${currentPrefix}.${baseName}`);
@@ -1168,9 +1199,7 @@ export function findOperatorRecordComponentType(
     const cType = dae.getVarCustomType(vIdx);
     if (!cType) return null;
     const cleanType = cType.includes(".") ? cType.split(".").pop()! : cType;
-    const rawClassSym = db
-      .byName(cleanType)
-      .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+    const rawClassSym = db.byName(cleanType).find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
     const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
     if (classSym) {
       const shape = dae.getVarShape(vIdx);
@@ -1183,23 +1212,20 @@ export function findOperatorRecordComponentType(
   }
 
   if (flattener?.currentFlatteningFunctionId) {
-    const fnComps = db.childrenOf(flattener.currentFlatteningFunctionId).filter((c: any) => c.kind === "Component");
-    const compSym = fnComps.find((c: any) => stripTrailingArraySubscripts(c.name ?? "") === baseName);
+    const fnComps = db.childrenOf(flattener.currentFlatteningFunctionId).filter((c) => c.kind === "Component");
+    const compSym = fnComps.find((c) => stripTrailingArraySubscripts(c.name ?? "") === baseName);
     if (compSym) {
-      const compInst = db.query<any>("componentInstance", compSym.id);
+      const compInst = db.query<ComponentInstanceData | null>("componentInstance", compSym.id);
+      const compMeta = compSym.metadata as ComponentMetaLike | undefined;
       const typeSpec =
-        compInst?.typeSpecifier ??
-        (compSym.metadata as any)?.typeSpecifier ??
-        db.query<string | null>("typeSpecifier", compSym.id);
+        compInst?.typeSpecifier ?? compMeta?.typeSpecifier ?? db.query<string | null>("typeSpecifier", compSym.id);
       if (!typeSpec) return null;
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
-      const rawClassSym = db
-        .byName(cleanType)
-        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const rawClassSym = db.byName(cleanType).find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
       const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
       if (classSym) {
-        const arrayDims = extractDims(compInst?.arrayDimensions);
-        const isArray = Boolean((arrayDims && arrayDims.length > 0) || (compSym.metadata as any)?.isArray);
+        const arrayDims = extractDims(compInst?.arrayDimensions as readonly RawArrayDimEntry[] | undefined);
+        const isArray = Boolean((arrayDims && arrayDims.length > 0) || compMeta?.isArray);
         const arrayDim = arrayDims && arrayDims.length > 0 ? arrayDims[0] : 0;
         return { name: classSym.name, symId: classSym.id, isArray, arrayDim, arrayDims };
       }
@@ -1207,45 +1233,40 @@ export function findOperatorRecordComponentType(
     }
   }
 
-  let compSym: any = null;
+  let compSym: SymbolEntry | null = null;
   const candidateClassIds = [flattener?.currentClassId, flattener?.currentRootClassId].filter(
-    (id, idx, arr) => id != null && arr.indexOf(id) === idx,
+    (id, idx, arr): id is SymbolId => id != null && arr.indexOf(id) === idx,
   );
   for (const clsId of candidateClassIds) {
-    const comps = db.childrenOf(clsId).filter((c: any) => c.kind === "Component");
-    compSym = comps.find((c: any) => (c.name ? c.name.split("[")[0] : "") === baseName);
+    const comps = db.childrenOf(clsId).filter((c) => c.kind === "Component");
+    compSym = comps.find((c) => (c.name ? c.name.split("[")[0] : "") === baseName) ?? null;
     if (!compSym) {
-      const instComps = db.query<any[]>("instantiate", clsId);
+      const instComps = db.query<SymbolEntry[] | null>("instantiate", clsId);
       if (instComps) {
-        compSym = instComps.find((c: any) => (c.name ? c.name.split("[")[0] : "") === baseName);
+        compSym = instComps.find((c) => (c.name ? c.name.split("[")[0] : "") === baseName) ?? null;
       }
     }
     if (!compSym) {
-      const resSym = db.query<any>("resolveSimpleName", clsId)?.(baseName);
+      const resSym = db.query<SimpleNameResolver | null>("resolveSimpleName", clsId)?.(baseName);
       if (resSym?.kind === "Component") compSym = resSym;
     }
     if (compSym) break;
   }
   if (!compSym) {
-    compSym = db.byName(baseName).find((e: any) => e.kind === "Component");
+    compSym = db.byName(baseName).find((e) => e.kind === "Component") ?? null;
   }
   if (compSym) {
-    const compInst = db.query<any>("componentInstance", compSym.id);
+    const compInst = db.query<ComponentInstanceData | null>("componentInstance", compSym.id);
+    const compMeta = compSym.metadata as ComponentMetaLike | undefined;
     const typeSpec =
-      compInst?.typeSpecifier ??
-      (compSym.metadata as any)?.typeSpecifier ??
-      db.query<string | null>("typeSpecifier", compSym.id);
+      compInst?.typeSpecifier ?? compMeta?.typeSpecifier ?? db.query<string | null>("typeSpecifier", compSym.id);
     if (typeSpec) {
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
-      const rawClassSym = db
-        .byName(cleanType)
-        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const rawClassSym = db.byName(cleanType).find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
       const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
       if (classSym) {
-        const arrayDims = extractDims(compInst?.arrayDimensions);
-        const isArray = Boolean(
-          (arrayDims && arrayDims.length > 0) || (compSym.metadata as any)?.isArray || compSym.name.includes("["),
-        );
+        const arrayDims = extractDims(compInst?.arrayDimensions as readonly RawArrayDimEntry[] | undefined);
+        const isArray = Boolean((arrayDims && arrayDims.length > 0) || compMeta?.isArray || compSym.name.includes("["));
         const arrayDim = arrayDims && arrayDims.length > 0 ? arrayDims[0] : 0;
         return { name: classSym.name, symId: classSym.id, isArray, arrayDim, arrayDims };
       }
@@ -1254,24 +1275,28 @@ export function findOperatorRecordComponentType(
   return null;
 }
 
-function unwrapOperatorRecordSym(classSym: any, db: QueryDB, flattener: any): any {
+function unwrapOperatorRecordSym(
+  classSym: SymbolEntry | null | undefined,
+  db: QueryDB,
+  flattener: FlattenerHostLike | null | undefined,
+): SymbolEntry | null | undefined {
   if (!classSym) return classSym;
-  const ops = db.query<Map<string, any[]> | null>("operatorFunctions", classSym.id);
+  const ops = db.query<Map<string, OperatorOverloadInfo[]> | null>("operatorFunctions", classSym.id);
   if (ops && ops.size > 0) return classSym;
   let curr = classSym;
   const visited = new Set<number>();
   while (curr && !visited.has(curr.id)) {
     visited.add(curr.id);
-    const curOps = db.query<Map<string, any[]> | null>("operatorFunctions", curr.id);
+    const curOps = db.query<Map<string, OperatorOverloadInfo[]> | null>("operatorFunctions", curr.id);
     if (curOps && curOps.size > 0) return curr;
-    const baseSym = db.query<any>("resolvedBaseClass", curr.id);
+    const baseSym = db.query<SymbolEntry | null>("resolvedBaseClass", curr.id);
     if (baseSym && baseSym.id !== curr.id) {
       curr = baseSym;
       continue;
     }
     break;
   }
-  const complexSym = db.byName("Complex").find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+  const complexSym = db.byName("Complex").find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
   return complexSym ?? curr;
 }
 
@@ -1299,17 +1324,11 @@ const COMPLEX_MATH_COMPLEX_RETURN_FNS = new Set([
 
 export function resolveOperatorRecord(
   exprId: number,
-  cstNode: any,
+  cstNode: FlattenerCstNode | null | undefined,
   dae: DAEBuilder,
   db: QueryDB | undefined,
-  flattener: any,
-): {
-  name: string;
-  symId: SymbolId;
-  isArray: boolean;
-  arrayDim?: number | undefined;
-  arrayDims?: number[] | undefined;
-} | null {
+  flattener: FlattenerHostLike | null | undefined,
+): OperatorRecordInfo | null {
   if (!db) return null;
   if (exprId >= 0) {
     const kind = dae.getExprKind(exprId);
@@ -1325,19 +1344,12 @@ export function resolveOperatorRecord(
     }
   }
 
+  const flattenerOpt = flattener ?? undefined;
   const findCompType = (baseName: string) => findOperatorRecordComponentType(baseName, dae, db, flattener);
 
-  const resolvePath = (
-    pathStr: string,
-  ): {
-    name: string;
-    symId: number;
-    isArray: boolean;
-    arrayDim?: number | undefined;
-    arrayDims?: number[] | undefined;
-  } | null => {
+  const resolvePath = (pathStr: string): OperatorRecordInfo | null => {
     if (!pathStr || !isValidDottedComponentPath(pathStr)) return null;
-    const currentPrefix = getFlatteningState(dae, flattener).currentPrefix ?? flattener?.currentPrefix;
+    const currentPrefix = getFlatteningState(dae, flattenerOpt).currentPrefix ?? flattener?.currentPrefix;
     const hasComplexFields =
       (dae.getVarIdxByName(`${pathStr}.re`) >= 0 && dae.getVarIdxByName(`${pathStr}.im`) >= 0) ||
       Boolean(
@@ -1346,9 +1358,7 @@ export function resolveOperatorRecord(
         dae.getVarIdxByName(`${currentPrefix}.${pathStr}.im`) >= 0,
       );
     if (hasComplexFields) {
-      const complexSym = db
-        .byName("Complex")
-        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const complexSym = db.byName("Complex").find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
       if (complexSym) {
         return { name: complexSym.name, symId: complexSym.id, isArray: false };
       }
@@ -1365,38 +1375,29 @@ export function resolveOperatorRecord(
       .map((p) => p.split("[")[0]!.trim())
       .filter(Boolean);
     if (parts.length === 0) return null;
-    let curr: {
-      name: string;
-      symId: number;
-      isArray: boolean;
-      arrayDim?: number | undefined;
-      arrayDims?: number[] | undefined;
-    } | null = findCompType(parts[0]!);
+    let curr: OperatorRecordInfo | null = findCompType(parts[0]!);
     if (!curr) return null;
     for (let i = 1; i < parts.length; i++) {
       const fieldName = parts[i]!;
-      const children: any[] = db.childrenOf(curr.symId).filter((c: any) => c.kind === "Component");
-      const fieldSym: any = children.find((c: any) => c.name === fieldName);
+      const children: SymbolEntry[] = db.childrenOf(curr.symId).filter((c) => c.kind === "Component");
+      const fieldSym: SymbolEntry | undefined = children.find((c) => c.name === fieldName);
       if (!fieldSym) return null;
-      const compInst: any = db.query<any>("componentInstance", fieldSym.id);
+      const compInst = db.query<ComponentInstanceData | null>("componentInstance", fieldSym.id);
+      const fieldMeta = fieldSym.metadata as ComponentMetaLike | undefined;
       const typeSpec: string | null =
-        compInst?.typeSpecifier ??
-        (fieldSym.metadata as any)?.typeSpecifier ??
-        db.query<string | null>("typeSpecifier", fieldSym.id);
+        compInst?.typeSpecifier ?? fieldMeta?.typeSpecifier ?? db.query<string | null>("typeSpecifier", fieldSym.id);
       if (!typeSpec) return null;
       const cleanType: string = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
-      const rawClassSym = db
-        .byName(cleanType)
-        .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+      const rawClassSym = db.byName(cleanType).find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
       const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
       if (!classSym) return null;
-      const rawDims: any = compInst?.arrayDimensions;
+      const rawDims = compInst?.arrayDimensions as readonly RawArrayDimEntry[] | undefined;
       const arrayDims: number[] | undefined =
         Array.isArray(rawDims) && rawDims.length > 0
-          ? rawDims.map((d: any) => (typeof d === "number" ? d : typeof d?.value === "number" ? d.value : 0))
+          ? rawDims.map((d) => (typeof d === "number" ? d : typeof d?.value === "number" ? d.value : 0))
           : undefined;
       const isArray: boolean = Boolean(
-        (arrayDims && arrayDims.length > 0) || (fieldSym.metadata as any)?.isArray || fieldSym.name.includes("["),
+        (arrayDims && arrayDims.length > 0) || fieldMeta?.isArray || fieldSym.name.includes("["),
       );
       const arrayDim: number | undefined = arrayDims && arrayDims.length > 0 ? arrayDims[0] : 0;
       curr = { name: classSym.name, symId: classSym.id, isArray, arrayDim, arrayDims };
@@ -1447,21 +1448,20 @@ export function resolveOperatorRecord(
       const fnName = dae.interner.resolve(dae.getExprData1(exprId));
       if (fnName) {
         const baseClass = fnName.split(".")[0]!;
-        const rawClassSym = db
-          .byName(baseClass)
-          .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+        const rawClassSym = db.byName(baseClass).find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
         const classSym = rawClassSym ? unwrapOperatorRecordSym(rawClassSym, db, flattener) : null;
         if (classSym) {
           return { name: classSym.name, symId: classSym.id, isArray: false };
         }
         const shortFn = fnName.split(".").pop()!;
+        const fnDae = dae.getFunction?.(fnName) as FunctionDaeWithOutputs | undefined;
         if (
           (fnName.includes("ComplexMath.") && COMPLEX_MATH_COMPLEX_RETURN_FNS.has(shortFn)) ||
-          (dae as any).getFunction?.(fnName)?.outputs?.[0]?.customType === "Complex"
+          fnDae?.outputs?.[0]?.customType === "Complex"
         ) {
           const complexSym = db
             .byName("Complex")
-            .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+            .find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
           if (complexSym) {
             return { name: complexSym.name, symId: complexSym.id, isArray: false };
           }
@@ -1479,14 +1479,14 @@ export function coerceToOperatorRecord(
   _recName: string,
   dae: DAEBuilder,
   db: QueryDB,
-  flattener: any,
+  flattener: FlattenerHostLike | null | undefined,
 ): number | null {
-  const ctors = db.query<any[]>("operatorConstructors", recSymId);
+  const ctors = db.query<OperatorOverloadInfo[] | null>("operatorConstructors", recSymId);
   if (!ctors || ctors.length === 0) return null;
 
   for (const ctor of ctors) {
     if (ctor.inputParams && ctor.inputParams.length >= 1) {
-      const p0 = ctor.inputParams[0];
+      const p0 = ctor.inputParams[0]!;
       if (p0.typeSpec === "Real" || p0.typeSpec === "Integer") {
         let firstArg = argExprId;
         if (p0.typeSpec === "Real" && dae.getExprKind(argExprId) === ExprKind.IntLiteral) {
@@ -1494,7 +1494,7 @@ export function coerceToOperatorRecord(
         }
         const callArgs: number[] = [firstArg];
         for (let i = 1; i < ctor.inputParams.length; i++) {
-          const pi = ctor.inputParams[i];
+          const pi = ctor.inputParams[i]!;
           if (pi.hasDefault && pi.defaultValue !== undefined) {
             const defValNum = Number(pi.defaultValue);
             callArgs.push(isNaN(defValNum) ? dae.addRealLiteral(0.0) : dae.addRealLiteral(defValNum));
@@ -1514,14 +1514,15 @@ export function dispatchBinaryOperator(
   opName: string,
   leftId: number,
   rightId: number,
-  leftNode: any,
-  rightNode: any,
+  leftNode: FlattenerCstNode | null | undefined,
+  rightNode: FlattenerCstNode | null | undefined,
   dae: DAEBuilder,
   db: QueryDB,
-  flattener: any,
+  flattener: FlattenerHostLike | null | undefined,
 ): number | null {
+  const flattenerOpt = flattener ?? undefined;
   if (flattener && typeof flattener.hasOperatorRecords === "function") {
-    const rootId = (flattener as any).currentRootClassId ?? getFlatteningState(dae, flattener).currentClassId;
+    const rootId = flattener.currentRootClassId ?? getFlatteningState(dae, flattenerOpt).currentClassId;
     if (rootId && !flattener.hasOperatorRecords(rootId)) {
       return null;
     }
@@ -1549,17 +1550,17 @@ export function dispatchBinaryOperator(
   if (!leftRec && !rightRec) return null;
 
   const recSym = (leftRec ?? rightRec)!;
-  const ops = db.query<Map<string, any[]> | null>("operatorFunctions", recSym.symId);
+  const ops = db.query<Map<string, OperatorOverloadInfo[]> | null>("operatorFunctions", recSym.symId);
   const cleanOp = stripOuterSingleQuotes(opName);
-  const rawCandidates: any[] = ops ? [...(ops.get(opName) ?? []), ...(ops.get(cleanOp) ?? [])] : [];
+  const rawCandidates: OperatorOverloadInfo[] = ops ? [...(ops.get(opName) ?? []), ...(ops.get(cleanOp) ?? [])] : [];
   if (rightRec && rightRec.symId !== leftRec?.symId) {
-    const rOps = db.query<Map<string, any[]> | null>("operatorFunctions", rightRec.symId);
+    const rOps = db.query<Map<string, OperatorOverloadInfo[]> | null>("operatorFunctions", rightRec.symId);
     if (rOps) {
       rawCandidates.push(...(rOps.get(opName) ?? []), ...(rOps.get(cleanOp) ?? []));
     }
   }
   const seenCandidates = new Set<string>();
-  const candidates: any[] = [];
+  const candidates: OperatorOverloadInfo[] = [];
   for (const cand of rawCandidates) {
     if (!seenCandidates.has(cand.qualifiedName)) {
       seenCandidates.add(cand.qualifiedName);
@@ -1567,11 +1568,11 @@ export function dispatchBinaryOperator(
     }
   }
 
-  const matched: { overload: any; finalLeftId: number; finalRightId: number }[] = [];
+  const matched: { overload: OperatorOverloadInfo; finalLeftId: number; finalRightId: number }[] = [];
 
   const checkParamMatch = (
-    param: any,
-    rec: { name: string; symId: SymbolId; isArray: boolean; arrayDims?: number[] | undefined } | null,
+    param: OperatorParamInfo,
+    rec: OperatorRecordInfo | null,
     argId: number,
   ): { matched: boolean; argId: number } => {
     if (param.isArray) {
@@ -1596,9 +1597,7 @@ export function dispatchBinaryOperator(
     }
     // Try implicit constructor coercion to target operator record
     const cleanTargetSpec = param.typeSpec ? stripLeadingDot(param.typeSpec) : "";
-    const targetSym = db
-      .byName(cleanTargetSpec)
-      .find((e: any) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
+    const targetSym = db.byName(cleanTargetSpec).find((e) => e.kind === "Class" && flattener?.isOperatorRecordSym?.(e));
     if (targetSym) {
       const coerced = coerceToOperatorRecord(argId, targetSym.id, targetSym.name, dae, db, flattener);
       if (coerced !== null) {
@@ -1610,8 +1609,8 @@ export function dispatchBinaryOperator(
 
   for (const cand of candidates) {
     if (cand.inputParams.length !== 2) continue;
-    const p0 = cand.inputParams[0];
-    const p1 = cand.inputParams[1];
+    const p0 = cand.inputParams[0]!;
+    const p1 = cand.inputParams[1]!;
 
     const lRes = checkParamMatch(p0, leftRec, leftId);
     const rRes = checkParamMatch(p1, rightRec, rightId);
@@ -1630,8 +1629,8 @@ export function dispatchBinaryOperator(
   if (matched.length > 1) {
     // If one candidate matched directly without coercion and others matched with coercion, prefer direct
     const directMatches = matched.filter((m) => {
-      const p0 = m.overload.inputParams[0];
-      const p1 = m.overload.inputParams[1];
+      const p0 = m.overload.inputParams[0]!;
+      const p1 = m.overload.inputParams[1]!;
       const lDirect = leftRec
         ? (p0.typeSpec ? stripLeadingDot(p0.typeSpec) : undefined) === leftRec.name
         : p0.typeSpec === "Real" || p0.typeSpec === "Integer";
@@ -1647,11 +1646,11 @@ export function dispatchBinaryOperator(
     }
 
     const candidateStrings = candidates.map((c) => {
-      const params = c.inputParams.map((p: any) => `${p.typeSpec}${p.isArray ? "[:]" : ""} ${p.name}`).join(", ");
+      const params = c.inputParams.map((p) => `${p.typeSpec}${p.isArray ? "[:]" : ""} ${p.name}`).join(", ");
       return `  ${c.qualifiedName}(${params}) => ${c.outputType}`;
     });
     const exprText = `${leftNode?.text?.trim() ?? ""} ${cleanOp} ${rightNode?.text?.trim() ?? ""}`;
-    let eqNode: any = leftNode;
+    let eqNode: FlattenerCstNode | null | undefined = leftNode;
     while (
       eqNode &&
       eqNode.type !== "simple_equation" &&
@@ -1685,11 +1684,11 @@ export function dispatchBinaryOperator(
     const scalarLeftRec = leftRec ? { ...leftRec, isArray: false, arrayDims: undefined } : null;
     const scalarRightRec = rightRec ? { ...rightRec, isArray: false, arrayDims: undefined } : null;
 
-    let bestScalarOverload: any = null;
+    let bestScalarOverload: OperatorOverloadInfo | null = null;
     for (const cand of candidates) {
       if (cand.inputParams.length !== 2) continue;
-      const p0 = cand.inputParams[0];
-      const p1 = cand.inputParams[1];
+      const p0 = cand.inputParams[0]!;
+      const p1 = cand.inputParams[1]!;
       if (p0.isArray || p1.isArray) continue;
       const lRes = checkParamMatch(p0, scalarLeftRec, leftId);
       const rRes = checkParamMatch(p1, scalarRightRec, rightId);
@@ -1712,14 +1711,14 @@ export function dispatchBinaryOperator(
       const M = leftRec.arrayDims[0]!;
       const K = leftRec.arrayDims[1]!;
       const N = rightRec.arrayDims[1]!;
-      const addCandidates: any[] = ops ? [...(ops.get("'+'") ?? []), ...(ops.get("+") ?? [])] : [];
+      const addCandidates: OperatorOverloadInfo[] = ops ? [...(ops.get("'+'") ?? []), ...(ops.get("+") ?? [])] : [];
       const scalarAddOverload = addCandidates.find(
         (cand) =>
           cand.inputParams?.length === 2 &&
-          !cand.inputParams[0].isArray &&
-          !cand.inputParams[1].isArray &&
-          checkParamMatch(cand.inputParams[0], scalarLeftRec, leftId).matched &&
-          checkParamMatch(cand.inputParams[1], scalarRightRec, rightId).matched,
+          !cand.inputParams[0]!.isArray &&
+          !cand.inputParams[1]!.isArray &&
+          checkParamMatch(cand.inputParams[0]!, scalarLeftRec, leftId).matched &&
+          checkParamMatch(cand.inputParams[1]!, scalarRightRec, rightId).matched,
       );
       if (scalarAddOverload) {
         flattener?.usedOperatorFunctions?.set(bestScalarOverload.qualifiedName, bestScalarOverload.funcSymId);
@@ -1743,21 +1742,21 @@ export function dispatchBinaryOperator(
         }
         const matExprId = dae.addArrayCtorExpr(rows);
         if (dae.extensionMetadata?.["isOldFrontend"]) {
-          let compClauseNode: any = leftNode;
+          let compClauseNode: FlattenerCstNode | null | undefined = leftNode;
           while (compClauseNode && compClauseNode.type !== "component_clause") {
             compClauseNode = compClauseNode.parent;
           }
           let compName = flattener?.currentBindingCompName;
           if (!compName && compClauseNode) {
-            compName = extractComponentNameFromClauseCst(compClauseNode);
+            compName = extractComponentNameFromClauseCst(compClauseNode) ?? undefined;
           }
           if (compClauseNode && compName) {
             const printer = new ArenaDAEPrinter(new StringWriter(), dae, true);
             const modStr = printer.printExprToString(matExprId);
-            const fields = db.childrenOf(recSym.symId).filter((c: any) => c.kind === "Component");
-            const fieldLines = fields.map((f: any) => {
-              const fType =
-                db.query<string | null>("typeSpecifier", f.id) ?? (f.metadata as any)?.typeSpecifier ?? "Real";
+            const fields = db.childrenOf(recSym.symId).filter((c) => c.kind === "Component");
+            const fieldLines = fields.map((f) => {
+              const fMeta = f.metadata as ComponentMetaLike | undefined;
+              const fType = db.query<string | null>("typeSpecifier", f.id) ?? fMeta?.typeSpecifier ?? "Real";
               return `  ${fType} ${f.name};`;
             });
             const recTypeBlock = `record ${recSym.name}\n${fieldLines.join("\n")}\nend ${recSym.name};[${M}, ${N}]`;
@@ -1809,7 +1808,7 @@ export function dispatchBinaryOperator(
   }
 
   // If no match and at least one is operator record:
-  const getOperandTypeStr = (rec: any, argId: number): string => {
+  const getOperandTypeStr = (rec: OperatorRecordInfo | null, argId: number): string => {
     if (rec) {
       return `${rec.name}${rec.isArray ? `[${rec.arrayDim ?? 0}]` : ""}`;
     }
@@ -1822,7 +1821,7 @@ export function dispatchBinaryOperator(
   const leftTypeStr = getOperandTypeStr(leftRec, leftId);
   const rightTypeStr = getOperandTypeStr(rightRec, rightId);
   const exprText = `${leftNode?.text?.trim() ?? ""} ${cleanOp} ${rightNode?.text?.trim() ?? ""}`;
-  let eqNode: any = leftNode;
+  let eqNode: FlattenerCstNode | null | undefined = leftNode;
   while (
     eqNode &&
     eqNode.type !== "simple_equation" &&
@@ -1850,21 +1849,21 @@ export function dispatchBinaryOperator(
 export function dispatchUnaryOperator(
   opName: string,
   operandId: number,
-  operandNode: any,
+  operandNode: FlattenerCstNode | null | undefined,
   dae: DAEBuilder,
   db: QueryDB,
-  flattener: any,
+  flattener: FlattenerHostLike | null | undefined,
 ): number | null {
   const rec = resolveOperatorRecord(operandId, operandNode, dae, db, flattener);
   if (!rec) return null;
 
-  const ops = db.query<Map<string, any[]> | null>("operatorFunctions", rec.symId);
+  const ops = db.query<Map<string, OperatorOverloadInfo[]> | null>("operatorFunctions", rec.symId);
   if (!ops) return null;
 
   const cleanOp = stripOuterSingleQuotes(opName);
-  const rawCandidates: any[] = [...(ops.get(opName) ?? []), ...(ops.get(cleanOp) ?? [])];
+  const rawCandidates: OperatorOverloadInfo[] = [...(ops.get(opName) ?? []), ...(ops.get(cleanOp) ?? [])];
   const seenCandidates = new Set<string>();
-  const candidates: any[] = [];
+  const candidates: OperatorOverloadInfo[] = [];
   for (const cand of rawCandidates) {
     if (!seenCandidates.has(cand.qualifiedName)) {
       seenCandidates.add(cand.qualifiedName);
@@ -1875,7 +1874,7 @@ export function dispatchUnaryOperator(
 
   for (const cand of candidates) {
     if (cand.inputParams.length !== 1) continue;
-    const p0 = cand.inputParams[0];
+    const p0 = cand.inputParams[0]!;
     if (p0.isArray && rec.isArray) {
       flattener?.usedOperatorFunctions?.set(cand.qualifiedName, cand.funcSymId);
       return dae.addCallExpr(cand.qualifiedName, [operandId]);

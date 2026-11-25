@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DNP3DeviceProfile xmlns="http://www.dnp.org/DNP3/DeviceProfile/2010" id="BAY_345KV_BCU_03">
+  <DeviceIdentity>
+    <Vendor>Hitachi Energy</Vendor>
+    <DeviceName>REC670 Bay Control Unit</DeviceName>
+    <Version>2.2.5</Version>
+  </DeviceIdentity>
+  <CommunicationSettings>
+    <OutstationAddress>345</OutstationAddress>
+    <MasterAddress>2</MasterAddress>
+  </CommunicationSettings>
+  <DNP3PointList>
+    <BinaryInputs>
+      <BinaryInput index="0" name="CB_345_1_CLOSED" class="1" normalState="1"/>
+      <BinaryInput index="1" name="CB_345_1_SPRING_CHARGED" class="1" normalState="1"/>
+      <BinaryInput index="2" name="SYNCHROCHECK_25_PERMISSIVE" class="1" normalState="1"/>
+      <BinaryInput index="3" name="REMOTE_CONTROL_ENABLED" class="1" normalState="1"/>
+      <BinaryInput index="4" name="DISCONNECT_89A_CLOSED" class="2" normalState="1"/>
+      <BinaryInput index="5" name="GROUND_SWITCH_89G_OPEN" class="1" normalState="1"/>
+    </BinaryInputs>
+    <BinaryOutputs>
+      <BinaryOutput index="0" name="SBO_CB_345_1_TRIP"/>
+      <BinaryOutput index="1" name="SBO_CB_345_1_CLOSE"/>
+      <BinaryOutput index="2" name="SBO_89A_OPEN"/>
+      <BinaryOutput index="3" name="SBO_89A_CLOSE"/>
+      <BinaryOutput index="4" name="SBO_RECLOSER_79_ENABLE"/>
+    </BinaryOutputs>
+    <AnalogInputs>
+      <AnalogInput index="0" name="LINE_VOLTAGE_KV" class="2" deadband="0.5" mult="0.01" offset="0.0" units="kV" min="0" max="400"/>
+      <AnalogInput index="1" name="BUS_VOLTAGE_KV" class="2" deadband="0.5" mult="0.01" offset="0.0" units="kV" min="0" max="400"/>
+      <AnalogInput index="2" name="SYNC_PHASE_ANGLE_DEG" class="2" deadband="0.5" mult="0.1" offset="0.0" units="deg" min="-180" max="180"/>
+      <AnalogInput index="3" name="ACTIVE_POWER_MW" class="2" deadband="1.5" mult="0.1" offset="0.0" units="MW" min="-600" max="600"/>
+      <AnalogInput index="4" name="REACTIVE_POWER_MVAR" class="2" deadband="1.5" mult="0.1" offset="0.0" units="MVAR" min="-300" max="300"/>
+    </AnalogInputs>
+    <AnalogOutputs>
+      <AnalogOutput index="0" name="SYNC_MAX_ANGLE_DEG" units="deg" min="5" max="30"/>
+      <AnalogOutput index="1" name="SYNC_MAX_SLIP_HZ" units="Hz" min="0.02" max="0.5"/>
+    </AnalogOutputs>
+    <Counters>
+      <Counter index="0" name="CB_345_1_OP_COUNT" class="3" units="ops"/>
+      <Counter index="1" name="CB_345_1_FAULT_DUTY_KA2" class="3" units="kA2"/>
+    </Counters>
+  </DNP3PointList>
+</DNP3DeviceProfile>

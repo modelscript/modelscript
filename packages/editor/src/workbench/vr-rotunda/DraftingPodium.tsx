@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  nextCanvasBoardTheme,
   projectRayToPlane,
+  resolveCanvasBoardTheme,
+  type CanvasBoardThemeId,
   type CanvasDocument,
   type CanvasTile,
   type SpatialPlane3D,
@@ -19,15 +22,21 @@ import {
   type BoardPaintOptions,
   type DragPreviewState,
 } from "./board-painter.js";
-import { createBrushedAluminumPbr, createRadialContactShadowTexture } from "./procedural-pbr.js";
+import {
+  createBrushedAluminumPbr,
+  createKnurledMetalNormalMap,
+  createRadialContactShadowTexture,
+} from "./procedural-pbr.js";
 import {
   boardBoundsToPlaneBounds,
-  buildPodiumSpatialPlane,
+  buildDeskSpatialPlane,
   clampNumber,
+  DEFAULT_DESK_SCALE,
+  DEFAULT_DESK_THEME,
+  deskScaleLabel,
   getTileMaximizeButtonRect,
   planeUvToBoard,
   PODIUM_BACK_BTN_RECT,
-  PODIUM_CENTER,
   PODIUM_HEADER_HEIGHT,
   PODIUM_HEIGHT_METERS,
   PODIUM_NEXT_TILE_BTN_RECT,
@@ -35,9 +44,11 @@ import {
   PODIUM_RESET_PAN_BTN_RECT,
   PODIUM_WIDTH_METERS,
   pointInPodiumRect,
+  resolveDeskLayout,
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
 } from "./types.js";
+import { resolveXrPointerBinding } from "./xr-handle.js";
 import { playRotundaCue } from "./xr-session.js";
 
 /** Builds a rounded-corner CNC-milled unibody aluminum console shell with real machined chamfers. */
@@ -91,10 +102,76 @@ function createPodiumBasePlateGeometry(): THREE.LatheGeometry {
   return geom;
 }
 
+/**
+ * Builds the spread architectural blueprint paper sheet resting proud of the console deck.
+ * The central printed field stays strictly flat (`z = 0`) so the interactive texture plane never
+ * z-fights, while the outer white margin gently lifts toward the four corners for authentic paper curl.
+ */
+function createBlueprintSheetGeometry(
+  sheetWidth: number,
+  sheetHeight: number,
+  innerWidth: number,
+  innerHeight: number,
+): THREE.PlaneGeometry {
+  const geom = new THREE.PlaneGeometry(sheetWidth, sheetHeight, 28, 18);
+  const pos = geom.getAttribute("position");
+  const halfInnerW = innerWidth * 0.5;
+  const halfInnerH = innerHeight * 0.5;
+  const marginX = Math.max(0.005, sheetWidth * 0.5 - halfInnerW);
+  const marginY = Math.max(0.005, sheetHeight * 0.5 - halfInnerH);
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    const ax = Math.abs(x);
+    const ay = Math.abs(y);
+    const ex = Math.max(0, (ax - halfInnerW) / marginX);
+    const ey = Math.max(0, (ay - halfInnerH) / marginY);
+    if (ex > 0 || ey > 0) {
+      // Gentle convex paper curl strongest at outer white margins & corners
+      const edgeFactor = Math.max(ex, ey);
+      const cornerBoost = ex * ey;
+      const lift = edgeFactor * edgeFactor * 0.0022 + cornerBoost * 0.0024;
+      pos.setZ(i, lift);
+    }
+  }
+  pos.needsUpdate = true;
+  geom.computeVertexNormals();
+  return geom;
+}
+
+/** Builds a CNC-turned cylindrical brushed-brass drafting paperweight with chamfered crown & base lip. */
+function createBrassPaperweightGeometry(): THREE.LatheGeometry {
+  const pts: THREE.Vector2[] = [
+    new THREE.Vector2(0.0, 0.0),
+    new THREE.Vector2(0.0235, 0.0),
+    new THREE.Vector2(0.0242, 0.0014),
+    new THREE.Vector2(0.0238, 0.0032),
+    new THREE.Vector2(0.0226, 0.004),
+    new THREE.Vector2(0.0238, 0.0052),
+    new THREE.Vector2(0.0238, 0.0138),
+    new THREE.Vector2(0.0205, 0.0168),
+    new THREE.Vector2(0.0145, 0.0172),
+    new THREE.Vector2(0.0, 0.0166),
+  ];
+  const geom = new THREE.LatheGeometry(pts, 36);
+  // Rotate so the lathe axis (+Y) points out of the desk plane (+Z)
+  geom.rotateX(Math.PI / 2);
+  geom.computeVertexNormals();
+  return geom;
+}
+
 export interface DraftingPodiumProps {
   document: CanvasDocument;
   bridge: SpatialSurfaceBridge;
+  /** Desk tilt in degrees from vertical (0 = upright, 90 = flat). */
   tiltDeg: number;
+  /** Uniform desk size multiplier of the base 1.52 × 0.95 m board (default 0.6 / "M"). */
+  deskScale?: number | undefined;
+  /** Calibrated desk center height in meters (`null` = default ergonomic height). */
+  deskHeightY?: number | null | undefined;
+  /** Visual sheet theme (`"blueprint"` default, `"light"`, or `"dark"`). */
+  boardTheme?: CanvasBoardThemeId | undefined;
   simulationTime: number;
   isPlaying: boolean;
   activeHeroTileId: string | null;
@@ -110,6 +187,14 @@ export interface DraftingPodiumProps {
   onTogglePlaying?: (() => void) | undefined;
   onToggleTilt?: (() => void) | undefined;
   onResetView?: (() => void) | undefined;
+  /** Cycles the desk size preset (S → M → L → XL). */
+  onCycleDeskScale?: (() => void) | undefined;
+  /** Cycles the desk board theme (Blueprint → Light → Dark). */
+  onCycleBoardTheme?: (() => void) | undefined;
+  /** Recalibrates desk height from the current headset (eye) height in meters (XR only). */
+  onRecalibrateDeskHeight?: ((headY: number) => void) | undefined;
+  /** Restores the default (uncalibrated) desk height. */
+  onResetDeskHeight?: (() => void) | undefined;
   onHudStatusChange?: ((status: string | null) => void) | undefined;
   onInteractionLockChange?: ((locked: boolean) => void) | undefined;
 }
@@ -145,7 +230,8 @@ const DOUBLE_CLICK_MS = 550;
 const DRAG_THRESHOLD_BOARD_UNITS = 3;
 const BEZEL_RIM_HEIGHT = 0.114;
 const BEZEL_KEYCAP_Y = -(PODIUM_HEIGHT_METERS / 2) - BEZEL_RIM_HEIGHT * 0.5;
-const PODIUM_CANVAS_DPR = 1.25;
+/** 2.0× logical DPR -> 3200×2000 px (≤ 4096 px GPU limit, crisp 2:1 cyanotype linework & text). */
+const PODIUM_CANVAS_DPR = 2.0;
 
 function planeUvToWorld3D(plane: SpatialPlane3D, u: number, v: number, liftMeters = 0): [number, number, number] {
   const um = u / plane.unitsPerMeter;
@@ -270,7 +356,8 @@ function BezelKeycapButton({
   useEffect(() => {
     if (typeof document === "undefined") return;
     const canvas = document.createElement("canvas");
-    canvas.width = 320;
+    // Match canvas aspect to the keycap so labels never stretch when the bezel hosts more keys
+    canvas.width = Math.max(160, Math.round((88 * width) / Math.max(0.01, height)));
     canvas.height = 88;
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
@@ -285,7 +372,7 @@ function BezelKeycapButton({
       setTexture(null);
       tex.dispose();
     };
-  }, []);
+  }, [width, height]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -556,6 +643,9 @@ export function DraftingPodium({
   document: doc,
   bridge,
   tiltDeg,
+  deskScale = DEFAULT_DESK_SCALE,
+  deskHeightY = null,
+  boardTheme,
   simulationTime,
   isPlaying,
   activeHeroTileId,
@@ -571,6 +661,10 @@ export function DraftingPodium({
   onTogglePlaying,
   onToggleTilt,
   onResetView,
+  onCycleDeskScale,
+  onCycleBoardTheme,
+  onRecalibrateDeskHeight,
+  onResetDeskHeight,
   onHudStatusChange,
   onInteractionLockChange,
 }: DraftingPodiumProps): React.ReactElement | null {
@@ -579,6 +673,16 @@ export function DraftingPodium({
   const controls = useThree((s) => s.controls);
   const controlsRef = useRef(controls);
   controlsRef.current = controls;
+
+  const [internalBoardTheme, setInternalBoardTheme] = useState<CanvasBoardThemeId>(DEFAULT_DESK_THEME);
+  const effectiveBoardTheme: CanvasBoardThemeId = boardTheme ?? internalBoardTheme;
+  const handleCycleBoardTheme = useCallback(() => {
+    if (onCycleBoardTheme) {
+      onCycleBoardTheme();
+    } else {
+      setInternalBoardTheme((prev) => nextCanvasBoardTheme(prev));
+    }
+  }, [onCycleBoardTheme]);
 
   const podiumTiltGroupRef = useRef<THREE.Group | null>(null);
   const reticleGroupRef = useRef<THREE.Group | null>(null);
@@ -602,6 +706,10 @@ export function DraftingPodium({
     target: { setPointerCapture?: (id: number) => void; releasePointerCapture?: (id: number) => void } | null;
     pointerId: number | null;
   }>({ target: null, pointerId: null });
+  /** XR input source that started the current desk drag (only it may release it). */
+  const activeXrInputSourceRef = useRef<XRInputSource | null>(null);
+  /** Last board UV hit of the active drag, used to commit XR releases that carry no ray. */
+  const lastDragHitRef = useRef<{ u: number; v: number } | null>(null);
   const capturedImageCacheRef = useRef<Map<string, { url: string; img: HTMLImageElement }>>(new Map());
   const latestSimTimeRef = useRef(simulationTime);
   latestSimTimeRef.current = simulationTime;
@@ -647,8 +755,12 @@ export function DraftingPodium({
   // Quantize simulationTime to 0.5s ticks (max 2 Hz, 0 Hz during ref-driven playback) for Quest 2 FPS
   const quantizedSimHalfSec = Number.isFinite(simulationTime) ? Math.floor(simulationTime * 2) : 0;
 
-  // Exact SpatialPlane3D corresponding to the tilted podium surface
-  const podiumPlane = useMemo(() => buildPodiumSpatialPlane(clampedTiltDeg), [clampedTiltDeg]);
+  // Live desk layout (size preset + calibrated height). The visual desk is a uniform `layout.scale` group,
+  // while every UV <-> world conversion uses the scaled plane so hit-testing, lasers & ports stay consistent.
+  const deskLayout = useMemo(() => resolveDeskLayout(deskScale, deskHeightY), [deskScale, deskHeightY]);
+
+  // Exact SpatialPlane3D corresponding to the tilted (and scaled) podium surface
+  const podiumPlane = useMemo(() => buildDeskSpatialPlane(clampedTiltDeg, deskLayout), [clampedTiltDeg, deskLayout]);
 
   // Register/update the podium plane on the SpatialSurfaceBridge whenever tilt changes
   useEffect(() => {
@@ -729,20 +841,25 @@ export function DraftingPodium({
     };
   }, []);
 
-  // Zero-allocation persistent offscreen Retina 2000x1250 (1.25x logical 1600x1000) canvas + THREE.CanvasTexture
+  const activeCanvasDpr = xrSession ? 1.25 : PODIUM_CANVAS_DPR;
+
+  // Zero-allocation persistent offscreen canvas + THREE.CanvasTexture (2.0x desktop, 1.25x Quest XR)
   useEffect(() => {
     if (typeof document === "undefined") return;
     const canvas = document.createElement("canvas");
-    canvas.width = Math.round(ROTUNDA_BOARD_CANVAS_WIDTH * PODIUM_CANVAS_DPR);
-    canvas.height = Math.round(ROTUNDA_BOARD_CANVAS_HEIGHT * PODIUM_CANVAS_DPR);
+    canvas.width = Math.round(ROTUNDA_BOARD_CANVAS_WIDTH * activeCanvasDpr);
+    canvas.height = Math.round(ROTUNDA_BOARD_CANVAS_HEIGHT * activeCanvasDpr);
     const initCtx = canvas.getContext("2d");
     if (initCtx) {
-      initCtx.fillStyle = "#f8fafc";
+      initCtx.fillStyle = resolveCanvasBoardTheme(DEFAULT_DESK_THEME, DEFAULT_DESK_THEME).paper;
       initCtx.fillRect(0, 0, canvas.width, canvas.height);
     }
+    const maxAniso =
+      gl && typeof gl.capabilities?.getMaxAnisotropy === "function" ? gl.capabilities.getMaxAnisotropy() : 4;
     const tex = new THREE.CanvasTexture(canvas);
     tex.colorSpace = THREE.SRGBColorSpace;
-    tex.anisotropy = 4;
+    tex.generateMipmaps = true;
+    tex.anisotropy = xrSession ? Math.min(4, maxAniso) : Math.min(16, Math.max(4, maxAniso));
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     canvasRef.current = canvas;
@@ -755,11 +872,11 @@ export function DraftingPodium({
       setTexture(null);
       tex.dispose();
     };
-  }, []);
+  }, [gl, activeCanvasDpr, xrSession]);
 
   const validFocusedTileId = focusedTileId && doc.tiles[focusedTileId] ? focusedTileId : null;
 
-  // Repaint and upload only when board state, interactions, focus zoom, pan, decoded SVGs, or 0.5s sim ticks change
+  // Repaint and upload only when board state, theme, interactions, focus zoom, pan, decoded SVGs, or 0.5s sim ticks change
   useEffect(() => {
     if (!visible) return;
     const canvas = canvasRef.current;
@@ -767,7 +884,7 @@ export function DraftingPodium({
     if (!canvas || !tex) return;
     const ctx = canvas.getContext("2d");
     if (ctx) {
-      ctx.setTransform(PODIUM_CANVAS_DPR, 0, 0, PODIUM_CANVAS_DPR, 0, 0);
+      ctx.setTransform(activeCanvasDpr, 0, 0, activeCanvasDpr, 0, 0);
     }
     const latest = latestSimTimeRef.current;
     const displaySimTime =
@@ -781,6 +898,7 @@ export function DraftingPodium({
       activeHeroTileId,
       capturedImages,
       {
+        theme: effectiveBoardTheme,
         focusedTileId: validFocusedTileId,
         boardPan,
         hoveredMaximizeTileId,
@@ -790,6 +908,7 @@ export function DraftingPodium({
     tex.needsUpdate = true;
   }, [
     doc,
+    effectiveBoardTheme,
     quantizedSimHalfSec,
     dragPreview,
     hoverTargetTileId,
@@ -801,6 +920,7 @@ export function DraftingPodium({
     boardPan,
     hoveredMaximizeTileId,
     hoveredHeaderBtn,
+    activeCanvasDpr,
   ]);
 
   // Clear active interactions if podium is hidden
@@ -929,18 +1049,17 @@ export function DraftingPodium({
     [releaseBoardCapture, findTileAtBoardPoint, onCreateSpatialWire, onMoveTile, setOrbitLockedImmediate],
   );
 
-  // Global window raycast tracking while dragging a tile, panning the desk, or pulling a CADPort wire.
-  // Ensures fast drags or drags past the desk bezel stay buttery-smooth and always commit on pointerup.
-  useEffect(() => {
-    if (!interactionLocked) return;
-
-    const handleWindowPointerMove = (ev: PointerEvent) => {
-      const hit = projectClientPointerToPodium(ev.clientX, ev.clientY);
-      if (!hit) return;
-
-      const rx = hit.worldPoint[0] + podiumPlane.normal[0] * 0.004;
-      const ry = hit.worldPoint[1] + podiumPlane.normal[1] * 0.004;
-      const rz = hit.worldPoint[2] + podiumPlane.normal[2] * 0.004;
+  /**
+   * Applies a board hit to whichever drag is active (tile move, desk pan, or port wire).
+   * Shared by the desktop window listener AND XR controller move events — immersive sessions
+   * never dispatch DOM `pointermove`, so XR drags must be driven from the mesh events.
+   */
+  const applyActiveDragHit = useCallback(
+    (hit: { u: number; v: number; worldPoint: [number, number, number] }) => {
+      lastDragHitRef.current = { u: hit.u, v: hit.v };
+      const rx = hit.worldPoint[0] + podiumPlane.normal[0] * 0.006;
+      const ry = hit.worldPoint[1] + podiumPlane.normal[1] * 0.006;
+      const rz = hit.worldPoint[2] + podiumPlane.normal[2] * 0.006;
       if (reticleGroupRef.current) {
         reticleGroupRef.current.position.set(rx, ry, rz);
         reticleGroupRef.current.visible = true;
@@ -991,6 +1110,19 @@ export function DraftingPodium({
           setBoardPan(nextPan);
         }
       }
+    },
+    [podiumPlane, findTileAtBoardPoint],
+  );
+
+  // Global window raycast tracking while dragging a tile, panning the desk, or pulling a CADPort wire.
+  // Ensures fast drags or drags past the desk bezel stay buttery-smooth and always commit on pointerup.
+  useEffect(() => {
+    if (!interactionLocked) return;
+
+    const handleWindowPointerMove = (ev: PointerEvent) => {
+      const hit = projectClientPointerToPodium(ev.clientX, ev.clientY);
+      if (!hit) return;
+      applyActiveDragHit(hit);
     };
 
     const handleWindowPointerUp = (ev: PointerEvent) => {
@@ -1002,14 +1134,23 @@ export function DraftingPodium({
       finishActiveInteraction(null);
     };
 
+    // XR: only the input source that started the interaction may end it, and commit at its last board hit
+    // (so tile drops and port→tile wires actually land instead of being discarded).
+    const handleXrRelease = (ev: XRInputSourceEvent) => {
+      const owner = activeXrInputSourceRef.current;
+      if (owner && ev.inputSource !== owner) return;
+      activeXrInputSourceRef.current = null;
+      finishActiveInteraction(lastDragHitRef.current);
+    };
+
     if (typeof window !== "undefined") {
       window.addEventListener("pointermove", handleWindowPointerMove);
       window.addEventListener("pointerup", handleWindowPointerUp);
       window.addEventListener("pointercancel", handleRelease);
     }
     if (xrSession && typeof xrSession.addEventListener === "function") {
-      xrSession.addEventListener("selectend", handleRelease);
-      xrSession.addEventListener("squeezeend", handleRelease);
+      xrSession.addEventListener("selectend", handleXrRelease);
+      xrSession.addEventListener("squeezeend", handleXrRelease);
     }
     return () => {
       if (typeof window !== "undefined") {
@@ -1018,18 +1159,11 @@ export function DraftingPodium({
         window.removeEventListener("pointercancel", handleRelease);
       }
       if (xrSession && typeof xrSession.removeEventListener === "function") {
-        xrSession.removeEventListener("selectend", handleRelease);
-        xrSession.removeEventListener("squeezeend", handleRelease);
+        xrSession.removeEventListener("selectend", handleXrRelease);
+        xrSession.removeEventListener("squeezeend", handleXrRelease);
       }
     };
-  }, [
-    interactionLocked,
-    xrSession,
-    projectClientPointerToPodium,
-    podiumPlane,
-    findTileAtBoardPoint,
-    finishActiveInteraction,
-  ]);
+  }, [interactionLocked, xrSession, projectClientPointerToPodium, applyActiveDragHit, finishActiveInteraction]);
 
   // Publish live HUD hint while dragging a tile, panning, zoomed into a block, or wiring a 3D CADPort
   useEffect(() => {
@@ -1107,14 +1241,15 @@ export function DraftingPodium({
       const liftMeters = 0.044;
       out.push({
         tile,
+        // localPos lives inside the uniformly scaled desk group; worldPos applies the same scale to the lift
         localPos: planeUvToPodiumLocal(portU, portV, liftMeters),
-        worldPos: planeUvToWorld3D(podiumPlane, portU, portV, liftMeters),
+        worldPos: planeUvToWorld3D(podiumPlane, portU, portV, liftMeters * deskLayout.scale),
         portU,
         portV,
       });
     }
     return out;
-  }, [doc.tiles, dragPreview, boardPan.x, boardPan.y, podiumPlane, validFocusedTileId]);
+  }, [doc.tiles, dragPreview, boardPan.x, boardPan.y, podiumPlane, deskLayout.scale, validFocusedTileId]);
 
   // Compute glowing curved Bezier fiber-optic tethers from `cad3d` tiles & activeHeroTileId up to the circular plinth
   const fiberTethers = useMemo<TetherSpec[]>(() => {
@@ -1350,10 +1485,10 @@ export function DraftingPodium({
         worldPt = hit.worldPoint;
       }
 
-      // Lift reticle 4mm along podium normal so it never z-fights with the board surface.
-      const rx = worldPt[0] + podiumPlane.normal[0] * 0.004;
-      const ry = worldPt[1] + podiumPlane.normal[1] * 0.004;
-      const rz = worldPt[2] + podiumPlane.normal[2] * 0.004;
+      // Lift reticle 6mm along podium normal so it never z-fights with the proud blueprint sheet.
+      const rx = worldPt[0] + podiumPlane.normal[0] * 0.006;
+      const ry = worldPt[1] + podiumPlane.normal[1] * 0.006;
+      const rz = worldPt[2] + podiumPlane.normal[2] * 0.006;
       if (reticleGroupRef.current) {
         reticleGroupRef.current.position.set(rx, ry, rz);
         reticleGroupRef.current.visible = true;
@@ -1367,6 +1502,24 @@ export function DraftingPodium({
       const boardPt = planeUvToBoard(u, v, pan.x, pan.y);
 
       if (phase === "down") {
+        const xrBinding = resolveXrPointerBinding(e);
+        activeXrInputSourceRef.current = xrBinding.inputSource;
+        lastDragHitRef.current = { u, v };
+        if (xrBinding.kind !== "desktop") {
+          // Keep receiving this controller's move/up events even after the laser slides off the desk.
+          const target = e.target as unknown as {
+            setPointerCapture?: (id: number) => void;
+            releasePointerCapture?: (id: number) => void;
+          } | null;
+          if (target && typeof target.setPointerCapture === "function") {
+            try {
+              target.setPointerCapture(e.pointerId);
+              boardCaptureRef.current = { target, pointerId: e.pointerId };
+            } catch {
+              // Capture is optional
+            }
+          }
+        }
         // 1. Header strip button hits (works identically in both Overview and Full-Screen Zoom modes)
         if (v <= PODIUM_HEADER_HEIGHT) {
           if (validFocusedTileId) {
@@ -1508,8 +1661,12 @@ export function DraftingPodium({
       }
 
       if (phase === "move") {
-        // Active drags/pans are handled smoothly via global window pointermove; here handle hover highlights & cursor
+        // Active drags/pans: desktop is driven by the global window pointermove, but immersive XR
+        // sessions never emit DOM pointer events — so drive the drag from this (captured) mesh event.
         if (activeWireDragRef.current || dragPreviewRef.current || panDragRef.current) {
+          if (resolveXrPointerBinding(e).kind !== "desktop") {
+            applyActiveDragHit({ u, v, worldPoint: worldPt });
+          }
           return;
         }
 
@@ -1571,6 +1728,7 @@ export function DraftingPodium({
       stepFocusedTile,
       setOrbitLockedImmediate,
       finishActiveInteraction,
+      applyActiveDragHit,
     ],
   );
 
@@ -1637,11 +1795,17 @@ export function DraftingPodium({
   const totalWidth = PODIUM_WIDTH_METERS + sideBezel * 2;
   const totalHeight = PODIUM_HEIGHT_METERS + topBezel + BEZEL_RIM_HEIGHT;
   const chassisCenterY = (topBezel - BEZEL_RIM_HEIGHT) * 0.5;
-  const accentColor = activeWireDrag ? "#f59e0b" : "#0284c7";
+  const accentColor = activeWireDrag ? "#f59e0b" : effectiveBoardTheme === "blueprint" ? "#38bdf8" : "#0284c7";
+  const isBlueprint = effectiveBoardTheme === "blueprint";
+  const sheetWidth = PODIUM_WIDTH_METERS + 0.046;
+  const sheetHeight = PODIUM_HEIGHT_METERS + 0.038;
+  const sheetCenterY = 0.004;
 
-  // Procedural CNC bead-blasted brushed-aluminum PBR maps, chamfered unibody geometries & floor contact shadow
+  // Procedural CNC bead-blasted brushed-aluminum, warm brushed-brass PBR maps & chamfered geometries
   const chassisPbr = useMemo(() => createBrushedAluminumPbr(3, 2, "#8794a4", 256), []);
   const trimSilverPbr = useMemo(() => createBrushedAluminumPbr(2, 4, "#d2dbe6", 256), []);
+  const brassPbr = useMemo(() => createBrushedAluminumPbr(2, 2, "#d8ae56", 128), []);
+  const brassKnurlNormal = useMemo(() => createKnurledMetalNormalMap(20, 3, 128), []);
   const floorShadowTex = useMemo(() => createRadialContactShadowTexture(0.46, 0.22, 128), []);
   const chassisGeom = useMemo(
     () => createChamferedChassisGeometry(totalWidth - 0.02, totalHeight - 0.02, 0.022, 0.034),
@@ -1652,33 +1816,66 @@ export function DraftingPodium({
     [totalWidth, totalHeight],
   );
   const basePlateGeom = useMemo(() => createPodiumBasePlateGeometry(), []);
+  const blueprintSheetGeom = useMemo(
+    () => createBlueprintSheetGeometry(sheetWidth, sheetHeight, PODIUM_WIDTH_METERS, PODIUM_HEIGHT_METERS),
+    [sheetWidth, sheetHeight],
+  );
+  const brassPaperweightGeom = useMemo(() => createBrassPaperweightGeometry(), []);
 
   useEffect(() => {
     return () => {
       chassisPbr.dispose();
       trimSilverPbr.dispose();
+      brassPbr.dispose();
+      brassKnurlNormal.dispose();
       floorShadowTex.dispose();
       chassisGeom.dispose();
       shroudGeom.dispose();
       basePlateGeom.dispose();
+      blueprintSheetGeom.dispose();
+      brassPaperweightGeom.dispose();
     };
-  }, [chassisPbr, trimSilverPbr, floorShadowTex, chassisGeom, shroudGeom, basePlateGeom]);
+  }, [
+    chassisPbr,
+    trimSilverPbr,
+    brassPbr,
+    brassKnurlNormal,
+    floorShadowTex,
+    chassisGeom,
+    shroudGeom,
+    basePlateGeom,
+    blueprintSheetGeom,
+    brassPaperweightGeom,
+  ]);
 
   if (!visible) {
     return null;
   }
 
-  // 5 tactile bezel buttons distributed evenly along the lower control rim
-  const keycapWidth = 0.258;
+  // 8 tactile bezel buttons distributed evenly along the lower control rim (desk-local, pre-scale units)
+  const keycapWidth = 0.168;
   const keycapHeight = 0.068;
-  const keycapGap = 0.024;
+  const keycapGap = 0.016;
   const keycapStride = keycapWidth + keycapGap;
-  const keycapStartX = -2 * keycapStride;
+  const keycapStartX = -3.5 * keycapStride;
+  // Pedestal geometry was authored for a 0.92 m desk center (hinge at 0.865 m); scale it to the live desk height.
+  const pedestalScale = clampNumber(deskLayout.center[1] / 0.92, 0.5, 1.3);
+  const slopeFromHorizontalDeg = Math.round(90 - clampedTiltDeg);
+  const themeKeycapLabel =
+    effectiveBoardTheme === "blueprint" ? "Blueprint" : effectiveBoardTheme === "light" ? "Light" : "Dark";
+  // Four corner paperweight positions resting on the outer white blueprint sheet margin,
+  // strictly clear of the top header strip buttons and bottom-right title block.
+  const paperweightPositions: readonly [number, number][] = [
+    [-0.774, 0.486],
+    [0.774, 0.486],
+    [-0.774, -0.48],
+    [0.774, -0.48],
+  ];
 
   return (
     <group name="rotunda-drafting-podium">
-      {/* Floor-Anchored CNC Brushed Titanium Pedestal Column & Articulated Tilt Yoke */}
-      <group position={[PODIUM_CENTER[0], 0, PODIUM_CENTER[2]]}>
+      {/* Floor-Anchored CNC Brushed Titanium Pedestal Column & Articulated Tilt Yoke (scaled to reach the desk hinge) */}
+      <group position={[deskLayout.center[0], 0, deskLayout.center[2]]} scale={pedestalScale}>
         {/* Baked soft radial floor contact shadow under weighted pedestal base (zero shadow-map GPU cost) */}
         <mesh position={[0, 0.004, -0.08]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[0.72, 32]} />
@@ -1788,9 +1985,14 @@ export function DraftingPodium({
         </mesh>
       </group>
 
-      {/* Tilted 45° Architectural CNC Unibody Studio Drafting Console Desk */}
-      <group ref={podiumTiltGroupRef} position={PODIUM_CENTER} rotation={[targetTiltRad, 0, 0]}>
-        {/* Main CNC-milled rounded chamfered unibody aluminum shell (recessed cleanly behind z=0 screen) */}
+      {/* Tilted Architectural CNC Unibody Drafting Console Desk with Spread Blueprint Sheet */}
+      <group
+        ref={podiumTiltGroupRef}
+        position={deskLayout.center}
+        rotation={[targetTiltRad, 0, 0]}
+        scale={deskLayout.scale}
+      >
+        {/* Main CNC-milled rounded chamfered unibody aluminum shell (recessed cleanly behind console deck) */}
         <mesh geometry={chassisGeom} position={[0, chassisCenterY, -0.036]}>
           <meshStandardMaterial
             map={chassisPbr.map}
@@ -1814,8 +2016,8 @@ export function DraftingPodium({
           />
         </mesh>
 
-        {/* Machined brushed-aluminum perimeter bezel rails framing the optical glass screen */}
-        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel / 2, -0.002]}>
+        {/* Machined brushed-aluminum perimeter console deck rails (recessed flush at z=-0.002 so paper sits proud) */}
+        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel / 2, -0.011]}>
           <boxGeometry args={[totalWidth - 0.04, topBezel, 0.018]} />
           <meshStandardMaterial
             map={chassisPbr.map}
@@ -1826,7 +2028,7 @@ export function DraftingPodium({
             metalness={0.82}
           />
         </mesh>
-        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel / 2), chassisCenterY, -0.002]}>
+        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel / 2), chassisCenterY, -0.011]}>
           <boxGeometry args={[sideBezel, totalHeight - 0.04, 0.018]} />
           <meshStandardMaterial
             map={chassisPbr.map}
@@ -1837,7 +2039,7 @@ export function DraftingPodium({
             metalness={0.82}
           />
         </mesh>
-        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel / 2, chassisCenterY, -0.002]}>
+        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel / 2, chassisCenterY, -0.011]}>
           <boxGeometry args={[sideBezel, totalHeight - 0.04, 0.018]} />
           <meshStandardMaterial
             map={chassisPbr.map}
@@ -1848,40 +2050,49 @@ export function DraftingPodium({
             metalness={0.82}
           />
         </mesh>
-        {/* Diamond-cut anodized silver inner display trim */}
-        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + 0.005, 0.011]}>
-          <boxGeometry args={[PODIUM_WIDTH_METERS + 0.014, 0.01, 0.004]} />
-          <meshStandardMaterial
-            map={trimSilverPbr.map}
-            normalMap={trimSilverPbr.normalMap}
-            roughnessMap={trimSilverPbr.roughnessMap}
-            roughness={0.85}
-            metalness={0.88}
-          />
+        {/* Recessed matte slate drafting surface deck behind the sheet */}
+        <mesh position={[0, 0, -0.003]}>
+          <planeGeometry args={[PODIUM_WIDTH_METERS + 0.06, PODIUM_HEIGHT_METERS + 0.05]} />
+          <meshStandardMaterial color="#1e293b" roughness={0.72} metalness={0.25} />
         </mesh>
-        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + 0.005), 0, 0.011]}>
-          <boxGeometry args={[0.01, PODIUM_HEIGHT_METERS + 0.01, 0.004]} />
-          <meshStandardMaterial
-            map={trimSilverPbr.map}
-            normalMap={trimSilverPbr.normalMap}
-            roughnessMap={trimSilverPbr.roughnessMap}
-            roughness={0.85}
-            metalness={0.88}
-          />
-        </mesh>
-        <mesh position={[PODIUM_WIDTH_METERS / 2 + 0.005, 0, 0.011]}>
-          <boxGeometry args={[0.01, PODIUM_HEIGHT_METERS + 0.01, 0.004]} />
-          <meshStandardMaterial
-            map={trimSilverPbr.map}
-            normalMap={trimSilverPbr.normalMap}
-            roughnessMap={trimSilverPbr.roughnessMap}
-            roughness={0.85}
-            metalness={0.88}
-          />
-        </mesh>
+        {/* Diamond-cut anodized silver inner display trim (visible around non-blueprint themes) */}
+        {!isBlueprint && (
+          <>
+            <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + 0.005, -0.001]}>
+              <boxGeometry args={[PODIUM_WIDTH_METERS + 0.014, 0.01, 0.003]} />
+              <meshStandardMaterial
+                map={trimSilverPbr.map}
+                normalMap={trimSilverPbr.normalMap}
+                roughnessMap={trimSilverPbr.roughnessMap}
+                roughness={0.85}
+                metalness={0.88}
+              />
+            </mesh>
+            <mesh position={[-(PODIUM_WIDTH_METERS / 2 + 0.005), 0, -0.001]}>
+              <boxGeometry args={[0.01, PODIUM_HEIGHT_METERS + 0.01, 0.003]} />
+              <meshStandardMaterial
+                map={trimSilverPbr.map}
+                normalMap={trimSilverPbr.normalMap}
+                roughnessMap={trimSilverPbr.roughnessMap}
+                roughness={0.85}
+                metalness={0.88}
+              />
+            </mesh>
+            <mesh position={[PODIUM_WIDTH_METERS / 2 + 0.005, 0, -0.001]}>
+              <boxGeometry args={[0.01, PODIUM_HEIGHT_METERS + 0.01, 0.003]} />
+              <meshStandardMaterial
+                map={trimSilverPbr.map}
+                normalMap={trimSilverPbr.normalMap}
+                roughnessMap={trimSilverPbr.roughnessMap}
+                roughness={0.85}
+                metalness={0.88}
+              />
+            </mesh>
+          </>
+        )}
         {/* Ergonomic lower bead-blasted silver aluminum palm-rest & physical controls bay */}
-        <mesh position={[0, BEZEL_KEYCAP_Y, 0.003]}>
-          <boxGeometry args={[PODIUM_WIDTH_METERS, BEZEL_RIM_HEIGHT, 0.02]} />
+        <mesh position={[0, BEZEL_KEYCAP_Y, -0.004]}>
+          <boxGeometry args={[PODIUM_WIDTH_METERS, BEZEL_RIM_HEIGHT, 0.018]} />
           <meshStandardMaterial
             map={trimSilverPbr.map}
             normalMap={trimSilverPbr.normalMap}
@@ -1893,7 +2104,7 @@ export function DraftingPodium({
         </mesh>
 
         {/* Subtle recessed architectural edge light accent strips */}
-        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel - 0.005, 0.012]}>
+        <mesh position={[0, PODIUM_HEIGHT_METERS / 2 + topBezel - 0.005, -0.001]}>
           <boxGeometry args={[totalWidth - 0.06, 0.004, 0.003]} />
           <meshStandardMaterial
             color={accentColor}
@@ -1902,7 +2113,7 @@ export function DraftingPodium({
             toneMapped={false}
           />
         </mesh>
-        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel - 0.005), chassisCenterY, 0.012]}>
+        <mesh position={[-(PODIUM_WIDTH_METERS / 2 + sideBezel - 0.005), chassisCenterY, -0.001]}>
           <boxGeometry args={[0.004, totalHeight - 0.06, 0.003]} />
           <meshStandardMaterial
             color={accentColor}
@@ -1911,7 +2122,7 @@ export function DraftingPodium({
             toneMapped={false}
           />
         </mesh>
-        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel - 0.005, chassisCenterY, 0.012]}>
+        <mesh position={[PODIUM_WIDTH_METERS / 2 + sideBezel - 0.005, chassisCenterY, -0.001]}>
           <boxGeometry args={[0.004, totalHeight - 0.06, 0.003]} />
           <meshStandardMaterial
             color={accentColor}
@@ -1920,7 +2131,7 @@ export function DraftingPodium({
             toneMapped={false}
           />
         </mesh>
-        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - BEZEL_RIM_HEIGHT + 0.005, 0.014]}>
+        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - BEZEL_RIM_HEIGHT + 0.005, 0.004]}>
           <boxGeometry args={[totalWidth - 0.06, 0.004, 0.003]} />
           <meshStandardMaterial
             color={accentColor}
@@ -1929,16 +2140,63 @@ export function DraftingPodium({
             toneMapped={false}
           />
         </mesh>
-        {/* Crisp inner hairline separating backlit glass board from lower keycap bay */}
-        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - 0.002, 0.013]}>
+        {/* Crisp inner hairline separating drafting deck from lower keycap bay */}
+        <mesh position={[0, -(PODIUM_HEIGHT_METERS / 2) - 0.002, 0.004]}>
           <boxGeometry args={[PODIUM_WIDTH_METERS, 0.003, 0.003]} />
           <meshBasicMaterial color="#cbd5e1" toneMapped={false} />
         </mesh>
 
-        {/* Live Backlit Retina `.mscanvas` Studio Glass Display (Zero-Allocation Persistent CanvasTexture) */}
+        {/* Spread Architectural Blueprint Paper Sheet (white margin, subtle corner lift/curl & drop shadow) */}
+        {isBlueprint && (
+          <group name="rotunda-blueprint-sheet">
+            {/* Soft dark sheet drop shadow resting on the drafting deck */}
+            <mesh position={[0, sheetCenterY - 0.004, -0.0005]}>
+              <planeGeometry args={[sheetWidth + 0.016, sheetHeight + 0.016]} />
+              <meshBasicMaterial color="#04101f" transparent opacity={0.42} depthWrite={false} />
+            </mesh>
+            {/* White-bordered heavy rag drafting paper proud of the console deck with subtle corner curl */}
+            <mesh geometry={blueprintSheetGeom} position={[0, sheetCenterY, 0.0005]}>
+              <meshStandardMaterial color="#f1f5f9" roughness={0.86} metalness={0.02} side={THREE.DoubleSide} />
+            </mesh>
+            {/* Thin crisp Prussian-blue edge trim inside the white paper margin */}
+            <mesh position={[0, 0, 0.0012]}>
+              <planeGeometry args={[PODIUM_WIDTH_METERS + 0.006, PODIUM_HEIGHT_METERS + 0.006]} />
+              <meshBasicMaterial color="#082442" toneMapped={false} />
+            </mesh>
+            {/* 4 Machined Brushed-Brass Cylindrical Paperweights pinning the corners of the blueprint sheet */}
+            {paperweightPositions.map(([px, py], idx) => (
+              <group key={`brass-weight-${idx}`} name={`rotunda-brass-paperweight-${idx}`} position={[px, py, 0.0026]}>
+                {/* Soft circular contact shadow directly under the brass cylinder */}
+                <mesh position={[0.0015, -0.002, -0.0003]}>
+                  <circleGeometry args={[0.032, 24]} />
+                  <meshBasicMaterial map={floorShadowTex} transparent opacity={0.72} depthWrite={false} />
+                </mesh>
+                {/* CNC-turned cylindrical brushed-brass body with chamfered crown & subtle knurl */}
+                <mesh geometry={brassPaperweightGeom}>
+                  <meshStandardMaterial
+                    map={brassPbr.map}
+                    normalMap={brassKnurlNormal}
+                    normalScale={new THREE.Vector2(0.18, 0.18)}
+                    roughnessMap={brassPbr.roughnessMap}
+                    color="#dfb862"
+                    metalness={0.9}
+                    roughness={0.34}
+                  />
+                </mesh>
+                {/* Concentric brushed-brass top cap sheen */}
+                <mesh position={[0, 0, 0.017]}>
+                  <circleGeometry args={[0.0155, 24]} />
+                  <meshStandardMaterial color="#ebd087" metalness={0.92} roughness={0.22} />
+                </mesh>
+              </group>
+            ))}
+          </group>
+        )}
+
+        {/* Live High-DPI `.mscanvas` Blueprint / Drafting Board Surface (Zero-Allocation Persistent CanvasTexture) */}
         <mesh
           name="rotunda-podium-board"
-          position={[0, 0, 0]}
+          position={[0, 0, 0.0018]}
           onPointerDown={(e) => handleBoardPointer("down", e)}
           onPointerMove={(e) => handleBoardPointer("move", e)}
           onPointerUp={(e) => handleBoardPointer("up", e)}
@@ -1959,7 +2217,11 @@ export function DraftingPodium({
           {texture ? (
             <meshBasicMaterial key="podium-tex" color="#ffffff" map={texture} toneMapped={false} />
           ) : (
-            <meshBasicMaterial key="podium-fallback" color="#f8fafc" toneMapped={false} />
+            <meshBasicMaterial
+              key="podium-fallback"
+              color={resolveCanvasBoardTheme(effectiveBoardTheme, DEFAULT_DESK_THEME).paper}
+              toneMapped={false}
+            />
           )}
         </mesh>
 
@@ -1974,9 +2236,9 @@ export function DraftingPodium({
           />
         ))}
 
-        {/* 5 Tactile Bright Frosted Bezel Controls along the lower rim */}
+        {/* 8 Tactile Frosted Bezel Controls along the lower rim */}
         <BezelKeycapButton
-          label="◀ Prev Model"
+          label="◀ Prev"
           position={[keycapStartX + keycapStride * 0, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
@@ -1986,7 +2248,7 @@ export function DraftingPodium({
           }}
         />
         <BezelKeycapButton
-          label="Next Model ▶"
+          label="Next ▶"
           position={[keycapStartX + keycapStride * 1, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
@@ -2007,7 +2269,7 @@ export function DraftingPodium({
           }}
         />
         <BezelKeycapButton
-          label={clampedTiltDeg >= 30 ? "45° / Flat" : "Flat / 45°"}
+          label={`Tilt ${slopeFromHorizontalDeg}°`}
           position={[keycapStartX + keycapStride * 3, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
@@ -2018,8 +2280,47 @@ export function DraftingPodium({
           }}
         />
         <BezelKeycapButton
-          label="↺ Reset"
+          label={`Desk ${deskScaleLabel(deskLayout.scale)}`}
           position={[keycapStartX + keycapStride * 4, BEZEL_KEYCAP_Y, 0.01]}
+          width={keycapWidth}
+          height={keycapHeight}
+          accentColor="#0284c7"
+          onPress={() => {
+            onCycleDeskScale?.();
+          }}
+        />
+        <BezelKeycapButton
+          label={deskHeightY !== null ? "⇕ Height ✓" : "⇕ Height"}
+          position={[keycapStartX + keycapStride * 5, BEZEL_KEYCAP_Y, 0.01]}
+          width={keycapWidth}
+          height={keycapHeight}
+          accentColor="#0284c7"
+          active={deskHeightY !== null}
+          onPress={() => {
+            if (xrSession) {
+              camera.updateMatrixWorld();
+              const headPos = new THREE.Vector3();
+              camera.getWorldPosition(headPos);
+              onRecalibrateDeskHeight?.(headPos.y);
+            } else {
+              onResetDeskHeight?.();
+            }
+          }}
+        />
+        <BezelKeycapButton
+          label={themeKeycapLabel}
+          position={[keycapStartX + keycapStride * 6, BEZEL_KEYCAP_Y, 0.01]}
+          width={keycapWidth}
+          height={keycapHeight}
+          accentColor="#38bdf8"
+          active={isBlueprint}
+          onPress={() => {
+            handleCycleBoardTheme();
+          }}
+        />
+        <BezelKeycapButton
+          label="↺ Reset"
+          position={[keycapStartX + keycapStride * 7, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor="#7c3aed"

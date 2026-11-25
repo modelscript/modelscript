@@ -1,0 +1,94 @@
+[
+  {
+    "id": "sparql-01-component-mass-listing",
+    "lang": "sparql",
+    "subFormats": ["rq", "ttl"],
+    "difficulty": 1,
+    "title": "List Engineering Vehicle Components & Masses",
+    "description": "SPARQL 1.1 SELECT query retrieving all mechanical and electrical vehicle components with their mass in kilograms sorted descending against a companion Turtle RDF dataset.",
+    "category": "Knowledge Graphs & MBSE",
+    "tags": ["sparql", "rdf", "turtle", "bom", "multi-file"],
+    "activeFile": "query.rq",
+    "fileNames": ["query.rq", "vehicle.ttl"],
+    "fileCount": 2,
+    "isDefaultStarter": true,
+    "code": "PREFIX eng: <http://modelscript.dev/ontology/engineering#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?component ?label ?massKg\nWHERE {\n  ?component a eng:Component ;\n             rdfs:label ?label ;\n             eng:massKg ?massKg .\n}\nORDER BY DESC(?massKg)\n",
+    "files": {
+      "query.rq": "PREFIX eng: <http://modelscript.dev/ontology/engineering#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?component ?label ?massKg\nWHERE {\n  ?component a eng:Component ;\n             rdfs:label ?label ;\n             eng:massKg ?massKg .\n}\nORDER BY DESC(?massKg)\n",
+      "vehicle.ttl": "@prefix eng: <http://modelscript.dev/ontology/engineering#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\neng:BatteryPack a eng:Component ;\n  rdfs:label \"800V Li-Ion Battery Pack\" ;\n  eng:massKg \"415.0\"^^xsd:double .\n\neng:TractionMotor a eng:Component ;\n  rdfs:label \"Permanent Magnet Traction Motor\" ;\n  eng:massKg \"68.5\"^^xsd:double .\n\neng:SiCInverter a eng:Component ;\n  rdfs:label \"SiC Dual-Bridge Inverter\" ;\n  eng:massKg \"12.4\"^^xsd:double .\n\neng:ThermalPump a eng:Component ;\n  rdfs:label \"Coolant Circulation Pump\" ;\n  eng:massKg \"3.2\"^^xsd:double .\n"
+    }
+  },
+  {
+    "id": "sparql-02-thermal-budget-filter",
+    "lang": "sparql",
+    "subFormats": ["rq", "ttl"],
+    "difficulty": 2,
+    "title": "Satellite Thermal Margin & Over-Budget Filter",
+    "description": "SPARQL 1.1 query using FILTER expressions to identify spacecraft avionics units whose peak dissipation exceeds their allocated radiator thermal budget.",
+    "category": "Knowledge Graphs & MBSE",
+    "tags": ["sparql", "filter", "thermal-budget", "spacecraft", "multi-file"],
+    "activeFile": "thermal_check.rq",
+    "fileNames": ["thermal_check.rq", "satellite.ttl"],
+    "fileCount": 2,
+    "code": "PREFIX sat: <http://modelscript.dev/ontology/spacecraft#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?unit ?name ?dissipationW ?budgetW\nWHERE {\n  ?unit a sat:AvionicsUnit ;\n        rdfs:label ?name ;\n        sat:peakDissipationW ?dissipationW ;\n        sat:thermalBudgetW ?budgetW .\n  FILTER (?dissipationW > ?budgetW)\n}\nORDER BY DESC(?dissipationW)\n",
+    "files": {
+      "thermal_check.rq": "PREFIX sat: <http://modelscript.dev/ontology/spacecraft#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?unit ?name ?dissipationW ?budgetW\nWHERE {\n  ?unit a sat:AvionicsUnit ;\n        rdfs:label ?name ;\n        sat:peakDissipationW ?dissipationW ;\n        sat:thermalBudgetW ?budgetW .\n  FILTER (?dissipationW > ?budgetW)\n}\nORDER BY DESC(?dissipationW)\n",
+      "satellite.ttl": "@prefix sat: <http://modelscript.dev/ontology/spacecraft#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\nsat:XBandTransponder a sat:AvionicsUnit ;\n  rdfs:label \"X-Band Deep-Space Transponder\" ;\n  sat:peakDissipationW \"48.5\"^^xsd:double ;\n  sat:thermalBudgetW \"40.0\"^^xsd:double .\n\nsat:FlightComputer a sat:AvionicsUnit ;\n  rdfs:label \"RAD750 Flight Computer\" ;\n  sat:peakDissipationW \"14.2\"^^xsd:double ;\n  sat:thermalBudgetW \"20.0\"^^xsd:double .\n\nsat:StarTracker a sat:AvionicsUnit ;\n  rdfs:label \"Optical Star Tracker\" ;\n  sat:peakDissipationW \"6.8\"^^xsd:double ;\n  sat:thermalBudgetW \"10.0\"^^xsd:double .\n\nsat:ReactionWheelDriver a sat:AvionicsUnit ;\n  rdfs:label \"Reaction Wheel Electronics\" ;\n  sat:peakDissipationW \"32.0\"^^xsd:double ;\n  sat:thermalBudgetW \"28.0\"^^xsd:double .\n"
+    }
+  },
+  {
+    "id": "sparql-03-subsystem-bom-rollup",
+    "lang": "sparql",
+    "subFormats": ["rq", "ttl"],
+    "difficulty": 3,
+    "title": "UAV Subsystem Mass & Power BOM Rollup Aggregation",
+    "description": "SPARQL 1.1 GROUP BY aggregation query computing total mass, total electrical power draw, and part counts per UAV subsystem against a companion bill-of-materials graph.",
+    "category": "Knowledge Graphs & MBSE",
+    "tags": ["sparql", "aggregation", "group-by", "uav", "multi-file"],
+    "activeFile": "rollup.rq",
+    "fileNames": ["rollup.rq", "uav_bom.ttl"],
+    "fileCount": 2,
+    "code": "PREFIX uav: <http://modelscript.dev/ontology/uav#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?subsystemName (COUNT(?part) AS ?partCount) (SUM(?mass) AS ?totalMassKg) (SUM(?power) AS ?totalPowerW)\nWHERE {\n  ?subsystem a uav:Subsystem ;\n             rdfs:label ?subsystemName ;\n             uav:containsPart ?part .\n  ?part uav:massKg ?mass ;\n        uav:powerW ?power .\n}\nGROUP BY ?subsystemName\nORDER BY DESC(?totalMassKg)\n",
+    "files": {
+      "rollup.rq": "PREFIX uav: <http://modelscript.dev/ontology/uav#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT ?subsystemName (COUNT(?part) AS ?partCount) (SUM(?mass) AS ?totalMassKg) (SUM(?power) AS ?totalPowerW)\nWHERE {\n  ?subsystem a uav:Subsystem ;\n             rdfs:label ?subsystemName ;\n             uav:containsPart ?part .\n  ?part uav:massKg ?mass ;\n        uav:powerW ?power .\n}\nGROUP BY ?subsystemName\nORDER BY DESC(?totalMassKg)\n",
+      "uav_bom.ttl": "@prefix uav: <http://modelscript.dev/ontology/uav#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\nuav:Propulsion a uav:Subsystem ;\n  rdfs:label \"Propulsion Subsystem\" ;\n  uav:containsPart uav:MotorFrontLeft , uav:MotorFrontRight , uav:ESCQuad .\n\nuav:Avionics a uav:Subsystem ;\n  rdfs:label \"Avionics & Navigation\" ;\n  uav:containsPart uav:Autopilot , uav:LidarUnit .\n\nuav:MotorFrontLeft uav:massKg \"0.42\"^^xsd:double ; uav:powerW \"185.0\"^^xsd:double .\nuav:MotorFrontRight uav:massKg \"0.42\"^^xsd:double ; uav:powerW \"185.0\"^^xsd:double .\nuav:ESCQuad uav:massKg \"0.18\"^^xsd:double ; uav:powerW \"12.0\"^^xsd:double .\nuav:Autopilot uav:massKg \"0.09\"^^xsd:double ; uav:powerW \"8.5\"^^xsd:double .\nuav:LidarUnit uav:massKg \"0.65\"^^xsd:double ; uav:powerW \"18.0\"^^xsd:double .\n"
+    }
+  },
+  {
+    "id": "sparql-04-failure-propagation-path",
+    "lang": "sparql",
+    "subFormats": ["rq", "owl"],
+    "difficulty": 4,
+    "title": "Transitive Dependency & Substation Failure Propagation",
+    "description": "SPARQL 1.1 property-path query using transitive closure (+) to trace all downstream substation loads and protection bays affected by an upstream transformer outage.",
+    "category": "Knowledge Graphs & MBSE",
+    "tags": ["sparql", "property-path", "fmea", "substation", "multi-file"],
+    "activeFile": "impact.rq",
+    "fileNames": ["impact.rq", "substation.owl"],
+    "fileCount": 2,
+    "code": "PREFIX grid: <http://modelscript.dev/ontology/substation#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT DISTINCT ?rootAsset ?affectedAsset ?affectedLabel\nWHERE {\n  ?rootAsset a grid:PowerTransformer ;\n             grid:feeds+ ?affectedAsset .\n  ?affectedAsset rdfs:label ?affectedLabel .\n}\nORDER BY ?affectedLabel\n",
+    "files": {
+      "impact.rq": "PREFIX grid: <http://modelscript.dev/ontology/substation#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nSELECT DISTINCT ?rootAsset ?affectedAsset ?affectedLabel\nWHERE {\n  ?rootAsset a grid:PowerTransformer ;\n             grid:feeds+ ?affectedAsset .\n  ?affectedAsset rdfs:label ?affectedLabel .\n}\nORDER BY ?affectedLabel\n",
+      "substation.owl": "@prefix grid: <http://modelscript.dev/ontology/substation#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\ngrid:SubstationOntology a owl:Ontology .\ngrid:PowerTransformer a owl:Class .\ngrid:Busbar a owl:Class .\ngrid:FeederBay a owl:Class .\ngrid:feeds a owl:ObjectProperty .\n\ngrid:TX_138_13KV a grid:PowerTransformer ;\n  rdfs:label \"Main Transformer T1 138/13.8 kV\" ;\n  grid:feeds grid:BUS_13KV_A .\n\ngrid:BUS_13KV_A a grid:Busbar ;\n  rdfs:label \"13.8 kV Switchgear Bus A\" ;\n  grid:feeds grid:FDR_HOSPITAL , grid:FDR_WATER_PLANT .\n\ngrid:FDR_HOSPITAL a grid:FeederBay ;\n  rdfs:label \"Feeder 101 Regional Hospital\" .\n\ngrid:FDR_WATER_PLANT a grid:FeederBay ;\n  rdfs:label \"Feeder 102 Municipal Water Plant\" .\n"
+    }
+  },
+  {
+    "id": "sparql-05-requirement-trace-construct",
+    "lang": "sparql",
+    "subFormats": ["rq", "ttl", "owl"],
+    "difficulty": 5,
+    "title": "Cross-Domain Requirement-to-Component Traceability Graph",
+    "description": "Multi-file SPARQL 1.1 CONSTRUCT query synthesizing a verified requirement traceability matrix across separate requirements (.ttl) and system architecture (.owl) ontologies.",
+    "category": "Knowledge Graphs & MBSE",
+    "tags": ["sparql", "construct", "traceability", "requirements", "multi-file"],
+    "activeFile": "trace_construct.rq",
+    "fileNames": ["trace_construct.rq", "architecture.owl", "reqs.ttl"],
+    "fileCount": 3,
+    "code": "PREFIX req: <http://modelscript.dev/ontology/req#>\nPREFIX arch: <http://modelscript.dev/ontology/arch#>\nPREFIX trace: <http://modelscript.dev/ontology/trace#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nCONSTRUCT {\n  ?req trace:verifiedByComponent ?comp ;\n       trace:requirementTitle ?reqTitle ;\n       trace:componentName ?compName .\n}\nWHERE {\n  ?req a req:SafetyRequirement ;\n       rdfs:label ?reqTitle .\n  ?comp a arch:SubsystemComponent ;\n        rdfs:label ?compName ;\n        arch:satisfies ?req .\n  ?test a req:VerificationTest ;\n        req:verifies ?req ;\n        req:testsComponent ?comp .\n}\n",
+    "files": {
+      "trace_construct.rq": "PREFIX req: <http://modelscript.dev/ontology/req#>\nPREFIX arch: <http://modelscript.dev/ontology/arch#>\nPREFIX trace: <http://modelscript.dev/ontology/trace#>\nPREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>\n\nCONSTRUCT {\n  ?req trace:verifiedByComponent ?comp ;\n       trace:requirementTitle ?reqTitle ;\n       trace:componentName ?compName .\n}\nWHERE {\n  ?req a req:SafetyRequirement ;\n       rdfs:label ?reqTitle .\n  ?comp a arch:SubsystemComponent ;\n        rdfs:label ?compName ;\n        arch:satisfies ?req .\n  ?test a req:VerificationTest ;\n        req:verifies ?req ;\n        req:testsComponent ?comp .\n}\n",
+      "architecture.owl": "@prefix arch: <http://modelscript.dev/ontology/arch#> .\n@prefix req: <http://modelscript.dev/ontology/req#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\narch:VehicleArchitecture a owl:Ontology .\narch:SubsystemComponent a owl:Class .\narch:satisfies a owl:ObjectProperty .\n\narch:BrakeActuatorUnit a arch:SubsystemComponent ;\n  rdfs:label \"Electro-Hydraulic Brake Actuator\" ;\n  arch:satisfies req:REQ_BRAKE_01 .\n\narch:BatteryCoolingLoop a arch:SubsystemComponent ;\n  rdfs:label \"Liquid Cold-Plate Cooling Loop\" ;\n  arch:satisfies req:REQ_THERM_02 .\n",
+      "reqs.ttl": "@prefix req: <http://modelscript.dev/ontology/req#> .\n@prefix arch: <http://modelscript.dev/ontology/arch#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n\nreq:REQ_BRAKE_01 a req:SafetyRequirement ;\n  rdfs:label \"Emergency Braking Deceleration >= 8.5 m/s^2\" .\n\nreq:REQ_THERM_02 a req:SafetyRequirement ;\n  rdfs:label \"Battery Cell Peak Temperature <= 55 C\" .\n\nreq:TC_BRAKE_HIL a req:VerificationTest ;\n  req:verifies req:REQ_BRAKE_01 ;\n  req:testsComponent arch:BrakeActuatorUnit .\n\nreq:TC_THERM_CHAMBER a req:VerificationTest ;\n  req:verifies req:REQ_THERM_02 ;\n  req:testsComponent arch:BatteryCoolingLoop .\n"
+    }
+  }
+]

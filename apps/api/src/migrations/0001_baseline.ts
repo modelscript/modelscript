@@ -1104,7 +1104,7 @@ export const baselineMigration: Migration = {
       );
       CREATE INDEX IF NOT EXISTS idx_stripe_processed_pi ON stripe_processed_events(payment_intent_id);
 
-      CREATE TABLE IF NOT EXISTS morsel_snippets (
+      CREATE TABLE IF NOT EXISTS ansatz_snippets (
         id           TEXT PRIMARY KEY,
         payload_json TEXT NOT NULL,
         dialect      TEXT NOT NULL DEFAULT 'modelica',
@@ -1112,7 +1112,7 @@ export const baselineMigration: Migration = {
         creator_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at   TEXT DEFAULT (datetime('now'))
       );
-      CREATE INDEX IF NOT EXISTS idx_morsel_snippets_created ON morsel_snippets(created_at);
+      CREATE INDEX IF NOT EXISTS idx_ansatz_snippets_created ON ansatz_snippets(created_at);
 
       CREATE TABLE IF NOT EXISTS script_templates (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1721,7 +1721,9 @@ export const baselineMigration: Migration = {
         UPDATE instance_invites SET used_count = uses_count WHERE used_count = 0 AND uses_count > 0;
         UPDATE instance_invites SET uses_count = used_count WHERE uses_count = 0 AND used_count > 0;
       `);
-    } catch {}
+    } catch {
+      // Legacy uses_count column may not exist on fresh databases
+    }
 
     // Sanitize any legacy Modelica description strings containing raw annotation(...) blocks
     try {

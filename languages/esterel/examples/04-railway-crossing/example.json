@@ -1,0 +1,11 @@
+{
+  "id": "esterel-04-railway-crossing",
+  "lang": "esterel",
+  "subFormats": ["strl"],
+  "difficulty": 4,
+  "title": "Railway Level-Crossing Gate and Signal Interlock",
+  "description": "Safety-critical railway grade-crossing controller synchronizing approach/exit track circuits, warning bell/lights, barrier lowering, and emergency fail-safe override.",
+  "category": "Railway Signaling",
+  "tags": ["esterel", "railway", "interlock", "safety", "parallel"],
+  "activeFile": "railway_crossing.strl"
+}

@@ -37,7 +37,9 @@ export class ReferralRepository extends BaseRepository {
             userId,
             topic.concept,
           );
-        } catch {}
+        } catch {
+          // Ignore duplicate or constrained topic insert
+        }
       }
     }
     return res.changes > 0;

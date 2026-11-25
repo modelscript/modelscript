@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="40000004-0000-4000-8000-000000000001">
+  <Header>
+    <Author><Name>Quality Assurance Lab</Name></Author>
+    <Application><Name>Ansatz QIF Suite</Name></Application>
+    <FileUnits>
+      <PrimaryUnits>
+        <LinearUnit><UnitName>mm</UnitName></LinearUnit>
+      </PrimaryUnits>
+    </FileUnits>
+  </Header>
+  <DatumDefinitions>
+    <DatumDefinition id="D1" qpId="40000004-0000-4000-8000-000000000002">
+      <DatumLabel>A</DatumLabel>
+      <FeatureNominalIds><Id>F_BASE</Id></FeatureNominalIds>
+    </DatumDefinition>
+  </DatumDefinitions>
+  <FeatureNominals>
+    <PlaneFeatureNominal id="F_BASE" qpId="40000004-0000-4000-8000-000000000010">
+      <Name>ValveBodyBase</Name>
+      <Location>0 0 0</Location>
+      <Normal>0 0 1</Normal>
+      <ProbingPoints>6</ProbingPoints>
+    </PlaneFeatureNominal>
+    <CylinderFeatureNominal id="F_SPOOL" qpId="40000004-0000-4000-8000-000000000011">
+      <Name>SpoolValveBore</Name>
+      <Diameter>16.0</Diameter>
+      <Location>25 25 0</Location>
+      <AxisVector>0 0 1</AxisVector>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+  <CharacteristicNominals>
+    <PositionCharacteristicNominal id="C_SPOOL" qpId="40000004-0000-4000-8000-000000000020" balloonNumber="5">
+      <Name>SpoolBore_Position</Name>
+      <ToleranceValue>0.05</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>RFS</MaterialCondition>
+      <DatumReferenceFrame>
+        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
+      </DatumReferenceFrame>
+      <FeatureNominalIds><Id>F_SPOOL</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM1</MeasurementDeviceId>
+    </PositionCharacteristicNominal>
+  </CharacteristicNominals>
+  <MeasurementResources>
+    <MeasurementDevice id="CMM1" deviceType="CMM">
+      <Name>Zeiss_Prismo_Ultra</Name>
+      <CalibrationUncertainty>0.0010</CalibrationUncertainty>
+    </MeasurementDevice>
+  </MeasurementResources>
+  <Rules minTurRatio="4.0">
+    <FeatureRule featureType="Plane" minPoints="4"/>
+    <FeatureRule featureType="Cylinder" minPoints="6"/>
+  </Rules>
+  <Plan>
+    <PlanStep id="S1" stepNumber="1" featureId="F_SPOOL" characteristicId="C_SPOOL" deviceId="CMM1" probingPointCount="8"/>
+  </Plan>
+  <Results>
+    <GeometricCharacteristicActual id="ACT1" characteristicNominalId="C_SPOOL" partSerialNumber="LOT26-001">
+      <MeasuredValue>0.014</MeasuredValue>
+      <ActualFeatureSize>16.002</ActualFeatureSize>
+      <DeviationVector>0.006 0.003 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT2" characteristicNominalId="C_SPOOL" partSerialNumber="LOT26-002">
+      <MeasuredValue>0.018</MeasuredValue>
+      <ActualFeatureSize>15.999</ActualFeatureSize>
+      <DeviationVector>0.008 -0.004 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT3" characteristicNominalId="C_SPOOL" partSerialNumber="LOT26-003">
+      <MeasuredValue>0.011</MeasuredValue>
+      <ActualFeatureSize>16.001</ActualFeatureSize>
+      <DeviationVector>-0.004 0.003 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT4" characteristicNominalId="C_SPOOL" partSerialNumber="LOT26-004">
+      <MeasuredValue>0.016</MeasuredValue>
+      <ActualFeatureSize>16.003</ActualFeatureSize>
+      <DeviationVector>0.007 0.004 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT5" characteristicNominalId="C_SPOOL" partSerialNumber="LOT26-005">
+      <MeasuredValue>0.013</MeasuredValue>
+      <ActualFeatureSize>15.998</ActualFeatureSize>
+      <DeviationVector>-0.005 -0.004 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+  </Results>
+</QIFDocument>

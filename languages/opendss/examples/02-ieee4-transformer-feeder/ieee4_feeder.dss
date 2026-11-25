@@ -1,0 +1,18 @@
+! IEEE 4-Bus Step-Down Transformer Test Feeder
+Clear
+
+New Circuit.IEEE4Bus basekv=115.0 pu=1.04 phases=3 bus1=SourceBus
+
+New LineCode.ACSR_477 nphases=3 r1=0.115 x1=0.395 r0=0.340 x0=1.180 units=km
+
+New Transformer.SubXfmr phases=3 windings=2 buses=[SourceBus, SubBus] kvs=[115, 12.47] kvas=[10000, 10000] %loadloss=0.5 xhl=5.5
+
+New Line.Line1 bus1=SubBus bus2=MidBus phases=3 linecode=ACSR_477 length=2.4
+New Line.Line2 bus1=MidBus bus2=EndBus phases=3 linecode=ACSR_477 length=1.9
+
+New Load.Load_Mid bus1=MidBus phases=3 kv=12.47 kw=1800 kvar=600
+New Load.Load_End bus1=EndBus phases=3 kv=12.47 kw=1400 kvar=450
+
+Set VoltageBases = [115, 12.47]
+CalcVoltageBases
+Solve

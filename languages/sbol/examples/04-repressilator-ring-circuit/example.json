@@ -1,0 +1,12 @@
+{
+  "id": "sbol-04-repressilator-ring-circuit",
+  "lang": "sbol",
+  "subFormats": ["sbol3-xml"],
+  "difficulty": 4,
+  "title": "Three-Gene Repressilator Ring Circuit",
+  "description": "Cyclic negative-feedback transcriptional oscillator (LacI, TetR, Lambda cI) organized across circuit, promoter, and repressor SBOL3 design modules.",
+  "category": "Synthetic Biology",
+  "tags": ["sbol", "repressilator", "oscillator", "multi-file"],
+  "activeFile": "repressilator.sbol",
+  "fileOrder": ["repressilator.sbol", "promoters.sbol", "repressors.sbol"]
+}

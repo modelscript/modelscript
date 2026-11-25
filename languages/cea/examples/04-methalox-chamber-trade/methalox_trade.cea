@@ -1,0 +1,8 @@
+# Reusable Booster LOX/CH4 (Methalox) Chamber Pressure and Area Ratio Trade
+problem case=METHALOX_TRADE rocket equilibrium
+  p,bar=100.0,200.0,300.0 o/f=3.2,3.5,3.8 subar=2.5 supar=16.0,35.0,80.0
+reactants
+  fuel=CH4(L) wt%=100 t(k)=111.66
+  oxid=O2(L) wt%=100 t(k)=90.17
+output siunits short trace=1e-5
+end

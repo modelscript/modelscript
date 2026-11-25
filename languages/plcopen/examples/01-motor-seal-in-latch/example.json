@@ -1,0 +1,12 @@
+{
+  "id": "plcopen-01-motor-seal-in-latch",
+  "lang": "plcopen",
+  "subFormats": ["st"],
+  "difficulty": 1,
+  "title": "Motor Start/Stop Seal-In Latch with Overload Trip",
+  "description": "IEC 61131-3 Structured Text three-wire motor starter seal-in circuit with momentary start pushbutton, normally-closed stop button, thermal overload interlock, and fault indicator.",
+  "category": "Industrial PLC Control",
+  "tags": ["plcopen", "structured-text", "motor-starter", "interlock"],
+  "activeFile": "motor_latch.st",
+  "isDefaultStarter": true
+}

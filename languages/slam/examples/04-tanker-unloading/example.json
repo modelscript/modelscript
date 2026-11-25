@@ -1,0 +1,11 @@
+{
+  "id": "slam-04-tanker-unloading",
+  "lang": "slam",
+  "subFormats": ["slam"],
+  "difficulty": 4,
+  "title": "Combined Discrete-Continuous Tanker Unloading Terminal",
+  "description": "Pritsker combined discrete-continuous crude oil terminal coupling tanker berthing resources, continuous ODE storage-tank balances (DD/SS), and DETECT threshold state events.",
+  "category": "Combined Discrete-Continuous",
+  "tags": ["slam", "combined", "continuous", "detect", "tanker"],
+  "activeFile": "tanker_terminal.slam"
+}

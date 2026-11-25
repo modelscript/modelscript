@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
 import {
   assembly,
   box,
@@ -13,9 +11,11 @@ import {
   type TrajectoryStepEnclosure,
   type Verification3DOverlayPayload,
 } from "@modelscript/cad";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 
 describe("3D Formal Verification Integration Suite", () => {
-  it("generates a rich Verification3DOverlayPayload consumable by Morsel, VS Code, and Artifact Viewers", () => {
+  it("generates a rich Verification3DOverlayPayload consumable by Ansatz, VS Code, and Artifact Viewers", () => {
     // 1. Build a moving assembly with a deliberate safety envelope violation
     const chassis = box({ width: 80, height: 20, depth: 80, name: "RobotBase" });
     const payloadArm = box({ width: 15, height: 15, depth: 15, name: "ToolFlange" });

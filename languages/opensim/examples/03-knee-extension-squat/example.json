@@ -1,0 +1,11 @@
+{
+  "id": "opensim-03-knee-extension-squat",
+  "lang": "opensim",
+  "subFormats": ["osim"],
+  "difficulty": 3,
+  "title": "Lower-Limb Knee Extension Squat Dynamics",
+  "description": "Sagittal lower-limb squat musculoskeletal model featuring pelvis, femur, tibia, and foot segments driven by Millard2012 quadriceps, hamstrings, and gastrocnemius muscles with patellar wrapping.",
+  "category": "Musculoskeletal Biomechanics",
+  "tags": ["opensim", "knee", "squat", "millard-muscle", "lower-limb"],
+  "activeFile": "knee_squat.osim"
+}

@@ -1,0 +1,16 @@
+##TITLE=Polystyrene Film Reference FTIR Spectrum (1650-1550 cm-1)
+##JCAMP-DX=4.24
+##DATA TYPE=INFRARED SPECTRUM
+##ORIGIN=NIST Standard Reference Material 1921b
+##OWNER=PUBLIC DOMAIN
+##XUNITS=1/CM
+##YUNITS=TRANSMITTANCE
+##FIRSTX=1650
+##LASTX=1550
+##NPOINTS=11
+##XFACTOR=1
+##YFACTOR=0.01
+$$ Characteristic 1601 cm-1 aromatic ring stretching band
+##XYDATA=(X++(Y..Y))
+1650 94 93 91 84 62 28 59 86 92 94 95
+##END=

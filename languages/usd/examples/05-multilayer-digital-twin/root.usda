@@ -1,0 +1,20 @@
+#usda 1.0
+(
+    defaultPrim = "ActuatorCell"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+    subLayers = [
+        @./physics_layer.usda@,
+        @./shading_layer.usda@,
+        @./geom_layer.usda@
+    ]
+)
+
+def Xform "ActuatorCell" (
+    kind = "assembly"
+)
+{
+    float custom:ratedTorqueNm = 45.0
+    float custom:overdriveTorqueNm = 68.0
+    string custom:operatingMode = "nominal"
+}

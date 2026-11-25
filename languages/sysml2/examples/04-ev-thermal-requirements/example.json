@@ -1,0 +1,11 @@
+{
+  "id": "sysml2-04-ev-thermal-requirements",
+  "lang": "sysml2",
+  "subFormats": ["sysml"],
+  "difficulty": 4,
+  "title": "EV Thermal Management Requirements & Allocation",
+  "description": "Multi-file SysML v2 model linking battery pack thermal requirements, coolant loop architecture, and verification test cases across three packages.",
+  "category": "Systems Engineering",
+  "tags": ["sysml2", "requirements", "ev-thermal", "verification", "multi-file"],
+  "activeFile": "Architecture.sysml"
+}

@@ -1,0 +1,10 @@
+# 3-Layer Coastal Aquifer Discretization (3 layers x 12 rows x 12 columns)
+BEGIN DIS6
+  NLAY 3
+  NROW 12
+  NCOL 12
+  DELR 250.0
+  DELC 250.0
+  TOP 40.0
+  BOTM 15.0 -15.0 -60.0
+END DIS6

@@ -4,8 +4,17 @@ export const extractPsseTheoryConstraints = async (text: string) => {
   const { parseRaw } = await import("./index.js");
   const c = parseRaw(text);
   const ns = `PSSE::${c.header?.sbase ?? 100}MVA`;
-  const parameters: any[] = [];
-  const ports: any[] = [];
+  const parameters: Array<{
+    name: string;
+    fqn: string;
+    value: number;
+    rawValueText: string;
+    unit: string;
+    line: number;
+    startCol: number;
+    endCol: number;
+  }> = [];
+  const ports: Array<{ name: string; kind: string; line: number }> = [];
   if (Number.isFinite(c.header?.sbase)) {
     parameters.push({
       name: "SBASE",
@@ -111,11 +120,12 @@ function textAction<T>(
 }
 
 export function createPsseActionHandlers(
-  getUnifiedWorkspace: () => any,
+  getUnifiedWorkspace: () => Parameters<typeof import("./index.js").getMergedPsseCase>[0],
 ): Record<string, (ctx: LspActionContext, params?: LspActionParams) => Promise<unknown>> {
-  const getParsed = async (ctx: any, text: string) => {
+  const getParsed = async (ctx: LspActionContext, text: string) => {
     const { getMergedPsseCase } = await import("./index.js");
-    return getMergedPsseCase(getUnifiedWorkspace(), ctx.uri ?? "", text);
+    const uri = typeof ctx["uri"] === "string" ? ctx["uri"] : "";
+    return getMergedPsseCase(getUnifiedWorkspace(), uri, text);
   };
   return {
     simulate_psse_transient: textAction(null, async (text, params, ctx) => {
@@ -165,13 +175,16 @@ export function createPsseActionHandlers(
   };
 }
 
-export async function buildPsseDiagramInput(text: string, uri: string): Promise<{ model: any; powerFlow?: any }> {
+export async function buildPsseDiagramInput(
+  text: string,
+  uri: string,
+): Promise<{ model: unknown; powerFlow?: unknown }> {
   const { parseRaw, solvePowerFlow, isLikelyDyrContent, parseDyr } = await import("./index.js");
   if (uri.endsWith(".dyr") || isLikelyDyrContent(text)) {
     const dyr = parseDyr(text);
     if (dyr.records.length > 0) {
-      const buses = new Map<number, any>();
-      const generators: any[] = [];
+      const buses = new Map<number, { i: number; name: string; baseKv: number; ide: number; vm: number }>();
+      const generators: Array<{ i: number; id: string; pg: number; qg: number; stat: number }> = [];
       for (const rec of dyr.records) {
         if (!buses.has(rec.ibus)) {
           buses.set(rec.ibus, { i: rec.ibus, name: `BUS ${rec.ibus}`, baseKv: 138, ide: 2, vm: 1.0 });

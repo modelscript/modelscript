@@ -1,0 +1,11 @@
+{
+  "id": "jcamp-dx-05-compound-multiblock-archive",
+  "lang": "jcamp-dx",
+  "subFormats": ["jcamp-dx-link"],
+  "difficulty": 5,
+  "title": "Benzaldehyde Multi-Block LINK Spectral Archive (IR + MS + UV-Vis)",
+  "description": "Compound JCAMP-DX LINK archive bundling three child spectral blocks for benzaldehyde (C7H6O): carbonyl FTIR absorbance, 70 eV EI-MS fragmentation peaks, and UV-Vis electronic absorption.",
+  "category": "Multimodal Spectroscopy",
+  "tags": ["jcamp-dx", "link", "multi-block", "ir", "ms", "uv-vis"],
+  "activeFile": "benzaldehyde_archive.jdx"
+}

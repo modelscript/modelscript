@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<febio_spec version="4.0">
+  <Module type="solid"/>
+  <Control>
+    <analysis>STATIC</analysis>
+    <time_steps>25</time_steps>
+    <step_size>0.04</step_size>
+  </Control>
+  <Material>
+    <material id="1" name="AchillesTendon" type="Ogden">
+      <c1>12.5</c1>
+      <m1>4.2</m1>
+      <k>250.0</k>
+      <density>1.12</density>
+    </material>
+  </Material>
+  <Mesh>
+    <Nodes name="TendonNodes">
+      <node id="1">0.0, 0.0, 0.0</node>
+      <node id="2">4.0, 0.0, 0.0</node>
+      <node id="3">0.0, 4.0, 0.0</node>
+      <node id="4">0.0, 0.0, 20.0</node>
+      <node id="5">4.0, 0.0, 20.0</node>
+    </Nodes>
+    <Elements type="tet4" name="TendonFascicle">
+      <elem id="1">1, 2, 3, 4</elem>
+      <elem id="2">2, 5, 3, 4</elem>
+    </Elements>
+    <NodeSet name="CalcaneusAnchor">
+      <node id="1"/>
+      <node id="2"/>
+      <node id="3"/>
+    </NodeSet>
+    <NodeSet name="MyotendinousEnd">
+      <node id="4"/>
+      <node id="5"/>
+    </NodeSet>
+  </Mesh>
+  <MeshDomains>
+    <SolidDomain name="TendonFascicle" mat="1"/>
+  </MeshDomains>
+  <Boundary>
+    <bc name="FixDistal" type="zero displacement" node_set="CalcaneusAnchor">
+      <x_dof>1</x_dof>
+      <y_dof>1</y_dof>
+      <z_dof>1</z_dof>
+    </bc>
+    <bc name="AxialTension" type="prescribed displacement" node_set="MyotendinousEnd">
+      <dof>z</dof>
+      <value>1.6</value>
+    </bc>
+  </Boundary>
+</febio_spec>

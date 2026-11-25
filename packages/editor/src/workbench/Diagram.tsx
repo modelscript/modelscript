@@ -122,8 +122,10 @@ export interface DiagramEditorHandle {
   exportSvgDataUrl?: () => string | null;
 }
 
+export type DiagramDataProp = (DiagramData & { isLoading?: boolean }) | null;
+
 interface DiagramEditorProps {
-  diagramData: any | null;
+  diagramData: DiagramDataProp;
   diagramClassName?: string | null | undefined;
   onZoomChange?: ((zoom: number) => void) | undefined;
   onSelect?: ((componentName: string | null) => void) | undefined;
@@ -164,12 +166,12 @@ interface DiagramEditorProps {
   selectedName?: string | null | undefined;
   theme: Theme;
   isLoading?: boolean | undefined;
-  onRenderComplete?: ((diagramData: any) => void) | undefined;
-  onInteractiveWrite?: ((variableName: string, value: any, nodeId: string) => void) | undefined;
-  onAction?: ((action: any) => void) | undefined;
-  onMessage?: ((msg: any) => void) | undefined;
-  onShowProperties?: ((nodeId: string, cachedProps?: any, isLoading?: boolean) => void) | undefined;
-  onNodeDoubleClick?: ((nodeId: string, nodeData?: any) => void) | undefined;
+  onRenderComplete?: ((diagramData: DiagramData) => void) | undefined;
+  onInteractiveWrite?: ((variableName: string, value: unknown, nodeId: string) => void) | undefined;
+  onAction?: ((action: Record<string, unknown>) => void) | undefined;
+  onMessage?: ((msg: unknown) => void) | undefined;
+  onShowProperties?: ((nodeId: string, cachedProps?: unknown, isLoading?: boolean) => void) | undefined;
+  onNodeDoubleClick?: ((nodeId: string, nodeData?: unknown) => void) | undefined;
   fitInsets?: { top: number; right: number; bottom: number; left: number } | undefined;
   onFetchArtifactBytes?: ((artifactUri: string) => Promise<Uint8Array | null>) | undefined;
   onTessellateStep?: ((artifactUri: string) => Promise<string | Uint8Array | null>) | undefined;
@@ -183,6 +185,20 @@ type DiagramGraphInstance = {
   off?: (event: string, fn: unknown) => void;
   on?: (event: string, fn: unknown) => void;
   getCellById?: (id: string) => unknown;
+  resize?: (width: number, height: number) => void;
+  zoom?: (factor?: number, opts?: { absolute?: boolean }) => number;
+  zoomTo?: (factor: number) => void;
+  zoomToFit?: (opts?: {
+    maxScale?: number;
+    padding?: number;
+    viewportArea?: { x: number; y: number; width: number; height: number };
+  }) => void;
+  zoomToRect?: (
+    rect: { x: number; y: number; width: number; height: number },
+    opts?: { viewportArea?: { x: number; y: number; width: number; height: number } },
+  ) => void;
+  centerPoint?: (x: number, y: number) => void;
+  centerContent?: () => void;
   scale?: () => { sx: number; sy: number };
   translate?: (tx?: number, ty?: number) => { tx: number; ty: number };
   computeEmbedded3DScissorRects?: () => EmbeddedPortalScissorRect[];
@@ -437,7 +453,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     [scheduleSyncEmbeddedPortals],
   );
 
-  const handleNodeDblClick = useCallback(({ node }: any) => {
+  const handleNodeDblClick = useCallback(({ node }: { node?: { id: string; getData?: () => unknown } }) => {
     if (!node || isEphemeralDiagramNode(node.id)) return;
     const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
     const hasPortal =
@@ -452,7 +468,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
   }, []);
 
   const handleScale = useCallback(
-    ({ sx }: any) => {
+    ({ sx }: { sx?: number }) => {
       if (typeof sx === "number" && !isNaN(sx)) {
         propsRef.current.onZoomChange?.(Math.round(sx * 100) / 100);
       }
@@ -491,12 +507,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     setDiagramOptions({
       container: containerRef.current,
       isDark: props.theme === "vs-dark",
-      onAction: (action: any) => {
+      onAction: (action) => {
         const p = propsRef.current;
+        const actionRec = action as unknown as Record<string, unknown>;
         switch (action.type) {
           case "move":
             if (p.onMove) p.onMove(action.items);
-            else p.onAction?.(action);
+            else p.onAction?.(actionRec);
             break;
           case "resize":
             if (p.onResize)
@@ -509,32 +526,32 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                 action.item.rotation,
                 action.item.edges,
               );
-            else p.onAction?.(action);
+            else p.onAction?.(actionRec);
             break;
           case "connect":
             if (p.onConnect) p.onConnect(action.source, action.target, action.points);
-            else p.onAction?.(action);
+            else p.onAction?.(actionRec);
             break;
           case "disconnect":
             if (p.onEdgeDelete) p.onEdgeDelete(action.source, action.target);
-            else p.onAction?.(action);
+            else p.onAction?.(actionRec);
             break;
           case "moveEdge":
             if (p.onEdgeMove) p.onEdgeMove(action.edges);
-            else p.onAction?.(action);
+            else p.onAction?.(actionRec);
             break;
           case "deleteComponents":
             if (p.onComponentsDelete) p.onComponentsDelete(action.names);
-            else if (p.onComponentDelete && action.names.length > 0) p.onComponentDelete(action.names[0]);
-            else p.onAction?.(action);
+            else if (p.onComponentDelete && action.names.length > 0) p.onComponentDelete(action.names[0]!);
+            else p.onAction?.(actionRec);
             break;
           case "interactiveWrite":
             if (p.onInteractiveWrite) p.onInteractiveWrite(action.variableName, action.value, action.nodeId);
-            else p.onAction?.(action);
+            else p.onAction?.(actionRec);
             break;
           default:
             // Forward addComponent, reconnect, updateName, updateProperty, rotate, etc.
-            p.onAction?.(action);
+            p.onAction?.(actionRec);
             break;
         }
       },
@@ -557,7 +574,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     attachGraphListeners();
   };
 
-  const applyDiagramViewportFit = (g: any, cw: number, ch: number, padding = 24) => {
+  const applyDiagramViewportFit = (g: DiagramGraphInstance, cw: number, ch: number, padding = 24) => {
     const insets = propsRef.current.fitInsets;
     const top = insets?.top ?? 0;
     const right = insets?.right ?? 0;
@@ -904,12 +921,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
           const parentH = parent?.clientHeight ?? 0;
           const cw = parentW > 0 ? parentW : container.clientWidth > 0 ? container.clientWidth : 800;
           const ch = parentH > 0 ? parentH : container.clientHeight > 0 ? container.clientHeight : 600;
-          if (typeof (g as any).resize === "function" && cw > 0 && ch > 0) {
-            (g as any).resize(cw, ch);
+          const gInst = g as DiagramGraphInstance;
+          if (typeof gInst.resize === "function" && cw > 0 && ch > 0) {
+            gInst.resize(cw, ch);
           }
-          applyDiagramViewportFit(g, cw, ch, 20);
-          if (typeof (g as any).zoom === "function") {
-            propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
+          applyDiagramViewportFit(gInst, cw, ch, 20);
+          if (typeof gInst.zoom === "function") {
+            propsRef.current.onZoomChange?.(Math.round(gInst.zoom() * 100) / 100);
           }
           syncEmbeddedPortals();
         } catch {
@@ -919,7 +937,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     layout: async () => {
       const container = containerRef.current;
-      const g = getGraphFor(container) as any;
+      const g = getGraphFor(container);
       if (g) {
         return autoLayoutDiagramAsync(g);
       } else if (typeof window !== "undefined") {
@@ -930,7 +948,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     zoomIn: (factor = 0.15) => {
       const container = containerRef.current;
-      const g = getGraphFor(container) as any;
+      const g = getGraphFor(container) as DiagramGraphInstance | null;
       if (g && typeof g.zoom === "function") {
         const current = g.zoom();
         const next = Math.min(10.0, Math.round((current + factor) * 100) / 100);
@@ -947,7 +965,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     zoomOut: (factor = 0.15) => {
       const container = containerRef.current;
-      const g = getGraphFor(container) as any;
+      const g = getGraphFor(container) as DiagramGraphInstance | null;
       if (g && typeof g.zoom === "function") {
         const current = g.zoom();
         const next = Math.max(0.1, Math.round((current - factor) * 100) / 100);
@@ -964,13 +982,13 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     },
     zoomTo: (scale: number) => {
       const container = containerRef.current;
-      const g = getGraphFor(container) as any;
+      const g = getGraphFor(container) as DiagramGraphInstance | null;
       if (g && (typeof g.zoomTo === "function" || typeof g.zoom === "function")) {
         const clamped = Math.max(0.1, Math.min(10.0, scale));
         if (typeof g.zoomTo === "function") {
           g.zoomTo(clamped);
         } else {
-          g.zoom(clamped, { absolute: true });
+          g.zoom?.(clamped, { absolute: true });
         }
         propsRef.current.onZoomChange?.(clamped);
         syncEmbeddedPortals();
@@ -979,7 +997,7 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
     zoomToFit: () => {
       syncDiagramOptions();
       const container = containerRef.current;
-      const g = getGraphFor(container) as any;
+      const g = getGraphFor(container) as DiagramGraphInstance | null;
       if (g && typeof g.zoomToFit === "function") {
         const parent = container?.parentElement;
         const parentW = parent?.clientWidth ?? 0;
@@ -999,19 +1017,19 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       }
     },
     getZoom: () => {
-      const g = getGraphFor(containerRef.current) as any;
+      const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       if (g && typeof g.zoom === "function") {
         return Math.round(g.zoom() * 100) / 100;
       }
       return 1;
     },
     rotateSelected: (deltaDegrees = 90) => {
-      const g = getGraphFor(containerRef.current) as any;
+      const g = getGraphFor(containerRef.current);
       if (!g) return;
       rotateSelectedNodes(deltaDegrees, g);
     },
     flipSelected: (axis: "x" | "y" = "x") => {
-      const g = getGraphFor(containerRef.current) as any;
+      const g = getGraphFor(containerRef.current);
       if (!g) return;
       flipSelectedNodes(axis, g);
     },
@@ -1025,18 +1043,18 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       return isMinimapVisible(containerRef.current);
     },
     setGridMode: (mode: DiagramGridMode) => {
-      setDiagramGrid(mode, getGraphFor(containerRef.current) as any);
+      setDiagramGrid(mode, getGraphFor(containerRef.current) ?? undefined);
     },
     setSnapToGrid: (enabled: boolean) => {
-      setDiagramSnap(enabled, getGraphFor(containerRef.current) as any);
+      setDiagramSnap(enabled, getGraphFor(containerRef.current) ?? undefined);
     },
     centerCell: (cellId: string) => {
-      const g = getGraphFor(containerRef.current) as any;
+      const g = getGraphFor(containerRef.current) as DiagramGraphInstance | null;
       if (!g || !cellId) return;
       const cell = g.getCellById?.(cellId);
       if (cell) {
         try {
-          const cellView = g.findViewByCell(cell);
+          const cellView = g.findViewByCell?.(cell);
           if (cellView?.container) {
             if (centerCellHaloTimerRef.current) {
               clearTimeout(centerCellHaloTimerRef.current);
@@ -1266,8 +1284,9 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
                   hasFittedViewportRef.current = true;
                   applyDiagramViewportFit(g, width, height, 24);
                 }
-                if (typeof (g as any).zoom === "function") {
-                  propsRef.current.onZoomChange?.(Math.round((g as any).zoom() * 100) / 100);
+                const gInst = g as DiagramGraphInstance;
+                if (typeof gInst.zoom === "function") {
+                  propsRef.current.onZoomChange?.(Math.round(gInst.zoom() * 100) / 100);
                 }
                 syncEmbeddedPortals();
               }
@@ -1612,8 +1631,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       if (!detail || !detail.time || !detail.signals) return;
       loadSimulationResult(detail);
     };
-    window.addEventListener("morsel:simulation-result", handleSimulationResult);
-    return () => window.removeEventListener("morsel:simulation-result", handleSimulationResult);
+    window.addEventListener("ansatz:simulation-result", handleSimulationResult);
+    return () => window.removeEventListener("ansatz:simulation-result", handleSimulationResult);
   }, [loadSimulationResult]);
 
   useEffect(() => {
@@ -1678,8 +1697,8 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
         g?.syncPlotCrosshair?.(undefined);
       }
     };
-    window.addEventListener("morsel:time-scrub", handleTimeScrub);
-    return () => window.removeEventListener("morsel:time-scrub", handleTimeScrub);
+    window.addEventListener("ansatz:time-scrub", handleTimeScrub);
+    return () => window.removeEventListener("ansatz:time-scrub", handleTimeScrub);
   }, []);
 
   useEffect(() => {
@@ -1765,10 +1784,10 @@ const DiagramEditor = forwardRef<DiagramEditorHandle, DiagramEditorProps>((props
       }
     };
 
-    window.addEventListener("morsel:highlight-component", handleHighlight);
+    window.addEventListener("ansatz:highlight-component", handleHighlight);
     return () => {
       clearHighlight();
-      window.removeEventListener("morsel:highlight-component", handleHighlight);
+      window.removeEventListener("ansatz:highlight-component", handleHighlight);
     };
   }, []);
 

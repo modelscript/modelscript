@@ -1,0 +1,11 @@
+{
+  "id": "automationml-04-biw-welding-line-plc",
+  "lang": "automationml",
+  "subFormats": ["aml", "caex", "st"],
+  "difficulty": 4,
+  "title": "Automotive Body-in-White Welding Line with PLC Signal Interfaces",
+  "description": "Multi-file IEC 62714 AutomationML automotive body-in-white spot-welding cell referencing an external InterfaceClassLib (interfaces.aml) and a companion IEC 61131-3 PLCopen Structured Text control program (plc_signals.st).",
+  "category": "Automotive Manufacturing",
+  "tags": ["automationml", "caex", "welding", "plcopen", "multi-file"],
+  "activeFile": "biw_line.aml"
+}

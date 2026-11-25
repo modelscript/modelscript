@@ -1,0 +1,11 @@
+{
+  "id": "urdf-04-autonomous-hexacopter-uav",
+  "lang": "urdf",
+  "subFormats": ["urdf"],
+  "difficulty": 4,
+  "title": "Autonomous Hexacopter UAV Airframe",
+  "description": "Heavy-lift six-rotor autonomous hexacopter UAV featuring a carbon-fiber central hub, six radially symmetric continuous rotor hubs with matched collision envelopes, and a stabilized optical gimbal.",
+  "category": "Aerial Robotics",
+  "tags": ["hexacopter", "uav", "drone", "rotors"],
+  "activeFile": "hexacopter_uav.urdf"
+}

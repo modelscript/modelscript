@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<robot name="autonomous_hexacopter_uav">
+  <link name="airframe_hub">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="3.8"/>
+      <inertia ixx="0.065" ixy="0" ixz="0" iyy="0.065" iyz="0" izz="0.110"/>
+    </inertial>
+    <visual><geometry><cylinder radius="0.16" length="0.08"/></geometry></visual>
+    <collision><geometry><cylinder radius="0.16" length="0.08"/></geometry></collision>
+  </link>
+
+  <link name="rotor_1">
+    <inertial><mass value="0.18"/><inertia ixx="0.0008" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0014"/></inertial>
+    <visual><geometry><cylinder radius="0.14" length="0.015"/></geometry></visual>
+    <collision><geometry><cylinder radius="0.14" length="0.015"/></geometry></collision>
+  </link>
+
+  <link name="rotor_2">
+    <inertial><mass value="0.18"/><inertia ixx="0.0008" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0014"/></inertial>
+    <visual><geometry><cylinder radius="0.14" length="0.015"/></geometry></visual>
+    <collision><geometry><cylinder radius="0.14" length="0.015"/></geometry></collision>
+  </link>
+
+  <link name="rotor_3">
+    <inertial><mass value="0.18"/><inertia ixx="0.0008" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0014"/></inertial>
+    <visual><geometry><cylinder radius="0.14" length="0.015"/></geometry></visual>
+    <collision><geometry><cylinder radius="0.14" length="0.015"/></geometry></collision>
+  </link>
+
+  <link name="rotor_4">
+    <inertial><mass value="0.18"/><inertia ixx="0.0008" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0014"/></inertial>
+    <visual><geometry><cylinder radius="0.14" length="0.015"/></geometry></visual>
+    <collision><geometry><cylinder radius="0.14" length="0.015"/></geometry></collision>
+  </link>
+
+  <link name="rotor_5">
+    <inertial><mass value="0.18"/><inertia ixx="0.0008" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0014"/></inertial>
+    <visual><geometry><cylinder radius="0.14" length="0.015"/></geometry></visual>
+    <collision><geometry><cylinder radius="0.14" length="0.015"/></geometry></collision>
+  </link>
+
+  <link name="rotor_6">
+    <inertial><mass value="0.18"/><inertia ixx="0.0008" ixy="0" ixz="0" iyy="0.0008" iyz="0" izz="0.0014"/></inertial>
+    <visual><geometry><cylinder radius="0.14" length="0.015"/></geometry></visual>
+    <collision><geometry><cylinder radius="0.14" length="0.015"/></geometry></collision>
+  </link>
+
+  <link name="camera_gimbal">
+    <inertial><mass value="0.45"/><inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/></inertial>
+    <visual><geometry><box size="0.08 0.08 0.07"/></geometry></visual>
+    <collision><geometry><box size="0.08 0.08 0.07"/></geometry></collision>
+  </link>
+
+  <joint name="rotor_1_joint" type="continuous">
+    <parent link="airframe_hub"/><child link="rotor_1"/>
+    <origin xyz="0.40 0.0 0.05" rpy="0 0 0"/><axis xyz="0 0 1"/>
+  </joint>
+  <joint name="rotor_2_joint" type="continuous">
+    <parent link="airframe_hub"/><child link="rotor_2"/>
+    <origin xyz="0.20 0.3464 0.05" rpy="0 0 0"/><axis xyz="0 0 1"/>
+  </joint>
+  <joint name="rotor_3_joint" type="continuous">
+    <parent link="airframe_hub"/><child link="rotor_3"/>
+    <origin xyz="-0.20 0.3464 0.05" rpy="0 0 0"/><axis xyz="0 0 1"/>
+  </joint>
+  <joint name="rotor_4_joint" type="continuous">
+    <parent link="airframe_hub"/><child link="rotor_4"/>
+    <origin xyz="-0.40 0.0 0.05" rpy="0 0 0"/><axis xyz="0 0 1"/>
+  </joint>
+  <joint name="rotor_5_joint" type="continuous">
+    <parent link="airframe_hub"/><child link="rotor_5"/>
+    <origin xyz="-0.20 -0.3464 0.05" rpy="0 0 0"/><axis xyz="0 0 1"/>
+  </joint>
+  <joint name="rotor_6_joint" type="continuous">
+    <parent link="airframe_hub"/><child link="rotor_6"/>
+    <origin xyz="0.20 -0.3464 0.05" rpy="0 0 0"/><axis xyz="0 0 1"/>
+  </joint>
+  <joint name="gimbal_pitch_joint" type="revolute">
+    <parent link="airframe_hub"/><child link="camera_gimbal"/>
+    <origin xyz="0.10 0.0 -0.09" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.5708" upper="0.5236" effort="2.0" velocity="3.0"/>
+  </joint>
+</robot>

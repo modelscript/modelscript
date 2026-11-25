@@ -1,0 +1,11 @@
+{
+  "id": "optical-03-openroadm-dwdm-ring",
+  "lang": "optical",
+  "subFormats": ["openroadm.json"],
+  "difficulty": 3,
+  "title": "3-Node OpenROADM DWDM Metro Ring Topology",
+  "description": "OpenROADM JSON topology describing a 3-node colorless/directionless DWDM metro ring with EDFA line amplifiers and a 400G PM-16QAM optical service.",
+  "category": "DWDM Optical Networking",
+  "tags": ["optical", "openroadm", "dwdm", "roadm-ring"],
+  "activeFile": "ring.openroadm.json"
+}

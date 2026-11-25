@@ -1,0 +1,11 @@
+{
+  "id": "fiber-03-metro-dual-path-ring",
+  "lang": "fiber",
+  "subFormats": ["geojson"],
+  "difficulty": 3,
+  "title": "Redundant Metro Dual-Path SRLG-Diverse Ring",
+  "description": "Four-node metro fiber ring with physically diverse north and south conduit paths (zero SRLG overlap) and low-loss fusion splice closures.",
+  "category": "Metro Core Diversity",
+  "tags": ["fiber", "srlg", "metro-ring", "diversity"],
+  "activeFile": "metro_ring.geojson"
+}

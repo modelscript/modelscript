@@ -1,0 +1,11 @@
+{
+  "id": "bufr-05-satellite-amv-bulletin",
+  "lang": "bufr",
+  "subFormats": ["bufr-ed4"],
+  "difficulty": 5,
+  "title": "Multi-Subset Satellite Atmospheric Motion Vector (AMV) Bulletin",
+  "description": "Geostationary GOES-East cloud-drift Atmospheric Motion Vector (AMV) BUFR bulletin containing 5 tracked upper-tropospheric wind vectors with infrared brightness temperature and quality indicator.",
+  "category": "Satellite Meteorology",
+  "tags": ["bufr", "satellite", "amv", "goes", "multi-subset"],
+  "activeFile": "goes_amv_bulletin.bufr"
+}

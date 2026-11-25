@@ -1,0 +1,11 @@
+{
+  "id": "gdsii-04-sram-6t-bitcell",
+  "lang": "gdsii",
+  "subFormats": ["gds"],
+  "difficulty": 4,
+  "title": "6T SRAM Bitcell Layout with Symmetry",
+  "description": "Symmetric 6-transistor static RAM bitcell in ASCII GDSII using mirrored SREF half-cell instantiation (STRANS reflection), cross-coupled poly gates, and AREF bitline contact arrays.",
+  "category": "Memory Layout",
+  "tags": ["gdsii", "sram", "6t-bitcell", "strans", "aref"],
+  "activeFile": "sram_6t.gds"
+}

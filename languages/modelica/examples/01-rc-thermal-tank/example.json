@@ -1,0 +1,12 @@
+{
+  "id": "modelica-01-rc-thermal-tank",
+  "lang": "modelica",
+  "subFormats": ["mo"],
+  "difficulty": 1,
+  "title": "First-Order RC Thermal Tank",
+  "description": "Lumped-capacitance heated water tank with convective heat loss to ambient and step heater power input.",
+  "category": "Thermal Systems",
+  "tags": ["modelica", "thermal", "ode", "lumped-capacitance", "first-order"],
+  "activeFile": "ThermalTank.mo",
+  "isDefaultStarter": true
+}

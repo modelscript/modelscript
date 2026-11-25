@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { SymbolEntry } from "@modelscript/runtime";
+import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { AnnotationEvaluator } from "../../diagram/annotation-evaluator.js";
-import type { ExtractedCompilerOptions, FlattenOptions } from "../types.js";
+import type { ExtractedCompilerOptions, FlattenerCstNode, FlattenOptions } from "../types.js";
 
 export function extractCompilerOptions(
-  classCst: any,
-  options?: FlattenOptions,
-  db?: any,
+  classCst: FlattenerCstNode | null | undefined,
+  options?: FlattenOptions & { scodeinstMode?: boolean | undefined },
+  db?: (QueryDB & { source?(resourceId: string): string | undefined }) | null,
   rootSym?: SymbolEntry | null,
 ): ExtractedCompilerOptions {
   let cmdOptions = "";
   if (classCst) {
     try {
-      const evaluator = new AnnotationEvaluator(db ?? ({} as any));
+      const evaluator = new AnnotationEvaluator(db ?? null);
       const evaluated = evaluator.evaluate(classCst, "__OpenModelica_commandLineOptions");
       if (typeof evaluated === "string") {
         cmdOptions = evaluated;
@@ -35,7 +35,7 @@ export function extractCompilerOptions(
 
   const hasOldInstAnnotation = Boolean(cmdOptions.includes("-d=-newInst") || combined.includes("-d=-newInst"));
 
-  const isOldFrontend = Boolean(options?.isOldFrontend || (options as any)?.scodeinstMode || hasOldInstAnnotation);
+  const isOldFrontend = Boolean(options?.isOldFrontend || options?.scodeinstMode || hasOldInstAnnotation);
 
   const isGen = Boolean(cmdOptions.includes("-d=gen") || combined.includes("-d=gen"));
 
@@ -50,9 +50,7 @@ export function extractCompilerOptions(
   );
 
   const scalarizeMinMax = Boolean(
-    (options as any)?.scalarizeMinMax ||
-    cmdOptions.includes("+scalarizeMinMax") ||
-    combined.includes("+scalarizeMinMax"),
+    options?.scalarizeMinMax || cmdOptions.includes("+scalarizeMinMax") || combined.includes("+scalarizeMinMax"),
   );
 
   let flowThreshold = options?.flowThreshold;

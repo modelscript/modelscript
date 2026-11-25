@@ -1,0 +1,11 @@
+{
+  "id": "gproms-02-nonisothermal-jacketed-cstr",
+  "lang": "gproms",
+  "subFormats": ["gproms"],
+  "difficulty": 2,
+  "title": "Non-Isothermal Jacketed CSTR with Cooling Control",
+  "description": "Coupled mass and energy balance for an exothermic continuous stirred-tank reactor (CSTR) with Arrhenius kinetics and cooling-jacket heat removal.",
+  "category": "Chemical Process Engineering",
+  "tags": ["gproms", "cstr", "energy-balance", "arrhenius"],
+  "activeFile": "jacketed_cstr.gproms"
+}

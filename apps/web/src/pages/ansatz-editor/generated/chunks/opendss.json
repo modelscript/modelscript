@@ -1,0 +1,99 @@
+[
+  {
+    "id": "opendss-01-two-bus-radial-feeder",
+    "lang": "opendss",
+    "subFormats": ["dss"],
+    "difficulty": 1,
+    "title": "2-Bus Radial Distribution Feeder Power Flow",
+    "description": "Minimal 12.47 kV three-phase radial distribution feeder with a voltage source, overhead line segment, and balanced constant-power load.",
+    "category": "Distribution Power Flow",
+    "tags": ["opendss", "radial-feeder", "power-flow", "12.47kv"],
+    "activeFile": "radial_2bus.dss",
+    "fileNames": ["radial_2bus.dss"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "! 2-Bus Radial Distribution Feeder (12.47 kV)\nClear\n\nNew Circuit.Radial2Bus basekv=12.47 pu=1.02 phases=3 bus1=SourceBus\n\nNew LineCode.OH_336ACSR nphases=3 r1=0.190 x1=0.390 r0=0.450 x0=1.220 units=km\nNew Line.FeederMain bus1=SourceBus bus2=LoadBus1 phases=3 linecode=OH_336ACSR length=3.2\n\nNew Load.CommercialLoad bus1=LoadBus1 phases=3 kv=12.47 kw=1500 kvar=480\n\nSet VoltageBases = [12.47]\nCalcVoltageBases\nSolve\n"
+  },
+  {
+    "id": "opendss-02-ieee4-transformer-feeder",
+    "lang": "opendss",
+    "subFormats": ["dss"],
+    "difficulty": 2,
+    "title": "IEEE 4-Bus Transformer Test Feeder",
+    "description": "Standard IEEE 4-bus step-down distribution test feeder with 115/12.47 kV substation transformer, two overhead spans, and distributed loads.",
+    "category": "Distribution Benchmark",
+    "tags": ["opendss", "ieee4", "transformer", "distribution"],
+    "activeFile": "ieee4_feeder.dss",
+    "fileNames": ["ieee4_feeder.dss"],
+    "fileCount": 1,
+    "code": "! IEEE 4-Bus Step-Down Transformer Test Feeder\nClear\n\nNew Circuit.IEEE4Bus basekv=115.0 pu=1.04 phases=3 bus1=SourceBus\n\nNew LineCode.ACSR_477 nphases=3 r1=0.115 x1=0.395 r0=0.340 x0=1.180 units=km\n\nNew Transformer.SubXfmr phases=3 windings=2 buses=[SourceBus, SubBus] kvs=[115, 12.47] kvas=[10000, 10000] %loadloss=0.5 xhl=5.5\n\nNew Line.Line1 bus1=SubBus bus2=MidBus phases=3 linecode=ACSR_477 length=2.4\nNew Line.Line2 bus1=MidBus bus2=EndBus phases=3 linecode=ACSR_477 length=1.9\n\nNew Load.Load_Mid bus1=MidBus phases=3 kv=12.47 kw=1800 kvar=600\nNew Load.Load_End bus1=EndBus phases=3 kv=12.47 kw=1400 kvar=450\n\nSet VoltageBases = [115, 12.47]\nCalcVoltageBases\nSolve\n"
+  },
+  {
+    "id": "opendss-03-ieee13-unbalanced-feeder",
+    "lang": "opendss",
+    "subFormats": ["dss"],
+    "difficulty": 3,
+    "title": "IEEE 13-Bus Modular Distribution Feeder",
+    "description": "Multi-file OpenDSS distribution feeder organizing line impedance codes and spot loads into redirected companion .dss modules.",
+    "category": "Distribution Benchmark",
+    "tags": ["opendss", "ieee13", "redirect", "multi-file"],
+    "activeFile": "Master.dss",
+    "fileNames": ["Master.dss", "sub/LineCodes.dss", "sub/Lines.dss", "sub/Loads.dss"],
+    "fileCount": 4,
+    "code": "! IEEE 13-Bus Modular Distribution Feeder (Multi-File)\nClear\n\nNew Circuit.IEEE13Mod basekv=115.0 pu=1.03 phases=3 bus1=SourceBus\n\nNew Transformer.SubXfmr phases=3 windings=2 buses=[SourceBus, Bus650] kvs=[115, 4.16] kvas=[5000, 5000] %loadloss=1.0 xhl=8.0\n\nRedirect sub/LineCodes.dss\nRedirect sub/Lines.dss\nRedirect sub/Loads.dss\n\nSet VoltageBases = [115, 4.16]\nCalcVoltageBases\nSolve\n",
+    "files": {
+      "Master.dss": "! IEEE 13-Bus Modular Distribution Feeder (Multi-File)\nClear\n\nNew Circuit.IEEE13Mod basekv=115.0 pu=1.03 phases=3 bus1=SourceBus\n\nNew Transformer.SubXfmr phases=3 windings=2 buses=[SourceBus, Bus650] kvs=[115, 4.16] kvas=[5000, 5000] %loadloss=1.0 xhl=8.0\n\nRedirect sub/LineCodes.dss\nRedirect sub/Lines.dss\nRedirect sub/Loads.dss\n\nSet VoltageBases = [115, 4.16]\nCalcVoltageBases\nSolve\n",
+      "sub/LineCodes.dss": "! Standard Overhead and Underground LineCodes for IEEE 13-Bus Feeder\nNew LineCode.OH601 nphases=3 r1=0.185 x1=0.380 r0=0.490 x0=1.250 units=km\nNew LineCode.OH602 nphases=3 r1=0.290 x1=0.415 r0=0.620 x0=1.350 units=km\nNew LineCode.UG606 nphases=3 r1=0.250 x1=0.190 r0=0.720 x0=0.680 units=km\n",
+      "sub/Lines.dss": "! Feeder Trunk and Lateral Lines for IEEE 13-Bus Feeder\nNew Line.L650_632 bus1=Bus650 bus2=Bus632 phases=3 linecode=OH601 length=0.61\nNew Line.L632_671 bus1=Bus632 bus2=Bus671 phases=3 linecode=OH601 length=0.61\nNew Line.L671_680 bus1=Bus671 bus2=Bus680 phases=3 linecode=OH601 length=0.30\nNew Line.L632_633 bus1=Bus632 bus2=Bus633 phases=3 linecode=OH602 length=0.15\nNew Line.L671_692 bus1=Bus671 bus2=Bus692 phases=3 linecode=UG606 length=0.15\nNew Line.L692_675 bus1=Bus692 bus2=Bus675 phases=3 linecode=UG606 length=0.15\n",
+      "sub/Loads.dss": "! Spot Loads for IEEE 13-Bus Feeder\nNew Load.Load632 bus1=Bus632 phases=3 kv=4.16 kw=400 kvar=200\nNew Load.Load633 bus1=Bus633 phases=3 kv=4.16 kw=400 kvar=290\nNew Load.Load671 bus1=Bus671 phases=3 kv=4.16 kw=1155 kvar=660\nNew Load.Load675 bus1=Bus675 phases=3 kv=4.16 kw=843 kvar=462\nNew Load.Load680 bus1=Bus680 phases=3 kv=4.16 kw=250 kvar=120\n"
+    }
+  },
+  {
+    "id": "opendss-04-pv-hosting-volt-var",
+    "lang": "opendss",
+    "subFormats": ["dss", "csv"],
+    "difficulty": 4,
+    "title": "24-Hour PV Hosting Capacity & Volt-VAR Control",
+    "description": "Distribution feeder with distributed solar PV installations redirected from a companion module and a 24-hour normalized solar irradiance CSV profile.",
+    "category": "DER & Hosting Capacity",
+    "tags": ["opendss", "pvsystem", "volt-var", "qsts", "multi-file"],
+    "activeFile": "Master.dss",
+    "fileNames": ["Master.dss", "sub/PVSystem.dss", "sub/solar_curve.csv"],
+    "fileCount": 3,
+    "code": "! 24-Hour PV Hosting Capacity & Volt-VAR Feeder\nClear\n\nNew Circuit.PVHostingFeeder basekv=69.0 pu=1.02 phases=3 bus1=SourceBus\n\nNew LineCode.Main336 nphases=3 r1=0.180 x1=0.390 r0=0.450 x0=1.200 units=km\nNew Transformer.Sub1 phases=3 windings=2 buses=[SourceBus, Sub12kV] kvs=[69, 12.47] kvas=[12000, 12000] %loadloss=0.45 xhl=6.0\n\nNew Line.Seg1 bus1=Sub12kV bus2=NodeA phases=3 linecode=Main336 length=2.0\nNew Line.Seg2 bus1=NodeA bus2=NodeB phases=3 linecode=Main336 length=2.5\nNew Line.Seg3 bus1=NodeB bus2=NodeC phases=3 linecode=Main336 length=2.2\n\nNew Load.ResA bus1=NodeA phases=3 kv=12.47 kw=1200 kvar=350\nNew Load.ComB bus1=NodeB phases=3 kv=12.47 kw=1600 kvar=500\nNew Load.IndC bus1=NodeC phases=3 kv=12.47 kw=1100 kvar=380\n\nRedirect sub/PVSystem.dss\n\nSet VoltageBases = [69, 12.47]\nCalcVoltageBases\nSolve\n",
+    "files": {
+      "Master.dss": "! 24-Hour PV Hosting Capacity & Volt-VAR Feeder\nClear\n\nNew Circuit.PVHostingFeeder basekv=69.0 pu=1.02 phases=3 bus1=SourceBus\n\nNew LineCode.Main336 nphases=3 r1=0.180 x1=0.390 r0=0.450 x0=1.200 units=km\nNew Transformer.Sub1 phases=3 windings=2 buses=[SourceBus, Sub12kV] kvs=[69, 12.47] kvas=[12000, 12000] %loadloss=0.45 xhl=6.0\n\nNew Line.Seg1 bus1=Sub12kV bus2=NodeA phases=3 linecode=Main336 length=2.0\nNew Line.Seg2 bus1=NodeA bus2=NodeB phases=3 linecode=Main336 length=2.5\nNew Line.Seg3 bus1=NodeB bus2=NodeC phases=3 linecode=Main336 length=2.2\n\nNew Load.ResA bus1=NodeA phases=3 kv=12.47 kw=1200 kvar=350\nNew Load.ComB bus1=NodeB phases=3 kv=12.47 kw=1600 kvar=500\nNew Load.IndC bus1=NodeC phases=3 kv=12.47 kw=1100 kvar=380\n\nRedirect sub/PVSystem.dss\n\nSet VoltageBases = [69, 12.47]\nCalcVoltageBases\nSolve\n",
+      "sub/PVSystem.dss": "! Distributed PV Systems with Irradiance Curve Reference\nNew Loadshape.SolarDay npts=24 interval=1 mult=(file=sub/solar_curve.csv)\nNew PVSystem.PV_NodeB bus1=NodeB phases=3 kv=12.47 kva=1500 pmpp=1350\nNew PVSystem.PV_NodeC bus1=NodeC phases=3 kv=12.47 kva=1200 pmpp=1100\n",
+      "sub/solar_curve.csv": "0.00\n0.00\n0.00\n0.00\n0.00\n0.02\n0.12\n0.31\n0.54\n0.75\n0.90\n0.98\n1.00\n0.97\n0.88\n0.73\n0.52\n0.29\n0.10\n0.01\n0.00\n0.00\n0.00\n0.00\n"
+    }
+  },
+  {
+    "id": "opendss-05-ieee37-bess-capacitor",
+    "lang": "opendss",
+    "subFormats": ["dss", "csv"],
+    "difficulty": 5,
+    "title": "Multi-Module Feeder with BESS, PV & Switched Capacitors",
+    "description": "Full multi-file OpenDSS project splitting line codes, trunk lines, loads, battery storage / PV DERs, and 24-hour demand profile across 6 workspace files.",
+    "category": "Smart Grid Distribution",
+    "tags": ["opendss", "bess", "capacitor", "multi-file", "distribution"],
+    "activeFile": "Master.dss",
+    "fileNames": [
+      "Master.dss",
+      "sub/BESS.dss",
+      "sub/LineCodes.dss",
+      "sub/Lines.dss",
+      "sub/Loads.dss",
+      "sub/loadshape.csv"
+    ],
+    "fileCount": 6,
+    "code": "! Multi-Module Distribution Feeder with BESS & Capacitor Bank\nClear\n\nNew Circuit.SmartFeeder37 basekv=115.0 pu=1.03 phases=3 bus1=SourceBus\n\nNew Transformer.MainSub phases=3 windings=2 buses=[SourceBus, Bus701] kvs=[115, 12.47] kvas=[15000, 15000] %loadloss=0.4 xhl=6.5\n\nRedirect sub/LineCodes.dss\nRedirect sub/Lines.dss\nRedirect sub/Loads.dss\nRedirect sub/BESS.dss\n\nSet VoltageBases = [115, 12.47]\nCalcVoltageBases\nSolve\n",
+    "files": {
+      "Master.dss": "! Multi-Module Distribution Feeder with BESS & Capacitor Bank\nClear\n\nNew Circuit.SmartFeeder37 basekv=115.0 pu=1.03 phases=3 bus1=SourceBus\n\nNew Transformer.MainSub phases=3 windings=2 buses=[SourceBus, Bus701] kvs=[115, 12.47] kvas=[15000, 15000] %loadloss=0.4 xhl=6.5\n\nRedirect sub/LineCodes.dss\nRedirect sub/Lines.dss\nRedirect sub/Loads.dss\nRedirect sub/BESS.dss\n\nSet VoltageBases = [115, 12.47]\nCalcVoltageBases\nSolve\n",
+      "sub/BESS.dss": "! Community Battery Energy Storage, Rooftop PV & Shunt Capacitor Bank\nNew Storage.BESS704 bus1=Bus704 phases=3 kv=12.47 kWrated=1500 kWhrated=6000 %stored=75 state=DISCHARGING\nNew PVSystem.PV706 bus1=Bus706 phases=3 kv=12.47 kva=1200 pmpp=1080\nNew Capacitor.Cap704 bus1=Bus704 phases=3 kv=12.47 kvar=600\n",
+      "sub/LineCodes.dss": "! Underground & Overhead Feeder Conductor Library\nNew LineCode.UG_Main nphases=3 r1=0.140 x1=0.165 r0=0.420 x0=0.510 units=km\nNew LineCode.UG_Lat  nphases=3 r1=0.260 x1=0.195 r0=0.680 x0=0.620 units=km\n",
+      "sub/Lines.dss": "! Feeder Trunk and Lateral Line Segments\nNew Line.L701_702 bus1=Bus701 bus2=Bus702 phases=3 linecode=UG_Main length=1.4\nNew Line.L702_703 bus1=Bus702 bus2=Bus703 phases=3 linecode=UG_Main length=1.8\nNew Line.L703_704 bus1=Bus703 bus2=Bus704 phases=3 linecode=UG_Main length=1.6\nNew Line.L702_705 bus1=Bus702 bus2=Bus705 phases=3 linecode=UG_Lat  length=0.9\nNew Line.L703_706 bus1=Bus703 bus2=Bus706 phases=3 linecode=UG_Lat  length=1.1\n",
+      "sub/Loads.dss": "! Feeder Customer Loads\nNew Loadshape.DailyDemand npts=24 interval=1 mult=(file=sub/loadshape.csv)\nNew Load.LD702 bus1=Bus702 phases=3 kv=12.47 kw=1400 kvar=420\nNew Load.LD703 bus1=Bus703 phases=3 kv=12.47 kw=1850 kvar=580\nNew Load.LD704 bus1=Bus704 phases=3 kv=12.47 kw=1600 kvar=510\nNew Load.LD705 bus1=Bus705 phases=3 kv=12.47 kw=950 kvar=300\nNew Load.LD706 bus1=Bus706 phases=3 kv=12.47 kw=1100 kvar=340\n",
+      "sub/loadshape.csv": "0.52\n0.48\n0.46\n0.45\n0.47\n0.54\n0.66\n0.78\n0.86\n0.91\n0.94\n0.96\n0.97\n0.98\n0.99\n1.00\n0.98\n0.95\n0.92\n0.87\n0.79\n0.71\n0.63\n0.56\n"
+    }
+  }
+]

@@ -1,0 +1,45 @@
+C Deep-Space Infrared Telescope Multi-Layer Insulation (MLI) Bus
+HEADER OPTIONS DATA
+  TITLE = "Deep-Space Cryogenic Telescope MLI Bus"
+  ABSZRO = 0.0
+  SIGMA = 5.670374419D-8
+HEADER NODE DATA, CRYO
+  1, 290.0, 4500.0 $ Warm spacecraft service bus (290 K)
+  2, 210.0, 320.0  $ Sunshield layer 1 (warm side)
+  3, 140.0, 260.0  $ Sunshield layer 2 (intermediate)
+  4, 85.0,  220.0  $ Sunshield layer 3 (cold side)
+  5, 58.0,  850.0  $ Telescope optical baffle tube
+  6, 42.0,  180.0  $ SiC primary mirror assembly
+  7, 38.0,  45.0   $ Infrared focal-plane array (FPA)
+  -100, 3.0, 0.0   $ Deep space radiative sink (3 K)
+  -200, 35.0, 0.0  $ Pulse-tube cryocooler cold tip (35 K)
+HEADER CONDUCTOR DATA, CRYO
+  10, 1, 2, 0.08   $ Low-conductivity G10 bipod struts (W/K)
+  11, 2, 3, 0.05
+  12, 3, 4, 0.04
+  13, 4, 5, 0.025
+  14, 5, 6, 0.15   $ Baffle-to-mirror mount
+  15, 6, 7, 0.06   $ Mirror-to-FPA thermal strap
+  16, 7, 200, 1.25 $ Copper braid to cryocooler cold tip
+  -20, 1, 2, 0.045 $ MLI effective radiation e*=0.015 * 3.0 m2
+  -21, 2, 3, 0.030
+  -22, 3, 4, 0.025
+  -23, 4, 5, 0.018
+  -24, 1, 100, 1.85 $ Warm bus radiator to space
+  -25, 2, 100, 0.40 $ V-groove edge radiation to space
+  -26, 3, 100, 0.40
+  -27, 4, 100, 0.45
+  -28, 5, 100, 1.20 $ Cold baffle exterior radiation to space
+HEADER SOURCE DATA, CRYO
+  1, 420.0         $ Bus electronics + solar input (W)
+  2, 18.0          $ Residual solar absorption on shield 1 (W)
+  7, 0.35          $ FPA detector readout dissipation (W)
+HEADER CONSTANTS DATA
+  TIMEO = 0.0, TIMEND = 3600.0, DTIMEI = 15.0
+  DRLXCA = 1.0E-7, NLOOP = 300
+HEADER EXECUTION
+  CALL STDSTL
+  CALL CRANKN
+HEADER OUTPUT CALLS
+  CALL TPRINT
+END OF DATA

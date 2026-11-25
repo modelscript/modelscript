@@ -792,7 +792,20 @@ export class CdclSatSolver {
       this.ensureVar(litToVar(aLit));
     }
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as {
+      memory: WebAssembly.Memory;
+      __new?: (size: number, id: number) => number;
+      __pin?: (ptr: number) => number;
+      __unpin?: (ptr: number) => void;
+      atomicChunkAlloc?: (size: number) => number;
+      atomicChunkFree?: (ptr: number) => void;
+      sat_create?: (maxVars: number) => number;
+      sat_destroy?: (ptr: number) => void;
+      sat_addClause?: (ptr: number, litsPtr: number, len: number) => number | boolean;
+      sat_solve?: (ptr: number, assumPtr: number, len: number) => number;
+      sat_getValue?: (ptr: number, v: number) => number;
+      sat_getUnsatCore?: (ptr: number, outPtr: number) => number;
+    } | null;
     if (
       assumptions.length === 0 &&
       wasm &&
@@ -974,7 +987,7 @@ export class CdclSatSolver {
    */
   public reset(): void {
     if (this.wasmSatPtr !== 0) {
-      const wasm: any = getDefaultWasmExports();
+      const wasm = getDefaultWasmExports() as { sat_destroy?: (ptr: number) => void } | null;
       if (wasm && typeof wasm.sat_destroy === "function") {
         wasm.sat_destroy(this.wasmSatPtr);
       }

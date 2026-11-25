@@ -1,0 +1,121 @@
+Model {
+  Name "VanDerPolOscillator"
+  System {
+    Name "VanDerPolOscillator"
+    Block {
+      BlockType Constant
+      Name "UnityConst"
+      SID "1"
+      Value 1.0
+    }
+    Block {
+      BlockType Integrator
+      Name "StateX1"
+      SID "2"
+      InitialCondition 2.0
+    }
+    Block {
+      BlockType Integrator
+      Name "StateX2"
+      SID "3"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Product
+      Name "X1Squared"
+      SID "4"
+    }
+    Block {
+      BlockType Sum
+      Name "OneMinusX1Sq"
+      SID "5"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Product
+      Name "DampingTerm"
+      SID "6"
+    }
+    Block {
+      BlockType Gain
+      Name "MuGain"
+      SID "7"
+      Gain 1.5
+    }
+    Block {
+      BlockType Sum
+      Name "AccelSum"
+      SID "8"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Scope
+      Name "PositionScope"
+      SID "9"
+    }
+    Line {
+      SrcBlock "UnityConst"
+      SrcPort 1
+      DstBlock "OneMinusX1Sq"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "StateX1"
+      SrcPort 1
+      DstBlock "PositionScope"
+      DstPort 1
+      Branch {
+        DstBlock "X1Squared"
+        DstPort 1
+      }
+      Branch {
+        DstBlock "X1Squared"
+        DstPort 2
+      }
+      Branch {
+        DstBlock "AccelSum"
+        DstPort 2
+      }
+    }
+    Line {
+      SrcBlock "X1Squared"
+      SrcPort 1
+      DstBlock "OneMinusX1Sq"
+      DstPort 2
+    }
+    Line {
+      SrcBlock "OneMinusX1Sq"
+      SrcPort 1
+      DstBlock "DampingTerm"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "StateX2"
+      SrcPort 1
+      DstBlock "StateX1"
+      DstPort 1
+      Branch {
+        DstBlock "DampingTerm"
+        DstPort 2
+      }
+    }
+    Line {
+      SrcBlock "DampingTerm"
+      SrcPort 1
+      DstBlock "MuGain"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "MuGain"
+      SrcPort 1
+      DstBlock "AccelSum"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "AccelSum"
+      SrcPort 1
+      DstBlock "StateX2"
+      DstPort 1
+    }
+  }
+}

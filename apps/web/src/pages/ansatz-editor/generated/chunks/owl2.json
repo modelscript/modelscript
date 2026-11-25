@@ -1,0 +1,82 @@
+[
+  {
+    "id": "owl2-01-mechanical-taxonomy",
+    "lang": "owl2",
+    "subFormats": ["ofn"],
+    "difficulty": 1,
+    "title": "Mechanical Components Functional Taxonomy",
+    "description": "OWL 2 Functional-Style Syntax ontology classifying rotating machinery components, bearings, shafts, and gears with disjointness axioms.",
+    "category": "Knowledge Engineering",
+    "tags": ["owl2", "ontology", "functional-syntax", "mechanical", "taxonomy"],
+    "activeFile": "mechanical_taxonomy.ofn",
+    "fileNames": ["mechanical_taxonomy.ofn"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "Prefix(: = <http://modelscript.org/ont/mech#>)\nPrefix(owl: = <http://www.w3.org/2002/07/owl#>)\nPrefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)\n\nOntology(<http://modelscript.org/ont/mech>\n  Declaration(Class(:MechanicalPart))\n  Declaration(Class(:RotatingElement))\n  Declaration(Class(:Shaft))\n  Declaration(Class(:Gear))\n  Declaration(Class(:Bearing))\n  Declaration(Class(:BallBearing))\n  Declaration(Class(:RollerBearing))\n  Declaration(NamedIndividual(:mainDriveShaft))\n  Declaration(NamedIndividual(:pinionGear01))\n\n  SubClassOf(:RotatingElement :MechanicalPart)\n  SubClassOf(:Shaft :RotatingElement)\n  SubClassOf(:Gear :RotatingElement)\n  SubClassOf(:Bearing :MechanicalPart)\n  SubClassOf(:BallBearing :Bearing)\n  SubClassOf(:RollerBearing :Bearing)\n\n  DisjointClasses(:Shaft :Gear :Bearing)\n  DisjointClasses(:BallBearing :RollerBearing)\n\n  ClassAssertion(:Shaft :mainDriveShaft)\n  ClassAssertion(:Gear :pinionGear01)\n)\n"
+  },
+  {
+    "id": "owl2-02-electrical-components-turtle",
+    "lang": "owl2",
+    "subFormats": ["ttl"],
+    "difficulty": 2,
+    "title": "Electrical Component Ontology in Turtle",
+    "description": "RDF/Turtle OWL 2 ontology modeling passive and active circuit elements, terminals, and rated electrical properties.",
+    "category": "Electrical Knowledge Graph",
+    "tags": ["owl2", "turtle", "rdf", "electrical", "components"],
+    "activeFile": "electrical_components.ttl",
+    "fileNames": ["electrical_components.ttl"],
+    "fileCount": 1,
+    "code": "@prefix : <http://modelscript.org/ont/elec#> .\n@prefix owl: <http://www.w3.org/2002/07/owl#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\n<http://modelscript.org/ont/elec> rdf:type owl:Ontology .\n\n:CircuitElement rdf:type owl:Class .\n:PassiveElement rdf:type owl:Class ;\n    rdfs:subClassOf :CircuitElement .\n:ActiveElement rdf:type owl:Class ;\n    rdfs:subClassOf :CircuitElement .\n:Resistor rdf:type owl:Class ;\n    rdfs:subClassOf :PassiveElement .\n:Capacitor rdf:type owl:Class ;\n    rdfs:subClassOf :PassiveElement .\n:Inductor rdf:type owl:Class ;\n    rdfs:subClassOf :PassiveElement .\n:Mosfet rdf:type owl:Class ;\n    rdfs:subClassOf :ActiveElement .\n\n:connectedTo rdf:type owl:ObjectProperty ;\n    rdfs:domain :CircuitElement ;\n    rdfs:range :CircuitElement .\n\n:ratedPowerW rdf:type owl:DatatypeProperty ;\n    rdfs:domain :CircuitElement ;\n    rdfs:range xsd:double .\n\n:R1 rdf:type :Resistor ;\n    :ratedPowerW \"0.25\"^^xsd:double ;\n    :connectedTo :C1 .\n\n:C1 rdf:type :Capacitor ;\n    :ratedPowerW \"0.10\"^^xsd:double .\n"
+  },
+  {
+    "id": "owl2-03-process-plant-pid",
+    "lang": "owl2",
+    "subFormats": ["ofn"],
+    "difficulty": 3,
+    "title": "Process Plant P&ID Restrictions & Inverse Roles",
+    "description": "OWL 2 Functional-Style ontology encoding chemical process P&ID equipment connectivity, existential restrictions, and inverse upstream/downstream flow roles.",
+    "category": "Process Engineering",
+    "tags": ["owl2", "pid", "process-plant", "restrictions", "inverse-roles"],
+    "activeFile": "process_pid.ofn",
+    "fileNames": ["process_pid.ofn"],
+    "fileCount": 1,
+    "code": "Prefix(: = <http://modelscript.org/ont/pid#>)\nPrefix(owl: = <http://www.w3.org/2002/07/owl#>)\nPrefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)\n\nOntology(<http://modelscript.org/ont/pid>\n  Declaration(Class(:ProcessEquipment))\n  Declaration(Class(:Pump))\n  Declaration(Class(:HeatExchanger))\n  Declaration(Class(:ReactorVessel))\n  Declaration(Class(:ControlValve))\n  Declaration(Class(:FluidStream))\n  Declaration(ObjectProperty(:feedsStream))\n  Declaration(ObjectProperty(:fedByEquipment))\n  Declaration(ObjectProperty(:hasControlValve))\n  Declaration(DataProperty(:designPressureBar))\n  Declaration(NamedIndividual(:P101))\n  Declaration(NamedIndividual(:E201))\n  Declaration(NamedIndividual(:R301))\n  Declaration(NamedIndividual(:FV101))\n  Declaration(NamedIndividual(:S10))\n\n  SubClassOf(:Pump :ProcessEquipment)\n  SubClassOf(:HeatExchanger :ProcessEquipment)\n  SubClassOf(:ReactorVessel :ProcessEquipment)\n  SubClassOf(:ControlValve :ProcessEquipment)\n\n  InverseObjectProperties(:feedsStream :fedByEquipment)\n  ObjectPropertyDomain(:feedsStream :ProcessEquipment)\n  ObjectPropertyRange(:feedsStream :FluidStream)\n  DataPropertyDomain(:designPressureBar :ProcessEquipment)\n  DataPropertyRange(:designPressureBar xsd:double)\n\n  SubClassOf(:Pump ObjectSomeValuesFrom(:feedsStream :FluidStream))\n  SubClassOf(:ReactorVessel ObjectSomeValuesFrom(:hasControlValve :ControlValve))\n\n  ClassAssertion(:Pump :P101)\n  ClassAssertion(:HeatExchanger :E201)\n  ClassAssertion(:ReactorVessel :R301)\n  ClassAssertion(:ControlValve :FV101)\n  ClassAssertion(:FluidStream :S10)\n  ObjectPropertyAssertion(:feedsStream :P101 :S10)\n  ObjectPropertyAssertion(:hasControlValve :R301 :FV101)\n  DataPropertyAssertion(:designPressureBar :R301 \"24.5\"^^xsd:double)\n)\n"
+  },
+  {
+    "id": "owl2-04-aerospace-avionics-units",
+    "lang": "owl2",
+    "subFormats": ["ofn"],
+    "difficulty": 4,
+    "title": "Aerospace Avionics Ontology with Units Module",
+    "description": "Multi-file OWL 2 ontology pairing an aerospace avionics subsystem taxonomy with a companion SI physical units ontology module.",
+    "category": "Aerospace Ontology",
+    "tags": ["owl2", "avionics", "units", "modular", "multi-file"],
+    "activeFile": "avionics.ofn",
+    "fileNames": ["avionics.ofn", "units.ofn"],
+    "fileCount": 2,
+    "code": "Prefix(: = <http://modelscript.org/ont/avionics#>)\nPrefix(u: = <http://modelscript.org/ont/units#>)\nPrefix(owl: = <http://www.w3.org/2002/07/owl#>)\nPrefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)\n\nOntology(<http://modelscript.org/ont/avionics>\n  Declaration(Class(:AvionicsLRU))\n  Declaration(Class(:FlightControlComputer))\n  Declaration(Class(:InertialReferenceUnit))\n  Declaration(Class(:AirDataComputer))\n  Declaration(Class(:BusInterface))\n  Declaration(Class(:ARINC429Bus))\n  Declaration(ObjectProperty(:communicatesOver))\n  Declaration(ObjectProperty(:requiresRedundancyFrom))\n  Declaration(DataProperty(:dalLevel))\n  Declaration(DataProperty(:busVoltageV))\n  Declaration(NamedIndividual(:FCC_A))\n  Declaration(NamedIndividual(:FCC_B))\n  Declaration(NamedIndividual(:IRU_1))\n  Declaration(NamedIndividual(:Bus_429_Primary))\n\n  SubClassOf(:FlightControlComputer :AvionicsLRU)\n  SubClassOf(:InertialReferenceUnit :AvionicsLRU)\n  SubClassOf(:AirDataComputer :AvionicsLRU)\n  SubClassOf(:ARINC429Bus :BusInterface)\n  DisjointClasses(:FlightControlComputer :InertialReferenceUnit :AirDataComputer)\n\n  ObjectPropertyDomain(:communicatesOver :AvionicsLRU)\n  ObjectPropertyRange(:communicatesOver :BusInterface)\n  SymmetricObjectProperty(:requiresRedundancyFrom)\n\n  SubClassOf(:FlightControlComputer ObjectSomeValuesFrom(:communicatesOver :ARINC429Bus))\n\n  ClassAssertion(:FlightControlComputer :FCC_A)\n  ClassAssertion(:FlightControlComputer :FCC_B)\n  ClassAssertion(:InertialReferenceUnit :IRU_1)\n  ClassAssertion(:ARINC429Bus :Bus_429_Primary)\n  ObjectPropertyAssertion(:communicatesOver :FCC_A :Bus_429_Primary)\n  ObjectPropertyAssertion(:requiresRedundancyFrom :FCC_A :FCC_B)\n  DataPropertyAssertion(:dalLevel :FCC_A \"DAL-A\"^^xsd:string)\n  DataPropertyAssertion(:busVoltageV :FCC_A \"28.0\"^^xsd:double)\n)\n",
+    "files": {
+      "avionics.ofn": "Prefix(: = <http://modelscript.org/ont/avionics#>)\nPrefix(u: = <http://modelscript.org/ont/units#>)\nPrefix(owl: = <http://www.w3.org/2002/07/owl#>)\nPrefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)\n\nOntology(<http://modelscript.org/ont/avionics>\n  Declaration(Class(:AvionicsLRU))\n  Declaration(Class(:FlightControlComputer))\n  Declaration(Class(:InertialReferenceUnit))\n  Declaration(Class(:AirDataComputer))\n  Declaration(Class(:BusInterface))\n  Declaration(Class(:ARINC429Bus))\n  Declaration(ObjectProperty(:communicatesOver))\n  Declaration(ObjectProperty(:requiresRedundancyFrom))\n  Declaration(DataProperty(:dalLevel))\n  Declaration(DataProperty(:busVoltageV))\n  Declaration(NamedIndividual(:FCC_A))\n  Declaration(NamedIndividual(:FCC_B))\n  Declaration(NamedIndividual(:IRU_1))\n  Declaration(NamedIndividual(:Bus_429_Primary))\n\n  SubClassOf(:FlightControlComputer :AvionicsLRU)\n  SubClassOf(:InertialReferenceUnit :AvionicsLRU)\n  SubClassOf(:AirDataComputer :AvionicsLRU)\n  SubClassOf(:ARINC429Bus :BusInterface)\n  DisjointClasses(:FlightControlComputer :InertialReferenceUnit :AirDataComputer)\n\n  ObjectPropertyDomain(:communicatesOver :AvionicsLRU)\n  ObjectPropertyRange(:communicatesOver :BusInterface)\n  SymmetricObjectProperty(:requiresRedundancyFrom)\n\n  SubClassOf(:FlightControlComputer ObjectSomeValuesFrom(:communicatesOver :ARINC429Bus))\n\n  ClassAssertion(:FlightControlComputer :FCC_A)\n  ClassAssertion(:FlightControlComputer :FCC_B)\n  ClassAssertion(:InertialReferenceUnit :IRU_1)\n  ClassAssertion(:ARINC429Bus :Bus_429_Primary)\n  ObjectPropertyAssertion(:communicatesOver :FCC_A :Bus_429_Primary)\n  ObjectPropertyAssertion(:requiresRedundancyFrom :FCC_A :FCC_B)\n  DataPropertyAssertion(:dalLevel :FCC_A \"DAL-A\"^^xsd:string)\n  DataPropertyAssertion(:busVoltageV :FCC_A \"28.0\"^^xsd:double)\n)\n",
+      "units.ofn": "Prefix(: = <http://modelscript.org/ont/units#>)\nPrefix(owl: = <http://www.w3.org/2002/07/owl#>)\nPrefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)\n\nOntology(<http://modelscript.org/ont/units>\n  Declaration(Class(:QuantityKind))\n  Declaration(Class(:Unit))\n  Declaration(Class(:SIUnit))\n  Declaration(ObjectProperty(:hasUnit))\n  Declaration(DataProperty(:numericValue))\n  Declaration(NamedIndividual(:Volt))\n  Declaration(NamedIndividual(:Hertz))\n  Declaration(NamedIndividual(:Kilogram))\n\n  SubClassOf(:SIUnit :Unit)\n  ObjectPropertyDomain(:hasUnit :QuantityKind)\n  ObjectPropertyRange(:hasUnit :Unit)\n  DataPropertyRange(:numericValue xsd:double)\n\n  ClassAssertion(:SIUnit :Volt)\n  ClassAssertion(:SIUnit :Hertz)\n  ClassAssertion(:SIUnit :Kilogram)\n)\n"
+    }
+  },
+  {
+    "id": "owl2-05-digital-twin-fault-kb",
+    "lang": "owl2",
+    "subFormats": ["ofn", "ttl", "rq"],
+    "difficulty": 5,
+    "title": "Digital-Twin Fault Reasoning Knowledge Base",
+    "description": "Multi-file OWL 2 EL++ fault-diagnosis knowledge base combining an industrial plant ontology, Turtle sensor telemetry assertions, and a SPARQL fault query.",
+    "category": "Fault Diagnosis & Reasoning",
+    "tags": ["owl2", "digital-twin", "fault-diagnosis", "sparql", "multi-file"],
+    "activeFile": "plant_kb.ofn",
+    "fileNames": ["plant_kb.ofn", "fault_query.rq", "sensors.ttl"],
+    "fileCount": 3,
+    "code": "Prefix(: = <http://modelscript.org/ont/faults#>)\nPrefix(owl: = <http://www.w3.org/2002/07/owl#>)\nPrefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)\n\nOntology(<http://modelscript.org/ont/faults>\n  Declaration(Class(:Asset))\n  Declaration(Class(:Compressor))\n  Declaration(Class(:Sensor))\n  Declaration(Class(:VibrationSensor))\n  Declaration(Class(:TemperatureSensor))\n  Declaration(Class(:Anomaly))\n  Declaration(Class(:BearingWearFault))\n  Declaration(Class(:OverheatFault))\n  Declaration(Class(:CriticalAsset))\n  Declaration(ObjectProperty(:monitoredBy))\n  Declaration(ObjectProperty(:exhibitsAnomaly))\n  Declaration(DataProperty(:rmsVelocityMmS))\n  Declaration(NamedIndividual(:Comp_01))\n  Declaration(NamedIndividual(:Vib_01))\n  Declaration(NamedIndividual(:Fault_Brg_01))\n\n  SubClassOf(:Compressor :Asset)\n  SubClassOf(:VibrationSensor :Sensor)\n  SubClassOf(:TemperatureSensor :Sensor)\n  SubClassOf(:BearingWearFault :Anomaly)\n  SubClassOf(:OverheatFault :Anomaly)\n  SubClassOf(:CriticalAsset :Asset)\n\n  SubClassOf(ObjectIntersectionOf(:Compressor ObjectSomeValuesFrom(:exhibitsAnomaly :BearingWearFault)) :CriticalAsset)\n\n  ObjectPropertyDomain(:monitoredBy :Asset)\n  ObjectPropertyRange(:monitoredBy :Sensor)\n  ObjectPropertyDomain(:exhibitsAnomaly :Asset)\n  ObjectPropertyRange(:exhibitsAnomaly :Anomaly)\n\n  ClassAssertion(:Compressor :Comp_01)\n  ClassAssertion(:VibrationSensor :Vib_01)\n  ClassAssertion(:BearingWearFault :Fault_Brg_01)\n  ObjectPropertyAssertion(:monitoredBy :Comp_01 :Vib_01)\n  ObjectPropertyAssertion(:exhibitsAnomaly :Comp_01 :Fault_Brg_01)\n  DataPropertyAssertion(:rmsVelocityMmS :Vib_01 \"11.4\"^^xsd:double)\n)\n",
+    "files": {
+      "plant_kb.ofn": "Prefix(: = <http://modelscript.org/ont/faults#>)\nPrefix(owl: = <http://www.w3.org/2002/07/owl#>)\nPrefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)\n\nOntology(<http://modelscript.org/ont/faults>\n  Declaration(Class(:Asset))\n  Declaration(Class(:Compressor))\n  Declaration(Class(:Sensor))\n  Declaration(Class(:VibrationSensor))\n  Declaration(Class(:TemperatureSensor))\n  Declaration(Class(:Anomaly))\n  Declaration(Class(:BearingWearFault))\n  Declaration(Class(:OverheatFault))\n  Declaration(Class(:CriticalAsset))\n  Declaration(ObjectProperty(:monitoredBy))\n  Declaration(ObjectProperty(:exhibitsAnomaly))\n  Declaration(DataProperty(:rmsVelocityMmS))\n  Declaration(NamedIndividual(:Comp_01))\n  Declaration(NamedIndividual(:Vib_01))\n  Declaration(NamedIndividual(:Fault_Brg_01))\n\n  SubClassOf(:Compressor :Asset)\n  SubClassOf(:VibrationSensor :Sensor)\n  SubClassOf(:TemperatureSensor :Sensor)\n  SubClassOf(:BearingWearFault :Anomaly)\n  SubClassOf(:OverheatFault :Anomaly)\n  SubClassOf(:CriticalAsset :Asset)\n\n  SubClassOf(ObjectIntersectionOf(:Compressor ObjectSomeValuesFrom(:exhibitsAnomaly :BearingWearFault)) :CriticalAsset)\n\n  ObjectPropertyDomain(:monitoredBy :Asset)\n  ObjectPropertyRange(:monitoredBy :Sensor)\n  ObjectPropertyDomain(:exhibitsAnomaly :Asset)\n  ObjectPropertyRange(:exhibitsAnomaly :Anomaly)\n\n  ClassAssertion(:Compressor :Comp_01)\n  ClassAssertion(:VibrationSensor :Vib_01)\n  ClassAssertion(:BearingWearFault :Fault_Brg_01)\n  ObjectPropertyAssertion(:monitoredBy :Comp_01 :Vib_01)\n  ObjectPropertyAssertion(:exhibitsAnomaly :Comp_01 :Fault_Brg_01)\n  DataPropertyAssertion(:rmsVelocityMmS :Vib_01 \"11.4\"^^xsd:double)\n)\n",
+      "fault_query.rq": "PREFIX : <http://modelscript.org/ont/faults#>\nPREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>\n\nSELECT ?asset ?anomaly ?sensor\nWHERE {\n  ?asset :exhibitsAnomaly ?anomaly .\n  ?asset :monitoredBy ?sensor .\n}\nORDER BY ?asset\n",
+      "sensors.ttl": "@prefix : <http://modelscript.org/ont/faults#> .\n@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .\n@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .\n\n:Comp_02 rdf:type :Compressor ;\n    :monitoredBy :Temp_02 ;\n    :exhibitsAnomaly :Fault_Heat_02 .\n\n:Temp_02 rdf:type :TemperatureSensor .\n:Fault_Heat_02 rdf:type :OverheatFault .\n"
+    }
+  }
+]

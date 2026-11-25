@@ -1,0 +1,73 @@
+[
+  {
+    "id": "iges-01-rectangular-wireframe-profile",
+    "lang": "iges",
+    "subFormats": ["iges-5.3", "wireframe"],
+    "difficulty": 1,
+    "title": "2D Rectangular Wireframe Profile",
+    "description": "Strict 80-column IGES 5.3 file defining a 100 mm x 60 mm rectangular wireframe boundary using four Entity Type 110 Line primitives.",
+    "category": "3D CAD Exchange",
+    "tags": ["iges", "wireframe", "entity-110", "cad-exchange"],
+    "activeFile": "rect_wireframe.igs",
+    "fileNames": ["rect_wireframe.igs"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "IGES 5.3 2D Rectangular Wireframe Profile (100 mm x 60 mm)              S      1\n1H,,1H;,12HRECT_PROFILE,18Hrect_wireframe.igs,15HModelScript-CAD,15HModeG      1\nlScript 1.0,32,38,6,308,15,12HRECT_PROFILE,1.0,2,2HMM,1,0.0,15H20260101.G      2\n000000,1.0E-6,1000.0,10HAnsatz CAD,23HModelScript Engineering,11,0,15H20G      3\n260101.000000;                                                          G      4\n     110       1       0       1       0       0       0       000000000D      1\n     110       0       0       1       0                  BOTTOM       0D      2\n     110       2       0       1       0       0       0       000000000D      3\n     110       0       0       1       0                   RIGHT       0D      4\n     110       3       0       1       0       0       0       000000000D      5\n     110       0       0       1       0                     TOP       0D      6\n     110       4       0       1       0       0       0       000000000D      7\n     110       0       0       1       0                    LEFT       0D      8\n110,0,0,0,100,0,0;                                                     1P      1\n110,100,0,0,100,60,0;                                                  3P      2\n110,100,60,0,0,60,0;                                                   5P      3\n110,0,60,0,0,0,0;                                                      7P      4\nS0000001G0000004D0000008P0000004                                        T      1\n"
+  },
+  {
+    "id": "iges-02-circular-flange-bolt-arcs",
+    "lang": "iges",
+    "subFormats": ["iges-5.3", "mechanical"],
+    "difficulty": 2,
+    "title": "Circular Flange with Bolt-Hole Arcs",
+    "description": "Machined 120 mm OD circular pipe flange in IGES 5.3 using Entity 100 Circular Arcs for outer rim, central bore, and four bolt holes plus Entity 110 centerlines.",
+    "category": "3D CAD Exchange",
+    "tags": ["iges", "flange", "entity-100", "arcs"],
+    "activeFile": "circular_flange.igs",
+    "fileNames": ["circular_flange.igs"],
+    "fileCount": 1,
+    "code": "IGES 5.3 Circular Pipe Flange with 4 Bolt Holes (MM)                    S      1\n1H,,1H;,11HPIPE_FLANGE,19Hcircular_flange.igs,15HModelScript-CAD,15HModeG      1\nlScript 1.0,32,38,6,308,15,11HPIPE_FLANGE,1.0,2,2HMM,1,0.0,15H20260101.0G      2\n00000,1.0E-6,1000.0,10HAnsatz CAD,23HModelScript Engineering,11,0,15H202G      3\n60101.000000;                                                           G      4\n     116       1       0       1       0       0       0       000000000D      1\n     116       0       0       1       0                  ORIGIN       0D      2\n     100       2       0       1       0       0       0       000000000D      3\n     100       0       0       1       0                OD_CIRCL       0D      4\n     100       3       0       1       0       0       0       000000000D      5\n     100       0       0       1       0                    BORE       0D      6\n     100       4       0       1       0       0       0       000000000D      7\n     100       0       0       1       0                   BOLT1       0D      8\n     100       5       0       1       0       0       0       000000000D      9\n     100       0       0       1       0                   BOLT2       0D     10\n     100       6       0       1       0       0       0       000000000D     11\n     100       0       0       1       0                   BOLT3       0D     12\n     100       7       0       1       0       0       0       000000000D     13\n     100       0       0       1       0                   BOLT4       0D     14\n     110       8       0       1       0       0       0       000000000D     15\n     110       0       0       1       0                    CL_X       0D     16\n     110       9       0       1       0       0       0       000000000D     17\n     110       0       0       1       0                    CL_Y       0D     18\n116,0,0,0,0;                                                           1P      1\n100,0,0,0,60,0,60,0;                                                   3P      2\n100,0,0,0,25,0,25,0;                                                   5P      3\n100,0,42,0,47,0,47,0;                                                  7P      4\n100,0,0,42,5,42,5,42;                                                  9P      5\n100,0,-42,0,-37,0,-37,0;                                              11P      6\n100,0,0,-42,5,-42,5,-42;                                              13P      7\n110,-65,0,0,65,0,0;                                                   15P      8\n110,0,-65,0,0,65,0;                                                   17P      9\nS0000001G0000004D0000018P0000009                                        T      1\n"
+  },
+  {
+    "id": "iges-03-bspline-airfoil-section",
+    "lang": "iges",
+    "subFormats": ["iges-5.3", "nurbs"],
+    "difficulty": 3,
+    "title": "Cubic B-Spline Airfoil Cross-Section (Entity 126)",
+    "description": "Cambered aerodynamic airfoil profile represented by upper and lower cubic Rational B-Spline Curves (Entity Type 126) with clamped knot vectors and chord line.",
+    "category": "Aerospace CAD",
+    "tags": ["iges", "nurbs", "entity-126", "airfoil"],
+    "activeFile": "airfoil_nurbs.igs",
+    "fileNames": ["airfoil_nurbs.igs"],
+    "fileCount": 1,
+    "code": "IGES 5.3 Cubic B-Spline Airfoil Upper Camber Curve (Entity 126)         S      1\n1H,,1H;,14HAIRFOIL_SPLINE,17Hairfoil_nurbs.igs,15HModelScript-CAD,15HModG      1\nelScript 1.0,32,38,6,308,15,14HAIRFOIL_SPLINE,1.0,2,2HMM,1,0.0,15H202601G      2\n01.000000,1.0E-6,1000.0,11HAnsatz Aero,23HModelScript Engineering,11,0,1G      3\n5H20260101.000000;                                                      G      4\n     126       1       0       1       0       0       0       000000000D      1\n     126       0       0       2       0                UPPER_SU       0D      2\n     126       3       0       1       0       0       0       000000000D      3\n     126       0       0       2       0                LOWER_SU       0D      4\n     110       5       0       1       0       0       0       000000000D      5\n     110       0       0       1       0                   CHORD       0D      6\n126,4,3,1,0,1,0,0,0,0,0,0.5,1,1,1,1,1,1,1,1,1,0,0,0,15,11,0,40,1       1P      1\n4,0,75,8,0,100,0,0,0,1,0,0,1;                                          1P      2\n126,4,3,1,0,1,0,0,0,0,0,0.5,1,1,1,1,1,1,1,1,1,0,0,0,15,-6,0,40,-       3P      3\n7,0,75,-3,0,100,0,0,0,1,0,0,1;                                         3P      4\n110,0,0,0,100,0,0;                                                     5P      5\nS0000001G0000004D0000006P0000005                                        T      1\n"
+  },
+  {
+    "id": "iges-04-lofted-duct-nurbs-surface",
+    "lang": "iges",
+    "subFormats": ["iges-5.3", "nurbs-surface"],
+    "difficulty": 4,
+    "title": "Lofted Transition Duct NURBS Surface (Entity 128)",
+    "description": "Aerodynamic transition duct surface defined as a Rational B-Spline Surface (Entity Type 128) bounded by four 3D inlet, outlet, and side wireframe edges.",
+    "category": "Surface Modeling",
+    "tags": ["iges", "nurbs", "entity-128", "duct-surface"],
+    "activeFile": "duct_surface.igs",
+    "fileNames": ["duct_surface.igs"],
+    "fileCount": 1,
+    "code": "IGES 5.3 Lofted Transition Duct NURBS Surface Patch (Entity 128)        S      1\n1H,,1H;,11HLOFTED_DUCT,16Hduct_surface.igs,15HModelScript-CAD,15HModelScG      1\nript 1.0,32,38,6,308,15,11HLOFTED_DUCT,1.0,2,2HMM,1,0.0,15H20260101.0000G      2\n00,1.0E-6,1000.0,10HAnsatz CAD,23HModelScript Engineering,11,0,15H202601G      3\n01.000000;                                                              G      4\n     128       1       0       1       0       0       0       000000000D      1\n     128       0       0       2       0                DUCT_TOP       0D      2\n     110       3       0       1       0       0       0       000000000D      3\n     110       0       0       1       0                INLET_ED       0D      4\n     110       4       0       1       0       0       0       000000000D      5\n     110       0       0       1       0                OUTLET_E       0D      6\n     110       5       0       1       0       0       0       000000000D      7\n     110       0       0       1       0                  SIDE_A       0D      8\n     110       6       0       1       0       0       0       000000000D      9\n     110       0       0       1       0                  SIDE_B       0D     10\n128,1,1,1,1,0,0,1,0,0,0,0,1,1,0,0,1,1,1,1,1,1,0,0,20,120,0,35,0,       1P      1\n80,20,120,60,35,0,1,0,1;                                               1P      2\n110,0,0,20,0,80,20;                                                    3P      3\n110,120,0,35,120,60,35;                                                5P      4\n110,0,0,20,120,0,35;                                                   7P      5\n110,0,80,20,120,60,35;                                                 9P      6\nS0000001G0000004D0000010P0000006                                        T      1\n"
+  },
+  {
+    "id": "iges-05-precision-housing-brep",
+    "lang": "iges",
+    "subFormats": ["iges-5.3", "brep", "nurbs"],
+    "difficulty": 5,
+    "title": "3D Precision Housing Transformed NURBS and B-Rep",
+    "description": "Advanced IGES 5.3 mechanical housing combining Entity 124 rigid transformation matrix, rational NURBS fillet arc (126), NURBS face (128), composite loop (102), and B-Rep solid (186).",
+    "category": "3D Solid Modeling",
+    "tags": ["iges", "brep", "entity-186", "entity-124", "nurbs"],
+    "activeFile": "precision_housing.igs",
+    "fileNames": ["precision_housing.igs"],
+    "fileCount": 1,
+    "code": "IGES 5.3 3D Precision Housing Transformed NURBS and Manifold B-Rep      S      1\n1H,,1H;,12HHOUSING_BREP,21Hprecision_housing.igs,15HModelScript-CAD,15HMG      1\nodelScript 1.0,32,38,6,308,15,12HHOUSING_BREP,1.0,2,2HMM,1,0.0,15H202601G      2\n01.000000,1.0E-6,1000.0,10HAnsatz CAD,23HModelScript Engineering,11,0,15G      3\nH20260101.000000;                                                       G      4\n     124       1       0       1       0       0       0       000000000D      1\n     124       0       0       1       0                HOUSING_       0D      2\n     126       2       0       1       0       0       1       000000000D      3\n     126       0       0       2       0                FILLET_A       0D      4\n     128       4       0       1       0       0       0       000000000D      5\n     128       0       0       2       0                TOP_FACE       0D      6\n     102       6       0       1       0       0       0       000000000D      7\n     102       0       0       1       0                OUTER_LO       0D      8\n     186       7       0       1       0       0       0       000000000D      9\n     186       0       0       1       0                HOUSING_       0D     10\n124,1,0,0,10,0,1,0,5,0,0,1,25;                                         1P      1\n126,2,2,1,0,0,0,0,0,0,1,1,1,1,0.7071067811865476,1,20,0,0,20,20,       3P      2\n0,0,20,0,0,1,0,0,1;                                                    3P      3\n128,1,1,1,1,0,0,1,0,0,0,0,1,1,0,0,1,1,1,1,1,1,0,0,25,80,0,25,0,6       5P      4\n0,25,80,60,25,0,1,0,1;                                                 5P      5\n102,1,3;                                                               7P      6\n186,5,1,0;                                                             9P      7\nS0000001G0000004D0000010P0000007                                        T      1\n"
+  }
+]

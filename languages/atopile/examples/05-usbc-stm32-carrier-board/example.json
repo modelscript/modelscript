@@ -1,0 +1,11 @@
+{
+  "id": "atopile-05-usbc-stm32-carrier-board",
+  "lang": "atopile",
+  "subFormats": ["ato"],
+  "difficulty": 5,
+  "title": "USB-C Powered STM32 Telemetry Carrier Board",
+  "description": "Multi-module Atopile hardware project combining a USB-C CC-pull-down front end (usb_c.ato), 3.3V power regulation stage (power.ato), shared passives library, and ato.yaml build manifest.",
+  "category": "ECAD & Hardware Description",
+  "tags": ["atopile", "usb-c", "stm32", "carrier-board", "multi-file"],
+  "activeFile": "carrier.ato"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "sel-01-sel351-feeder-overcurrent",
+  "lang": "sel",
+  "subFormats": ["txt"],
+  "difficulty": 1,
+  "title": "SEL-351 Distribution Feeder Overcurrent Protection",
+  "description": "SEL-351 feeder protection relay settings configuring phase and ground instantaneous (50P/50G) and inverse-time (51P/51G) overcurrent elements with SELogic trip and breaker close equations.",
+  "category": "Power System Protection",
+  "tags": ["sel", "sel-351", "overcurrent", "selogic", "feeder"],
+  "activeFile": "sel351_feeder.txt",
+  "isDefaultStarter": true
+}

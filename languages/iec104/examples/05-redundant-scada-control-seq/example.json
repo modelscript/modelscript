@@ -1,0 +1,11 @@
+{
+  "id": "iec104-05-redundant-scada-control-seq",
+  "lang": "iec104",
+  "subFormats": ["iec104"],
+  "difficulty": 5,
+  "title": "Dual-Redundant SCADA Control & Protection Telemetry Suite",
+  "description": "Multi-file IEC 60870-5-104 transmission substation gateway pairing a primary RTU telemetry point table (rtu_points.iec104) with a redundant backup control channel configuration (control_seq.iec104).",
+  "category": "Power Systems SCADA",
+  "tags": ["iec104", "redundant", "scada", "control", "multi-file"],
+  "activeFile": "rtu_points.iec104"
+}

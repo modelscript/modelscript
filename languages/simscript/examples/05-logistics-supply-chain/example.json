@@ -1,0 +1,11 @@
+{
+  "id": "simscript-05-logistics-supply-chain",
+  "lang": "simscript",
+  "subFormats": ["sim"],
+  "difficulty": 5,
+  "title": "Multi-Echelon Logistics Supply Chain Network",
+  "description": "Multi-file SIMSCRIPT II.5 three-echelon freight distribution network coordinating factory dispatch, regional cross-dock sorting, fleet truck allocation, and periodic inventory audits.",
+  "category": "Supply Chain & Logistics",
+  "tags": ["simscript", "supply-chain", "logistics", "multi-echelon", "multi-file"],
+  "activeFile": "network.sim"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "arinc429-02-irs-attitude-heading",
+  "lang": "arinc429",
+  "subFormats": ["arinc429-high"],
+  "difficulty": 2,
+  "title": "Inertial Reference System Pitch, Roll & True Heading Bus",
+  "description": "High-speed (100 kbps) ARINC 429 Inertial Reference System bus transmitting 50 Hz pitch angle (324), roll angle (325), and true heading (314) during a shallow left bank.",
+  "category": "Inertial Navigation",
+  "tags": ["arinc429", "irs", "attitude", "heading", "high-speed"],
+  "activeFile": "irs_attitude.a429"
+}

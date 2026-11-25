@@ -1,0 +1,11 @@
+{
+  "id": "nec2-02-quarterwave-monopole-ground",
+  "lang": "nec2",
+  "subFormats": ["nec2", "ground-plane"],
+  "difficulty": 2,
+  "title": "Quarter-Wave Monopole Over Perfect Ground",
+  "description": "Base-fed vertical quarter-wave monopole at 146 MHz over a perfectly conducting ground plane (GE 1 / GN 1) with frequency sweep across the 2m amateur band.",
+  "category": "Antennas & Electromagnetics",
+  "tags": ["nec2", "monopole", "ground-plane", "vhf"],
+  "activeFile": "monopole_146mhz.nec"
+}

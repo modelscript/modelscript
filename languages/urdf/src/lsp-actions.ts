@@ -62,8 +62,17 @@ export const extractUrdfTheoryConstraints = async (text: string) => {
   const { parseUrdf } = await import("./index.js");
   const robot = parseUrdf(text);
   const ns = `URDF::${robot.name || "Robot"}`;
-  const parameters: any[] = [];
-  const ports: any[] = [];
+  const parameters: Array<{
+    name: string;
+    fqn: string;
+    value: number;
+    rawValueText: string;
+    unit: string;
+    line: number;
+    startCol: number;
+    endCol: number;
+  }> = [];
+  const ports: Array<{ name: string; kind: string; line: number }> = [];
   for (const link of robot.links.values()) {
     if (link.inertial && Number.isFinite(link.inertial.mass)) {
       parameters.push({

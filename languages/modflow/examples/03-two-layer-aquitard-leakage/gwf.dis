@@ -1,0 +1,10 @@
+# 2-Layer Aquifer-Aquitard Discretization (2 layers x 8 rows x 8 columns)
+BEGIN DIS6
+  NLAY 2
+  NROW 8
+  NCOL 8
+  DELR 150.0
+  DELC 150.0
+  TOP 80.0
+  BOTM 45.0 10.0
+END DIS6

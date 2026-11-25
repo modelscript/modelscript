@@ -439,7 +439,9 @@ export function generateProceduralMultibodyGeometry(
         },
       });
       return { meshes, components };
-    } catch {}
+    } catch {
+      // Fallback to empty scene when model geometry cannot be parsed
+    }
   } else if (isSimpack) {
     // Extract SIMPACK bodies
     const bodyRegex = /(?:<body\s+[^>]*id="([^"]+)"|^\s*(?:\$body|body)\s+([a-zA-Z0-9_]+))/gim;

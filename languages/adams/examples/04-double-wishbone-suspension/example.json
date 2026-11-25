@@ -1,0 +1,12 @@
+{
+  "id": "adams-04-double-wishbone-suspension",
+  "lang": "adams",
+  "subFormats": ["adm", "acf"],
+  "difficulty": 4,
+  "title": "Quarter-Car Double-Wishbone Suspension",
+  "description": "Front-left double-wishbone (SLA) independent suspension with upper and lower control arms, steering upright, spinning wheel hub, coilover spring-damper, and an Adams/Solver ACF ride-bump simulation command deck.",
+  "category": "Automotive Multibody",
+  "tags": ["suspension", "double-wishbone", "quarter-car", "acf", "multi-file"],
+  "activeFile": "wishbone.adm",
+  "fileOrder": ["wishbone.adm", "ride_bump.acf"]
+}

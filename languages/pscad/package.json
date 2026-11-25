@@ -63,6 +63,7 @@
     "src-gen/**"
   ],
   "scripts": {
+    "ansatz": "npx tsx ../../scripts/tools/language-ansatz.ts .",
     "asbuild:native": "asc assembly/psout.ts --target native",
     "bench:pmr": "tsx tests/run-pmr-benchmark.ts",
     "build": "node ../../scripts/build/build-language-parser.js && npm run build:wasm && tsc",
@@ -70,7 +71,6 @@
     "build:wasm": "node scripts/build-wasm.js",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
     "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
   },

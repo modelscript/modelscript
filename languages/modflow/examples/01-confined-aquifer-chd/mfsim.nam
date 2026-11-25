@@ -1,0 +1,7 @@
+# MODFLOW 6 Simulation Name File
+BEGIN OPTIONS
+END OPTIONS
+
+BEGIN MODELS
+  GWF6 gwf.nam gwf_confined
+END MODELS

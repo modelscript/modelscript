@@ -22,6 +22,7 @@ import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { DetailSubtitle, Header, PrimaryButton, SecondaryButton } from "../settingsStyles";
 
 export interface DataArchiveTabProps {
@@ -82,8 +83,8 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
           ? "Your archive is ready for download!"
           : `Archive request queued (Position #${job.queuePosition || 1}). Processing asynchronously in worker queue...`,
       );
-    } catch (err: any) {
-      setArchiveError(err.response?.data?.error || "Failed to enqueue archive job. Please try again.");
+    } catch (err: unknown) {
+      setArchiveError(getApiErrorMessage(err, "Failed to enqueue archive job. Please try again."));
     } finally {
       setIsSubmittingArchiveJob(false);
     }
@@ -103,8 +104,8 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setArchiveError(err.response?.data?.error || "Failed to download completed archive.");
+    } catch (err: unknown) {
+      setArchiveError(getApiErrorMessage(err, "Failed to download completed archive."));
     } finally {
       setIsDownloadingFinishedArchive(false);
     }
@@ -127,8 +128,8 @@ export const DataArchiveTab: React.FC<DataArchiveTabProps> = ({ onBack }) => {
       a.click();
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
-    } catch (err: any) {
-      setArchiveError(err.response?.data?.error || "Failed to download data archive.");
+    } catch (err: unknown) {
+      setArchiveError(getApiErrorMessage(err, "Failed to download data archive."));
     } finally {
       setIsDownloadingArchive(false);
     }

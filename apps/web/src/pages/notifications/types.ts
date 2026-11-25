@@ -183,57 +183,76 @@ export function computeInboxViewCounts(
   };
 }
 
-export function bookmarkPostToNotificationItem(post: Record<string, any>): NotificationItem {
-  const artifactView = post["artifact_view"] as Record<string, any> | undefined;
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function asId(value: unknown): string | number | undefined {
+  return typeof value === "string" || typeof value === "number" ? value : undefined;
+}
+
+export function bookmarkPostToNotificationItem(post: Record<string, unknown>): NotificationItem {
+  const rawArtifactView = post["artifact_view"];
+  const artifactView =
+    rawArtifactView && typeof rawArtifactView === "object" && !Array.isArray(rawArtifactView)
+      ? (rawArtifactView as Record<string, unknown>)
+      : undefined;
   const viewConfig = artifactView?.["view_config"] ?? post["artifact_config"];
+  const postId = asId(post["id"]);
+  const username = asString(post["username"]);
+  const displayName = asString(post["display_name"]);
+  const avatarUrl = asString(post["avatar_url"]);
   return {
-    id: `bookmark-${post["id"]}`,
+    id: `bookmark-${String(postId ?? "")}`,
     type: "bookmark",
     read: 1,
     starred: 1,
     archived: 0,
     isBookmark: true,
     bookmarkedPost: post,
-    post_id: post["id"],
-    actor_username: post["username"] || "engineer",
-    actor_display_name: post["display_name"] || post["username"] || "Engineer",
-    actor_avatar_url: post["avatar_url"],
-    post_author: post["username"],
-    post_content: post["content"] || "",
-    post_artifact_type: artifactView?.["view_type"] || post["artifact_type"],
+    post_id: postId,
+    actor_username: username || "engineer",
+    actor_display_name: displayName || username || "Engineer",
+    actor_avatar_url: avatarUrl,
+    post_author: username,
+    post_content: asString(post["content"]) || "",
+    post_artifact_type: asString(artifactView?.["view_type"]) || asString(post["artifact_type"]),
     post_artifact_config:
       typeof viewConfig === "string" ? viewConfig : viewConfig ? JSON.stringify(viewConfig) : undefined,
-    created_at: post["created_at"],
+    created_at: asString(post["created_at"]),
     actors: [
       {
-        username: post["username"] || "engineer",
-        display_name: post["display_name"] || post["username"] || "Engineer",
-        avatar_url: post["avatar_url"],
+        username: username || "engineer",
+        display_name: displayName || username || "Engineer",
+        avatar_url: avatarUrl,
       },
     ],
   };
 }
 
-export function hpcJobToNotificationItem(job: Record<string, any>, currentUsername?: string): NotificationItem {
-  const isFailed = job["status"] === "failed" || job["status"] === "error" || job["status"] === "cancelled";
+export function hpcJobToNotificationItem(job: Record<string, unknown>, currentUsername?: string): NotificationItem {
+  const status = asString(job["status"]);
+  const isFailed = status === "failed" || status === "error" || status === "cancelled";
+  const jobId = asId(job["id"]);
+  const costCredits = job["costCredits"];
   return {
-    id: `outbox-job-${job["id"]}`,
+    id: `outbox-job-${String(jobId ?? "")}`,
     type: isFailed ? "simulation_failed" : "simulation_completed",
     read: 1,
     archived: 0,
     starred: 0,
     isOutboxJob: true,
-    job_id: job["id"],
+    job_id: jobId,
     actor_username: currentUsername || "you",
-    created_at: job["completedAt"] || job["startedAt"] || new Date().toISOString(),
+    created_at: asString(job["completedAt"]) || asString(job["startedAt"]) || new Date().toISOString(),
     metadata: {
-      name: job["name"] || `Job #${job["id"]}`,
-      jobId: job["id"],
-      profile: job["computeProfile"] || "standard",
+      name: asString(job["name"]) || `Job #${String(jobId ?? "")}`,
+      jobId,
+      profile: asString(job["computeProfile"]) || "standard",
       duration: typeof job["cpuSeconds"] === "number" ? job["cpuSeconds"].toFixed(2) : undefined,
-      solver: job["solver"] || "CVODE",
-      status: job["status"] || "completed",
-      costCredits: job["costCredits"],
+      solver: asString(job["solver"]) || "CVODE",
+      status: status || "completed",
+      costCredits: typeof costCredits === "number" || typeof costCredits === "string" ? costCredits : undefined,
     },
   };
 }

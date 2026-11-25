@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="Repressilator" name="Elowitz-Leibler Repressilator Genetic Oscillator">
+    <listOfCompartments>
+      <compartment id="cell" name="E. coli Cell Volume" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="mLacI" name="LacI mRNA" compartment="cell" initialConcentration="5.0" constant="false"/>
+      <species id="mTetR" name="TetR mRNA" compartment="cell" initialConcentration="0.2" constant="false"/>
+      <species id="mcI" name="Lambda cI mRNA" compartment="cell" initialConcentration="0.2" constant="false"/>
+      <species id="pLacI" name="LacI Repressor Protein" compartment="cell" initialConcentration="20.0" constant="false"/>
+      <species id="pTetR" name="TetR Repressor Protein" compartment="cell" initialConcentration="0.5" constant="false"/>
+      <species id="pcI" name="Lambda cI Repressor Protein" compartment="cell" initialConcentration="0.5" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="alpha0" name="Basal Transcription Leak" value="0.03" constant="true"/>
+      <parameter id="alpha" name="Maximal Regulated Transcription" value="30.0" constant="true"/>
+      <parameter id="KM" name="Repressor Half-Maximal Affinity" value="40.0" constant="true"/>
+      <parameter id="n_hill" name="Hill Cooperativity" value="2.0" constant="true"/>
+      <parameter id="k_tl" name="Translation Rate" value="5.0" constant="true"/>
+      <parameter id="kd_m" name="mRNA Degradation Rate" value="0.35" constant="true"/>
+      <parameter id="kd_p" name="Protein Degradation Rate" value="0.07" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_tx_lacI" name="LacI Transcription" reversible="false">
+        <listOfProducts><speciesReference species="mLacI" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="pcI"/></listOfModifiers>
+        <kineticLaw><formula>alpha0 + alpha / (1 + pow(pcI / KM, n_hill))</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_tx_tetR" name="TetR Transcription" reversible="false">
+        <listOfProducts><speciesReference species="mTetR" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="pLacI"/></listOfModifiers>
+        <kineticLaw><formula>alpha0 + alpha / (1 + pow(pLacI / KM, n_hill))</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_tx_cI" name="cI Transcription" reversible="false">
+        <listOfProducts><speciesReference species="mcI" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="pTetR"/></listOfModifiers>
+        <kineticLaw><formula>alpha0 + alpha / (1 + pow(pTetR / KM, n_hill))</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_tl_lacI" name="LacI Translation" reversible="false">
+        <listOfProducts><speciesReference species="pLacI" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="mLacI"/></listOfModifiers>
+        <kineticLaw><formula>k_tl * mLacI</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_tl_tetR" name="TetR Translation" reversible="false">
+        <listOfProducts><speciesReference species="pTetR" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="mTetR"/></listOfModifiers>
+        <kineticLaw><formula>k_tl * mTetR</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_tl_cI" name="cI Translation" reversible="false">
+        <listOfProducts><speciesReference species="pcI" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="mcI"/></listOfModifiers>
+        <kineticLaw><formula>k_tl * mcI</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_deg_mLacI" name="mLacI Decay" reversible="false">
+        <listOfReactants><speciesReference species="mLacI" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd_m * mLacI</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_deg_mTetR" name="mTetR Decay" reversible="false">
+        <listOfReactants><speciesReference species="mTetR" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd_m * mTetR</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_deg_mcI" name="mcI Decay" reversible="false">
+        <listOfReactants><speciesReference species="mcI" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd_m * mcI</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_deg_pLacI" name="pLacI Decay" reversible="false">
+        <listOfReactants><speciesReference species="pLacI" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd_p * pLacI</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_deg_pTetR" name="pTetR Decay" reversible="false">
+        <listOfReactants><speciesReference species="pTetR" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd_p * pTetR</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_deg_pcI" name="pcI Decay" reversible="false">
+        <listOfReactants><speciesReference species="pcI" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd_p * pcI</formula></kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

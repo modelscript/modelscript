@@ -1,0 +1,12 @@
+{
+  "id": "mlxtran-02-oral-absorption-tlag",
+  "lang": "mlxtran",
+  "subFormats": ["mlxtran"],
+  "difficulty": 2,
+  "title": "Oral First-Order Absorption with Lag Time",
+  "description": "One-compartment oral absorption PK model incorporating a gastrointestinal lag time (Tlag), depot compartment absorption rate ka, and linear elimination.",
+  "category": "Pharmacometrics",
+  "tags": ["mlxtran", "oral-pk", "tlag", "absorption", "multi-file"],
+  "activeFile": "oral_tlag.mlxtran",
+  "fileOrder": ["oral_tlag.mlxtran", "oral_data.csv"]
+}

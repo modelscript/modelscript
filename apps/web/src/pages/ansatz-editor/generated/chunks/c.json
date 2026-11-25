@@ -1,0 +1,88 @@
+[
+  {
+    "id": "c-01-clamped-pid-controller",
+    "lang": "c",
+    "subFormats": ["c99"],
+    "difficulty": 1,
+    "title": "Clamped Discrete PID Controller with Anti-Windup",
+    "description": "Deterministic fixed-step discrete-time PID control law in C99 featuring derivative filtering, output saturation clamping, and conditional integrator anti-windup.",
+    "category": "Embedded Control",
+    "tags": ["c", "pid", "anti-windup", "embedded-control"],
+    "activeFile": "pid.c",
+    "fileNames": ["pid.c"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "/* Clamped Discrete-Time PID Controller with Anti-Windup */\n\ndouble pid_step(\n    double kp,\n    double ki,\n    double kd,\n    double out_min,\n    double out_max,\n    double *integral,\n    double *prev_error,\n    double setpoint,\n    double measurement,\n    double dt) {\n  double error = setpoint - measurement;\n  double p_term = kp * error;\n  double next_integral = (*integral) + error * dt;\n  double i_term = ki * next_integral;\n  double d_term = 0.0;\n  double raw_out = 0.0;\n  double clamped_out = 0.0;\n\n  if (dt > 1.0e-9) {\n    d_term = kd * (error - (*prev_error)) / dt;\n  }\n\n  raw_out = p_term + i_term + d_term;\n  clamped_out = raw_out;\n\n  if (raw_out > out_max) {\n    clamped_out = out_max;\n  } else if (raw_out < out_min) {\n    clamped_out = out_min;\n  } else {\n    *integral = next_integral;\n  }\n\n  *prev_error = error;\n  return clamped_out;\n}\n"
+  },
+  {
+    "id": "c-02-iir-biquad-filter",
+    "lang": "c",
+    "subFormats": ["c99"],
+    "difficulty": 2,
+    "title": "Second-Order IIR Biquad Digital Filter",
+    "description": "Direct-Form II Transposed biquadratic infinite-impulse-response digital filter in C99 for real-time sensor anti-aliasing and notch attenuation.",
+    "category": "Digital Signal Processing",
+    "tags": ["c", "dsp", "biquad", "iir-filter"],
+    "activeFile": "biquad.c",
+    "fileNames": ["biquad.c"],
+    "fileCount": 1,
+    "code": "/* Second-Order Direct-Form II Transposed IIR Biquad Filter */\n\ndouble biquad_process(\n    double b0,\n    double b1,\n    double b2,\n    double a1,\n    double a2,\n    double *z1,\n    double *z2,\n    double x) {\n  double y = b0 * x + (*z1);\n  double next_z1 = b1 * x - a1 * y + (*z2);\n  double next_z2 = b2 * x - a2 * y;\n\n  *z1 = next_z1;\n  *z2 = next_z2;\n  return y;\n}\n"
+  },
+  {
+    "id": "c-03-kalman-state-estimator",
+    "lang": "c",
+    "subFormats": ["c99"],
+    "difficulty": 3,
+    "title": "Fixed-Step Kalman Filter State Estimator",
+    "description": "Two-state position-velocity linear Kalman filter in C99 separated into a reusable header API and prediction-update estimation implementation.",
+    "category": "State Estimation",
+    "tags": ["c", "kalman-filter", "sensor-fusion", "multi-file"],
+    "activeFile": "kalman.c",
+    "fileNames": ["kalman.c", "kalman.h"],
+    "fileCount": 2,
+    "code": "#include \"kalman.h\"\n\nvoid kalman_init(Kalman1D *kf, double pos0, double vel0, double q_proc, double r_meas) {\n  kf->pos = pos0;\n  kf->vel = vel0;\n  kf->p00 = 1.0;\n  kf->p01 = 0.0;\n  kf->p10 = 0.0;\n  kf->p11 = 1.0;\n  kf->q_proc = q_proc;\n  kf->r_meas = r_meas;\n}\n\ndouble kalman_update(Kalman1D *kf, double z_pos, double dt) {\n  double pred_pos = kf->pos + kf->vel * dt;\n  double pred_vel = kf->vel;\n\n  double p00 = kf->p00 + dt * (kf->p10 + kf->p01) + dt * dt * kf->p11 + kf->q_proc;\n  double p01 = kf->p01 + dt * kf->p11;\n  double p10 = kf->p10 + dt * kf->p11;\n  double p11 = kf->p11 + kf->q_proc;\n\n  double innovation = z_pos - pred_pos;\n  double s_cov = p00 + kf->r_meas;\n  double k0 = p00 / s_cov;\n  double k1 = p10 / s_cov;\n\n  kf->pos = pred_pos + k0 * innovation;\n  kf->vel = pred_vel + k1 * innovation;\n  kf->p00 = (1.0 - k0) * p00;\n  kf->p01 = (1.0 - k0) * p01;\n  kf->p10 = p10 - k1 * p00;\n  kf->p11 = p11 - k1 * p01;\n\n  return kf->pos;\n}\n",
+    "files": {
+      "kalman.c": "#include \"kalman.h\"\n\nvoid kalman_init(Kalman1D *kf, double pos0, double vel0, double q_proc, double r_meas) {\n  kf->pos = pos0;\n  kf->vel = vel0;\n  kf->p00 = 1.0;\n  kf->p01 = 0.0;\n  kf->p10 = 0.0;\n  kf->p11 = 1.0;\n  kf->q_proc = q_proc;\n  kf->r_meas = r_meas;\n}\n\ndouble kalman_update(Kalman1D *kf, double z_pos, double dt) {\n  double pred_pos = kf->pos + kf->vel * dt;\n  double pred_vel = kf->vel;\n\n  double p00 = kf->p00 + dt * (kf->p10 + kf->p01) + dt * dt * kf->p11 + kf->q_proc;\n  double p01 = kf->p01 + dt * kf->p11;\n  double p10 = kf->p10 + dt * kf->p11;\n  double p11 = kf->p11 + kf->q_proc;\n\n  double innovation = z_pos - pred_pos;\n  double s_cov = p00 + kf->r_meas;\n  double k0 = p00 / s_cov;\n  double k1 = p10 / s_cov;\n\n  kf->pos = pred_pos + k0 * innovation;\n  kf->vel = pred_vel + k1 * innovation;\n  kf->p00 = (1.0 - k0) * p00;\n  kf->p01 = (1.0 - k0) * p01;\n  kf->p10 = p10 - k1 * p00;\n  kf->p11 = p11 - k1 * p01;\n\n  return kf->pos;\n}\n",
+      "kalman.h": "#ifndef KALMAN_H\n#define KALMAN_H\n\ntypedef struct {\n  double pos;\n  double vel;\n  double p00;\n  double p01;\n  double p10;\n  double p11;\n  double q_proc;\n  double r_meas;\n} Kalman1D;\n\nvoid kalman_init(Kalman1D *kf, double pos0, double vel0, double q_proc, double r_meas);\ndouble kalman_update(Kalman1D *kf, double z_pos, double dt);\n\n#endif\n"
+    }
+  },
+  {
+    "id": "c-04-foc-motor-controller",
+    "lang": "c",
+    "subFormats": ["c99"],
+    "difficulty": 4,
+    "title": "Clarke/Park Field-Oriented Control (FOC) Motor Drive",
+    "description": "Real-time PMSM Field-Oriented Control firmware implementing Clarke/Park transforms, dq PI current regulation, and Space-Vector PWM duty cycle modulation across header modules.",
+    "category": "Power Electronics & Motor Control",
+    "tags": ["c", "foc", "pmsm", "svpwm", "multi-file"],
+    "activeFile": "foc.c",
+    "fileNames": ["foc.c", "foc.h", "math_lut.h"],
+    "fileCount": 3,
+    "code": "#include \"foc.h\"\n#include \"math_lut.h\"\n\nvoid foc_step(FocState *st, double ia, double ib, double sin_th, double cos_th, double iq_ref, double dt) {\n  double i_alpha = ia;\n  double i_beta = INV_SQRT3 * (ia + 2.0 * ib);\n\n  double id = i_alpha * cos_th + i_beta * sin_th;\n  double iq = -i_alpha * sin_th + i_beta * cos_th;\n\n  double err_d = 0.0 - id;\n  double err_q = iq_ref - iq;\n\n  st->int_d = st->int_d + err_d * dt;\n  st->int_q = st->int_q + err_q * dt;\n\n  double vd = st->kp * err_d + st->ki * st->int_d;\n  double vq = st->kp * err_q + st->ki * st->int_q;\n\n  double v_alpha = vd * cos_th - vq * sin_th;\n  double v_beta = vd * sin_th + vq * cos_th;\n\n  double va = v_alpha;\n  double vb = -0.5 * v_alpha + HALF_SQRT3 * v_beta;\n  double vc = -0.5 * v_alpha - HALF_SQRT3 * v_beta;\n\n  double inv_vdc = 1.0 / st->v_dc;\n  st->duty_a = clamp_duty(0.5 + va * inv_vdc);\n  st->duty_b = clamp_duty(0.5 + vb * inv_vdc);\n  st->duty_c = clamp_duty(0.5 + vc * inv_vdc);\n}\n",
+    "files": {
+      "foc.c": "#include \"foc.h\"\n#include \"math_lut.h\"\n\nvoid foc_step(FocState *st, double ia, double ib, double sin_th, double cos_th, double iq_ref, double dt) {\n  double i_alpha = ia;\n  double i_beta = INV_SQRT3 * (ia + 2.0 * ib);\n\n  double id = i_alpha * cos_th + i_beta * sin_th;\n  double iq = -i_alpha * sin_th + i_beta * cos_th;\n\n  double err_d = 0.0 - id;\n  double err_q = iq_ref - iq;\n\n  st->int_d = st->int_d + err_d * dt;\n  st->int_q = st->int_q + err_q * dt;\n\n  double vd = st->kp * err_d + st->ki * st->int_d;\n  double vq = st->kp * err_q + st->ki * st->int_q;\n\n  double v_alpha = vd * cos_th - vq * sin_th;\n  double v_beta = vd * sin_th + vq * cos_th;\n\n  double va = v_alpha;\n  double vb = -0.5 * v_alpha + HALF_SQRT3 * v_beta;\n  double vc = -0.5 * v_alpha - HALF_SQRT3 * v_beta;\n\n  double inv_vdc = 1.0 / st->v_dc;\n  st->duty_a = clamp_duty(0.5 + va * inv_vdc);\n  st->duty_b = clamp_duty(0.5 + vb * inv_vdc);\n  st->duty_c = clamp_duty(0.5 + vc * inv_vdc);\n}\n",
+      "foc.h": "#ifndef FOC_H\n#define FOC_H\n\ntypedef struct {\n  double kp;\n  double ki;\n  double v_dc;\n  double int_d;\n  double int_q;\n  double duty_a;\n  double duty_b;\n  double duty_c;\n} FocState;\n\nvoid foc_step(FocState *st, double ia, double ib, double sin_th, double cos_th, double iq_ref, double dt);\n\n#endif\n",
+      "math_lut.h": "#ifndef MATH_LUT_H\n#define MATH_LUT_H\n\n#define INV_SQRT3  0.5773502691896258\n#define HALF_SQRT3 0.8660254037844386\n\nstatic inline double clamp_duty(double d) {\n  double out = d;\n  if (out > 0.98) {\n    out = 0.98;\n  } else if (out < 0.02) {\n    out = 0.02;\n  }\n  return out;\n}\n\n#endif\n"
+    }
+  },
+  {
+    "id": "c-05-bms-soc-ekf-firmware",
+    "lang": "c",
+    "subFormats": ["c99"],
+    "difficulty": 5,
+    "title": "Embedded BMS State-of-Charge EKF and Safety Firmware",
+    "description": "Multi-file lithium-ion Battery Management System (BMS) firmware integrating an Extended Kalman Filter (EKF) SoC estimator with over-voltage and thermal safety limits.",
+    "category": "Automotive & Battery Systems",
+    "tags": ["c", "bms", "ekf", "battery", "multi-file"],
+    "activeFile": "main.c",
+    "fileNames": ["main.c", "bms_ekf.c", "bms_ekf.h", "safety_limits.h"],
+    "fileCount": 4,
+    "code": "#include \"bms_ekf.h\"\n#include \"safety_limits.h\"\n\nint run_bms_cycle(BmsEkf *ekf, double v_cell, double i_pack, double temp_c, double dt) {\n  int fault_code = check_cell_safety(v_cell, i_pack, temp_c);\n  if (fault_code != BMS_OK) {\n    return fault_code;\n  }\n\n  double soc_est = bms_ekf_step(ekf, v_cell, i_pack, dt);\n  if (soc_est < BMS_SOC_MIN) {\n    return BMS_FAULT_UNDERVOLT;\n  }\n  return BMS_OK;\n}\n",
+    "files": {
+      "main.c": "#include \"bms_ekf.h\"\n#include \"safety_limits.h\"\n\nint run_bms_cycle(BmsEkf *ekf, double v_cell, double i_pack, double temp_c, double dt) {\n  int fault_code = check_cell_safety(v_cell, i_pack, temp_c);\n  if (fault_code != BMS_OK) {\n    return fault_code;\n  }\n\n  double soc_est = bms_ekf_step(ekf, v_cell, i_pack, dt);\n  if (soc_est < BMS_SOC_MIN) {\n    return BMS_FAULT_UNDERVOLT;\n  }\n  return BMS_OK;\n}\n",
+      "bms_ekf.c": "#include \"bms_ekf.h\"\n\ndouble bms_ekf_step(BmsEkf *ekf, double v_meas, double i_load, double dt) {\n  double soc_pred = ekf->soc - (i_load * dt) / ekf->q_nom_as;\n  if (soc_pred > 1.0) {\n    soc_pred = 1.0;\n  } else if (soc_pred < 0.0) {\n    soc_pred = 0.0;\n  }\n\n  double p_pred = ekf->p_cov + ekf->q_noise;\n  double ocv = 3.20 + 0.95 * soc_pred;\n  double v_pred = ocv - i_load * ekf->r0;\n  double h_jac = 0.95;\n\n  double s_cov = h_jac * p_pred * h_jac + ekf->r_noise;\n  double k_gain = (p_pred * h_jac) / s_cov;\n\n  ekf->soc = soc_pred + k_gain * (v_meas - v_pred);\n  ekf->p_cov = (1.0 - k_gain * h_jac) * p_pred;\n\n  return ekf->soc;\n}\n",
+      "bms_ekf.h": "#ifndef BMS_EKF_H\n#define BMS_EKF_H\n\ntypedef struct {\n  double soc;\n  double p_cov;\n  double q_nom_as;\n  double r0;\n  double q_noise;\n  double r_noise;\n} BmsEkf;\n\ndouble bms_ekf_step(BmsEkf *ekf, double v_meas, double i_load, double dt);\n\n#endif\n",
+      "safety_limits.h": "#ifndef SAFETY_LIMITS_H\n#define SAFETY_LIMITS_H\n\n#define BMS_OK              0\n#define BMS_FAULT_OVERVOLT  1\n#define BMS_FAULT_UNDERVOLT 2\n#define BMS_FAULT_OVERTEMP  3\n#define BMS_SOC_MIN         0.05\n\nstatic inline int check_cell_safety(double v_cell, double i_pack, double temp_c) {\n  double abs_i = (i_pack < 0.0) ? -i_pack : i_pack;\n  if (v_cell > 4.22) {\n    return BMS_FAULT_OVERVOLT;\n  }\n  if (v_cell < 2.80) {\n    return BMS_FAULT_UNDERVOLT;\n  }\n  if (temp_c > 55.0 || abs_i > 250.0) {\n    return BMS_FAULT_OVERTEMP;\n  }\n  return BMS_OK;\n}\n\n#endif\n"
+    }
+  }
+]

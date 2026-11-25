@@ -2,6 +2,7 @@
 
 import { scanStepEntities } from "@modelscript/step";
 import { createRequire } from "node:module";
+import type { Range } from "vscode-languageserver";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { isDigitCode } from "./lexical-utils.js";
 
@@ -14,25 +15,54 @@ function isStepEntityRefName(name: string): string | undefined {
   return `#${digits}`;
 }
 
-let nodeRequire: any = null;
+type NodeRequireFn = (id: string) => unknown;
+
+interface NodeFsLike {
+  existsSync(path: string): boolean;
+  readFileSync(path: string, encoding: string): string;
+}
+
+interface NodeUrlLike {
+  fileURLToPath(url: string): string;
+}
+
+export interface SymbolEntryLocationLike {
+  resourceId?: string | undefined;
+  name?: string | undefined;
+  namePath?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number } | undefined> | undefined;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+interface DocumentTextLookupLike {
+  get?(uri: string): { getText?(): string } | undefined | null;
+}
+
+let nodeRequire: NodeRequireFn | null = null;
 try {
   if (typeof process !== "undefined" && process.versions?.node) {
-    nodeRequire = createRequire(import.meta.url);
+    nodeRequire = createRequire(import.meta.url) as NodeRequireFn;
   }
-} catch {}
+} catch {
+  // Expected in browser or bundled environments where import.meta.url is not a file URL.
+}
 
 /** Helper to convert a SymbolEntry to a cross-file LSP Location */
 export function symbolEntryToLocation(
-  entry: any,
-  documentLSPBridges: Map<string, LSPBridge>,
-  documentTrees: Map<string, any>,
-  documents?: any,
-): { uri: string; range: any } | null {
+  entry: SymbolEntryLocationLike,
+  documentLSPBridges: ReadonlyMap<string, LSPBridge>,
+  documentTrees: ReadonlyMap<string, { text?: string | undefined }>,
+  documents?: DocumentTextLookupLike | null,
+): { uri: string; range: Range } | null {
   const uri = entry.resourceId;
   if (!uri) return null;
 
   const bridge = documentLSPBridges.get(uri);
-  let text = bridge ? (bridge as any).positions?.getSourceText?.() : documentTrees.get(uri)?.text;
+  let text: string | undefined = bridge ? bridge.positions?.getSourceText?.() : documentTrees.get(uri)?.text;
   if (!text && documents) {
     const doc = typeof documents.get === "function" ? documents.get(uri) : null;
     if (doc && typeof doc.getText === "function") {
@@ -49,21 +79,27 @@ export function symbolEntryToLocation(
     uri.startsWith("file://")
   ) {
     try {
-      const req = nodeRequire ?? (globalThis as any).require;
+      const globalReq = (globalThis as { require?: unknown }).require;
+      const req = nodeRequire ?? (typeof globalReq === "function" ? (globalReq as NodeRequireFn) : null);
       if (typeof req === "function") {
-        const fs = req("node:fs");
-        const { fileURLToPath } = req("node:url");
+        const fs = req("node:fs") as NodeFsLike | null;
+        const { fileURLToPath } = req("node:url") as NodeUrlLike;
         const filePath = fileURLToPath(uri);
         if (fs && fs.existsSync(filePath)) {
           text = fs.readFileSync(filePath, "utf-8");
         }
       }
-    } catch {}
+    } catch {
+      // Disk read fallback failed; proceed with stored byte/line offsets without source text.
+    }
   }
 
+  const namePathKey = entry.namePath;
   const nameField =
-    entry.fieldRanges?.name ??
-    (entry.fieldRanges ? entry.fieldRanges[entry.namePath] || entry.fieldRanges["identifier"] : undefined);
+    entry.fieldRanges?.["name"] ??
+    (entry.fieldRanges
+      ? (namePathKey ? entry.fieldRanges[namePathKey] : undefined) || entry.fieldRanges["identifier"]
+      : undefined);
   let startOff = nameField?.startOffset;
   let endOff = nameField?.endOffset;
 
@@ -97,15 +133,17 @@ export function symbolEntryToLocation(
   }
 
   // If the file is open, we already have a PositionIndex in its LSPBridge
-  if (bridge && typeof (bridge as any).positions?.rangeFromOffsets === "function") {
-    const range = (bridge as any).positions.rangeFromOffsets(startOff, endOff);
+  if (bridge && typeof bridge.positions?.rangeFromOffsets === "function") {
+    const range = bridge.positions.rangeFromOffsets(startOff, endOff);
     return { uri, range };
   }
 
   // File is not open and we don't have text. Fallback to entry line / column if available.
   if (!text) {
-    const line = (entry.line ?? entry.metadata?.line ?? 1) - 1;
-    const col = (entry.column ?? entry.metadata?.column ?? 1) - 1;
+    const metaLine = typeof entry.metadata?.["line"] === "number" ? entry.metadata["line"] : undefined;
+    const metaCol = typeof entry.metadata?.["column"] === "number" ? entry.metadata["column"] : undefined;
+    const line = (entry.line ?? metaLine ?? 1) - 1;
+    const col = (entry.column ?? metaCol ?? 1) - 1;
     const len = entry.name?.length || 1;
     return {
       uri,

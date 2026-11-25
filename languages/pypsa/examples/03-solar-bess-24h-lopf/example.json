@@ -1,0 +1,11 @@
+{
+  "id": "pypsa-03-solar-bess-24h-lopf",
+  "lang": "pypsa",
+  "subFormats": ["pypsa", "csv"],
+  "difficulty": 3,
+  "title": "24-Hour Solar PV & Battery Storage LOPF Arbitrage",
+  "description": "Multi-file PyPSA linear optimal power flow model pairing utility-scale solar PV, 4-hour lithium-ion BESS storage, and backup gas generation with a 24-hour capacity-factor and demand profile CSV.",
+  "category": "Energy Systems Optimization",
+  "tags": ["pypsa", "solar-pv", "bess", "lopf", "multi-file"],
+  "activeFile": "solar_bess.pypsa"
+}

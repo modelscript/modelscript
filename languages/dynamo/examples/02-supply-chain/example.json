@@ -1,0 +1,11 @@
+{
+  "id": "dynamo-02-supply-chain",
+  "lang": "dynamo",
+  "subFormats": ["dyn"],
+  "difficulty": 2,
+  "title": "Inventory-Workforce Supply Chain Oscillation",
+  "description": "Forrester industrial dynamics production-inventory-workforce loop exhibiting damped inventory cycles in response to a step increase in customer orders.",
+  "category": "Industrial Dynamics",
+  "tags": ["dynamo", "forrester", "supply-chain", "inventory"],
+  "activeFile": "supply_chain.dyn"
+}

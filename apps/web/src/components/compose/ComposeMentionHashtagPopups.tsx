@@ -4,12 +4,27 @@ import React from "react";
 import { getAvatarUrl } from "../../util/avatar";
 import Box from "../Box";
 
+export interface MentionSuggestionItem {
+  username: string;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  [key: string]: unknown;
+}
+
+export interface HashtagSuggestionItem {
+  concept?: string | undefined;
+  display_name?: string | undefined;
+  displayName?: string | undefined;
+  score?: number | undefined;
+  [key: string]: unknown;
+}
+
 export interface ComposeMentionHashtagPopupsProps {
   mentionQuery: { query: string; index: number } | null;
-  mentionSuggestions: any[];
+  mentionSuggestions: MentionSuggestionItem[];
   onSelectMention: (username: string) => void;
   hashtagQuery: { query: string; index: number } | null;
-  hashtagSuggestions: any[];
+  hashtagSuggestions: HashtagSuggestionItem[];
   onSelectHashtag: (tag: string) => void;
   activeIndex?: number | undefined;
   onHoverIndex?: ((index: number) => void) | undefined;
@@ -114,11 +129,11 @@ export const ComposeMentionHashtagPopups: React.FC<ComposeMentionHashtagPopupsPr
             <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--color-text-muted)" }}>TRENDING TOPICS</span>
           </Box>
           {hashtagSuggestions.map((t, idx) => {
-            const tag = t.display_name || t.displayName || t.concept;
+            const tag = t.display_name || t.displayName || t.concept || "";
             const isSelected = idx === activeIndex;
             return (
               <Box
-                key={t.concept}
+                key={t.concept ?? tag}
                 role="option"
                 aria-selected={isSelected}
                 display="flex"

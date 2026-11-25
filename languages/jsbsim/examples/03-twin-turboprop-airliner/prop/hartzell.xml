@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<propeller name="hartzell">
+  <ixx> 14.2 </ixx>
+  <diameter unit="IN"> 106.0 </diameter>
+  <numblades> 4 </numblades>
+  <gearratio> 19.4 </gearratio>
+  <minpitch> 12.0 </minpitch>
+  <maxpitch> 82.0 </maxpitch>
+</propeller>

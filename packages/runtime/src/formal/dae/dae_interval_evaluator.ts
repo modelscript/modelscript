@@ -215,7 +215,7 @@ export class DaeIntervalEvaluator {
       const bindingExpr =
         this.arena.getExplicitVarExpression?.(varIdx) ??
         this.arena.getVarExpression?.(varIdx) ??
-        (this.arena as any).getVarBindingExpr?.(varIdx) ??
+        (this.arena as { getVarBindingExpr?: (idx: number) => number }).getVarBindingExpr?.(varIdx) ??
         -1;
       if (bindingExpr >= 0) {
         const res = this.evaluateExpr(bindingExpr);

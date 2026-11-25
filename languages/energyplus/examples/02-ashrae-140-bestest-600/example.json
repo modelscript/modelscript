@@ -1,0 +1,11 @@
+{
+  "id": "energyplus-02-ashrae-140-bestest-600",
+  "lang": "energyplus",
+  "subFormats": ["idf"],
+  "difficulty": 2,
+  "title": "ASHRAE 140 BESTEST Case 600 Free-Floating",
+  "description": "Standard ASHRAE 140 BESTEST Case 600 lightweight 8m x 6m x 2.7m test cell with fiberglass quilt walls, plasterboard lining, internal equipment gain, and constant infiltration.",
+  "category": "Building Energy Modeling",
+  "tags": ["energyplus", "ashrae-140", "bestest-600", "benchmark"],
+  "activeFile": "bestest600.idf"
+}

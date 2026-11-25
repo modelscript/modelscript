@@ -1,0 +1,73 @@
+[
+  {
+    "id": "netcdf-01-station-temp-timeseries",
+    "lang": "netcdf",
+    "subFormats": ["cdl", "cf-1.8"],
+    "difficulty": 1,
+    "title": "1D Weather Station Temperature Time-Series",
+    "description": "CF-1.8 compliant 1D NetCDF CDL time-series recording 24-hour diurnal air temperature and relative humidity at a synoptic weather station.",
+    "category": "Meteorology",
+    "tags": ["netcdf", "cdl", "cf-1.8", "timeseries", "temperature"],
+    "activeFile": "station_temp.cdl",
+    "fileNames": ["station_temp.cdl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "// CF-1.8 1D Surface Weather Station Diurnal Temperature Record\nnetcdf boulder_station_2026 {\ndimensions:\n  time = UNLIMITED ; // (8 currently)\nvariables:\n  double time(time) ;\n    time:units = \"hours since 2026-06-15 00:00:00 UTC\" ;\n    time:long_name = \"observation time\" ;\n    time:standard_name = \"time\" ;\n  float air_temperature(time) ;\n    air_temperature:units = \"K\" ;\n    air_temperature:long_name = \"2-meter Air Temperature\" ;\n    air_temperature:standard_name = \"air_temperature\" ;\n    air_temperature:_FillValue = -9999.f ;\n  float relative_humidity(time) ;\n    relative_humidity:units = \"%\" ;\n    relative_humidity:long_name = \"2-meter Relative Humidity\" ;\n    relative_humidity:standard_name = \"relative_humidity\" ;\n  int wmo_station_id ;\n    wmo_station_id:units = \"1\" ;\n    wmo_station_id:long_name = \"WMO Station Identifier\" ;\n\n// global attributes:\n  :Conventions = \"CF-1.8\" ;\n  :title = \"Boulder Synoptic Station Diurnal Temperature Cycle\" ;\n  :institution = \"NOAA Earth System Research Laboratories\" ;\n  :source = \"Automated Surface Observing System (ASOS)\" ;\ndata:\n  time = 0, 3, 6, 9, 12, 15, 18, 21 ;\n  air_temperature = 289.4, 287.2, 285.8, 289.1, 294.6, 299.3, 301.2, 295.7 ;\n  relative_humidity = 62.0, 68.5, 74.0, 61.5, 46.0, 34.5, 31.0, 44.0 ;\n  wmo_station_id = 72469 ;\n}\n"
+  },
+  {
+    "id": "netcdf-02-sst-latlon-grid",
+    "lang": "netcdf",
+    "subFormats": ["cdl", "cf-1.8"],
+    "difficulty": 2,
+    "title": "2D Sea-Surface Temperature CF-1.8 Grid",
+    "description": "Regular 4x5 latitude-longitude Gulf Stream sea-surface temperature and land-sea mask grid following CF-1.8 metadata conventions.",
+    "category": "Oceanography",
+    "tags": ["netcdf", "sst", "grid", "oceanography", "cf-1.8"],
+    "activeFile": "gulf_stream_sst.cdl",
+    "fileNames": ["gulf_stream_sst.cdl"],
+    "fileCount": 1,
+    "code": "// CF-1.8 2D Sea-Surface Temperature Analysis over the Western North Atlantic\nnetcdf gulf_stream_sst {\ndimensions:\n  lat = 4 ;\n  lon = 5 ;\nvariables:\n  float lat(lat) ;\n    lat:units = \"degrees_north\" ;\n    lat:long_name = \"latitude\" ;\n    lat:standard_name = \"latitude\" ;\n  float lon(lon) ;\n    lon:units = \"degrees_east\" ;\n    lon:long_name = \"longitude\" ;\n    lon:standard_name = \"longitude\" ;\n  float sst(lat, lon) ;\n    sst:units = \"K\" ;\n    sst:long_name = \"Sea Surface Foundation Temperature\" ;\n    sst:standard_name = \"sea_surface_temperature\" ;\n    sst:_FillValue = -9999.f ;\n  byte land_mask(lat, lon) ;\n    land_mask:units = \"1\" ;\n    land_mask:long_name = \"Binary Land-Sea Mask (0=ocean, 1=land)\" ;\n\n// global attributes:\n  :Conventions = \"CF-1.8\" ;\n  :title = \"Gulf Stream 2-Degree Sea-Surface Temperature Grid\" ;\n  :institution = \"Woods Hole Oceanographic Institution\" ;\ndata:\n  lat = 34.0, 36.0, 38.0, 40.0 ;\n  lon = -76.0, -74.0, -72.0, -70.0, -68.0 ;\n  sst =\n    296.8, 297.4, 297.1, 296.5, 295.9,\n    _,     295.2, 296.1, 295.6, 294.8,\n    _,     291.0, 293.8, 294.2, 293.5,\n    _,     _,     288.4, 289.7, 290.6 ;\n  land_mask =\n    0b, 0b, 0b, 0b, 0b,\n    1b, 0b, 0b, 0b, 0b,\n    1b, 0b, 0b, 0b, 0b,\n    1b, 1b, 0b, 0b, 0b ;\n}\n"
+  },
+  {
+    "id": "netcdf-03-pressure-level-wind",
+    "lang": "netcdf",
+    "subFormats": ["cdl", "cf-1.8"],
+    "difficulty": 3,
+    "title": "3D Atmospheric Pressure-Level Wind & Temperature Field",
+    "description": "Three-dimensional isobaric atmospheric analysis (level x lat x lon) containing zonal wind (U), meridional wind (V), and temperature (T) across 850, 500, and 250 hPa.",
+    "category": "Atmospheric Science",
+    "tags": ["netcdf", "3d", "wind", "isobaric", "jet-stream"],
+    "activeFile": "atmos_3d_wind.cdl",
+    "fileNames": ["atmos_3d_wind.cdl"],
+    "fileCount": 1,
+    "code": "// 3D Isobaric Tropospheric Wind and Temperature Field (850, 500, 250 hPa)\nnetcdf atmos_isobaric_3d {\ndimensions:\n  plev = 3 ;\n  lat = 2 ;\n  lon = 3 ;\nvariables:\n  float plev(plev) ;\n    plev:units = \"hPa\" ;\n    plev:long_name = \"Isobaric Pressure Level\" ;\n    plev:standard_name = \"air_pressure\" ;\n  float lat(lat) ;\n    lat:units = \"degrees_north\" ;\n    lat:long_name = \"latitude\" ;\n  float lon(lon) ;\n    lon:units = \"degrees_east\" ;\n    lon:long_name = \"longitude\" ;\n  float u_wind(plev, lat, lon) ;\n    u_wind:units = \"m s-1\" ;\n    u_wind:long_name = \"Eastward Zonal Wind Component\" ;\n    u_wind:standard_name = \"eastward_wind\" ;\n  float v_wind(plev, lat, lon) ;\n    v_wind:units = \"m s-1\" ;\n    v_wind:long_name = \"Northward Meridional Wind Component\" ;\n    v_wind:standard_name = \"northward_wind\" ;\n  float temperature(plev, lat, lon) ;\n    temperature:units = \"K\" ;\n    temperature:long_name = \"Air Temperature\" ;\n    temperature:standard_name = \"air_temperature\" ;\n\n// global attributes:\n  :Conventions = \"CF-1.8\" ;\n  :title = \"Mid-Latitude Jet Stream 3D Isobaric Analysis\" ;\n  :institution = \"National Centers for Environmental Prediction\" ;\ndata:\n  plev = 850.0, 500.0, 250.0 ;\n  lat = 40.0, 45.0 ;\n  lon = -105.0, -100.0, -95.0 ;\n  u_wind =\n     8.2,  9.5, 10.1,  6.4,  7.8,  8.5,\n    22.5, 25.0, 24.2, 19.8, 21.4, 20.9,\n    46.0, 51.2, 48.7, 42.3, 45.8, 44.1 ;\n  v_wind =\n     2.1,  1.4, -0.8,  3.0,  2.2,  0.5,\n     5.4,  3.1, -2.2,  6.1,  4.0, -1.5,\n     9.2,  4.8, -5.6, 10.5,  6.2, -4.1 ;\n  temperature =\n    284.5, 285.1, 285.8, 281.2, 281.9, 282.4,\n    256.4, 257.0, 257.5, 253.1, 253.8, 254.2,\n    221.0, 221.5, 222.1, 219.4, 219.8, 220.2 ;\n}\n"
+  },
+  {
+    "id": "netcdf-04-ocean-4d-forecast-cube",
+    "lang": "netcdf",
+    "subFormats": ["cdl", "cf-1.8"],
+    "difficulty": 4,
+    "title": "4D Ocean Salinity-Temperature-Depth Forecast Cube",
+    "description": "Four-dimensional (time x depth x lat x lon) ocean circulation forecast cube modeling thermocline potential temperature and practical salinity evolution.",
+    "category": "Oceanography",
+    "tags": ["netcdf", "4d", "thermocline", "salinity", "forecast"],
+    "activeFile": "ocean_4d_cube.cdl",
+    "fileNames": ["ocean_4d_cube.cdl"],
+    "fileCount": 1,
+    "code": "// 4D Ocean Circulation Forecast Cube (time, depth, lat, lon)\nnetcdf north_pacific_4d_forecast {\ndimensions:\n  time = UNLIMITED ; // (2 currently)\n  depth = 3 ;\n  lat = 2 ;\n  lon = 2 ;\nvariables:\n  double time(time) ;\n    time:units = \"days since 2026-03-01 00:00:00 UTC\" ;\n    time:long_name = \"forecast valid time\" ;\n    time:standard_name = \"time\" ;\n  float depth(depth) ;\n    depth:units = \"m\" ;\n    depth:long_name = \"Depth Below Sea Surface\" ;\n    depth:standard_name = \"depth\" ;\n  float lat(lat) ;\n    lat:units = \"degrees_north\" ;\n    lat:long_name = \"latitude\" ;\n  float lon(lon) ;\n    lon:units = \"degrees_east\" ;\n    lon:long_name = \"longitude\" ;\n  float potential_temp(time, depth, lat, lon) ;\n    potential_temp:units = \"degC\" ;\n    potential_temp:long_name = \"Sea Water Potential Temperature\" ;\n    potential_temp:standard_name = \"sea_water_potential_temperature\" ;\n    potential_temp:_FillValue = -9999.f ;\n  float salinity(time, depth, lat, lon) ;\n    salinity:units = \"1e-3\" ;\n    salinity:long_name = \"Sea Water Practical Salinity\" ;\n    salinity:standard_name = \"sea_water_salinity\" ;\n    salinity:_FillValue = -9999.f ;\n\n// global attributes:\n  :Conventions = \"CF-1.8\" ;\n  :title = \"North Pacific 4D Thermocline Forecast Cube\" ;\n  :institution = \"HYCOM Consortium\" ;\ndata:\n  time = 0.0, 1.0 ;\n  depth = 5.0, 100.0, 500.0 ;\n  lat = 30.0, 32.0 ;\n  lon = -140.0, -138.0 ;\n  potential_temp =\n    18.4, 18.2, 17.6, 17.4,\n    13.2, 13.0, 12.5, 12.3,\n     6.1,  6.0,  5.8,  5.7,\n    18.6, 18.3, 17.7, 17.5,\n    13.1, 12.9, 12.4, 12.2,\n     6.1,  6.0,  5.8,  5.7 ;\n  salinity =\n    34.82, 34.79, 34.65, 34.61,\n    34.40, 34.38, 34.31, 34.28,\n    34.12, 34.11, 34.09, 34.08,\n    34.83, 34.80, 34.66, 34.62,\n    34.41, 34.39, 34.32, 34.29,\n    34.12, 34.11, 34.09, 34.08 ;\n}\n"
+  },
+  {
+    "id": "netcdf-05-satellite-swath-calibration",
+    "lang": "netcdf",
+    "subFormats": ["cdl", "cf-1.8"],
+    "difficulty": 5,
+    "title": "Satellite Multispectral Swath with Quality Flags & Calibration",
+    "description": "Level-1B polar-orbiting radiometer swath archive with scanline/pixel geolocation, packed calibrated radiance bands (scale_factor + add_offset), per-pixel quality flags, and calibration coefficients.",
+    "category": "Remote Sensing",
+    "tags": ["netcdf", "satellite", "swath", "radiance", "calibration", "quality-flags"],
+    "activeFile": "viirs_swath_l1b.cdl",
+    "fileNames": ["viirs_swath_l1b.cdl"],
+    "fileCount": 1,
+    "code": "// Level-1B Polar-Orbiting Radiometer Swath, Geolocation, Quality Flags & Calibration\nnetcdf viirs_swath_l1b_20260712 {\ndimensions:\n  scanline = UNLIMITED ; // (3 currently)\n  pixel = 4 ;\n  band = 2 ;\nvariables:\n  double scan_time(scanline) ;\n    scan_time:units = \"seconds since 2026-07-12 18:00:00 UTC\" ;\n    scan_time:long_name = \"Scanline Midpoint Acquisition Time\" ;\n    scan_time:standard_name = \"time\" ;\n  float latitude(scanline, pixel) ;\n    latitude:units = \"degrees_north\" ;\n    latitude:long_name = \"Pixel Geodetic Latitude\" ;\n    latitude:standard_name = \"latitude\" ;\n  float longitude(scanline, pixel) ;\n    longitude:units = \"degrees_east\" ;\n    longitude:long_name = \"Pixel Geodetic Longitude\" ;\n    longitude:standard_name = \"longitude\" ;\n  float solar_zenith(scanline, pixel) ;\n    solar_zenith:units = \"degree\" ;\n    solar_zenith:long_name = \"Solar Zenith Angle\" ;\n    solar_zenith:standard_name = \"solar_zenith_angle\" ;\n  short toa_radiance(scanline, band, pixel) ;\n    toa_radiance:units = \"W m-2 sr-1 um-1\" ;\n    toa_radiance:long_name = \"Packed Top-of-Atmosphere Spectral Radiance\" ;\n    toa_radiance:standard_name = \"toa_outgoing_radiance_per_unit_wavelength\" ;\n    toa_radiance:scale_factor = 0.01f ;\n    toa_radiance:add_offset = 0.0f ;\n    toa_radiance:_FillValue = -32768s ;\n  float band_wavelength(band) ;\n    band_wavelength:units = \"um\" ;\n    band_wavelength:long_name = \"Central Channel Wavelength\" ;\n  float cal_gain(band) ;\n    cal_gain:units = \"W m-2 sr-1 um-1 count-1\" ;\n    cal_gain:long_name = \"On-Orbit Solar Diffuser Calibration Gain\" ;\n  byte quality_flag(scanline, pixel) ;\n    quality_flag:units = \"1\" ;\n    quality_flag:long_name = \"Pixel Radiometric Quality Flag (0=nominal, 1=glint, 2=cloud)\" ;\n  int orbit_number ;\n    orbit_number:units = \"1\" ;\n    orbit_number:long_name = \"Spacecraft Ascending Orbit Number\" ;\n\n// global attributes:\n  :Conventions = \"CF-1.8\" ;\n  :title = \"VIIRS Level-1B Calibrated Radiance Swath Granule\" ;\n  :platform = \"NOAA-21\" ;\n  :instrument = \"VIIRS\" ;\n  :processing_level = \"L1B\" ;\ndata:\n  scan_time = 0.0, 1.786, 3.572 ;\n  latitude =\n    37.10, 37.12, 37.14, 37.16,\n    37.20, 37.22, 37.24, 37.26,\n    37.30, 37.32, 37.34, 37.36 ;\n  longitude =\n    -122.40, -122.30, -122.20, -122.10,\n    -122.42, -122.32, -122.22, -122.12,\n    -122.44, -122.34, -122.24, -122.14 ;\n  solar_zenith =\n    28.4, 28.5, 28.6, 28.7,\n    28.5, 28.6, 28.7, 28.8,\n    28.6, 28.7, 28.8, 28.9 ;\n  toa_radiance =\n    4120s, 4250s, 4390s, 4510s,\n    1820s, 1890s, 1950s, 2010s,\n    4180s, 4310s, 4440s, 4580s,\n    1845s, 1910s, 1980s, 2040s,\n    4210s, 4350s, _,     4620s,\n    1860s, 1930s, _,     2075s ;\n  band_wavelength = 0.672, 0.865 ;\n  cal_gain = 0.0425, 0.0281 ;\n  quality_flag =\n    0b, 0b, 0b, 1b,\n    0b, 0b, 1b, 1b,\n    0b, 0b, 2b, 0b ;\n  orbit_number = 18492 ;\n}\n"
+  }
+]

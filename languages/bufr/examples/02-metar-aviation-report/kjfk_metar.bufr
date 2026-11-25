@@ -1,0 +1,42 @@
+# WMO BUFR Edition 4 Aviation METAR Report (KJFK)
+BUFR EDITION 4 NAME KJFK_METAR
+TABLE_B
+  0-20-201 name="Prevailing Horizontal Visibility" unit="m" scale=0 ref=0 width=16
+  0-20-202 name="Cloud Base Ceiling Height" unit="m" scale=0 ref=0 width=14
+TABLE_D
+  3-20-010 = [0-01-001, 0-01-002, 0-05-001, 0-06-001, 0-10-051, 0-12-101, 0-12-103, 0-11-001, 0-11-002, 0-20-201, 0-20-202] "Airport METAR Sequence"
+SECTION 0
+  LENGTH = 0
+SECTION 1
+  MASTER_TABLE = 0
+  CENTRE = 7
+  SUBCENTRE = 0
+  CATEGORY = 0
+  VERSION = 38
+  YEAR = 2026
+  MONTH = 10
+  DAY = 4
+  HOUR = 15
+  MINUTE = 51
+  SECOND = 0
+SECTION 3
+  SUBSETS = 1
+  OBSERVED = true
+  COMPRESSED = false
+  DESCRIPTORS:
+    3-20-010
+SECTION 4
+  SUBSET 1:
+    0-01-001 = 74
+    0-01-002 = 486
+    0-05-001 = 40.64130
+    0-06-001 = -73.77810
+    0-10-051 = 101860
+    0-12-101 = 288.15
+    0-12-103 = 281.15
+    0-11-001 = 310
+    0-11-002 = 7.2
+    0-20-201 = 16093
+    0-20-202 = 1370
+SECTION 5
+7777

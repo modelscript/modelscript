@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#" xml:base="http://modelscript.org/sbol/partslib#">
+  <sbol:Sequence displayId="seq_pTet_ref" encoding="IUPAC_DNA">
+    <sbol:elements>TCCCTATCAGTGATAGAGATTGACATCCCTATCAGTGATAGAGATACTGAGCAC</sbol:elements>
+  </sbol:Sequence>
+  <sbol:Component displayId="lib_pTet" name="Standard pTet Promoter" role="SO:0000167" hasSequence="seq_pTet_ref"/>
+  <sbol:Component displayId="lib_rbs_B0034" name="Standard B0034 RBS" role="SO:0000139"/>
+  <sbol:Component displayId="lib_term_B0015" name="Standard B0015 Double Terminator" role="SO:0000141"/>
+</rdf:RDF>

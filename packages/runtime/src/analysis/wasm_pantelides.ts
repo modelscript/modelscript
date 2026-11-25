@@ -1220,7 +1220,7 @@ export function pantelidesIndexReductionArena(
   // In-WASM zero-allocation Index-1 verification fast-path
   if (
     arena.ptr !== 0 &&
-    (arena as any)._renamedVars?.size === 0 &&
+    (arena as unknown as { _renamedVars?: { size: number } })._renamedVars?.size === 0 &&
     typeof arena.exports?.dae_checkPantelidesIndex1 === "function" &&
     typeof arena.exports?.alloc === "function" &&
     (arena.eqCount > 200 || arena.varCount > 200)
@@ -1692,11 +1692,24 @@ export function pantelidesIndexReductionArena(
   };
 }
 
+export interface WasmPantelidesExports {
+  runPantelidesIndexReduction?: (daePtr: number, bltPtr: number) => void;
+  getPantelidesStructuralIndex?: () => number;
+  getPantelidesDummyDerivativeCount?: () => number;
+  dae_createPantelides?: (daePtr: number, bltPtr: number) => number;
+  dae_runPantelides?: (pantPtr: number, flags: number) => number;
+  dae_getPantelidesIndex?: (pantPtr: number) => number;
+  dae_getDummyDerivativeCount?: (pantPtr: number) => number;
+  dae_getDummyDerivativeVar?: (pantPtr: number, i: number) => number;
+}
+
+type WasmPantelidesInstanceOrExports = WasmPantelidesExports | { exports?: WasmPantelidesExports } | null | undefined;
+
 /**
  * WebAssembly-backed Pantelides Index Reduction Engine instance.
  */
 export class WasmPantelides {
-  constructor(private wasmInstance: any) {}
+  constructor(private wasmInstance: WasmPantelidesInstanceOrExports) {}
 
   reduceIndex(
     daePtr: number,
@@ -1707,7 +1720,9 @@ export class WasmPantelides {
     generatedEquations?: number | undefined;
     dummyDerivatives?: number[] | undefined;
   } {
-    const exports = this.wasmInstance?.exports ?? this.wasmInstance;
+    const raw = this.wasmInstance;
+    const exports: WasmPantelidesExports | undefined =
+      raw && "exports" in raw ? raw.exports : (raw as WasmPantelidesExports | undefined);
     if (typeof exports?.runPantelidesIndexReduction === "function") {
       exports.runPantelidesIndexReduction(daePtr, bltPtr);
       const structuralIndex = exports.getPantelidesStructuralIndex?.() ?? 1;

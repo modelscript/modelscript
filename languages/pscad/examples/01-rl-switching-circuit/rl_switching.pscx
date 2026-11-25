@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="RL_Switching_1Ph" version="5.0.0" type="normal">
+  <param name="time_step" value="50.0"/>
+  <param name="time_duration" value="0.2"/>
+  <param name="start_type" value="0"/>
+  <param name="f_base" value="60.0"/>
+  <hierarchy>
+    <call name="Main" link="10001"/>
+  </hierarchy>
+  <definitions>
+    <definition name="Main" type="module">
+      <schematic>
+        <User classid="UserCmp" defn="master:source_1" id="SRC1" x="80" y="160" orient="0">
+          <param name="Name" value="AC_Source_13kV"/>
+          <param name="V" value="13.8"/>
+          <param name="f" value="60.0"/>
+          <param name="Phase" value="0.0"/>
+          <param name="R" value="0.25"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <Bus name="Bus_Source" id="B1" x="140" y="160" length="40" vbase="13.8"/>
+
+        <User classid="UserCmp" defn="master:breaker1" id="BRK1" x="240" y="160" orient="0">
+          <param name="Name" value="MainBreaker"/>
+          <param name="Rclosed" value="0.005"/>
+          <param name="Ropen" value="1.0e6"/>
+          <param name="Tclose" value="0.02"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:resistor" id="R1" x="340" y="160" orient="0">
+          <param name="Name" value="Load_R"/>
+          <param name="R" value="12.0"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:inductor" id="L1" x="440" y="160" orient="0">
+          <param name="Name" value="Load_L"/>
+          <param name="L" value="0.085"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:ground" id="GND1" x="500" y="160" orient="0">
+          <param name="Name" value="Earth"/>
+          <port name="in" pos="[-20, 0]"/>
+        </User>
+
+        <Wire>
+          <vertex x="100" y="160"/>
+          <vertex x="140" y="160"/>
+        </Wire>
+        <Wire>
+          <vertex x="180" y="160"/>
+          <vertex x="220" y="160"/>
+        </Wire>
+        <Wire>
+          <vertex x="260" y="160"/>
+          <vertex x="320" y="160"/>
+        </Wire>
+        <Wire>
+          <vertex x="360" y="160"/>
+          <vertex x="420" y="160"/>
+        </Wire>
+        <Wire>
+          <vertex x="460" y="160"/>
+          <vertex x="480" y="160"/>
+        </Wire>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

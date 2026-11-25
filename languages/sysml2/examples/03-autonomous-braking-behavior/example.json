@@ -1,0 +1,11 @@
+{
+  "id": "sysml2-03-autonomous-braking-behavior",
+  "lang": "sysml2",
+  "subFormats": ["sysml"],
+  "difficulty": 3,
+  "title": "Autonomous Emergency Braking State & Action Flows",
+  "description": "Behavioral SysML v2 model of an automotive AEB subsystem combining sensor fusion actions, hydraulic pressure ports, and braking operating states.",
+  "category": "Automotive Safety",
+  "tags": ["sysml2", "aeb", "state-machine", "actions", "automotive"],
+  "activeFile": "Braking.sysml"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "optical-05-metro-roadm-otdr-bundle",
+  "lang": "optical",
+  "subFormats": ["openroadm.json", "sor"],
+  "difficulty": 5,
+  "title": "Metro ROADM Network + Measured OTDR Span Diagnostics",
+  "description": "Multi-file optical engineering bundle pairing an OpenROADM JSON DWDM network with companion Telcordia .sor OTDR characterization traces for each physical span.",
+  "category": "Optical Network Assurance",
+  "tags": ["optical", "openroadm", "sor", "otdr", "multi-file"],
+  "activeFile": "metro_roadm.openroadm.json"
+}

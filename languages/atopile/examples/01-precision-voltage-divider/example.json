@@ -1,0 +1,12 @@
+{
+  "id": "atopile-01-precision-voltage-divider",
+  "lang": "atopile",
+  "subFormats": ["ato"],
+  "difficulty": 1,
+  "title": "10k/10k Precision Voltage Divider",
+  "description": "Code-as-hardware precision 1% resistive voltage divider with worst-case tolerance assertions, companion Resistor generic module, and ato.yaml build configuration.",
+  "category": "ECAD & Hardware Description",
+  "tags": ["atopile", "voltage-divider", "tolerance", "ecad", "multi-file"],
+  "activeFile": "main.ato",
+  "isDefaultStarter": true
+}

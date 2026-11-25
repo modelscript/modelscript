@@ -1,0 +1,31 @@
+Tokamak First-Wall, LiPb Tritium-Breeding Blanket and Vacuum Vessel Sector
+C Companion isotopic specifications archived in materials.inc
+C Block 1: Cell Cards
+1 0        -1 6 -7    IMP:N=1 IMP:P=1 $ D-T plasma chamber
+2 1 -19.25  1 -2 6 -7 IMP:N=1 IMP:P=1 $ 2 cm Tungsten armor first wall
+3 2 -9.40   2 -3 6 -7 IMP:N=1 IMP:P=1 $ 48 cm Li-17Pb-83 breeding blanket
+4 3 -7.90   3 -4 6 -7 IMP:N=1 IMP:P=1 $ 30 cm SS316LN vacuum vessel shield
+5 4 -8.96   4 -5 6 -7 IMP:N=1 IMP:P=1 $ 20 cm TF magnet winding pack
+6 0         5:-6:7    IMP:N=0 IMP:P=0 $ External graveyard
+
+C Block 2: Surface Cards
+1 CZ 200.0  $ First-wall plasma-facing radius (cm)
+2 CZ 202.0  $ Back of tungsten armor
+3 CZ 250.0  $ Back of LiPb breeding blanket
+4 CZ 280.0  $ Back of SS316LN vacuum vessel
+5 CZ 300.0  $ Outer boundary of TF coil casing
+*6 PZ -150.0 $ Lower poloidal symmetry plane
+*7 PZ  150.0 $ Upper poloidal symmetry plane
+
+C Block 3: Data Cards
+MODE N P
+M1 74182.80c 0.265 74183.80c 0.143 74184.80c 0.306 74186.80c 0.284
+M2 3006.80c 0.153 3007.80c 0.017 82206.80c 0.200 82207.80c 0.183 82208.80c 0.447
+M3 26056.80c 0.680 24052.80c 0.170 28058.80c 0.120 42096.80c 0.030
+M4 29063.80c 0.692 29065.80c 0.308
+SDEF POS=0 0 0 ERG=14.1 PAR=N
+F4:N 2 3 4 5
+F6:N 2 3 5
+F6:P 2 3 5
+E4 1.0e-6 0.1 1.0 10.0 14.5
+NPS 50000

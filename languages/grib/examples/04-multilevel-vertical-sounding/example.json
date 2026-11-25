@@ -1,0 +1,11 @@
+{
+  "id": "grib-04-multilevel-vertical-sounding",
+  "lang": "grib",
+  "subFormats": ["grib1"],
+  "difficulty": 4,
+  "title": "Multi-Level Tropospheric Vertical Sounding Profile",
+  "description": "Four-level isobaric GRIB1 stack (850, 700, 500, and 300 hPa) encoding temperature and relative humidity grids for convective instability diagnosis.",
+  "category": "Atmospheric Thermodynamics",
+  "tags": ["grib", "sounding", "isobaric", "humidity", "troposphere"],
+  "activeFile": "vertical_sounding.grb"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "modelica-05-wind-turbine-drivetrain",
+  "lang": "modelica",
+  "subFormats": ["mo", "mos"],
+  "difficulty": 5,
+  "title": "Multi-File Wind Turbine Drivetrain Package",
+  "description": "Structured Modelica package combining aerodynamic rotor, compliant planetary gearbox, synchronous generator, and simulation script.",
+  "category": "Renewable Energy",
+  "tags": ["modelica", "wind-turbine", "drivetrain", "package", "multi-file"],
+  "activeFile": "WindTurbine.mo"
+}

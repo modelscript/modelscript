@@ -60,7 +60,9 @@ export function inspectWorkflowArtifacts(workDir: string): InspectedArtifactSumm
           foundFiles.push(full);
         }
       }
-    } catch {}
+    } catch {
+      // Skip unreadable directories during workspace artifact scan
+    }
   }
   scan(workDir);
 
@@ -73,7 +75,9 @@ export function inspectWorkflowArtifacts(workDir: string): InspectedArtifactSumm
         path: rel,
         size: stat.size,
       });
-    } catch {}
+    } catch {
+      // Skip files that disappeared or cannot be stat'd
+    }
   }
 
   // 2. Look for simulation summary JSON
@@ -116,7 +120,9 @@ export function inspectWorkflowArtifacts(workDir: string): InspectedArtifactSumm
           }
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed simulation summary JSON
+    }
   }
 
   // 3. Look for JUnit XML or CTRF test results
@@ -149,7 +155,9 @@ export function inspectWorkflowArtifacts(workDir: string): InspectedArtifactSumm
           result.status = "failed";
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed JUnit XML test report
+    }
   }
 
   // 4. Look for CTRF JSON test reports
@@ -159,8 +167,7 @@ export function inspectWorkflowArtifacts(workDir: string): InspectedArtifactSumm
       const content = fs.readFileSync(ctrfFile, "utf-8");
       const parsed = JSON.parse(content) as Record<string, unknown>;
       const summary = (parsed["results"] as Record<string, unknown> | undefined)?.["summary"] as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       if (summary) {
         const tests = Number(summary["tests"] || 0);
         const passed = Number(summary["passed"] || 0);
@@ -180,7 +187,9 @@ export function inspectWorkflowArtifacts(workDir: string): InspectedArtifactSumm
           result.status = "failed";
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed CTRF JSON test report
+    }
   }
 
   // 5. Look for Trajectory CSV (e.g. trajectories.csv or result.csv)
@@ -219,7 +228,9 @@ export function inspectWorkflowArtifacts(workDir: string): InspectedArtifactSumm
           }
         }
       }
-    } catch {}
+    } catch {
+      // Ignore malformed trajectory CSV output
+    }
   }
 
   return result;

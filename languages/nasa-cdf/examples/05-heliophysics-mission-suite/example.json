@@ -1,0 +1,11 @@
+{
+  "id": "nasa-cdf-05-heliophysics-mission-suite",
+  "lang": "nasa-cdf",
+  "subFormats": ["skt", "istp"],
+  "difficulty": 5,
+  "title": "Multi-Instrument Heliophysics Mission Skeleton (MAG + SWE + Ephemeris)",
+  "description": "Combined MMS-class magnetospheric mission CDF merging triaxial magnetometer vectors, ion plasma density/velocity moments, spacecraft GSE ephemeris, and data quality flags.",
+  "category": "Space Physics",
+  "tags": ["nasa-cdf", "multi-instrument", "mms", "ephemeris", "istp"],
+  "activeFile": "mms_merged_suite.skt"
+}

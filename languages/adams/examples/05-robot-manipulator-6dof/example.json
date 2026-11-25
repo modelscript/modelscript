@@ -1,0 +1,12 @@
+{
+  "id": "adams-05-robot-manipulator-6dof",
+  "lang": "adams",
+  "subFormats": ["adm", "acf"],
+  "difficulty": 5,
+  "title": "6-DOF Robotic Manipulator Dynamics",
+  "description": "Six-axis articulated industrial robotic arm with waist, shoulder, elbow, forearm roll, wrist pitch, and end-effector flange revolute joints, prescribed joint trajectory motions, and an Adams/Solver ACF control script.",
+  "category": "Robotics Multibody",
+  "tags": ["robotics", "6-dof", "manipulator", "inverse-dynamics", "multi-file"],
+  "activeFile": "robot6dof.adm",
+  "fileOrder": ["robot6dof.adm", "trajectory.acf"]
+}

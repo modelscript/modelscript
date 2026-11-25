@@ -1,0 +1,11 @@
+{
+  "id": "acsl-03-ballistic-projectile",
+  "lang": "acsl",
+  "subFormats": ["csl"],
+  "difficulty": 3,
+  "title": "Ballistic Projectile with Aerodynamic Drag and Impact Schedule",
+  "description": "Two-dimensional nonlinear projectile trajectory with quadratic aerodynamic drag and an ACSL SCHEDULE discrete event capturing ground impact telemetry.",
+  "category": "Aerospace & Ballistics",
+  "tags": ["acsl", "ballistics", "drag", "schedule", "discrete"],
+  "activeFile": "projectile.csl"
+}

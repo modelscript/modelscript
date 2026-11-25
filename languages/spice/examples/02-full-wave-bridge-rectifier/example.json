@@ -1,0 +1,11 @@
+{
+  "id": "spice-02-full-wave-bridge-rectifier",
+  "lang": "spice",
+  "subFormats": ["sp"],
+  "difficulty": 2,
+  "title": "Full-Wave Diode Bridge Rectifier with Smoothing Capacitor",
+  "description": "60 Hz AC mains full-wave Graetz bridge rectifier using 1N4007 silicon diodes, bulk electrolytic smoothing capacitor, and resistive DC load.",
+  "category": "Power Electronics",
+  "tags": ["spice", "rectifier", "diode-bridge", "power-supply"],
+  "activeFile": "bridge_rectifier.sp"
+}

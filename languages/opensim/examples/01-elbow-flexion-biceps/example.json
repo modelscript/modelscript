@@ -1,0 +1,12 @@
+{
+  "id": "opensim-01-elbow-flexion-biceps",
+  "lang": "opensim",
+  "subFormats": ["osim"],
+  "difficulty": 1,
+  "title": "Single-Joint Elbow Flexion with Biceps Hill Muscle",
+  "description": "Single-DOF elbow hinge joint actuated by a Thelen2003 Hill-type biceps brachii muscle-tendon unit attached across ground and forearm frames.",
+  "category": "Musculoskeletal Biomechanics",
+  "tags": ["opensim", "elbow", "hill-muscle", "upper-limb"],
+  "activeFile": "elbow_flexion.osim",
+  "isDefaultStarter": true
+}

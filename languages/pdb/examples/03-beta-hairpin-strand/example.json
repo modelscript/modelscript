@@ -1,0 +1,11 @@
+{
+  "id": "pdb-03-beta-hairpin-strand",
+  "lang": "pdb",
+  "subFormats": ["pdb"],
+  "difficulty": 3,
+  "title": "Beta-Hairpin with Extended Strands and Type-I Turn",
+  "description": "Eight-residue beta-hairpin polypeptide combining extended beta-strand dihedral angles (-135, +135) with a central glycine beta-turn and SHEET records.",
+  "category": "Structural Biology",
+  "tags": ["pdb", "beta-hairpin", "beta-sheet", "secondary-structure"],
+  "activeFile": "beta_hairpin.pdb"
+}

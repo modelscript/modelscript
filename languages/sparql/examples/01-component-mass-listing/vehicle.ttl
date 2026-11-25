@@ -1,0 +1,19 @@
+@prefix eng: <http://modelscript.dev/ontology/engineering#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+eng:BatteryPack a eng:Component ;
+  rdfs:label "800V Li-Ion Battery Pack" ;
+  eng:massKg "415.0"^^xsd:double .
+
+eng:TractionMotor a eng:Component ;
+  rdfs:label "Permanent Magnet Traction Motor" ;
+  eng:massKg "68.5"^^xsd:double .
+
+eng:SiCInverter a eng:Component ;
+  rdfs:label "SiC Dual-Bridge Inverter" ;
+  eng:massKg "12.4"^^xsd:double .
+
+eng:ThermalPump a eng:Component ;
+  rdfs:label "Coolant Circulation Pump" ;
+  eng:massKg "3.2"^^xsd:double .

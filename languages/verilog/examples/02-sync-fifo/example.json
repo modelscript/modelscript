@@ -1,0 +1,11 @@
+{
+  "id": "verilog-02-sync-fifo",
+  "lang": "verilog",
+  "subFormats": ["v"],
+  "difficulty": 2,
+  "title": "Synchronous FIFO Ring Buffer",
+  "description": "Four-entry 8-bit synchronous FIFO circular buffer with read/write pointers, occupancy counter, and full/empty status flags in synthesizable Verilog RTL.",
+  "category": "Memory & Buffering",
+  "tags": ["verilog", "fifo", "ring-buffer", "sequential"],
+  "activeFile": "fifo.v"
+}

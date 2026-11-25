@@ -1,0 +1,12 @@
+PREFIX sat: <http://modelscript.dev/ontology/spacecraft#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?unit ?name ?dissipationW ?budgetW
+WHERE {
+  ?unit a sat:AvionicsUnit ;
+        rdfs:label ?name ;
+        sat:peakDissipationW ?dissipationW ;
+        sat:thermalBudgetW ?budgetW .
+  FILTER (?dissipationW > ?budgetW)
+}
+ORDER BY DESC(?dissipationW)

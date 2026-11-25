@@ -1,0 +1,12 @@
+{
+  "id": "mlxtran-04-tmdd-monoclonal-antibody",
+  "lang": "mlxtran",
+  "subFormats": ["mlxtran"],
+  "difficulty": 4,
+  "title": "Target-Mediated Drug Disposition (TMDD) mAb Model",
+  "description": "Mechanistic monoclonal antibody TMDD ODE model capturing free drug, free receptor turnover (ksyn, kdeg), high-affinity complex binding, and internalization.",
+  "category": "Biologics & Biopharma",
+  "tags": ["mlxtran", "tmdd", "monoclonal-antibody", "biologics", "multi-file"],
+  "activeFile": "tmdd.mlxtran",
+  "fileOrder": ["tmdd.mlxtran", "mab_data.csv"]
+}

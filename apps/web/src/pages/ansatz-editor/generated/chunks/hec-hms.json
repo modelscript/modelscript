@@ -1,0 +1,104 @@
+[
+  {
+    "id": "hec-hms-01-single-subbasin-scs",
+    "lang": "hec-hms",
+    "subFormats": ["hms", "basin", "met", "control"],
+    "difficulty": 1,
+    "title": "Single Subbasin SCS Curve Number Runoff",
+    "description": "Single rural watershed subbasin transforming 24-hour design storm precipitation into direct runoff using the SCS Curve Number loss and SCS Unit Hydrograph methods.",
+    "category": "Watershed Hydrology",
+    "tags": ["hec-hms", "scs-cn", "unit-hydrograph", "multi-file"],
+    "activeFile": "simple.basin",
+    "fileNames": ["simple.basin", "simple.control", "simple.hms", "simple.met"],
+    "fileCount": 4,
+    "isDefaultStarter": true,
+    "code": "Basin: Simple SCS Subbasin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Meadow Creek\n  Area: 32.5\n  Downstream: Basin Outlet\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Meadow Creek\n  Curve Number: 74.0\n  Initial Abstraction: 17.8\n  Impervious: 6.0\nEnd:\n\nSubbasin-Transform: Meadow Creek\n  Lag: 75.0\nEnd:\n\nSink: Basin Outlet\nEnd:\n",
+    "files": {
+      "simple.basin": "Basin: Simple SCS Subbasin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Meadow Creek\n  Area: 32.5\n  Downstream: Basin Outlet\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Meadow Creek\n  Curve Number: 74.0\n  Initial Abstraction: 17.8\n  Impervious: 6.0\nEnd:\n\nSubbasin-Transform: Meadow Creek\n  Lag: 75.0\nEnd:\n\nSink: Basin Outlet\nEnd:\n",
+      "simple.control": "Control: Storm_24hr\n  Start Date: 15 May 2026\n  Start Time: 00:00\n  End Date: 16 May 2026\n  End Time: 00:00\n  Time Interval: 15\nEnd:\n",
+      "simple.hms": "Project: Simple SCS Watershed\n     Description: Single Subbasin SCS Curve Number Runoff Example\n     Version: 4.11\n     Filepath Separator: /\n     DSS File Name: simple.dss\nEnd:\n\nBasin: Simple_Basin\n     Filename: simple.basin\nEnd:\n\nPrecipitation: Design_Storm\n     Filename: simple.met\nEnd:\n\nControl: Storm_24hr\n     Filename: simple.control\nEnd:\n",
+      "simple.met": "Meteorology: Design_Storm\n  Unit System: Metric\n  Precipitation Method: Frequency Storm\nEnd:\n\nSubbasin: Meadow Creek\n  Gage: StormGage_1\n  Depth: 115.0\nEnd:\n"
+    }
+  },
+  {
+    "id": "hec-hms-02-muskingum-confluence-routing",
+    "lang": "hec-hms",
+    "subFormats": ["hms", "basin", "met", "control"],
+    "difficulty": 2,
+    "title": "Two-Subbasin Confluence with Muskingum Channel Routing",
+    "description": "Two-subbasin watershed routing headwater runoff through a Muskingum river reach before combining with a lower tributary at a confluence junction draining to the basin sink.",
+    "category": "Watershed Hydrology",
+    "tags": ["hec-hms", "muskingum", "confluence", "channel-routing", "multi-file"],
+    "activeFile": "confluence.basin",
+    "fileNames": ["confluence.basin", "confluence.control", "confluence.hms", "confluence.met"],
+    "fileCount": 4,
+    "code": "Basin: Muskingum Confluence Basin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: North Fork Headwaters\n  Area: 96.4\n  Downstream: Upper Reach\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: North Fork Headwaters\n  Curve Number: 72.0\n  Initial Abstraction: 19.5\n  Impervious: 4.0\nEnd:\n\nSubbasin-Transform: North Fork Headwaters\n  Lag: 110.0\nEnd:\n\nReach: Upper Reach\n  Downstream: Main Confluence\n  Route: Muskingum\nEnd:\n\nReach-Route: Upper Reach\n  Muskingum K: 2.2\n  Muskingum X: 0.22\n  Subreaches: 3\nEnd:\n\nSubbasin: South Creek Tributary\n  Area: 58.2\n  Downstream: Main Confluence\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: South Creek Tributary\n  Curve Number: 78.5\n  Initial Abstraction: 14.0\n  Impervious: 10.0\nEnd:\n\nSubbasin-Transform: South Creek Tributary\n  Lag: 85.0\nEnd:\n\nJunction: Main Confluence\n  Downstream: Watershed Outlet\nEnd:\n\nSink: Watershed Outlet\nEnd:\n",
+    "files": {
+      "confluence.basin": "Basin: Muskingum Confluence Basin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: North Fork Headwaters\n  Area: 96.4\n  Downstream: Upper Reach\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: North Fork Headwaters\n  Curve Number: 72.0\n  Initial Abstraction: 19.5\n  Impervious: 4.0\nEnd:\n\nSubbasin-Transform: North Fork Headwaters\n  Lag: 110.0\nEnd:\n\nReach: Upper Reach\n  Downstream: Main Confluence\n  Route: Muskingum\nEnd:\n\nReach-Route: Upper Reach\n  Muskingum K: 2.2\n  Muskingum X: 0.22\n  Subreaches: 3\nEnd:\n\nSubbasin: South Creek Tributary\n  Area: 58.2\n  Downstream: Main Confluence\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: South Creek Tributary\n  Curve Number: 78.5\n  Initial Abstraction: 14.0\n  Impervious: 10.0\nEnd:\n\nSubbasin-Transform: South Creek Tributary\n  Lag: 85.0\nEnd:\n\nJunction: Main Confluence\n  Downstream: Watershed Outlet\nEnd:\n\nSink: Watershed Outlet\nEnd:\n",
+      "confluence.control": "Control: Storm_48hr\n  Start Date: 15 May 2026\n  Start Time: 00:00\n  End Date: 17 May 2026\n  End Time: 00:00\n  Time Interval: 15\nEnd:\n",
+      "confluence.hms": "Project: Muskingum Confluence Watershed\n     Description: Two-Subbasin Confluence with Muskingum Routing\n     Version: 4.11\n     Filepath Separator: /\n     DSS File Name: confluence.dss\nEnd:\n\nBasin: Confluence_Basin\n     Filename: confluence.basin\nEnd:\n\nPrecipitation: Storm_50yr\n     Filename: confluence.met\nEnd:\n\nControl: Storm_48hr\n     Filename: confluence.control\nEnd:\n",
+      "confluence.met": "Meteorology: Storm_50yr\n  Unit System: Metric\n  Precipitation Method: Frequency Storm\nEnd:\n\nSubbasin: North Fork Headwaters\n  Gage: NorthGage\n  Depth: 132.0\nEnd:\n\nSubbasin: South Creek Tributary\n  Gage: SouthGage\n  Depth: 128.0\nEnd:\n"
+    }
+  },
+  {
+    "id": "hec-hms-03-urban-detention-reservoir",
+    "lang": "hec-hms",
+    "subFormats": ["hms", "basin", "met", "control"],
+    "difficulty": 3,
+    "title": "Urban Detention Reservoir Outflow Attenuation",
+    "description": "Impervious suburban drainage basin discharging into an inline stormwater detention reservoir and downstream Muskingum outfall channel to evaluate peak discharge attenuation.",
+    "category": "Urban Flood Control",
+    "tags": ["hec-hms", "reservoir", "detention", "attenuation", "multi-file"],
+    "activeFile": "detention.basin",
+    "fileNames": ["detention.basin", "detention.control", "detention.hms", "detention.met"],
+    "fileCount": 4,
+    "code": "Basin: Urban Detention Basin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Suburban West\n  Area: 18.6\n  Downstream: Detention Pond\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Suburban West\n  Curve Number: 86.0\n  Initial Abstraction: 8.2\n  Impervious: 42.0\nEnd:\n\nSubbasin-Transform: Suburban West\n  Lag: 35.0\nEnd:\n\nReservoir: Detention Pond\n  Downstream: Outfall Channel\nEnd:\n\nReach: Outfall Channel\n  Downstream: Creek Outlet\n  Route: Muskingum\nEnd:\n\nReach-Route: Outfall Channel\n  Muskingum K: 0.75\n  Muskingum X: 0.20\n  Subreaches: 2\nEnd:\n\nSink: Creek Outlet\nEnd:\n",
+    "files": {
+      "detention.basin": "Basin: Urban Detention Basin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Suburban West\n  Area: 18.6\n  Downstream: Detention Pond\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Suburban West\n  Curve Number: 86.0\n  Initial Abstraction: 8.2\n  Impervious: 42.0\nEnd:\n\nSubbasin-Transform: Suburban West\n  Lag: 35.0\nEnd:\n\nReservoir: Detention Pond\n  Downstream: Outfall Channel\nEnd:\n\nReach: Outfall Channel\n  Downstream: Creek Outlet\n  Route: Muskingum\nEnd:\n\nReach-Route: Outfall Channel\n  Muskingum K: 0.75\n  Muskingum X: 0.20\n  Subreaches: 2\nEnd:\n\nSink: Creek Outlet\nEnd:\n",
+      "detention.control": "Control: Urban_Run\n  Start Date: 15 May 2026\n  Start Time: 00:00\n  End Date: 16 May 2026\n  End Time: 12:00\n  Time Interval: 5\nEnd:\n",
+      "detention.hms": "Project: Urban Detention Reservoir\n     Description: Peak Flood Attenuation Through Inline Detention Basin\n     Version: 4.11\n     Filepath Separator: /\n     DSS File Name: detention.dss\nEnd:\n\nBasin: Detention_Basin\n     Filename: detention.basin\nEnd:\n\nPrecipitation: Urban_100yr\n     Filename: detention.met\nEnd:\n\nControl: Urban_Run\n     Filename: detention.control\nEnd:\n",
+      "detention.met": "Meteorology: Urban_100yr\n  Unit System: Metric\n  Precipitation Method: Frequency Storm\nEnd:\n\nSubbasin: Suburban West\n  Gage: MetroGage\n  Depth: 155.0\nEnd:\n"
+    }
+  },
+  {
+    "id": "hec-hms-04-green-ampt-clark-watershed",
+    "lang": "hec-hms",
+    "subFormats": ["hms", "basin", "met", "control"],
+    "difficulty": 4,
+    "title": "Green-Ampt Infiltration & Clark Unit Hydrograph Watershed",
+    "description": "Three-subbasin mixed forest-agricultural watershed pairing physically based Green-Ampt infiltration, Clark unit hydrograph transform, and multi-reach Muskingum routing.",
+    "category": "Watershed Hydrology",
+    "tags": ["hec-hms", "green-ampt", "clark-uh", "muskingum", "multi-file"],
+    "activeFile": "clark.basin",
+    "fileNames": ["clark.basin", "clark.control", "clark.hms", "clark.met"],
+    "fileCount": 4,
+    "code": "Basin: Green-Ampt Clark Watershed\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Upper Forest\n  Area: 124.0\n  Downstream: Reach Forest\n  Loss: Green and Ampt\n  Transform: Clark\nEnd:\n\nSubbasin-Loss: Upper Forest\n  Curve Number: 68.0\n  Initial Abstraction: 22.0\n  Impervious: 2.0\nEnd:\n\nSubbasin-Transform: Upper Forest\n  Lag: 140.0\nEnd:\n\nReach: Reach Forest\n  Downstream: Mid Junction\n  Route: Muskingum\nEnd:\n\nReach-Route: Reach Forest\n  Muskingum K: 3.1\n  Muskingum X: 0.24\n  Subreaches: 4\nEnd:\n\nSubbasin: Central Farmland\n  Area: 86.5\n  Downstream: Mid Junction\n  Loss: Green and Ampt\n  Transform: Clark\nEnd:\n\nSubbasin-Loss: Central Farmland\n  Curve Number: 77.0\n  Initial Abstraction: 15.0\n  Impervious: 5.0\nEnd:\n\nSubbasin-Transform: Central Farmland\n  Lag: 95.0\nEnd:\n\nJunction: Mid Junction\n  Downstream: Lower Reach\nEnd:\n\nReach: Lower Reach\n  Downstream: River Gauge Sink\n  Route: Muskingum\nEnd:\n\nReach-Route: Lower Reach\n  Muskingum K: 2.4\n  Muskingum X: 0.20\n  Subreaches: 3\nEnd:\n\nSubbasin: Lower Valley\n  Area: 52.0\n  Downstream: River Gauge Sink\n  Loss: Green and Ampt\n  Transform: Clark\nEnd:\n\nSubbasin-Loss: Lower Valley\n  Curve Number: 82.0\n  Initial Abstraction: 11.0\n  Impervious: 18.0\nEnd:\n\nSubbasin-Transform: Lower Valley\n  Lag: 60.0\nEnd:\n\nSink: River Gauge Sink\nEnd:\n",
+    "files": {
+      "clark.basin": "Basin: Green-Ampt Clark Watershed\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Upper Forest\n  Area: 124.0\n  Downstream: Reach Forest\n  Loss: Green and Ampt\n  Transform: Clark\nEnd:\n\nSubbasin-Loss: Upper Forest\n  Curve Number: 68.0\n  Initial Abstraction: 22.0\n  Impervious: 2.0\nEnd:\n\nSubbasin-Transform: Upper Forest\n  Lag: 140.0\nEnd:\n\nReach: Reach Forest\n  Downstream: Mid Junction\n  Route: Muskingum\nEnd:\n\nReach-Route: Reach Forest\n  Muskingum K: 3.1\n  Muskingum X: 0.24\n  Subreaches: 4\nEnd:\n\nSubbasin: Central Farmland\n  Area: 86.5\n  Downstream: Mid Junction\n  Loss: Green and Ampt\n  Transform: Clark\nEnd:\n\nSubbasin-Loss: Central Farmland\n  Curve Number: 77.0\n  Initial Abstraction: 15.0\n  Impervious: 5.0\nEnd:\n\nSubbasin-Transform: Central Farmland\n  Lag: 95.0\nEnd:\n\nJunction: Mid Junction\n  Downstream: Lower Reach\nEnd:\n\nReach: Lower Reach\n  Downstream: River Gauge Sink\n  Route: Muskingum\nEnd:\n\nReach-Route: Lower Reach\n  Muskingum K: 2.4\n  Muskingum X: 0.20\n  Subreaches: 3\nEnd:\n\nSubbasin: Lower Valley\n  Area: 52.0\n  Downstream: River Gauge Sink\n  Loss: Green and Ampt\n  Transform: Clark\nEnd:\n\nSubbasin-Loss: Lower Valley\n  Curve Number: 82.0\n  Initial Abstraction: 11.0\n  Impervious: 18.0\nEnd:\n\nSubbasin-Transform: Lower Valley\n  Lag: 60.0\nEnd:\n\nSink: River Gauge Sink\nEnd:\n",
+      "clark.control": "Control: Clark_Control\n  Start Date: 15 May 2026\n  Start Time: 00:00\n  End Date: 18 May 2026\n  End Time: 00:00\n  Time Interval: 15\nEnd:\n",
+      "clark.hms": "Project: Green-Ampt Clark Watershed\n     Description: Physically Based Infiltration and Clark Unit Hydrograph Model\n     Version: 4.11\n     Filepath Separator: /\n     DSS File Name: clark.dss\nEnd:\n\nBasin: Clark_Basin\n     Filename: clark.basin\nEnd:\n\nPrecipitation: Design_Storm_72hr\n     Filename: clark.met\nEnd:\n\nControl: Clark_Control\n     Filename: clark.control\nEnd:\n",
+      "clark.met": "Meteorology: Design_Storm_72hr\n  Unit System: Metric\n  Precipitation Method: Gage Weights\nEnd:\n\nSubbasin: Upper Forest\n  Gage: HighlandGage\n  Depth: 165.0\nEnd:\n\nSubbasin: Central Farmland\n  Gage: ValleyGage\n  Depth: 142.0\nEnd:\n\nSubbasin: Lower Valley\n  Gage: ValleyGage\n  Depth: 138.0\nEnd:\n"
+    }
+  },
+  {
+    "id": "hec-hms-05-multi-subbasin-river-basin",
+    "lang": "hec-hms",
+    "subFormats": ["hms", "basin", "met", "control", "csv"],
+    "difficulty": 5,
+    "title": "Multi-Subbasin River Basin with Reservoir & Observed Gage",
+    "description": "Full 5-file regional river basin hydrologic model with four subbasins, cascading Muskingum reaches, flood-control dam reservoir, meteorological storm spec, and observed stream gage CSV.",
+    "category": "Regional Flood Hydrology",
+    "tags": ["hec-hms", "river-basin", "reservoir", "calibration", "multi-file"],
+    "activeFile": "basin_full.basin",
+    "fileNames": ["basin_full.basin", "basin_full.hms", "gage.csv", "run.control", "storm.met"],
+    "fileCount": 5,
+    "code": "Basin: Cascade Regional River Basin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Alpine Headwaters\n  Area: 185.0\n  Downstream: Canyon Reach\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Alpine Headwaters\n  Curve Number: 70.0\n  Initial Abstraction: 20.0\n  Impervious: 2.0\nEnd:\n\nSubbasin-Transform: Alpine Headwaters\n  Lag: 150.0\nEnd:\n\nReach: Canyon Reach\n  Downstream: Upper Junction\n  Route: Muskingum\nEnd:\n\nReach-Route: Canyon Reach\n  Muskingum K: 3.5\n  Muskingum X: 0.25\n  Subreaches: 4\nEnd:\n\nSubbasin: East Glacier Fork\n  Area: 112.5\n  Downstream: Upper Junction\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: East Glacier Fork\n  Curve Number: 74.0\n  Initial Abstraction: 17.0\n  Impervious: 3.0\nEnd:\n\nSubbasin-Transform: East Glacier Fork\n  Lag: 115.0\nEnd:\n\nJunction: Upper Junction\n  Downstream: Cascade Dam Reservoir\nEnd:\n\nReservoir: Cascade Dam Reservoir\n  Downstream: Valley Mainstem\nEnd:\n\nReach: Valley Mainstem\n  Downstream: Lower Junction\n  Route: Muskingum\nEnd:\n\nReach-Route: Valley Mainstem\n  Muskingum K: 4.0\n  Muskingum X: 0.22\n  Subreaches: 5\nEnd:\n\nSubbasin: West Foothills\n  Area: 94.0\n  Downstream: Lower Junction\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: West Foothills\n  Curve Number: 79.0\n  Initial Abstraction: 13.5\n  Impervious: 9.0\nEnd:\n\nSubbasin-Transform: West Foothills\n  Lag: 90.0\nEnd:\n\nJunction: Lower Junction\n  Downstream: Estuary Outlet\nEnd:\n\nSubbasin: Coastal Plain\n  Area: 68.0\n  Downstream: Estuary Outlet\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Coastal Plain\n  Curve Number: 84.0\n  Initial Abstraction: 9.5\n  Impervious: 24.0\nEnd:\n\nSubbasin-Transform: Coastal Plain\n  Lag: 65.0\nEnd:\n\nSink: Estuary Outlet\nEnd:\n",
+    "files": {
+      "basin_full.basin": "Basin: Cascade Regional River Basin\n  Last Modified Date: 15 May 2026\n  Unit System: Metric\nEnd:\n\nSubbasin: Alpine Headwaters\n  Area: 185.0\n  Downstream: Canyon Reach\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Alpine Headwaters\n  Curve Number: 70.0\n  Initial Abstraction: 20.0\n  Impervious: 2.0\nEnd:\n\nSubbasin-Transform: Alpine Headwaters\n  Lag: 150.0\nEnd:\n\nReach: Canyon Reach\n  Downstream: Upper Junction\n  Route: Muskingum\nEnd:\n\nReach-Route: Canyon Reach\n  Muskingum K: 3.5\n  Muskingum X: 0.25\n  Subreaches: 4\nEnd:\n\nSubbasin: East Glacier Fork\n  Area: 112.5\n  Downstream: Upper Junction\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: East Glacier Fork\n  Curve Number: 74.0\n  Initial Abstraction: 17.0\n  Impervious: 3.0\nEnd:\n\nSubbasin-Transform: East Glacier Fork\n  Lag: 115.0\nEnd:\n\nJunction: Upper Junction\n  Downstream: Cascade Dam Reservoir\nEnd:\n\nReservoir: Cascade Dam Reservoir\n  Downstream: Valley Mainstem\nEnd:\n\nReach: Valley Mainstem\n  Downstream: Lower Junction\n  Route: Muskingum\nEnd:\n\nReach-Route: Valley Mainstem\n  Muskingum K: 4.0\n  Muskingum X: 0.22\n  Subreaches: 5\nEnd:\n\nSubbasin: West Foothills\n  Area: 94.0\n  Downstream: Lower Junction\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: West Foothills\n  Curve Number: 79.0\n  Initial Abstraction: 13.5\n  Impervious: 9.0\nEnd:\n\nSubbasin-Transform: West Foothills\n  Lag: 90.0\nEnd:\n\nJunction: Lower Junction\n  Downstream: Estuary Outlet\nEnd:\n\nSubbasin: Coastal Plain\n  Area: 68.0\n  Downstream: Estuary Outlet\n  Loss: SCS\n  Transform: SCS\nEnd:\n\nSubbasin-Loss: Coastal Plain\n  Curve Number: 84.0\n  Initial Abstraction: 9.5\n  Impervious: 24.0\nEnd:\n\nSubbasin-Transform: Coastal Plain\n  Lag: 65.0\nEnd:\n\nSink: Estuary Outlet\nEnd:\n",
+      "basin_full.hms": "Project: Cascade River Basin Full Model\n     Description: Multi-Subbasin Regional River Basin with Snowmelt and Flood Control Dam\n     Version: 4.11\n     Filepath Separator: /\n     DSS File Name: basin_full.dss\nEnd:\n\nBasin: Cascade_Basin_Full\n     Filename: basin_full.basin\nEnd:\n\nPrecipitation: Spring_RainOnSnow\n     Filename: storm.met\nEnd:\n\nControl: Calibration_Run\n     Filename: run.control\nEnd:\n",
+      "gage.csv": "timestamp_utc,precip_mm_hr,observed_discharge_cms,reservoir_elev_m\n2026-05-01T00:00:00Z,2.0,45.2,312.0\n2026-05-01T06:00:00Z,8.5,62.4,312.2\n2026-05-01T12:00:00Z,18.2,128.6,312.8\n2026-05-01T18:00:00Z,24.5,245.0,313.9\n2026-05-02T00:00:00Z,12.0,318.5,314.8\n2026-05-02T06:00:00Z,4.5,274.2,315.1\n2026-05-02T12:00:00Z,1.0,198.4,314.7\n2026-05-03T00:00:00Z,0.0,118.0,313.6\n2026-05-04T00:00:00Z,0.0,74.5,312.7\n2026-05-05T00:00:00Z,0.0,52.0,312.2\n",
+      "run.control": "Control: Calibration_Run\n  Start Date: 01 May 2026\n  Start Time: 00:00\n  End Date: 05 May 2026\n  End Time: 00:00\n  Time Interval: 30\nEnd:\n",
+      "storm.met": "Meteorology: Spring_RainOnSnow\n  Unit System: Metric\n  Precipitation Method: Gage Weights\n  Snowmelt Method: Temperature Index\nEnd:\n\nSubbasin: Alpine Headwaters\n  Gage: AlpineSNOTEL\n  Depth: 190.0\nEnd:\n\nSubbasin: East Glacier Fork\n  Gage: AlpineSNOTEL\n  Depth: 175.0\nEnd:\n\nSubbasin: West Foothills\n  Gage: FoothillGage\n  Depth: 145.0\nEnd:\n\nSubbasin: Coastal Plain\n  Gage: CoastalGage\n  Depth: 120.0\nEnd:\n"
+    }
+  }
+]

@@ -1,0 +1,15 @@
+network SectorCoupled_P2X baseMva=100
+bus Elec_Grid v_nom=380 carrier=AC
+bus District_Heat v_nom=1 carrier=heat
+bus H2_Bus v_nom=1 carrier=H2
+generator Offshore_Wind bus=Elec_Grid carrier=wind p_nom=900 marginal_cost=0 capital_cost=1650
+generator Solar_PV bus=Elec_Grid carrier=solar p_nom=500 marginal_cost=0 capital_cost=800
+generator Backup_CCGT bus=Elec_Grid carrier=gas p_nom=400 marginal_cost=68 capital_cost=620
+load Elec_Demand bus=Elec_Grid p_set=520
+load Heat_Demand bus=District_Heat p_set=260
+load H2_Industry bus=H2_Bus p_set=140
+link HeatPump_P2H bus0=Elec_Grid bus1=District_Heat p_nom=350 efficiency=0.95
+link PEM_Electrolyzer bus0=Elec_Grid bus1=H2_Bus p_nom=250 efficiency=0.68
+link H2_FuelCell bus0=H2_Bus bus1=Elec_Grid p_nom=120 efficiency=0.58
+storage_unit Thermal_Tank bus=District_Heat p_nom=120 max_hours=12 efficiency_store=0.96 efficiency_dispatch=0.96 standing_loss=0.005
+storage_unit H2_Cavern bus=H2_Bus p_nom=150 max_hours=48 efficiency_store=0.98 efficiency_dispatch=0.98 standing_loss=0.0001

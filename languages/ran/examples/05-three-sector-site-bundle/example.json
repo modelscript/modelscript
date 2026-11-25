@@ -1,0 +1,11 @@
+{
+  "id": "ran-05-three-sector-site-bundle",
+  "lang": "ran",
+  "subFormats": ["adf", "pat"],
+  "difficulty": 5,
+  "title": "3-Sector Cellular Site Propagation Bundle",
+  "description": "Multi-file cellular macro site workspace providing three oriented NSMA .adf sector radiation patterns (0, 120, 240 deg) plus a Planet reference pattern.",
+  "category": "Multi-Sector Site Engineering",
+  "tags": ["ran", "3-sector", "adf", "planet", "multi-file"],
+  "activeFile": "sector1_0deg.adf"
+}

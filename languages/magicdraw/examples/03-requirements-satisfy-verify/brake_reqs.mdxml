@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_brake_reqs" name="BrakeByWireTraceability">
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_ecu" name="BrakeControllerECU">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_latency" name="actuationLatencyMs">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_caliper" name="ElectroMechanicalCaliper">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_clamp" name="maxClampForceKN">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="tc_latency" name="HIL_LatencyTestCase"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="tc_force" name="Dyno_ClampForceTestCase"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="req_lat" name="BrakeLatencyRequirement"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="req_force" name="BrakeForceRequirement"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="abs_sat_lat" client="blk_ecu" supplier="req_lat"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="abs_ver_lat" client="tc_latency" supplier="req_lat"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="abs_sat_force" client="blk_caliper" supplier="req_force"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="abs_ver_force" client="tc_force" supplier="req_force"/>
+  </uml:Model>
+  <sysml:Block xmi:id="st_ecu" base_Class="blk_ecu"/>
+  <sysml:Block xmi:id="st_caliper" base_Class="blk_caliper"/>
+  <sysml:Requirement xmi:id="st_req_lat" base_Class="req_lat" id="BBW-REQ-001" text="End-to-end brake actuation latency shall not exceed 15 ms."/>
+  <sysml:Requirement xmi:id="st_req_force" base_Class="req_force" id="BBW-REQ-002" text="Each front caliper shall deliver at least 42 kN clamping force."/>
+  <sysml:Satisfy xmi:id="st_sat_lat" base_Abstraction="abs_sat_lat"/>
+  <sysml:Verify xmi:id="st_ver_lat" base_Abstraction="abs_ver_lat"/>
+  <sysml:Satisfy xmi:id="st_sat_force" base_Abstraction="abs_sat_force"/>
+  <sysml:Verify xmi:id="st_ver_force" base_Abstraction="abs_ver_force"/>
+</xmi:XMI>

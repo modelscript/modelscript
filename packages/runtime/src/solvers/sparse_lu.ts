@@ -531,8 +531,36 @@ export function flatToCCS(A: Float64Array, n: number, tol = 1e-15): SparseCCSMat
  * @param allowPerturbationOrOptions Boolean perturbation flag or SparseLuOptions object
  * @returns SparseLU factors or null if singular (when perturbation is disabled)
  */
+interface SparseLuWasmExports {
+  memory: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  flatSparseLuFree?: (luPtr: number) => void;
+  flatSparseLuFactor?: (
+    n: number,
+    nnz: number,
+    colPtrPtr: number,
+    rowPtr: number,
+    valPtr: number,
+    colPermArg: number,
+    allowPerturbation: number,
+    pivotThreshold: number,
+    keepStructural: number,
+  ) => number;
+  flatSparseLuGetMeta?: (luPtr: number, metaPtr: number) => void;
+  flatSparseLuRefactorize?: (
+    luPtr: number,
+    colPtrPtr: number,
+    rowPtr: number,
+    valPtr: number,
+    allowPerturbation: number,
+    maxGrowth: number,
+  ) => number;
+  flatSparseLuSolve?: (luPtr: number, bPtr: number, xPtr: number) => void;
+}
+
 interface SparseLuWasmScratch {
-  wasm: any;
+  wasm: SparseLuWasmExports;
   capN: number;
   capNnz: number;
   colPtrPtr: number;
@@ -545,10 +573,10 @@ interface SparseLuWasmScratch {
 }
 
 let sparseLuScratch: SparseLuWasmScratch | null = null;
-const sparseLuWasmHandles = new WeakMap<SparseLU, { wasm: any; luPtr: number }>();
+const sparseLuWasmHandles = new WeakMap<SparseLU, { wasm: SparseLuWasmExports; luPtr: number }>();
 const sparseLuFinalizer =
   typeof FinalizationRegistry !== "undefined"
-    ? new FinalizationRegistry<{ wasm: any; luPtr: number }>(({ wasm, luPtr }) => {
+    ? new FinalizationRegistry<{ wasm: SparseLuWasmExports; luPtr: number }>(({ wasm, luPtr }) => {
         if (typeof wasm?.flatSparseLuFree === "function") {
           try {
             wasm.flatSparseLuFree(luPtr);
@@ -559,15 +587,16 @@ const sparseLuFinalizer =
       })
     : null;
 
-function ensureSparseLuScratch(wasm: any, n: number, nnz: number): SparseLuWasmScratch | null {
+function ensureSparseLuScratch(wasm: SparseLuWasmExports | null, n: number, nnz: number): SparseLuWasmScratch | null {
   if (!wasm || typeof wasm.__new !== "function") return null;
   if (sparseLuScratch && sparseLuScratch.wasm === wasm && sparseLuScratch.capN >= n && sparseLuScratch.capNnz >= nnz) {
     return sparseLuScratch;
   }
   const capN = Math.max(n, 128);
   const capNnz = Math.max(nnz, 1024);
+  const newFn = wasm.__new;
   const alloc = (bytes: number): number => {
-    const ptr = wasm.__new(bytes, 0);
+    const ptr = newFn(bytes, 0);
     if (typeof wasm.__pin === "function") wasm.__pin(ptr);
     return ptr;
   };
@@ -603,7 +632,7 @@ export function sparseLuFactor(
   const keepStructural = opts.keepStructuralPattern ?? false;
 
   if (n >= 16) {
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as SparseLuWasmExports | null;
     if (wasm && typeof wasm.flatSparseLuFactor === "function" && typeof wasm.flatSparseLuGetMeta === "function") {
       const nnz = A.nnz;
       const s = ensureSparseLuScratch(wasm, n, nnz);
@@ -946,7 +975,8 @@ export function sparseLuRefactorize(
   const maxGrowth = options.maxMultiplierGrowth ?? 1e4;
 
   const handle = sparseLuWasmHandles.get(lu);
-  if (handle && typeof handle.wasm?.flatSparseLuRefactorize === "function") {
+  const refactorizeFn = handle?.wasm?.flatSparseLuRefactorize;
+  if (handle && typeof refactorizeFn === "function") {
     const wasm = handle.wasm;
     const nnz = A.nnz;
     const s = ensureSparseLuScratch(wasm, n, nnz);
@@ -958,14 +988,7 @@ export function sparseLuRefactorize(
         new Float64Array(buf, s.valPtr, nnz).set(A.values.subarray(0, nnz));
       }
       return Boolean(
-        wasm.flatSparseLuRefactorize(
-          handle.luPtr,
-          s.colPtrPtr,
-          s.rowPtr,
-          s.valPtr,
-          allowPerturbation ? 1 : 0,
-          maxGrowth,
-        ),
+        refactorizeFn(handle.luPtr, s.colPtrPtr, s.rowPtr, s.valPtr, allowPerturbation ? 1 : 0, maxGrowth),
       );
     }
   }
@@ -1067,12 +1090,13 @@ export function sparseLuSolve(lu: SparseLU, b: Float64Array, outX?: Float64Array
   const x = outX && outX.length >= n ? outX : new Float64Array(n);
 
   const handle = sparseLuWasmHandles.get(lu);
-  if (handle && typeof handle.wasm?.flatSparseLuSolve === "function") {
+  const solveFn = handle?.wasm?.flatSparseLuSolve;
+  if (handle && typeof solveFn === "function") {
     const wasm = handle.wasm;
     const s = ensureSparseLuScratch(wasm, n, 0);
     if (s) {
       new Float64Array(wasm.memory.buffer, s.bPtr, n).set(b.subarray(0, n));
-      wasm.flatSparseLuSolve(handle.luPtr, s.bPtr, s.xPtr);
+      solveFn(handle.luPtr, s.bPtr, s.xPtr);
       x.set(new Float64Array(wasm.memory.buffer, s.xPtr, n));
       return x;
     }

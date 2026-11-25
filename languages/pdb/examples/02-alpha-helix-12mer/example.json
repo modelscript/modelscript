@@ -1,0 +1,11 @@
+{
+  "id": "pdb-02-alpha-helix-12mer",
+  "lang": "pdb",
+  "subFormats": ["pdb"],
+  "difficulty": 2,
+  "title": "Twelve-Residue Alpha-Helix Secondary Structure",
+  "description": "Canonical right-handed 12-residue amphipathic alpha-helix (phi=-57 deg, psi=-47 deg) with wwPDB HELIX annotation and uniform thermal B-factors.",
+  "category": "Structural Biology",
+  "tags": ["pdb", "alpha-helix", "secondary-structure", "ramachandran"],
+  "activeFile": "alpha_helix.pdb"
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "cyme-01-single-phase-lateral",
+    "lang": "cyme",
+    "subFormats": ["sxst"],
+    "difficulty": 1,
+    "title": "Single-Phase 12.47 kV Residential Lateral Feeder",
+    "description": "Minimal CYME SXST distribution model of a single-phase 7.2 kV L-N overhead lateral feeding a residential spot load from a substation source.",
+    "category": "Distribution Power Systems",
+    "tags": ["cyme", "sxst", "distribution", "lateral", "12.47kv"],
+    "activeFile": "lateral_1ph.sxst",
+    "fileNames": ["lateral_1ph.sxst"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "<CymeStudy>\n  <NetworkID>Lateral_12_47kV_A</NetworkID>\n  <Frequency>60</Frequency>\n  <Node><NodeID>SUB_HEAD</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>TAP_A1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>END_A2</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Source><SourceID>SRC_MAIN</SourceID><NodeID>SUB_HEAD</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.60</OperatingKV></Source>\n  <Section>\n    <SectionID>SEC_HEAD_TAP</SectionID>\n    <FromNodeID>SUB_HEAD</FromNodeID>\n    <ToNodeID>TAP_A1</ToNodeID>\n    <Phase>A</Phase>\n    <Length>320</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.38</R1>\n    <X1>0.62</X1>\n  </Section>\n  <Section>\n    <SectionID>SEC_TAP_END</SectionID>\n    <FromNodeID>TAP_A1</FromNodeID>\n    <ToNodeID>END_A2</ToNodeID>\n    <Phase>A</Phase>\n    <Length>280</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.42</R1>\n    <X1>0.65</X1>\n  </Section>\n  <SpotLoad><LoadID>RES_LOAD_1</LoadID><NodeID>END_A2</NodeID><Phase>A</Phase><KW>145</KW><KVAR>35</KVAR></SpotLoad>\n</CymeStudy>\n"
+  },
+  {
+    "id": "cyme-02-balanced-industrial-feeder",
+    "lang": "cyme",
+    "subFormats": ["sxst"],
+    "difficulty": 2,
+    "title": "3-Phase Balanced Industrial Distribution Feeder",
+    "description": "Four-node 12.47 kV three-phase distribution feeder supplying an industrial manufacturing park through overhead ACSR trunk lines and underground XLPE cable drops.",
+    "category": "Distribution Power Systems",
+    "tags": ["cyme", "sxst", "three-phase", "industrial", "cable"],
+    "activeFile": "industrial_3ph.sxst",
+    "fileNames": ["industrial_3ph.sxst"],
+    "fileCount": 1,
+    "code": "<CymeStudy>\n  <NetworkID>Industrial_Feeder_02</NetworkID>\n  <Frequency>60</Frequency>\n  <Node><NodeID>SUB_12KV</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>JCT_1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>PLANT_A</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>PLANT_B</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Source><SourceID>UTIL_INFEED</SourceID><NodeID>SUB_12KV</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.72</OperatingKV></Source>\n  <Section>\n    <SectionID>TRUNK_1</SectionID>\n    <FromNodeID>SUB_12KV</FromNodeID>\n    <ToNodeID>JCT_1</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>850</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.18</R1>\n    <X1>0.38</X1>\n  </Section>\n  <Section>\n    <SectionID>CABLE_A</SectionID>\n    <FromNodeID>JCT_1</FromNodeID>\n    <ToNodeID>PLANT_A</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>420</Length>\n    <DeviceType>UndergroundCable</DeviceType>\n    <R1>0.14</R1>\n    <X1>0.19</X1>\n  </Section>\n  <Section>\n    <SectionID>CABLE_B</SectionID>\n    <FromNodeID>JCT_1</FromNodeID>\n    <ToNodeID>PLANT_B</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>510</Length>\n    <DeviceType>UndergroundCable</DeviceType>\n    <R1>0.14</R1>\n    <X1>0.19</X1>\n  </Section>\n  <SpotLoad><LoadID>LD_PLANT_A</LoadID><NodeID>PLANT_A</NodeID><Phase>ABC</Phase><KW>1250</KW><KVAR>480</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_PLANT_B</LoadID><NodeID>PLANT_B</NodeID><Phase>ABC</Phase><KW>920</KW><KVAR>340</KVAR></SpotLoad>\n</CymeStudy>\n"
+  },
+  {
+    "id": "cyme-03-unbalanced-regulator-capbank",
+    "lang": "cyme",
+    "subFormats": ["sxst"],
+    "difficulty": 3,
+    "title": "Unbalanced Feeder with Step-Voltage Regulator & Cap Bank",
+    "description": "Asymmetrically loaded 12.47 kV rural feeder incorporating an inline voltage regulator section and reactive compensation across single-phase and three-phase laterals.",
+    "category": "Distribution Power Systems",
+    "tags": ["cyme", "unbalanced", "voltage-regulator", "capacitor", "power-flow"],
+    "activeFile": "unbalanced_vreg.sxst",
+    "fileNames": ["unbalanced_vreg.sxst"],
+    "fileCount": 1,
+    "code": "<CymeStudy>\n  <NetworkID>Rural_Unbalanced_VReg</NetworkID>\n  <Frequency>60</Frequency>\n  <Node><NodeID>SUB_SRC</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>REG_IN</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>REG_OUT</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>MID_BUS</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>LAT_B</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>END_BUS</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Source><SourceID>SRC_RURAL</SourceID><NodeID>SUB_SRC</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.65</OperatingKV></Source>\n  <Section>\n    <SectionID>FDR_1</SectionID>\n    <FromNodeID>SUB_SRC</FromNodeID>\n    <ToNodeID>REG_IN</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>1600</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.24</R1>\n    <X1>0.46</X1>\n  </Section>\n  <Section>\n    <SectionID>VREG_32STEP</SectionID>\n    <FromNodeID>REG_IN</FromNodeID>\n    <ToNodeID>REG_OUT</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>10</Length>\n    <DeviceType>Regulator</DeviceType>\n    <R1>0.01</R1>\n    <X1>0.04</X1>\n  </Section>\n  <Section>\n    <SectionID>FDR_2</SectionID>\n    <FromNodeID>REG_OUT</FromNodeID>\n    <ToNodeID>MID_BUS</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>1400</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.24</R1>\n    <X1>0.46</X1>\n  </Section>\n  <Section>\n    <SectionID>LAT_PHB</SectionID>\n    <FromNodeID>MID_BUS</FromNodeID>\n    <ToNodeID>LAT_B</ToNodeID>\n    <Phase>B</Phase>\n    <Length>750</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.45</R1>\n    <X1>0.68</X1>\n  </Section>\n  <Section>\n    <SectionID>FDR_3</SectionID>\n    <FromNodeID>MID_BUS</FromNodeID>\n    <ToNodeID>END_BUS</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>1100</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.28</R1>\n    <X1>0.49</X1>\n  </Section>\n  <SpotLoad><LoadID>LD_PHB</LoadID><NodeID>LAT_B</NodeID><Phase>B</Phase><KW>310</KW><KVAR>95</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_END</LoadID><NodeID>END_BUS</NodeID><Phase>ABC</Phase><KW>880</KW><KVAR>290</KVAR></SpotLoad>\n  <SpotLoad><LoadID>CAP_600KVAR</LoadID><NodeID>MID_BUS</NodeID><Phase>ABC</Phase><KW>0</KW><KVAR>-600</KVAR></SpotLoad>\n</CymeStudy>\n"
+  },
+  {
+    "id": "cyme-04-rooftop-solar-der-hosting",
+    "lang": "cyme",
+    "subFormats": ["sxst"],
+    "difficulty": 4,
+    "title": "Rooftop Solar DER Reverse-Power Hosting Capacity Study",
+    "description": "High-penetration solar PV feeder modeled in CYME SXST evaluating midday reverse-power flow and voltage rise along a 12.47 kV suburban circuit.",
+    "category": "Distribution Power Systems",
+    "tags": ["cyme", "der", "solar-pv", "hosting-capacity", "reverse-power"],
+    "activeFile": "solar_hosting.sxst",
+    "fileNames": ["solar_hosting.sxst"],
+    "fileCount": 1,
+    "code": "<CymeStudy>\n  <NetworkID>Suburban_PV_Hosting</NetworkID>\n  <Frequency>60</Frequency>\n  <Node><NodeID>SUB_1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>PV_CLUSTER_1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>PV_CLUSTER_2</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>PV_FARM_END</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Source><SourceID>SUBSTATION_TX</SourceID><NodeID>SUB_1</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.50</OperatingKV></Source>\n  <Section>\n    <SectionID>SEG_1</SectionID>\n    <FromNodeID>SUB_1</FromNodeID>\n    <ToNodeID>PV_CLUSTER_1</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>900</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.19</R1>\n    <X1>0.39</X1>\n  </Section>\n  <Section>\n    <SectionID>SEG_2</SectionID>\n    <FromNodeID>PV_CLUSTER_1</FromNodeID>\n    <ToNodeID>PV_CLUSTER_2</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>1050</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.22</R1>\n    <X1>0.41</X1>\n  </Section>\n  <Section>\n    <SectionID>SEG_3</SectionID>\n    <FromNodeID>PV_CLUSTER_2</FromNodeID>\n    <ToNodeID>PV_FARM_END</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>1200</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.26</R1>\n    <X1>0.44</X1>\n  </Section>\n  <SpotLoad><LoadID>BASE_LOAD_1</LoadID><NodeID>PV_CLUSTER_1</NodeID><Phase>ABC</Phase><KW>450</KW><KVAR>140</KVAR></SpotLoad>\n  <SpotLoad><LoadID>DER_PV_1</LoadID><NodeID>PV_CLUSTER_1</NodeID><Phase>ABC</Phase><KW>-850</KW><KVAR>-120</KVAR></SpotLoad>\n  <SpotLoad><LoadID>DER_PV_2</LoadID><NodeID>PV_CLUSTER_2</NodeID><Phase>ABC</Phase><KW>-1100</KW><KVAR>-180</KVAR></SpotLoad>\n  <SpotLoad><LoadID>DER_FARM_3MW</LoadID><NodeID>PV_FARM_END</NodeID><Phase>ABC</Phase><KW>-2800</KW><KVAR>-450</KVAR></SpotLoad>\n</CymeStudy>\n"
+  },
+  {
+    "id": "cyme-05-multi-feeder-tie-reconfig",
+    "lang": "cyme",
+    "subFormats": ["sxst", "csv"],
+    "difficulty": 5,
+    "title": "Multi-Feeder Substation with Tie Switch Reconfiguration",
+    "description": "Dual-feeder 12.47 kV distribution substation with normally-open tie switch for FLISR load transfer paired with a companion 24-hour feeder load allocation CSV curve.",
+    "category": "Distribution Power Systems",
+    "tags": ["cyme", "flisr", "tie-switch", "multi-feeder", "multi-file"],
+    "activeFile": "substation.sxst",
+    "fileNames": ["substation.sxst", "load_curve.csv"],
+    "fileCount": 2,
+    "code": "<CymeStudy>\n  <NetworkID>DualFeeder_Substation_FLISR</NetworkID>\n  <Frequency>60</Frequency>\n  <Node><NodeID>SUB_A</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>SUB_B</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_A1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_A2</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_B1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_B2</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Source><SourceID>TX_A</SourceID><NodeID>SUB_A</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.72</OperatingKV></Source>\n  <Source><SourceID>TX_B</SourceID><NodeID>SUB_B</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.72</OperatingKV></Source>\n  <Section>\n    <SectionID>LINE_A1</SectionID>\n    <FromNodeID>SUB_A</FromNodeID>\n    <ToNodeID>FDR_A1</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>750</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.18</R1>\n    <X1>0.38</X1>\n  </Section>\n  <Section>\n    <SectionID>LINE_A2</SectionID>\n    <FromNodeID>FDR_A1</FromNodeID>\n    <ToNodeID>FDR_A2</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>680</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.21</R1>\n    <X1>0.40</X1>\n  </Section>\n  <Section>\n    <SectionID>LINE_B1</SectionID>\n    <FromNodeID>SUB_B</FromNodeID>\n    <ToNodeID>FDR_B1</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>820</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.18</R1>\n    <X1>0.38</X1>\n  </Section>\n  <Section>\n    <SectionID>LINE_B2</SectionID>\n    <FromNodeID>FDR_B1</FromNodeID>\n    <ToNodeID>FDR_B2</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>640</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.21</R1>\n    <X1>0.40</X1>\n  </Section>\n  <Section>\n    <SectionID>TIE_SW_AB</SectionID>\n    <FromNodeID>FDR_A2</FromNodeID>\n    <ToNodeID>FDR_B2</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>50</Length>\n    <DeviceType>Switch</DeviceType>\n    <R1>0.01</R1>\n    <X1>0.02</X1>\n  </Section>\n  <SpotLoad><LoadID>LD_A1</LoadID><NodeID>FDR_A1</NodeID><Phase>ABC</Phase><KW>950</KW><KVAR>280</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_A2</LoadID><NodeID>FDR_A2</NodeID><Phase>ABC</Phase><KW>780</KW><KVAR>220</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_B1</LoadID><NodeID>FDR_B1</NodeID><Phase>ABC</Phase><KW>840</KW><KVAR>250</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_B2</LoadID><NodeID>FDR_B2</NodeID><Phase>ABC</Phase><KW>690</KW><KVAR>195</KVAR></SpotLoad>\n</CymeStudy>\n",
+    "files": {
+      "substation.sxst": "<CymeStudy>\n  <NetworkID>DualFeeder_Substation_FLISR</NetworkID>\n  <Frequency>60</Frequency>\n  <Node><NodeID>SUB_A</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>SUB_B</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_A1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_A2</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_B1</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Node><NodeID>FDR_B2</NodeID><NominalKV>12.47</NominalKV></Node>\n  <Source><SourceID>TX_A</SourceID><NodeID>SUB_A</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.72</OperatingKV></Source>\n  <Source><SourceID>TX_B</SourceID><NodeID>SUB_B</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.72</OperatingKV></Source>\n  <Section>\n    <SectionID>LINE_A1</SectionID>\n    <FromNodeID>SUB_A</FromNodeID>\n    <ToNodeID>FDR_A1</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>750</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.18</R1>\n    <X1>0.38</X1>\n  </Section>\n  <Section>\n    <SectionID>LINE_A2</SectionID>\n    <FromNodeID>FDR_A1</FromNodeID>\n    <ToNodeID>FDR_A2</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>680</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.21</R1>\n    <X1>0.40</X1>\n  </Section>\n  <Section>\n    <SectionID>LINE_B1</SectionID>\n    <FromNodeID>SUB_B</FromNodeID>\n    <ToNodeID>FDR_B1</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>820</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.18</R1>\n    <X1>0.38</X1>\n  </Section>\n  <Section>\n    <SectionID>LINE_B2</SectionID>\n    <FromNodeID>FDR_B1</FromNodeID>\n    <ToNodeID>FDR_B2</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>640</Length>\n    <DeviceType>OverheadLine</DeviceType>\n    <R1>0.21</R1>\n    <X1>0.40</X1>\n  </Section>\n  <Section>\n    <SectionID>TIE_SW_AB</SectionID>\n    <FromNodeID>FDR_A2</FromNodeID>\n    <ToNodeID>FDR_B2</ToNodeID>\n    <Phase>ABC</Phase>\n    <Length>50</Length>\n    <DeviceType>Switch</DeviceType>\n    <R1>0.01</R1>\n    <X1>0.02</X1>\n  </Section>\n  <SpotLoad><LoadID>LD_A1</LoadID><NodeID>FDR_A1</NodeID><Phase>ABC</Phase><KW>950</KW><KVAR>280</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_A2</LoadID><NodeID>FDR_A2</NodeID><Phase>ABC</Phase><KW>780</KW><KVAR>220</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_B1</LoadID><NodeID>FDR_B1</NodeID><Phase>ABC</Phase><KW>840</KW><KVAR>250</KVAR></SpotLoad>\n  <SpotLoad><LoadID>LD_B2</LoadID><NodeID>FDR_B2</NodeID><Phase>ABC</Phase><KW>690</KW><KVAR>195</KVAR></SpotLoad>\n</CymeStudy>\n",
+      "load_curve.csv": "hour,feeder_a_mult,feeder_b_mult\n0,0.58,0.55\n4,0.52,0.50\n8,0.82,0.78\n12,0.95,0.91\n16,1.00,0.98\n20,0.88,0.85\n23,0.65,0.62\n"
+    }
+  }
+]

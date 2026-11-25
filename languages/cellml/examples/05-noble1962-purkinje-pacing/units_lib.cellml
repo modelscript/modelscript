@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model name="electrophysiology_units_lib" xmlns="http://www.cellml.org/cellml/1.1#">
+  <units name="millisecond">
+    <unit units="second" prefix="milli"/>
+  </units>
+  <units name="per_millisecond">
+    <unit units="second" prefix="milli" exponent="-1"/>
+  </units>
+  <units name="millivolt">
+    <unit units="volt" prefix="milli"/>
+  </units>
+  <units name="microfarad_per_cmsq">
+    <unit units="farad" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="millisiemens_per_cmsq">
+    <unit units="siemens" prefix="milli"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="microampere_per_cmsq">
+    <unit units="ampere" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+</model>

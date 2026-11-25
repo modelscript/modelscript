@@ -1,0 +1,12 @@
+{
+  "id": "ssp-01-gain-integrator-cosim",
+  "lang": "ssp",
+  "subFormats": ["ssd", "ssv"],
+  "difficulty": 1,
+  "title": "Two-Component Gain-Integrator Co-Simulation",
+  "description": "Minimal SSP 1.0 co-simulation architecture wiring a scalar gain FMU into an integrator FMU with external SSV parameter values and FMI model descriptions.",
+  "category": "Co-Simulation",
+  "tags": ["ssp", "fmi", "co-simulation", "integrator", "multi-file"],
+  "activeFile": "SystemStructure.ssd",
+  "isDefaultStarter": true
+}

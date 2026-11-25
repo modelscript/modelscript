@@ -1,0 +1,11 @@
+{
+  "id": "ssp-02-quarter-car-suspension",
+  "lang": "ssp",
+  "subFormats": ["ssd", "ssv", "ssm"],
+  "difficulty": 2,
+  "title": "Quarter-Car Suspension Co-Simulation",
+  "description": "Automotive quarter-car ride dynamics co-simulation coupling a road profile generator FMU and a two-mass suspension FMU with SSV parameters and SSM mapping.",
+  "category": "Automotive Co-Simulation",
+  "tags": ["ssp", "suspension", "quarter-car", "ssv", "ssm", "multi-file"],
+  "activeFile": "SystemStructure.ssd"
+}

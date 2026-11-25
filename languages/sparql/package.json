@@ -52,7 +52,7 @@
     "@modelscript/runtime": "workspace:*"
   },
   "modelscript": {
-    "tier": "beta",
+    "tier": "alpha",
     "category": "language"
   }
 }

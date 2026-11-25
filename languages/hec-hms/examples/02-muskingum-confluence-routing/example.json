@@ -1,0 +1,11 @@
+{
+  "id": "hec-hms-02-muskingum-confluence-routing",
+  "lang": "hec-hms",
+  "subFormats": ["hms", "basin", "met", "control"],
+  "difficulty": 2,
+  "title": "Two-Subbasin Confluence with Muskingum Channel Routing",
+  "description": "Two-subbasin watershed routing headwater runoff through a Muskingum river reach before combining with a lower tributary at a confluence junction draining to the basin sink.",
+  "category": "Watershed Hydrology",
+  "tags": ["hec-hms", "muskingum", "confluence", "channel-routing", "multi-file"],
+  "activeFile": "confluence.basin"
+}

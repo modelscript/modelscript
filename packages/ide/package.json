@@ -2,7 +2,7 @@
   "name": "@modelscript/ide-client",
   "version": "0.1.0",
   "private": true,
-  "description": "ModelScript VS Code Web Extension client, custom editors, and webview panels",
+  "description": "Ansatz Studio — VS Code Extension client, custom editors, and webview panels powered by ModelScript",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "main": "src/browser-client-main.ts",

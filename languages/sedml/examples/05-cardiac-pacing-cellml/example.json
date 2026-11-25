@@ -1,0 +1,12 @@
+{
+  "id": "sedml-05-cardiac-pacing-cellml",
+  "lang": "sedml",
+  "subFormats": ["sedml-l1v4", "cellml"],
+  "difficulty": 5,
+  "title": "Cardiac Action Potential Pacing Protocol on CellML",
+  "description": "Cross-standard SED-ML electrophysiological pacing simulation protocol targeting a companion CellML ventricular myocyte membrane action potential model.",
+  "category": "Cardiac Electrophysiology",
+  "tags": ["sedml", "cellml", "cardiac", "pacing", "multi-file"],
+  "activeFile": "pacing.sedml",
+  "fileOrder": ["pacing.sedml", "beeler_reuter.cellml"]
+}

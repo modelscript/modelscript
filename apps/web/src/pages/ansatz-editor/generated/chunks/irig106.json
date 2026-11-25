@@ -1,0 +1,77 @@
+[
+  {
+    "id": "irig106-01-basic-pcm-flight-test",
+    "lang": "irig106",
+    "subFormats": ["tmats-ch9"],
+    "difficulty": 1,
+    "title": "Basic 4-Channel PCM Flight-Test Telemetry Stream",
+    "description": "Clean IRIG-106 Chapter 9 TMATS setup defining a 128 kbps NRZ-L PCM stream with 32-bit minor frame sync pattern (FE6B2840), four 16-bit air-data words, and linear polynomial conversions.",
+    "category": "Flight Test Telemetry",
+    "tags": ["irig106", "tmats", "pcm", "flight-test"],
+    "activeFile": "basic_pcm.tmats",
+    "fileNames": ["basic_pcm.tmats"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "COMMENT:Basic 4-Channel Air-Data PCM Flight Test Configuration;\nG\\PN:FLIGHT_TEST_001;\nG\\TA:T38_TAIL_01;\nG\\106:04;\nP-1\\DLN:PCM_LINK_1;\nP-1\\D1:128000;\nP-1\\D2:NRZ-L;\nP-1\\F1:16;\nP-1\\F2:M;\nP-1\\MF\\N:1;\nP-1\\MF1:6;\nP-1\\MF2:128;\nP-1\\MF3:FPT;\nP-1\\MF4:FE6B2840;\nD-1\\DLN:PCM_LINK_1;\nD-1\\MLN-1:AIR_DATA;\nD-1\\MN-1-1:PRESS_ALT;\nD-1\\WP-1-1:1;\nD-1\\MN-1-2:AIRSPEED;\nD-1\\WP-1-2:2;\nD-1\\MN-1-3:AOA_DEG;\nD-1\\WP-1-3:3;\nD-1\\MN-1-4:OAT_DEGC;\nD-1\\WP-1-4:4;\nC-1\\DCN:PRESS_ALT;\nC-1\\MN3:FT;\nC-1\\DCT:COE;\nC-1\\CO-0:-1000.0;\nC-1\\CO-1:1.0;\nC-2\\DCN:AIRSPEED;\nC-2\\MN3:KT;\nC-2\\DCT:COE;\nC-2\\CO-0:0.0;\nC-2\\CO-1:0.025;\nC-3\\DCN:AOA_DEG;\nC-3\\MN3:DEG;\nC-3\\DCT:COE;\nC-3\\CO-0:-20.0;\nC-3\\CO-1:0.001;\nC-4\\DCN:OAT_DEGC;\nC-4\\MN3:DEGC;\nC-4\\DCT:COE;\nC-4\\CO-0:-60.0;\nC-4\\CO-1:0.05;\n"
+  },
+  {
+    "id": "irig106-02-subcommutated-thermal-frame",
+    "lang": "irig106",
+    "subFormats": ["tmats-ch9"],
+    "difficulty": 2,
+    "title": "Subcommutated Thermal & Pressure Instrumentation Frame",
+    "description": "IRIG-106 TMATS configuration demonstrating major-frame subcommutation (FP/FI) of thermocouple and pressure transducer channels alongside supercommutated pitch rate.",
+    "category": "Flight Test Instrumentation",
+    "tags": ["irig106", "tmats", "subcommutation", "thermocouple"],
+    "activeFile": "subcom_thermal.tmats",
+    "fileNames": ["subcom_thermal.tmats"],
+    "fileCount": 1,
+    "code": "COMMENT:Subcommutated Thermal and Chamber Pressure Instrumentation Frame;\nG\\PN:PROPULSION_HOTFIRE_07;\nG\\TA:TEST_STAND_B2;\nG\\106:04;\nP-1\\DLN:PCM_THERM;\nP-1\\D1:256000;\nP-1\\D2:NRZ-L;\nP-1\\F1:16;\nP-1\\F2:M;\nP-1\\MF\\N:4;\nP-1\\MF1:6;\nP-1\\MF2:128;\nP-1\\MF3:FPT;\nP-1\\MF4:FE6B2840;\nD-1\\DLN:PCM_THERM;\nD-1\\MLN-1:MAIN_LIST;\nD-1\\MN-1-1:CHAMBER_P;\nD-1\\WP-1-1:1;\nD-1\\WI-1-1:2;\nD-1\\MN-1-2:NOZZLE_TC1;\nD-1\\WP-1-2:2;\nD-1\\FP-1-2:1;\nD-1\\FI-1-2:2;\nD-1\\MN-1-3:NOZZLE_TC2;\nD-1\\WP-1-3:2;\nD-1\\FP-1-3:2;\nD-1\\FI-1-3:2;\nD-1\\MN-1-4:LOX_INLET_P;\nD-1\\WP-1-4:4;\nC-1\\DCN:CHAMBER_P;\nC-1\\MN3:PSI;\nC-1\\DCT:PRS;\nC-1\\PS1-1:0;\nC-1\\PS2-1:0;\nC-1\\PS1-2:65535;\nC-1\\PS2-2:3000;\nC-2\\DCN:NOZZLE_TC1;\nC-2\\MN3:K;\nC-2\\DCT:COE;\nC-2\\CO-0:200.0;\nC-2\\CO-1:0.05;\nC-3\\DCN:NOZZLE_TC2;\nC-3\\MN3:K;\nC-3\\DCT:COE;\nC-3\\CO-0:200.0;\nC-3\\CO-1:0.05;\nC-4\\DCN:LOX_INLET_P;\nC-4\\MN3:PSI;\nC-4\\DCT:COE;\nC-4\\CO-0:0.0;\nC-4\\CO-1:0.02;\n"
+  },
+  {
+    "id": "irig106-03-rocket-sband-telemetry",
+    "lang": "irig106",
+    "subFormats": ["tmats-ch9"],
+    "difficulty": 3,
+    "title": "Launch Vehicle S-Band PCM/FM Telemetry & Bit-Packed Discretes",
+    "description": "Launch vehicle S-band RF telemetry TMATS package combining T-1 transmitter RF parameters, M-1 multiplexer routing, high-rate IMU words, and non-overlapping bit-packed staging discretes.",
+    "category": "Launch Vehicle Telemetry",
+    "tags": ["irig106", "tmats", "s-band", "rocket", "bit-packed"],
+    "activeFile": "rocket_sband.tmats",
+    "fileNames": ["rocket_sband.tmats"],
+    "fileCount": 1,
+    "code": "COMMENT:Sounding Rocket S-Band PCM/FM Telemetry with Bit-Packed Staging Discretes;\nG\\PN:SOUNDING_ROCKET_12;\nG\\TA:SR12_BOOSTER;\nG\\106:04;\nG\\DSI-1:SBAND_PCM;\nG\\DST-1:RF;\nT-1\\ID:TX_SBAND_1;\nT-1\\RF1:2245.5;\nT-1\\RF2:1500;\nT-1\\RF4:PCM/FM;\nM-1\\ID:MUX_MAIN;\nM-1\\BB1:PCM;\nM-1\\BB2:FM;\nM-1\\BB\\DLN:PCM_ROCKET;\nP-1\\DLN:PCM_ROCKET;\nP-1\\D1:512000;\nP-1\\D2:NRZ-L;\nP-1\\F1:16;\nP-1\\F2:M;\nP-1\\MF\\N:2;\nP-1\\MF1:6;\nP-1\\MF2:128;\nP-1\\MF3:FPT;\nP-1\\MF4:FE6B2840;\nD-1\\DLN:PCM_ROCKET;\nD-1\\MLN-1:GNC_TELEM;\nD-1\\MN-1-1:AXIAL_ACCEL;\nD-1\\WP-1-1:1;\nD-1\\MN-1-2:ROLL_RATE;\nD-1\\WP-1-2:2;\nD-1\\MN-1-3:STAGE_STATUS;\nD-1\\WP-1-3:3;\nD-1\\WFM-1-3:1111111100000000;\nD-1\\MN-1-4:PYRO_ARM_BITS;\nD-1\\WP-1-4:3;\nD-1\\WFM-1-4:0000000011111111;\nC-1\\DCN:AXIAL_ACCEL;\nC-1\\MN3:G;\nC-1\\DCT:COE;\nC-1\\CO-0:-2.0;\nC-1\\CO-1:0.0005;\nC-2\\DCN:ROLL_RATE;\nC-2\\MN3:DEG/S;\nC-2\\DCT:COE;\nC-2\\CO-0:-360.0;\nC-2\\CO-1:0.011;\nC-3\\DCN:STAGE_STATUS;\nC-3\\DCT:NON;\nC-4\\DCN:PYRO_ARM_BITS;\nC-4\\DCT:NON;\n"
+  },
+  {
+    "id": "irig106-04-highrate-vibration-strain",
+    "lang": "irig106",
+    "subFormats": ["tmats-ch9"],
+    "difficulty": 4,
+    "title": "High-Rate Wing Flutter Vibration & Strain Gauge Recorder",
+    "description": "1.024 Mbps flight-test structural dynamics TMATS configuration recording 8 wing-tip accelerometers and root bending strain gauges with polynomial calibration curves.",
+    "category": "Structural Flight Test",
+    "tags": ["irig106", "tmats", "flutter", "vibration", "strain-gauge"],
+    "activeFile": "wing_flutter.tmats",
+    "fileNames": ["wing_flutter.tmats"],
+    "fileCount": 1,
+    "code": "COMMENT:High-Rate Wing Flutter Vibration & Root Strain Gauge PCM Stream;\nG\\PN:FLUTTER_ENVELOPE_09;\nG\\TA:X66_PROTO_2;\nG\\106:04;\nG\\DSI-1:FLUTTER_PCM;\nG\\DST-1:RF;\nT-1\\ID:TX_CBAND;\nT-1\\RF1:5095.0;\nT-1\\RF2:2000;\nT-1\\RF4:SOQPSK-TG;\nM-1\\ID:MUX_FLUTTER;\nM-1\\BB1:PCM;\nM-1\\BB\\DLN:PCM_FLUTTER;\nP-1\\DLN:PCM_FLUTTER;\nP-1\\D1:1024000;\nP-1\\D2:NRZ-L;\nP-1\\F1:16;\nP-1\\F2:M;\nP-1\\MF\\N:4;\nP-1\\MF1:10;\nP-1\\MF2:192;\nP-1\\MF3:FPT;\nP-1\\MF4:FE6B2840;\nD-1\\DLN:PCM_FLUTTER;\nD-1\\MLN-1:STRUCT_DYN;\nD-1\\MN-1-1:LH_TIP_ACCEL;\nD-1\\WP-1-1:1;\nD-1\\MN-1-2:RH_TIP_ACCEL;\nD-1\\WP-1-2:2;\nD-1\\MN-1-3:LH_ROOT_STRAIN;\nD-1\\WP-1-3:3;\nD-1\\MN-1-4:RH_ROOT_STRAIN;\nD-1\\WP-1-4:4;\nD-1\\MN-1-5:AILERON_POS;\nD-1\\WP-1-5:5;\nD-1\\MN-1-6:DYNAMIC_PRESS;\nD-1\\WP-1-6:6;\nC-1\\DCN:LH_TIP_ACCEL;\nC-1\\MN3:G;\nC-1\\DCT:COE;\nC-1\\CO-0:-25.0;\nC-1\\CO-1:0.000763;\nC-2\\DCN:RH_TIP_ACCEL;\nC-2\\MN3:G;\nC-2\\DCT:COE;\nC-2\\CO-0:-25.0;\nC-2\\CO-1:0.000763;\nC-3\\DCN:LH_ROOT_STRAIN;\nC-3\\MN3:USTR;\nC-3\\DCT:COE;\nC-3\\CO-0:-2000.0;\nC-3\\CO-1:0.061035;\nC-4\\DCN:RH_ROOT_STRAIN;\nC-4\\MN3:USTR;\nC-4\\DCT:COE;\nC-4\\CO-0:-2000.0;\nC-4\\CO-1:0.061035;\nC-5\\DCN:AILERON_POS;\nC-5\\MN3:DEG;\nC-5\\DCT:COE;\nC-5\\CO-0:-30.0;\nC-5\\CO-1:0.000916;\nC-6\\DCN:DYNAMIC_PRESS;\nC-6\\MN3:PSF;\nC-6\\DCT:COE;\nC-6\\CO-0:0.0;\nC-6\\CO-1:0.015;\n"
+  },
+  {
+    "id": "irig106-05-flight-test-calibrated-bundle",
+    "lang": "irig106",
+    "subFormats": ["tmats-ch9"],
+    "difficulty": 5,
+    "title": "Flight-Test Instrumentation TMATS & Calibrated PCM Dataset",
+    "description": "Multi-file IRIG-106 flight-test archive pairing a full G/T/M/P/D/C TMATS setup with a companion calibrated PCM time-series CSV recorded during a supersonic climb maneuver.",
+    "category": "Flight Test Telemetry",
+    "tags": ["irig106", "tmats", "pcm", "calibration", "multi-file"],
+    "activeFile": "flight_test.tmats",
+    "fileNames": ["flight_test.tmats", "pcm_samples.csv"],
+    "fileCount": 2,
+    "code": "COMMENT:Complete Flight-Test Instrumentation Package with Companion Calibrated CSV;\nG\\PN:X_59_FLIGHT_104;\nG\\TA:X59_SHIP_1;\nG\\106:04;\nG\\DSI-1:FTI_PCM_1;\nG\\DST-1:RF;\nT-1\\ID:TX_SBAND_PRI;\nT-1\\RF1:2280.5;\nT-1\\RF2:1200;\nT-1\\RF4:PCM/FM;\nM-1\\ID:MUX_FTI;\nM-1\\BB1:PCM;\nM-1\\BB2:FM;\nM-1\\BB\\DLN:FTI_LINK_1;\nP-1\\DLN:FTI_LINK_1;\nP-1\\D1:256000;\nP-1\\D2:NRZ-L;\nP-1\\F1:16;\nP-1\\F2:M;\nP-1\\F3:NO;\nP-1\\MF\\N:4;\nP-1\\MF1:6;\nP-1\\MF2:128;\nP-1\\MF3:FPT;\nP-1\\MF4:FE6B2840;\nD-1\\DLN:FTI_LINK_1;\nD-1\\MLN-1:PRIMARY_FTI;\nD-1\\MN-1-1:MACH_NUM;\nD-1\\WP-1-1:1;\nD-1\\MN-1-2:PRESS_ALT;\nD-1\\WP-1-2:2;\nD-1\\MN-1-3:PITCH_RATE;\nD-1\\WP-1-3:3;\nD-1\\MN-1-4:NORMAL_LOAD;\nD-1\\WP-1-4:4;\nD-1\\MN-1-5:EGT_DEGC;\nD-1\\WP-1-5:5;\nC-1\\DCN:MACH_NUM;\nC-1\\MN1:Free-Stream Mach Number;\nC-1\\MN3:MACH;\nC-1\\DCT:COE;\nC-1\\CO-0:0.0;\nC-1\\CO-1:0.0001;\nC-2\\DCN:PRESS_ALT;\nC-2\\MN1:Pressure Altitude;\nC-2\\MN3:FT;\nC-2\\DCT:COE;\nC-2\\CO-0:0.0;\nC-2\\CO-1:1.0;\nC-3\\DCN:PITCH_RATE;\nC-3\\MN1:Body Pitch Rate;\nC-3\\MN3:DEG/S;\nC-3\\DCT:COE;\nC-3\\CO-0:-50.0;\nC-3\\CO-1:0.001526;\nC-4\\DCN:NORMAL_LOAD;\nC-4\\MN1:Normal Load Factor Nz;\nC-4\\MN3:G;\nC-4\\DCT:COE;\nC-4\\CO-0:-4.0;\nC-4\\CO-1:0.0002;\nC-5\\DCN:EGT_DEGC;\nC-5\\MN1:Exhaust Gas Temperature;\nC-5\\MN3:DEGC;\nC-5\\DCT:PRS;\nC-5\\PS1-1:0;\nC-5\\PS2-1:0;\nC-5\\PS1-2:4095;\nC-5\\PS2-2:1100;\n",
+    "files": {
+      "flight_test.tmats": "COMMENT:Complete Flight-Test Instrumentation Package with Companion Calibrated CSV;\nG\\PN:X_59_FLIGHT_104;\nG\\TA:X59_SHIP_1;\nG\\106:04;\nG\\DSI-1:FTI_PCM_1;\nG\\DST-1:RF;\nT-1\\ID:TX_SBAND_PRI;\nT-1\\RF1:2280.5;\nT-1\\RF2:1200;\nT-1\\RF4:PCM/FM;\nM-1\\ID:MUX_FTI;\nM-1\\BB1:PCM;\nM-1\\BB2:FM;\nM-1\\BB\\DLN:FTI_LINK_1;\nP-1\\DLN:FTI_LINK_1;\nP-1\\D1:256000;\nP-1\\D2:NRZ-L;\nP-1\\F1:16;\nP-1\\F2:M;\nP-1\\F3:NO;\nP-1\\MF\\N:4;\nP-1\\MF1:6;\nP-1\\MF2:128;\nP-1\\MF3:FPT;\nP-1\\MF4:FE6B2840;\nD-1\\DLN:FTI_LINK_1;\nD-1\\MLN-1:PRIMARY_FTI;\nD-1\\MN-1-1:MACH_NUM;\nD-1\\WP-1-1:1;\nD-1\\MN-1-2:PRESS_ALT;\nD-1\\WP-1-2:2;\nD-1\\MN-1-3:PITCH_RATE;\nD-1\\WP-1-3:3;\nD-1\\MN-1-4:NORMAL_LOAD;\nD-1\\WP-1-4:4;\nD-1\\MN-1-5:EGT_DEGC;\nD-1\\WP-1-5:5;\nC-1\\DCN:MACH_NUM;\nC-1\\MN1:Free-Stream Mach Number;\nC-1\\MN3:MACH;\nC-1\\DCT:COE;\nC-1\\CO-0:0.0;\nC-1\\CO-1:0.0001;\nC-2\\DCN:PRESS_ALT;\nC-2\\MN1:Pressure Altitude;\nC-2\\MN3:FT;\nC-2\\DCT:COE;\nC-2\\CO-0:0.0;\nC-2\\CO-1:1.0;\nC-3\\DCN:PITCH_RATE;\nC-3\\MN1:Body Pitch Rate;\nC-3\\MN3:DEG/S;\nC-3\\DCT:COE;\nC-3\\CO-0:-50.0;\nC-3\\CO-1:0.001526;\nC-4\\DCN:NORMAL_LOAD;\nC-4\\MN1:Normal Load Factor Nz;\nC-4\\MN3:G;\nC-4\\DCT:COE;\nC-4\\CO-0:-4.0;\nC-4\\CO-1:0.0002;\nC-5\\DCN:EGT_DEGC;\nC-5\\MN1:Exhaust Gas Temperature;\nC-5\\MN3:DEGC;\nC-5\\DCT:PRS;\nC-5\\PS1-1:0;\nC-5\\PS2-1:0;\nC-5\\PS1-2:4095;\nC-5\\PS2-2:1100;\n",
+      "pcm_samples.csv": "time_s,MACH_NUM,PRESS_ALT,PITCH_RATE,NORMAL_LOAD,EGT_DEGC\n0.000,0.92,42000,1.25,1.18,782.4\n0.100,0.96,42180,1.40,1.22,795.1\n0.200,1.02,42370,1.10,1.15,810.6\n0.300,1.08,42540,0.65,1.06,818.2\n0.400,1.14,42700,0.20,1.01,821.0\n"
+    }
+  }
+]

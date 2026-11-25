@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model name="passive_rc_membrane" xmlns="http://www.cellml.org/cellml/1.1#">
+  <units name="millisecond">
+    <unit units="second" prefix="milli"/>
+  </units>
+  <units name="millivolt">
+    <unit units="volt" prefix="milli"/>
+  </units>
+  <units name="microfarad_per_cmsq">
+    <unit units="farad" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="millisiemens_per_cmsq">
+    <unit units="siemens" prefix="milli"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="microampere_per_cmsq">
+    <unit units="ampere" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+
+  <component name="environment">
+    <variable name="time" units="millisecond" public_interface="out"/>
+  </component>
+
+  <component name="membrane">
+    <variable name="time" units="millisecond" public_interface="in"/>
+    <variable name="V" units="millivolt" initial_value="-40.0" public_interface="out"/>
+    <variable name="Cm" units="microfarad_per_cmsq" initial_value="1.0"/>
+    <variable name="g_L" units="millisiemens_per_cmsq" initial_value="0.3"/>
+    <variable name="E_L" units="millivolt" initial_value="-70.0"/>
+    <variable name="i_L" units="microampere_per_cmsq"/>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <eq/>
+        <ci>i_L</ci>
+        <apply>
+          <times/>
+          <ci>g_L</ci>
+          <apply><minus/><ci>V</ci><ci>E_L</ci></apply>
+        </apply>
+      </apply>
+      <apply>
+        <eq/>
+        <apply>
+          <diff/>
+          <bvar><ci>time</ci></bvar>
+          <ci>V</ci>
+        </apply>
+        <apply>
+          <divide/>
+          <apply><minus/><ci>i_L</ci></apply>
+          <ci>Cm</ci>
+        </apply>
+      </apply>
+    </math>
+  </component>
+
+  <connection>
+    <map_components component_1="environment" component_2="membrane"/>
+    <map_variables variable_1="time" variable_2="time"/>
+  </connection>
+</model>

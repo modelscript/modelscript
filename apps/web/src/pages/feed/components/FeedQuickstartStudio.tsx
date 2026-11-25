@@ -4,6 +4,7 @@ import { CheckIcon, PlusIcon, RocketIcon } from "@primer/octicons-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getUserSuggestions } from "../../../api";
+import type { SocialUserRecord } from "../../../api/social";
 import { useAuth } from "../../../AuthContext";
 import { getAvatarUrl } from "../../../util/avatar";
 import { DISCIPLINES } from "../constants";
@@ -67,7 +68,7 @@ export const FeedQuickstartStudio: React.FC<FeedQuickstartStudioProps> = ({ foll
   const initialDiscipline =
     (user?.engineering_persona && PERSONA_TO_DISCIPLINE[user.engineering_persona]) || "aerospace";
   const [selectedDiscipline, setSelectedDiscipline] = useState<string>(initialDiscipline);
-  const [suggestedUsers, setSuggestedUsers] = useState<any[]>([]);
+  const [suggestedUsers, setSuggestedUsers] = useState<SocialUserRecord[]>([]);
 
   useEffect(() => {
     if (user?.engineering_persona && PERSONA_TO_DISCIPLINE[user.engineering_persona]) {

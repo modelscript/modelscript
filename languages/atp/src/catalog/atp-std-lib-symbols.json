@@ -1,0 +1,1480 @@
+[
+  {
+    "name": "BRANCH_RLC_00",
+    "kind": "atp_component_model",
+    "namePath": "atp:BRANCH_RLC_00",
+    "exports": [
+      "rOhms",
+      "lMh",
+      "cUf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Lumped Series RLC Branch (Type 00)",
+      "category": "Linear & Distributed Branch",
+      "domain": "electrical",
+      "description": "Lumped series resistance, inductance, and capacitance branch discretized with Dommel trapezoidal companion conductance and history current source.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 1–2; IEEE Trans. PAS-88 (1969)",
+      "aliases": [
+        "RLC",
+        "BRANCH00",
+        "TYPE00",
+        "RLC_SERIES"
+      ],
+      "parameters": [
+        {
+          "key": "rOhms",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Ohm",
+          "description": "Series resistance R"
+        },
+        {
+          "key": "lMh",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mH",
+          "description": "Series inductance L"
+        },
+        {
+          "key": "cUf",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "uF",
+          "description": "Series capacitance C (0 = omitted)"
+        }
+      ],
+      "wasmKernel": "BRANCH_RLC_00",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "LINE_PI_01",
+    "kind": "atp_component_model",
+    "namePath": "atp:LINE_PI_01",
+    "exports": [
+      "rOhms",
+      "lMh",
+      "cUf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Nominal Pi-Equivalent Line (Type 01/02/03)",
+      "category": "Linear & Distributed Branch",
+      "domain": "electrical",
+      "description": "Coupled or single-phase nominal Pi-section transmission line with lumped series RL and half-shunt capacitances at both terminals.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 4 (Pi-Equivalents)",
+      "aliases": [
+        "PI",
+        "LINE_PI",
+        "TYPE01",
+        "TYPE02",
+        "TYPE03"
+      ],
+      "parameters": [
+        {
+          "key": "rOhms",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "Ohm",
+          "description": "Total series resistance R"
+        },
+        {
+          "key": "lMh",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "mH",
+          "description": "Total series inductance L"
+        },
+        {
+          "key": "cUf",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "uF",
+          "description": "Total shunt capacitance C (split C/2 per end)"
+        }
+      ],
+      "wasmKernel": "LINE_PI_01",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "LINE_BERGERON_M1",
+    "kind": "atp_component_model",
+    "namePath": "atp:LINE_BERGERON_M1",
+    "exports": [
+      "zcOhms",
+      "tauSec",
+      "rTotalOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Bergeron Distributed Line (Type -1/-2/-3)",
+      "category": "Linear & Distributed Branch",
+      "domain": "electrical",
+      "description": "Constant-parameter travelling-wave distributed transmission line using Bergeron method of characteristics with ring delay buffer and lumped series loss.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 4; IEEE Trans. PAS-88(4), pp. 388–399 (1969)",
+      "aliases": [
+        "BERGERON",
+        "LINE_M1",
+        "TYPE_M1",
+        "CLARK_LINE"
+      ],
+      "parameters": [
+        {
+          "key": "zcOhms",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "Ohm",
+          "description": "Surge (characteristic) impedance Zc"
+        },
+        {
+          "key": "tauSec",
+          "type": "real",
+          "defaultValue": 0.0005,
+          "unit": "s",
+          "description": "One-way travelling-wave propagation delay tau"
+        },
+        {
+          "key": "rTotalOhms",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "Ohm",
+          "description": "Total series resistance lumped at ends and midpoint"
+        }
+      ],
+      "wasmKernel": "LINE_BERGERON_M1",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "LINE_JMARTI_FD",
+    "kind": "atp_component_model",
+    "namePath": "atp:LINE_JMARTI_FD",
+    "exports": [
+      "zcOhms",
+      "tauSec",
+      "rDcOhms",
+      "tauAttenSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "J. Marti Frequency-Dependent Line",
+      "category": "Linear & Distributed Branch",
+      "domain": "electrical",
+      "description": "Frequency-dependent transmission line model approximating propagation function and characteristic impedance with rational weighting functions.",
+      "provenance": "Marti, J.R., IEEE Trans. PAS-101(1), pp. 147–157 (1982); Dommel EMTP Theory Book Ch. 4",
+      "aliases": [
+        "JMARTI",
+        "J_MARTI",
+        "FD_LINE",
+        "LINE_FD"
+      ],
+      "parameters": [
+        {
+          "key": "zcOhms",
+          "type": "real",
+          "defaultValue": 380,
+          "unit": "Ohm",
+          "description": "High-frequency asymptotic surge impedance Zc"
+        },
+        {
+          "key": "tauSec",
+          "type": "real",
+          "defaultValue": 0.0005,
+          "unit": "s",
+          "description": "Modal propagation delay tau"
+        },
+        {
+          "key": "rDcOhms",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "Ohm",
+          "description": "DC series resistance"
+        },
+        {
+          "key": "tauAttenSec",
+          "type": "real",
+          "defaultValue": 0.00005,
+          "unit": "s",
+          "description": "High-frequency attenuation filter time constant"
+        }
+      ],
+      "wasmKernel": "LINE_JMARTI_FD",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "LINE_SEMLYEN_FD",
+    "kind": "atp_component_model",
+    "namePath": "atp:LINE_SEMLYEN_FD",
+    "exports": [
+      "zcOhms",
+      "tauSec",
+      "rDcOhms",
+      "tauAttenSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Semlyen Frequency-Dependent Line",
+      "category": "Linear & Distributed Branch",
+      "domain": "electrical",
+      "description": "Recursive convolution frequency-dependent transmission line model using two-exponential step response fitting.",
+      "provenance": "Semlyen, A. & Dabuleanu, A., IEEE Trans. PAS-94(2), pp. 561–571 (1975)",
+      "aliases": [
+        "SEMLYEN",
+        "SEMLYEN_LINE"
+      ],
+      "parameters": [
+        {
+          "key": "zcOhms",
+          "type": "real",
+          "defaultValue": 385,
+          "unit": "Ohm",
+          "description": "Asymptotic surge impedance Zc"
+        },
+        {
+          "key": "tauSec",
+          "type": "real",
+          "defaultValue": 0.0005,
+          "unit": "s",
+          "description": "Modal propagation delay tau"
+        },
+        {
+          "key": "rDcOhms",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "Ohm",
+          "description": "DC series resistance"
+        },
+        {
+          "key": "tauAttenSec",
+          "type": "real",
+          "defaultValue": 0.00004,
+          "unit": "s",
+          "description": "Recursive convolution attenuation time constant"
+        }
+      ],
+      "wasmKernel": "LINE_SEMLYEN_FD",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "XFMR_SATURABLE",
+    "kind": "atp_component_model",
+    "namePath": "atp:XFMR_SATURABLE",
+    "exports": [
+      "turnsRatio",
+      "rLeakOhms",
+      "lLeakMh",
+      "lMagH",
+      "fluxKneeWb"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Saturable Transformer Component",
+      "category": "Linear & Distributed Branch",
+      "domain": "electrical",
+      "description": "Single- or multi-winding saturable power transformer with winding leakage impedance, turns ratio, and nonlinear magnetizing branch.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 6 (Transformers)",
+      "aliases": [
+        "TRANSFORMER",
+        "SAT_XFMR",
+        "XFMR_SAT"
+      ],
+      "parameters": [
+        {
+          "key": "turnsRatio",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Primary-to-secondary turns ratio N1/N2"
+        },
+        {
+          "key": "rLeakOhms",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "Ohm",
+          "description": "Equivalent winding leakage resistance"
+        },
+        {
+          "key": "lLeakMh",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "mH",
+          "description": "Equivalent winding leakage inductance"
+        },
+        {
+          "key": "lMagH",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "H",
+          "description": "Unsaturated magnetizing inductance"
+        },
+        {
+          "key": "fluxKneeWb",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "Wb",
+          "description": "Core saturation knee flux linkage"
+        }
+      ],
+      "wasmKernel": "XFMR_SATURABLE",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "XFMR_BCTRAN",
+    "kind": "atp_component_model",
+    "namePath": "atp:XFMR_BCTRAN",
+    "exports": [
+      "turnsRatio",
+      "rLeakOhms",
+      "lLeakMh",
+      "lMagH",
+      "fluxKneeWb"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BCTRAN Matrix Transformer",
+      "category": "Linear & Distributed Branch",
+      "domain": "electrical",
+      "description": "Multi-winding linear/externally-saturable transformer represented by coupled [R] and [L] branch matrices derived from short-circuit and open-circuit tests.",
+      "provenance": "Brandwajn, V., Dommel, H.W., & Dommel, I.I., IEEE Trans. PAS-101(6), pp. 1331–1339 (1982)",
+      "aliases": [
+        "BCTRAN",
+        "XFMR_MATRIX"
+      ],
+      "parameters": [
+        {
+          "key": "turnsRatio",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Primary-to-secondary voltage ratio V1/V2"
+        },
+        {
+          "key": "rLeakOhms",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "Ohm",
+          "description": "Short-circuit test resistance"
+        },
+        {
+          "key": "lLeakMh",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "mH",
+          "description": "Short-circuit test inductance"
+        },
+        {
+          "key": "lMagH",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "H",
+          "description": "Excitation branch inductance"
+        },
+        {
+          "key": "fluxKneeWb",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "Wb",
+          "description": "External core saturation knee flux"
+        }
+      ],
+      "wasmKernel": "XFMR_BCTRAN",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "NONLIN_IND_98",
+    "kind": "atp_component_model",
+    "namePath": "atp:NONLIN_IND_98",
+    "exports": [
+      "lUnsatH",
+      "lSatH",
+      "fluxKneeWb"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pseudo-Nonlinear Saturable Inductor (Type 98)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Piecewise-linear saturable inductance branch (Type 98) integrating terminal voltage to magnetic flux linkage with unsaturated and saturated slopes.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 7 (Nonlinear Elements); ATP Rule Book Sec. 4.E",
+      "aliases": [
+        "TYPE98",
+        "IND_98",
+        "SAT_IND",
+        "NONLIN98"
+      ],
+      "parameters": [
+        {
+          "key": "lUnsatH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "H",
+          "description": "Unsaturated inductance slope dLambda/di"
+        },
+        {
+          "key": "lSatH",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "H",
+          "description": "Saturated air-core inductance slope"
+        },
+        {
+          "key": "fluxKneeWb",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Wb",
+          "description": "Saturation knee flux linkage"
+        }
+      ],
+      "wasmKernel": "NONLIN_IND_98",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "NONLIN_HYST_96",
+    "kind": "atp_component_model",
+    "namePath": "atp:NONLIN_HYST_96",
+    "exports": [
+      "lUnsatH",
+      "lSatH",
+      "fluxKneeWb",
+      "fluxResWb",
+      "iCoerciveA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hysteretic Saturable Inductor (Type 96)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Nonlinear hysteretic iron-core inductor (Type 96) with residual flux linkage and coercive current offset for transformer inrush and ferroresonance studies.",
+      "provenance": "Frame, J.G., Mohan, N., & Liu, T.H., IEEE Trans. PAS-101(6), pp. 1403–1412 (1982); EMTP Theory Book Ch. 7",
+      "aliases": [
+        "TYPE96",
+        "HYST_96",
+        "HYSTERESIS",
+        "NONLIN96"
+      ],
+      "parameters": [
+        {
+          "key": "lUnsatH",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "H",
+          "description": "Unsaturated inductance slope"
+        },
+        {
+          "key": "lSatH",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "H",
+          "description": "Saturated inductance slope"
+        },
+        {
+          "key": "fluxKneeWb",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Wb",
+          "description": "Saturation knee flux linkage"
+        },
+        {
+          "key": "fluxResWb",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "Wb",
+          "description": "Initial residual flux linkage"
+        },
+        {
+          "key": "iCoerciveA",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "A",
+          "description": "Coercive magnetizing current half-width"
+        }
+      ],
+      "wasmKernel": "NONLIN_HYST_96",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "MOV_ARRESTER_92",
+    "kind": "atp_component_model",
+    "namePath": "atp:MOV_ARRESTER_92",
+    "exports": [
+      "vRefV",
+      "iRefA",
+      "qExp",
+      "rLeakOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ZnO MOV Surge Arrester (Type 92)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Zinc-oxide metal-oxide varistor (MOV) surge arrester with exponential voltage-current characteristic I = Iref * (V / Vref)^q and cumulative energy tracking.",
+      "provenance": "IEEE Std C62.11; IEEE Working Group 3.4.11, Trans. PWRD-7(1), pp. 302–309 (1992); EMTP Theory Book Ch. 7",
+      "aliases": [
+        "TYPE92",
+        "MOV",
+        "ZNO",
+        "ARRESTER",
+        "SURGE_ARRESTER"
+      ],
+      "parameters": [
+        {
+          "key": "vRefV",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "V",
+          "description": "Reference clamping voltage Vref"
+        },
+        {
+          "key": "iRefA",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "A",
+          "description": "Reference discharge current Iref"
+        },
+        {
+          "key": "qExp",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "1",
+          "description": "Nonlinearity exponent q"
+        },
+        {
+          "key": "rLeakOhms",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "Ohm",
+          "description": "Parallel leakage resistance"
+        }
+      ],
+      "wasmKernel": "MOV_ARRESTER_92",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "SWITCH_TIME_00",
+    "kind": "atp_component_model",
+    "namePath": "atp:SWITCH_TIME_00",
+    "exports": [
+      "tCloseSec",
+      "tOpenSec",
+      "iMarginA",
+      "rOnOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Time-Controlled Switch (Circuit Breaker)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Idealized time-controlled switch closing at tClose and opening at the first current zero-crossing (or |i| <= iMargin) after tOpen.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 1.7 (Switches); ATP Rule Book Sec. 6.A",
+      "aliases": [
+        "SW_TIME",
+        "SWITCH",
+        "BREAKER",
+        "TYPE00_SW"
+      ],
+      "parameters": [
+        {
+          "key": "tCloseSec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Closing time"
+        },
+        {
+          "key": "tOpenSec",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "s",
+          "description": "Opening command time"
+        },
+        {
+          "key": "iMarginA",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "A",
+          "description": "Current-chopping margin for opening"
+        },
+        {
+          "key": "rOnOhms",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "Ohm",
+          "description": "Closed-state on-resistance"
+        }
+      ],
+      "wasmKernel": "SWITCH_TIME_00",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "SWITCH_STAT_04",
+    "kind": "atp_component_model",
+    "namePath": "atp:SWITCH_STAT_04",
+    "exports": [
+      "tMeanSec",
+      "tOpenSec",
+      "tSigmaSec",
+      "rOnOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Statistical / Systematic Switch (Type 04)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Statistical or systematic switching-overvoltage circuit breaker with configurable mean closing time and standard deviation offset.",
+      "provenance": "CIGRE TB 39 (Guidelines for Representation of Network Elements, 1990); ATP Rule Book Sec. 6.B",
+      "aliases": [
+        "SW_STAT",
+        "STAT_SWITCH",
+        "TYPE04_SW"
+      ],
+      "parameters": [
+        {
+          "key": "tMeanSec",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Mean closing time"
+        },
+        {
+          "key": "tOpenSec",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "s",
+          "description": "Opening time"
+        },
+        {
+          "key": "tSigmaSec",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "s",
+          "description": "Closing time scatter / offset"
+        },
+        {
+          "key": "rOnOhms",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "Ohm",
+          "description": "Closed-state on-resistance"
+        }
+      ],
+      "wasmKernel": "SWITCH_STAT_04",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "SWITCH_DIODE_11",
+    "kind": "atp_component_model",
+    "namePath": "atp:SWITCH_DIODE_11",
+    "exports": [
+      "vOnV",
+      "rOnOhms",
+      "rOffOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Power Diode Valve Switch (Type 11)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Uncontrolled power semiconductor diode valve conducting on forward voltage above threshold and turning off at zero current.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 7 (Power Electronics); ATP Rule Book Sec. 6.C",
+      "aliases": [
+        "DIODE",
+        "TYPE11_DIODE",
+        "VALVE_DIODE"
+      ],
+      "parameters": [
+        {
+          "key": "vOnV",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "V",
+          "description": "Forward conduction threshold voltage"
+        },
+        {
+          "key": "rOnOhms",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "Ohm",
+          "description": "Forward conducting resistance"
+        },
+        {
+          "key": "rOffOhms",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "Ohm",
+          "description": "Reverse blocking resistance"
+        }
+      ],
+      "wasmKernel": "SWITCH_DIODE_11",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "SWITCH_THYRISTOR_11",
+    "kind": "atp_component_model",
+    "namePath": "atp:SWITCH_THYRISTOR_11",
+    "exports": [
+      "vOnV",
+      "rOnOhms",
+      "rOffOhms",
+      "iHoldA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Controlled Thyristor Valve Switch (Type 11)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Gate-triggered SCR/thyristor valve that latches into conduction when forward-biased with a TACS firing pulse and commutates off at zero current.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 7; CIGRE HVDC Benchmark Model",
+      "aliases": [
+        "THYRISTOR",
+        "SCR",
+        "TYPE11_SCR",
+        "VALVE_THYRISTOR"
+      ],
+      "parameters": [
+        {
+          "key": "vOnV",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "V",
+          "description": "Forward latching voltage threshold"
+        },
+        {
+          "key": "rOnOhms",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "Ohm",
+          "description": "On-state conducting resistance"
+        },
+        {
+          "key": "rOffOhms",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "Ohm",
+          "description": "Off-state blocking resistance"
+        },
+        {
+          "key": "iHoldA",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "A",
+          "description": "Holding current threshold"
+        }
+      ],
+      "wasmKernel": "SWITCH_THYRISTOR_11",
+      "archetypeId": 16
+    }
+  },
+  {
+    "name": "SWITCH_TACS_13",
+    "kind": "atp_component_model",
+    "namePath": "atp:SWITCH_TACS_13",
+    "exports": [
+      "rOnOhms",
+      "rOffOhms",
+      "threshold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TACS-Controlled Switch (Type 13)",
+      "category": "Nonlinear & Switching",
+      "domain": "electrical",
+      "description": "Idealized switch whose open/closed state is driven directly by a TACS or MODELS control signal (closed when ctrlIn > 0.5).",
+      "provenance": "ATP Rule Book Sec. 6.D (Type 13 TACS-Controlled Switch); EMTP Theory Book Ch. 10",
+      "aliases": [
+        "SW_TACS",
+        "TYPE13",
+        "TYPE13_SW",
+        "TACS_SWITCH"
+      ],
+      "parameters": [
+        {
+          "key": "rOnOhms",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "Ohm",
+          "description": "Closed-state on-resistance"
+        },
+        {
+          "key": "rOffOhms",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "Ohm",
+          "description": "Open-state off-resistance"
+        },
+        {
+          "key": "threshold",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Control signal closing threshold"
+        }
+      ],
+      "wasmKernel": "SWITCH_TACS_13",
+      "archetypeId": 17
+    }
+  },
+  {
+    "name": "SRC_AC_14",
+    "kind": "atp_component_model",
+    "namePath": "atp:SRC_AC_14",
+    "exports": [
+      "amplitude",
+      "frequencyHz",
+      "phaseDeg",
+      "tStartSec",
+      "tStopSec",
+      "rIntOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cosinusoidal AC Source (Type 14)",
+      "category": "Source & Machine",
+      "domain": "electrical",
+      "description": "Steady-state or switched sinusoidal AC voltage/current source v(t) = A * cos(2*pi*f*t + phi) with optional start and stop times.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 1.6; ATP Rule Book Sec. 7.D (Type 14)",
+      "aliases": [
+        "TYPE14",
+        "AC_SOURCE",
+        "COS_SOURCE"
+      ],
+      "parameters": [
+        {
+          "key": "amplitude",
+          "type": "real",
+          "defaultValue": 169705.6,
+          "unit": "V",
+          "description": "Peak amplitude A (e.g. 120 kV RMS * sqrt(2))"
+        },
+        {
+          "key": "frequencyHz",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "Hz",
+          "description": "Fundamental frequency f"
+        },
+        {
+          "key": "phaseDeg",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Initial cosine phase angle phi"
+        },
+        {
+          "key": "tStartSec",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "s",
+          "description": "Source turn-on time (<0 = steady-state)"
+        },
+        {
+          "key": "tStopSec",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "s",
+          "description": "Source turn-off time"
+        },
+        {
+          "key": "rIntOhms",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "Ohm",
+          "description": "Internal Norton source resistance"
+        }
+      ],
+      "wasmKernel": "SRC_AC_14",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "SRC_IMPULSE_15",
+    "kind": "atp_component_model",
+    "namePath": "atp:SRC_IMPULSE_15",
+    "exports": [
+      "v0V",
+      "alphaPerSec",
+      "betaPerSec",
+      "t0Sec",
+      "rIntOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Double-Exponential Surge Impulse (Type 15)",
+      "category": "Source & Machine",
+      "domain": "electrical",
+      "description": "Double-exponential lightning or switching impulse source v(t) = V0 * (exp(-alpha*(t-t0)) - exp(-beta*(t-t0))) (default IEC 60060 1.2/50 us waveform).",
+      "provenance": "IEC 60060-1 (High-Voltage Test Techniques); IEEE Std 4; ATP Rule Book Sec. 7.E (Type 15)",
+      "aliases": [
+        "TYPE15",
+        "IMPULSE",
+        "LIGHTNING",
+        "SURGE_SOURCE"
+      ],
+      "parameters": [
+        {
+          "key": "v0V",
+          "type": "real",
+          "defaultValue": 1037000,
+          "unit": "V",
+          "description": "Peak scale factor V0 (~1 MV crest for 1.2/50 us)"
+        },
+        {
+          "key": "alphaPerSec",
+          "type": "real",
+          "defaultValue": 14659,
+          "unit": "1/s",
+          "description": "Tail decay constant alpha"
+        },
+        {
+          "key": "betaPerSec",
+          "type": "real",
+          "defaultValue": 2468900,
+          "unit": "1/s",
+          "description": "Front rise constant beta"
+        },
+        {
+          "key": "t0Sec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Impulse inception time t0"
+        },
+        {
+          "key": "rIntOhms",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "Ohm",
+          "description": "Internal source resistance"
+        }
+      ],
+      "wasmKernel": "SRC_IMPULSE_15",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "SRC_DC_11",
+    "kind": "atp_component_model",
+    "namePath": "atp:SRC_DC_11",
+    "exports": [
+      "amplitudeV",
+      "t0Sec",
+      "tRampSec",
+      "tStopSec",
+      "rIntOhms"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Step / Ramp DC Source (Type 11)",
+      "category": "Source & Machine",
+      "domain": "electrical",
+      "description": "Step or linear-ramp DC voltage/current source transitioning from 0 to Vdc over optional rise time tRamp starting at t0.",
+      "provenance": "ATP Rule Book Sec. 7.A (Type 11 Step/DC Source); Dommel EMTP Theory Book Ch. 1",
+      "aliases": [
+        "TYPE11",
+        "DC_SOURCE",
+        "STEP_SOURCE"
+      ],
+      "parameters": [
+        {
+          "key": "amplitudeV",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "V",
+          "description": "Steady DC amplitude"
+        },
+        {
+          "key": "t0Sec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Step inception time t0"
+        },
+        {
+          "key": "tRampSec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Linear ramp rise time (0 = ideal step)"
+        },
+        {
+          "key": "tStopSec",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "s",
+          "description": "Turn-off time"
+        },
+        {
+          "key": "rIntOhms",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "Ohm",
+          "description": "Internal source resistance"
+        }
+      ],
+      "wasmKernel": "SRC_DC_11",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "MACH_SYNC_59",
+    "kind": "atp_component_model",
+    "namePath": "atp:MACH_SYNC_59",
+    "exports": [
+      "vRatedV",
+      "freqHz",
+      "hSec",
+      "xdppOhms",
+      "pMechW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Synchronous Machine (Type 59)",
+      "category": "Source & Machine",
+      "domain": "electrical",
+      "description": "Three-phase electromagnetic transient synchronous machine (Type 59) with Park dq0 electromechanical swing dynamics and subtransient reactance interface.",
+      "provenance": "Brandwajn, V., IEEE Trans. PAS-96(2), pp. 342–349 (1977); Dommel EMTP Theory Book Ch. 8",
+      "aliases": [
+        "TYPE59",
+        "SM59",
+        "SYNC_MACHINE",
+        "GEN_59"
+      ],
+      "parameters": [
+        {
+          "key": "vRatedV",
+          "type": "real",
+          "defaultValue": 20000,
+          "unit": "V",
+          "description": "Rated RMS terminal voltage"
+        },
+        {
+          "key": "freqHz",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "Hz",
+          "description": "Synchronous electrical frequency"
+        },
+        {
+          "key": "hSec",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "s",
+          "description": "Inertia constant H"
+        },
+        {
+          "key": "xdppOhms",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "Ohm",
+          "description": "Subtransient reactance Xd''"
+        },
+        {
+          "key": "pMechW",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "W",
+          "description": "Mechanical shaft power input"
+        }
+      ],
+      "wasmKernel": "MACH_SYNC_59",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "MACH_UNIVERSAL_19",
+    "kind": "atp_component_model",
+    "namePath": "atp:MACH_UNIVERSAL_19",
+    "exports": [
+      "vRatedV",
+      "freqHz",
+      "hSec",
+      "rRotorOhms",
+      "tLoadNm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Universal Machine (Type 19)",
+      "category": "Source & Machine",
+      "domain": "electrical",
+      "description": "EMTP Universal Machine (UM Type 19) supporting induction, synchronous, and DC machine electromechanical transients with slip-dependent torque.",
+      "provenance": "Lauw, H.K. & Meyer, W.S., IEEE Trans. PAS-101(6), pp. 1342–1351 (1982); EMTP Theory Book Ch. 9",
+      "aliases": [
+        "TYPE19",
+        "UM19",
+        "UNIVERSAL_MACHINE",
+        "INDUCTION_MOTOR"
+      ],
+      "parameters": [
+        {
+          "key": "vRatedV",
+          "type": "real",
+          "defaultValue": 4160,
+          "unit": "V",
+          "description": "Rated RMS voltage"
+        },
+        {
+          "key": "freqHz",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "Hz",
+          "description": "Stator frequency"
+        },
+        {
+          "key": "hSec",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "s",
+          "description": "Rotor inertia constant H"
+        },
+        {
+          "key": "rRotorOhms",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "Ohm",
+          "description": "Effective rotor resistance"
+        },
+        {
+          "key": "tLoadNm",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "N.m",
+          "description": "Mechanical load torque"
+        }
+      ],
+      "wasmKernel": "MACH_UNIVERSAL_19",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "TACS_TF_S",
+    "kind": "atp_component_model",
+    "namePath": "atp:TACS_TF_S",
+    "exports": [
+      "gainK",
+      "t1Sec",
+      "t2Sec",
+      "yMin",
+      "yMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TACS s-Domain Transfer Function",
+      "category": "TACS & MODELS Control",
+      "domain": "electrical",
+      "description": "TACS Laplace s-domain lead-lag / first-order transfer function G(s) = K * (1 + T1*s) / (1 + T2*s) discretized via trapezoidal (Tustin) integration.",
+      "provenance": "Dube, L. & Dommel, H.W., IEEE PICA Conf., pp. 266–271 (1977); EMTP Theory Book Ch. 10 (TACS)",
+      "aliases": [
+        "TACS_TF",
+        "LAPLACE",
+        "LEAD_LAG",
+        "TACS_FILTER"
+      ],
+      "parameters": [
+        {
+          "key": "gainK",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "DC gain K"
+        },
+        {
+          "key": "t1Sec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Lead time constant T1"
+        },
+        {
+          "key": "t2Sec",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Lag time constant T2"
+        },
+        {
+          "key": "yMin",
+          "type": "real",
+          "defaultValue": -1000000000,
+          "unit": "1",
+          "description": "Lower output saturation limit"
+        },
+        {
+          "key": "yMax",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "1",
+          "description": "Upper output saturation limit"
+        }
+      ],
+      "wasmKernel": "TACS_TF_S",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "TACS_INTEGRATOR",
+    "kind": "atp_component_model",
+    "namePath": "atp:TACS_INTEGRATOR",
+    "exports": [
+      "gainK",
+      "y0",
+      "yMin",
+      "yMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TACS Trapezoidal Integrator",
+      "category": "TACS & MODELS Control",
+      "domain": "electrical",
+      "description": "TACS continuous-time trapezoidal integrator y(t) = y0 + K * integral(u(t) dt) with anti-windup output clamping.",
+      "provenance": "Dommel, H.W., EMTP Theory Book (1986), Ch. 10 (TACS Supplemental Control Systems)",
+      "aliases": [
+        "TACS_INT",
+        "INTEGRATOR",
+        "TACS_58"
+      ],
+      "parameters": [
+        {
+          "key": "gainK",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/s",
+          "description": "Integrator gain K"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial output state y(0)"
+        },
+        {
+          "key": "yMin",
+          "type": "real",
+          "defaultValue": -1000000000,
+          "unit": "1",
+          "description": "Lower anti-windup limit"
+        },
+        {
+          "key": "yMax",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "1",
+          "description": "Upper anti-windup limit"
+        }
+      ],
+      "wasmKernel": "TACS_INTEGRATOR",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "TACS_LIMITER",
+    "kind": "atp_component_model",
+    "namePath": "atp:TACS_LIMITER",
+    "exports": [
+      "gainK",
+      "yMin",
+      "yMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TACS Static / Dynamic Limiter",
+      "category": "TACS & MODELS Control",
+      "domain": "electrical",
+      "description": "TACS algebraic gain and hard amplitude limiter clamping K*u between lower and upper bounds.",
+      "provenance": "ATP Rule Book Sec. 1.B (TACS Supplemental Devices); EMTP Theory Book Ch. 10",
+      "aliases": [
+        "TACS_LIM",
+        "LIMITER",
+        "CLAMP"
+      ],
+      "parameters": [
+        {
+          "key": "gainK",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Input scale factor"
+        },
+        {
+          "key": "yMin",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "1",
+          "description": "Minimum output clamp"
+        },
+        {
+          "key": "yMax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Maximum output clamp"
+        }
+      ],
+      "wasmKernel": "TACS_LIMITER",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "TACS_DELAY",
+    "kind": "atp_component_model",
+    "namePath": "atp:TACS_DELAY",
+    "exports": [
+      "delaySec",
+      "initOut"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TACS Transport Time Delay (Device 53)",
+      "category": "TACS & MODELS Control",
+      "domain": "electrical",
+      "description": "TACS Device 53 fixed transport delay outputting u(t - tau) using a ring buffer in linear memory.",
+      "provenance": "ATP Rule Book Sec. 1.C (TACS Device 53 Transport Delay); EMTP Theory Book Ch. 10",
+      "aliases": [
+        "TACS_DLY",
+        "DELAY_53",
+        "TRANSPORT_DELAY"
+      ],
+      "parameters": [
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "s",
+          "description": "Transport delay time tau"
+        },
+        {
+          "key": "initOut",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial delayed output value for t < tau"
+        }
+      ],
+      "wasmKernel": "TACS_DELAY",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "TACS_LOGIC",
+    "kind": "atp_component_model",
+    "namePath": "atp:TACS_LOGIC",
+    "exports": [
+      "threshold",
+      "hiVal",
+      "loVal",
+      "invert"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TACS Logical / Comparator Block",
+      "category": "TACS & MODELS Control",
+      "domain": "electrical",
+      "description": "TACS relational comparator and logical gate outputting hiVal when ctrlIn >= threshold (or inverted when invert > 0.5).",
+      "provenance": "ATP Rule Book Sec. 1.A (TACS Fortran & Logical Expressions); EMTP Theory Book Ch. 10",
+      "aliases": [
+        "TACS_LOG",
+        "COMPARATOR",
+        "TACS_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "threshold",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Switching threshold"
+        },
+        {
+          "key": "hiVal",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Logical high output value"
+        },
+        {
+          "key": "loVal",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Logical low output value"
+        },
+        {
+          "key": "invert",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Invert logic output if > 0.5"
+        }
+      ],
+      "wasmKernel": "TACS_LOGIC",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "MODELS_USER",
+    "kind": "atp_component_model",
+    "namePath": "atp:MODELS_USER",
+    "exports": [
+      "kp",
+      "ki",
+      "yMin",
+      "yMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MODELS Procedural Control Block",
+      "category": "TACS & MODELS Control",
+      "domain": "electrical",
+      "description": "ATP MODELS procedural control language block implementing cleanroom proportional-integral control or external FMU co-simulation coupling.",
+      "provenance": "Dube, L., MODELS in ATP: Language Manual (1996); CIGRE WG 33.02",
+      "aliases": [
+        "MODELS",
+        "USER_MODEL",
+        "FOREIGN_MODEL"
+      ],
+      "parameters": [
+        {
+          "key": "kp",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Proportional gain Kp"
+        },
+        {
+          "key": "ki",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1/s",
+          "description": "Integral gain Ki"
+        },
+        {
+          "key": "yMin",
+          "type": "real",
+          "defaultValue": -1000000000,
+          "unit": "1",
+          "description": "Lower output limit"
+        },
+        {
+          "key": "yMax",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "1",
+          "description": "Upper output limit"
+        }
+      ],
+      "wasmKernel": "MODELS_USER",
+      "archetypeId": 35
+    }
+  }
+]

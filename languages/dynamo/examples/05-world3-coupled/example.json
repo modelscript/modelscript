@@ -1,0 +1,11 @@
+{
+  "id": "dynamo-05-world3-coupled",
+  "lang": "dynamo",
+  "subFormats": ["dyn"],
+  "difficulty": 5,
+  "title": "World3-Inspired Resource-Capital-Pollution System Dynamics",
+  "description": "Coupled four-sector Meadows World3-style global dynamics model linking industrial capital, nonrenewable resources, persistent pollution, and population mortality feedback.",
+  "category": "Global System Dynamics",
+  "tags": ["dynamo", "world3", "sustainability", "coupled", "nonlinear"],
+  "activeFile": "world3_coupled.dyn"
+}

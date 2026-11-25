@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Model Title="Subsea S-Curve Riser Severe Slugging Analysis" Author="FlowAssuranceTeam">
+  <Integration StartTime="0" EndTime="7200" MinDt="0.001" MaxDt="0.3" />
+
+  <Flowpath Name="DEEPWATER_RISER_LOOP">
+    <Pipe Label="SEABED_DECLINE" Length="3600" Diameter="0.254" Elevation="-420" Roughness="4.5e-5" Discretization="12" />
+    <Pipe Label="RISER_BASE_SAG" Length="1200" Diameter="0.254" Elevation="-40" Roughness="4.5e-5" Discretization="8" />
+    <Pipe Label="LAZY_WAVE_RISER" Length="1500" Diameter="0.254" Elevation="480" Roughness="4.5e-5" Discretization="10" />
+    <Valve Name="ANTISLUG_CHOKE" AbsolutePosition="6250" Diameter="0.16" Opening="0.65" Cd="0.82" />
+    <Controller Name="RISER_BASE_PID" Type="PID" SetPoint="62.0" Gain="0.85" Ti="45.0" Td="2.0" Transmitter="PT_RISER_BASE" ControlledValve="ANTISLUG_CHOKE" />
+    <Source Name="MANIFOLD_SRC" Position="0" TotalMassRate="38.0" GasMassFraction="0.24" WaterCut="0.12" Temperature="72C" Pressure="165bar" />
+    <HeatTransfer Type="WATER" AmbientTemperature="4C" AmbientHeatTransferCoeff="220">
+      <Layer Material="CARBON_STEEL" Thickness="0.022" Conductivity="45.0" />
+      <Layer Material="SYNTACTIC_FOAM" Thickness="0.055" Conductivity="0.14" />
+    </HeatTransfer>
+  </Flowpath>
+
+  <Node Name="SUBSEA_MANIFOLD" Type="TERMINAL" Flowpath="DEEPWATER_RISER_LOOP" BoundaryPosition="0.0" MassRate="38.0" Temperature="72C" Pressure="165bar" />
+  <Node Name="FPSO_SEPARATOR" Type="PRESSURE" Flowpath="DEEPWATER_RISER_LOOP" BoundaryPosition="1.0" Pressure="34bar" Temperature="25C" />
+</Model>

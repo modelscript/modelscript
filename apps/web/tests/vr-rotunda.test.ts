@@ -18,6 +18,7 @@ import { getLanguageInfo } from "@modelscript/editor/workbench/constants.js";
 import { CURATED_OPEN_MODELS } from "@modelscript/editor/workbench/openModelCatalog.js";
 import {
   boardBoundsToPlaneBounds,
+  buildDeskSpatialPlane,
   buildPodiumSpatialPlane,
   buildRightSubsystemChipLayouts,
   buildRotundaCanvasDocument,
@@ -32,10 +33,12 @@ import {
   createPolishedConcretePbr,
   createRadialContactShadowTexture,
   createRotundaEnvironmentHdri,
+  DESK_SCALE_PRESETS,
   EngineeringRotunda,
   evaluateOctopusArm3DetachFactor,
   extractModelsFromCanvasDocument,
   getEnvironmentSceneBackdrop,
+  getRotundaPlinthPresentation,
   getRotundaScenarioById,
   getTileMaximizeButtonRect,
   isLoadableGltfUri,
@@ -55,6 +58,7 @@ import {
   PODIUM_NEXT_TILE_BTN_RECT,
   PODIUM_PREV_TILE_BTN_RECT,
   pointInPodiumRect,
+  resolveDeskLayout,
   resolveRotundaRenderPolicy,
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
@@ -103,7 +107,7 @@ import {
 } from "../src/components/artifacts/RotundaGeometryBridge.js";
 import { SpatialCanvasArtifactViewer } from "../src/components/artifacts/SpatialCanvasArtifactViewer.js";
 import { XrViewportOverlay } from "../src/components/artifacts/XrViewportOverlay.js";
-import { HERO_EXAMPLES } from "../src/pages/playground/constants.js";
+import { HERO_EXAMPLES } from "../src/pages/ansatz-editor/constants.js";
 import SpatialCanvasPage from "../src/pages/SpatialCanvasPage.js";
 
 function dot3(a: [number, number, number], b: [number, number, number]): number {
@@ -126,8 +130,15 @@ function assertClose(actual: number, expected: number, eps = 1e-6, message?: str
 }
 
 describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR & JSDOM", () => {
-  test("All 5 environment presets and getEnvironmentSceneBackdrop return expected metadata and backdrops", () => {
-    const expectedIds: RotundaEnvironmentId[] = ["warehouse", "office", "outdoors", "dark-lab", "passthrough"];
+  test("All 6 environment presets and getEnvironmentSceneBackdrop return expected metadata and backdrops", () => {
+    const expectedIds: RotundaEnvironmentId[] = [
+      "atrium",
+      "warehouse",
+      "office",
+      "outdoors",
+      "dark-lab",
+      "passthrough",
+    ];
     assert.deepEqual(
       ROTUNDA_ENVIRONMENTS.map((e) => e.id),
       expectedIds,
@@ -140,8 +151,14 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
       assert.ok(meta.accentColor.startsWith("#"), `Environment ${meta.id} accentColor must be hex`);
       assert.ok(meta.orbColor.startsWith("#"), `Environment ${meta.id} orbColor must be hex`);
       assert.ok(meta.skyColor.length > 0, `Environment ${meta.id} skyColor must be non-empty`);
+      assert.ok(
+        meta.toneMappingExposure > 0.5 && meta.toneMappingExposure < 2.5,
+        `Environment ${meta.id} toneMappingExposure must be a sane positive exposure`,
+      );
     }
 
+    assert.equal(ROTUNDA_ENVIRONMENTS[0]?.label, "Future Atrium");
+    assert.deepEqual(getEnvironmentSceneBackdrop("atrium"), { background: "#eef2f6", isLight: true });
     assert.deepEqual(getEnvironmentSceneBackdrop("warehouse"), { background: "#cfd9e6", isLight: true });
     assert.deepEqual(getEnvironmentSceneBackdrop("office"), { background: "#e8eef5", isLight: true });
     assert.deepEqual(getEnvironmentSceneBackdrop("outdoors"), { background: "#8ec5f8", isLight: true });
@@ -151,7 +168,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
 
   test("rotundaReducer handles orbital paging wrap-around and shortest-path selectModelIndex", () => {
     let state = createInitialRotundaState();
-    assert.equal(state.environment, "outdoors");
+    assert.equal(state.environment, "atrium");
     assert.equal(state.activeModelIndex, 0);
     assert.equal(state.carouselStep, 0);
 
@@ -250,21 +267,48 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     state = rotundaReducer(state, { type: "setSectionCutOffset", offset: 0.35 });
     assertClose(state.sectionCutOffset, 0.35);
 
-    // Tabletop <-> 1:1 scale toggle
+    // Hero -> Tabletop -> 1:1 scale -> Hero cycle
+    assert.equal(state.scaleMode, "hero");
+    state = rotundaReducer(state, { type: "toggleScaleMode" });
     assert.equal(state.scaleMode, "tabletop");
     state = rotundaReducer(state, { type: "toggleScaleMode" });
     assert.equal(state.scaleMode, "real-scale");
     state = rotundaReducer(state, { type: "toggleScaleMode" });
-    assert.equal(state.scaleMode, "tabletop");
+    assert.equal(state.scaleMode, "hero");
     state = rotundaReducer(state, { type: "setScaleMode", mode: "real-scale" });
     assert.equal(state.scaleMode, "real-scale");
 
-    // 45° <-> flat (12°) podium tilt and visibility toggles
+    // Drafting-table (70° from vertical ≈ 20° slope) -> 45° -> near-upright 12° tilt cycle and visibility toggles
+    assert.equal(state.podiumTiltDeg, 70);
+    state = rotundaReducer(state, { type: "togglePodiumTilt" });
     assert.equal(state.podiumTiltDeg, 45);
     state = rotundaReducer(state, { type: "togglePodiumTilt" });
     assert.equal(state.podiumTiltDeg, 12);
     state = rotundaReducer(state, { type: "togglePodiumTilt" });
-    assert.equal(state.podiumTiltDeg, 45);
+    assert.equal(state.podiumTiltDeg, 70);
+    state = rotundaReducer(state, { type: "setPodiumTilt", tiltDeg: 120 });
+    assert.equal(state.podiumTiltDeg, 85);
+    state = rotundaReducer(state, { type: "setPodiumTilt", tiltDeg: 70 });
+
+    // Desk size presets S/M/L/XL and guarded height calibration
+    assertClose(state.deskScale, 0.6);
+    state = rotundaReducer(state, { type: "cycleDeskScale" });
+    assertClose(state.deskScale, 0.8);
+    state = rotundaReducer(state, { type: "cycleDeskScale" });
+    assertClose(state.deskScale, 1.0);
+    state = rotundaReducer(state, { type: "cycleDeskScale" });
+    assertClose(state.deskScale, 0.45);
+    state = rotundaReducer(state, { type: "setDeskScale", scale: 0.6 });
+    assertClose(state.deskScale, 0.6);
+    assert.equal(state.deskHeightY, null);
+    state = rotundaReducer(state, { type: "recalibrateDeskHeight", headY: 1.62 });
+    assertClose(state.deskHeightY ?? -1, 1.0);
+    state = rotundaReducer(state, { type: "recalibrateDeskHeight", headY: 1.1 });
+    assertClose(state.deskHeightY ?? -1, 0.65);
+    const ignored = rotundaReducer(state, { type: "recalibrateDeskHeight", headY: 0.1 });
+    assert.equal(ignored, state);
+    state = rotundaReducer(state, { type: "resetDeskHeight" });
+    assert.equal(state.deskHeightY, null);
 
     state = rotundaReducer(state, { type: "togglePodiumVisible" });
     assert.equal(state.podiumVisible, false);
@@ -301,6 +345,50 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     assert.equal(state.sectionCutOffset, 0);
     assert.equal(state.environment, "warehouse");
     assert.equal(state.selectedTileId, "tile_step");
+  });
+
+  test("desk layout presets keep the desk below the eye -> hero-model sightline and scale UV<->world consistently", () => {
+    const hero = getRotundaPlinthPresentation("hero");
+    // Hero model ≈ 3.2 m (0.78 local units × root scale) with its base near y = 0.36 m
+    assertClose(0.78 * hero.scale, 3.2, 1e-9, "hero model size");
+    const modelBaseY = hero.center[1] + 0.04 * hero.scale;
+    assert.ok(modelBaseY > 0.3 && modelBaseY < 0.42, `hero base y ${modelBaseY}`);
+    // Nearest point of a 3.2 m model footprint toward the viewer
+    const modelFrontZ = hero.center[2] + 1.6;
+    const eye: [number, number] = [1.6, 0]; // [y, z]
+
+    for (const preset of DESK_SCALE_PRESETS) {
+      const layout = resolveDeskLayout(preset.scale, null);
+      assertClose(layout.width, 1.52 * preset.scale, 1e-12, `${preset.id} width`);
+      const plane = buildDeskSpatialPlane(70, layout);
+      // Board top edge (v = 0) in world space
+      const topY = plane.origin[1];
+      const topZ = plane.origin[2];
+      const t = (topZ - eye[1]) / (modelFrontZ - eye[1]);
+      const sightlineY = eye[0] + (modelBaseY - eye[0]) * t;
+      assert.ok(
+        topY < sightlineY,
+        `${preset.id} desk top ${topY.toFixed(3)} must stay below sightline ${sightlineY.toFixed(3)}`,
+      );
+
+      // Center UV maps back to the layout center, and the far corner spans the scaled width/height
+      const bridge = new SpatialSurfaceBridge(plane);
+      const c = bridge.planeUVToWorld3D("podium", ROTUNDA_BOARD_CANVAS_WIDTH / 2, ROTUNDA_BOARD_CANVAS_HEIGHT / 2);
+      assert.ok(c);
+      assertClose(c[0], layout.center[0], 1e-9);
+      assertClose(c[1], layout.center[1], 1e-9);
+      assertClose(c[2], layout.center[2], 1e-9);
+      const corner = bridge.planeUVToWorld3D("podium", ROTUNDA_BOARD_CANVAS_WIDTH, ROTUNDA_BOARD_CANVAS_HEIGHT);
+      assert.ok(corner);
+      const dx = corner[0] - plane.origin[0];
+      const dy = corner[1] - plane.origin[1];
+      const dz = corner[2] - plane.origin[2];
+      assertClose(Math.hypot(dx, dy, dz), Math.hypot(layout.width, layout.height), 1e-9, `${preset.id} diagonal`);
+    }
+
+    // Calibrated height shifts the desk center (clamped)
+    assertClose(resolveDeskLayout(0.6, 1.0).center[1], 1.0, 1e-12);
+    assertClose(resolveDeskLayout(0.6, 2.0).center[1], 1.05, 1e-12);
   });
 
   test("buildPodiumSpatialPlane(45) satisfies orthonormal basis, 45° tilt, center UV, and ray intersection invariants", () => {
@@ -440,7 +528,8 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     assert.ok(anchorPaths.includes("C"));
 
     assert.equal(parseRotundaEnvironmentId("OFFICE"), "office");
-    assert.equal(parseRotundaEnvironmentId("unknown-env"), "outdoors");
+    assert.equal(parseRotundaEnvironmentId("unknown-env"), "atrium");
+    assert.equal(parseRotundaEnvironmentId("Atrium"), "atrium");
     assert.equal(parseRotundaEnvironmentId("unknown-env", "warehouse"), "warehouse");
     assert.equal(resolveDefaultArtifactEnvironment("step"), "warehouse");
     assert.equal(resolveDefaultArtifactEnvironment("cad3d"), "warehouse");
@@ -448,16 +537,16 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     assert.equal(resolveDefaultArtifactEnvironment("cfd"), "warehouse");
     assert.equal(resolveDefaultArtifactEnvironment("gcode"), "warehouse");
     assert.equal(resolveDefaultArtifactEnvironment("modelica", { filename: "bracket.step" }), "warehouse");
-    assert.equal(resolveDefaultArtifactEnvironment("modelica"), "outdoors");
-    assert.equal(resolveDefaultArtifactEnvironment("spatial-canvas"), "outdoors");
+    assert.equal(resolveDefaultArtifactEnvironment("modelica"), "atrium");
+    assert.equal(resolveDefaultArtifactEnvironment("spatial-canvas"), "atrium");
     assert.equal(parseSurfacePresentationMode("webxr-vr"), "webxr-vr");
     assert.equal(parseSurfacePresentationMode("invalid", "desktop-2d"), "desktop-2d");
   });
 
-  test("SSR renderToStaticMarkup renders EngineeringRotunda across all modes and all 5 environments cleanly", () => {
+  test("SSR renderToStaticMarkup renders EngineeringRotunda across all modes and all 6 environments cleanly", () => {
     const board = createCanonicalPolyglotDemoBoard();
     const modes: SurfacePresentationMode[] = ["spatial-3d", "webxr-vr"];
-    const envs: RotundaEnvironmentId[] = ["warehouse", "office", "outdoors", "dark-lab", "passthrough"];
+    const envs: RotundaEnvironmentId[] = ["atrium", "warehouse", "office", "outdoors", "dark-lab", "passthrough"];
 
     for (const mode of modes) {
       for (const env of envs) {
@@ -516,7 +605,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     );
     assert.ok(htmlVr.includes('data-surface-mode="webxr-vr"'));
     assert.ok(htmlVr.includes('data-rotunda="engineering-rotunda"'));
-    assert.ok(htmlVr.includes('data-rotunda-env="outdoors"'));
+    assert.ok(htmlVr.includes('data-rotunda-env="atrium"'));
 
     // 3. XrViewportOverlay default (no WebXR in SSR & no Rotunda callback -> renders empty/null)
     const emptyOverlay = renderToStaticMarkup(React.createElement(XrViewportOverlay, {}));
@@ -1024,7 +1113,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
     assert.ok(!handoffHtml.includes('data-active-model="showcase-drone"'));
   });
 
-  test("Ansatz Playground HERO_EXAMPLES includes all 4 VR-ready multi-physics templates", () => {
+  test("Ansatz Editor HERO_EXAMPLES includes all 4 VR-ready multi-physics templates", () => {
     const requiredTemplates = [
       { id: "urdf-hexacopter-drone", lang: "urdf", snippet: "<robot name=" },
       { id: "modelica-wind-turbine", lang: "modelica", snippet: "model OffshoreWindTurbine5MW" },
@@ -1034,7 +1123,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
 
     for (const req of requiredTemplates) {
       const found = HERO_EXAMPLES.find((ex) => ex.id === req.id);
-      assert.ok(found, `Missing playground template '${req.id}' in HERO_EXAMPLES`);
+      assert.ok(found, `Missing ansatz template '${req.id}' in HERO_EXAMPLES`);
       assert.equal(found.lang, req.lang, `Expected template '${req.id}' to have lang '${req.lang}'`);
       assert.ok(found.code.includes(req.snippet), `Expected template '${req.id}' code to include '${req.snippet}'`);
     }
@@ -1449,7 +1538,7 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
       hdri.dispose();
     }
 
-    // Full-bleed floating navbar mode passes topOverlayInset={72} so HUD pills clear the floating Morsel topbar
+    // Full-bleed floating navbar mode passes topOverlayInset={72} so HUD pills clear the floating Ansatz topbar
     const insetHtml = renderToStaticMarkup(
       React.createElement(EngineeringRotunda, {
         mode: "spatial-3d",

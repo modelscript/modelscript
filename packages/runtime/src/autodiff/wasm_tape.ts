@@ -12,8 +12,16 @@ import type { DAEBuilder } from "../dae/wasm_dae.js";
 import { BinOp, ExprKind, getDefaultWasmExports, UnaryOp } from "../dae/wasm_dae.js";
 import { StringInterner } from "../workspace/wasm_string_pool.js";
 
+interface StaticTapeWasmExports {
+  memory: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  staticTapeForwardWasm?: (len: number, opDataPtr: number, valDataPtr: number, tPtr: number) => void;
+  staticTapeReverseWasm?: (len: number, opDataPtr: number, tPtr: number, dtPtr: number, outputIndex: number) => void;
+}
+
 interface StaticTapeWasmScratch {
-  wasm: any;
+  wasm: StaticTapeWasmExports;
   capLen: number;
   opDataPtr: number;
   valDataPtr: number;
@@ -23,14 +31,15 @@ interface StaticTapeWasmScratch {
 
 let staticTapeScratch: StaticTapeWasmScratch | null = null;
 
-function ensureStaticTapeScratch(wasm: any, len: number): StaticTapeWasmScratch | null {
+function ensureStaticTapeScratch(wasm: StaticTapeWasmExports | null, len: number): StaticTapeWasmScratch | null {
   if (!wasm || typeof wasm.__new !== "function") return null;
   if (staticTapeScratch && staticTapeScratch.wasm === wasm && staticTapeScratch.capLen >= len) {
     return staticTapeScratch;
   }
   const capLen = Math.max(len, 256);
+  const newFn = wasm.__new;
   const alloc = (bytes: number): number => {
-    const ptr = wasm.__new(bytes, 0);
+    const ptr = newFn(bytes, 0);
     if (typeof wasm.__pin === "function") wasm.__pin(ptr);
     return ptr;
   };
@@ -44,6 +53,18 @@ function ensureStaticTapeScratch(wasm: any, len: number): StaticTapeWasmScratch 
   };
   return staticTapeScratch;
 }
+
+export type TapeOpDescriptor =
+  | { type: "const"; val: number }
+  | { type: "var"; name: string }
+  | { type: "add" | "sub" | "mul" | "div" | "pow"; a: number; b: number }
+  | { type: "neg" | "sin" | "cos" | "tan" | "exp" | "log" | "sqrt"; a: number }
+  | { type: "vec_var"; size: number; baseName: string }
+  | { type: "vec_const"; size: number; vals: number[] }
+  | { type: "vec_add" | "vec_sub" | "vec_mul"; size: number; a: number; b: number }
+  | { type: "vec_neg"; size: number; a: number }
+  | { type: "vec_subscript"; a: number; offset: number }
+  | { type: "nop" };
 
 /**
  * Opcode kinds for nodes in the static Wengert differentiation tape,
@@ -393,7 +414,7 @@ export class StaticTapeBuilder {
    * Appends a high-level descriptor object (`{ type: "add" | "mul" | ... }`) onto the tape.
    */
 
-  public pushOp(op: any): number {
+  public pushOp(op: TapeOpDescriptor): number {
     switch (op.type) {
       case "const":
         return this.pushScalarOp(TapeOpKind.Const, 0, 0, 0, op.val);
@@ -872,7 +893,7 @@ export function evaluateTapeForward(builder: StaticTapeBuilder, varValues: Map<s
   const TAPE_STRIDE = 4;
 
   if (len >= 32) {
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as StaticTapeWasmExports | null;
     if (wasm && typeof wasm.staticTapeForwardWasm === "function") {
       const s = ensureStaticTapeScratch(wasm, len);
       if (s) {
@@ -1037,7 +1058,7 @@ export function evaluateTapeReverse(
   const TAPE_STRIDE = 4;
 
   if (len >= 32) {
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as StaticTapeWasmExports | null;
     if (wasm && typeof wasm.staticTapeReverseWasm === "function") {
       const s = ensureStaticTapeScratch(wasm, len);
       if (s) {

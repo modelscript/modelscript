@@ -1,0 +1,11 @@
+{
+  "id": "plscadd-05-corridor-sag-tension-clearance",
+  "lang": "plscadd",
+  "subFormats": ["pol", "csv"],
+  "difficulty": 5,
+  "title": "3-Span 345 kV Transmission Corridor Sag-Tension & Clearance Study",
+  "description": "Multi-file 345 kV overhead transmission corridor pairing a 4-tower, 3-span PLS-CADD line geometry and terrain profile (corridor.pol) with a companion ACSR conductor thermal-sag table (conductor_acsr.csv).",
+  "category": "Transmission Line Structural",
+  "tags": ["plscadd", "345kv", "corridor", "sag-tension", "multi-file"],
+  "activeFile": "corridor.pol"
+}

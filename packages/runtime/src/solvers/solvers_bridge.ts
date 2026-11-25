@@ -20,11 +20,33 @@ export interface SimulationResult {
   converged: boolean;
 }
 
-export class SolversBridge {
-  private wasmExports: any;
-  private memory: any;
+export interface SolversBridgeWasmExports {
+  alloc?: (size: number) => number;
+  dae_alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
+  dae_evalDualExpr(daePtr: number, exprId: number, dualVarsPtr: number, outValPtr: number, outDotPtr: number): void;
+  dae_evalDualEquationResidual(
+    daePtr: number,
+    eqId: number,
+    dualVarsPtr: number,
+    outValPtr: number,
+    outDotPtr: number,
+  ): void;
+  dae_evalDualJacobianColumn(
+    daePtr: number,
+    nEqs: number,
+    eqIndicesPtr: number,
+    dualVarsPtr: number,
+    seedVarId: number,
+    outColPtr: number,
+  ): void;
+}
 
-  constructor(wasmMemory: any, wasmExports: any) {
+export class SolversBridge {
+  private wasmExports: SolversBridgeWasmExports;
+  private memory: WebAssembly.Memory;
+
+  constructor(wasmMemory: WebAssembly.Memory, wasmExports: SolversBridgeWasmExports) {
     this.memory = wasmMemory;
     this.wasmExports = wasmExports;
   }

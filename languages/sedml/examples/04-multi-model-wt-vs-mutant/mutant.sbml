@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="MutantPathway" name="Reduced-Activity Mutant Pathway">
+    <listOfCompartments><compartment id="cell" size="1.0" constant="true"/></listOfCompartments>
+    <listOfSpecies>
+      <species id="S" compartment="cell" initialConcentration="15.0" constant="false"/>
+      <species id="P" compartment="cell" initialConcentration="0.0" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters><parameter id="kcat" value="0.12" constant="true"/></listOfParameters>
+    <listOfReactions>
+      <reaction id="R1" reversible="false">
+        <listOfReactants><speciesReference species="S" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="P" stoichiometry="1"/></listOfProducts>
+        <kineticLaw><formula>kcat * S</formula></kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

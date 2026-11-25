@@ -1,0 +1,6 @@
+# Municipal Coastal Wellfield & Dewatering Wells
+BEGIN WEL6
+  2 4 6 -1600.0
+  2 8 6 -1800.0
+  3 6 5 -2200.0
+END WEL6

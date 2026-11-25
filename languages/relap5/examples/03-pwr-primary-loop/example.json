@@ -1,0 +1,11 @@
+{
+  "id": "relap5-03-pwr-primary-loop",
+  "lang": "relap5",
+  "subFormats": ["r5"],
+  "difficulty": 3,
+  "title": "PWR Primary Loop with Pump & Steam Generator",
+  "description": "Pressurized Water Reactor primary coolant loop with reactor core, upper plenum, U-tube steam generator primary, reactor coolant pump, fuel heat structure, and 6-group point kinetics.",
+  "category": "Nuclear Thermal-Hydraulics",
+  "tags": ["relap5", "pwr", "point-kinetics", "steam-generator"],
+  "activeFile": "pwr_primary.r5"
+}

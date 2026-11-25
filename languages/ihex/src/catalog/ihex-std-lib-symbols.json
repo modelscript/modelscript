@@ -1,0 +1,522 @@
+[
+  {
+    "name": "REC_00_DATA",
+    "kind": "Class",
+    "namePath": "Ihex.REC_00_DATA",
+    "exports": [
+      "RECORD_TYPE",
+      "DEFAULT_BYTE_COUNT",
+      "ADDRESS_BITS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Record 00 — Data",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Contains data bytes and a 16-bit load offset relative to the current extended base address.",
+      "provenance": "Intel Hexadecimal Object File Format Specification Rev. A (1988) / Intel MDS-80 (1973)",
+      "aliases": [
+        "DATA",
+        "00",
+        "TYPE_00"
+      ],
+      "parameters": [
+        {
+          "key": "RECORD_TYPE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "hex",
+          "description": "Intel HEX record type code (0x00)"
+        },
+        {
+          "key": "DEFAULT_BYTE_COUNT",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "B",
+          "description": "Typical data payload bytes per record (1..255)"
+        },
+        {
+          "key": "ADDRESS_BITS",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "16-bit load offset field width"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "REC_01_EOF",
+    "kind": "Class",
+    "namePath": "Ihex.REC_01_EOF",
+    "exports": [
+      "RECORD_TYPE",
+      "EXPECTED_BYTE_COUNT",
+      "CANONICAL_CHECKSUM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Record 01 — End Of File",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "Terminates an Intel HEX file. Canonical encoding is ':00000001FF'.",
+      "provenance": "Intel Hexadecimal Object File Format Specification Rev. A (1988)",
+      "aliases": [
+        "EOF",
+        "01",
+        "TYPE_01"
+      ],
+      "parameters": [
+        {
+          "key": "RECORD_TYPE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "hex",
+          "description": "Intel HEX record type code (0x01)"
+        },
+        {
+          "key": "EXPECTED_BYTE_COUNT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "B",
+          "description": "Payload length must be 0 bytes"
+        },
+        {
+          "key": "CANONICAL_CHECKSUM",
+          "type": "real",
+          "defaultValue": 255,
+          "unit": "hex",
+          "description": "2's-complement checksum for ':00000001FF'"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "REC_02_EXT_SEG_ADDR",
+    "kind": "Class",
+    "namePath": "Ihex.REC_02_EXT_SEG_ADDR",
+    "exports": [
+      "RECORD_TYPE",
+      "EXPECTED_BYTE_COUNT",
+      "SHIFT_BITS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Record 02 — Extended Segment Address",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "I16HEX 20-bit segmented addressing: shifts 16-bit USBA left by 4 bits (x16) to form segment base.",
+      "provenance": "Intel Hexadecimal Object File Format Specification Rev. A (1988)",
+      "aliases": [
+        "ESA",
+        "02",
+        "TYPE_02"
+      ],
+      "parameters": [
+        {
+          "key": "RECORD_TYPE",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "hex",
+          "description": "Intel HEX record type code (0x02)"
+        },
+        {
+          "key": "EXPECTED_BYTE_COUNT",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "B",
+          "description": "Payload length must be 2 bytes (USBA)"
+        },
+        {
+          "key": "SHIFT_BITS",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "bit",
+          "description": "Segment shift left count (base = USBA << 4)"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "REC_03_START_SEG_ADDR",
+    "kind": "Class",
+    "namePath": "Ihex.REC_03_START_SEG_ADDR",
+    "exports": [
+      "RECORD_TYPE",
+      "EXPECTED_BYTE_COUNT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Record 03 — Start Segment Address",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "I16HEX 80x86 execution entry point specifying initial 16-bit CS and 16-bit IP registers.",
+      "provenance": "Intel Hexadecimal Object File Format Specification Rev. A (1988)",
+      "aliases": [
+        "SSA",
+        "03",
+        "TYPE_03"
+      ],
+      "parameters": [
+        {
+          "key": "RECORD_TYPE",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "hex",
+          "description": "Intel HEX record type code (0x03)"
+        },
+        {
+          "key": "EXPECTED_BYTE_COUNT",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "B",
+          "description": "Payload length must be 4 bytes (CS:IP)"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "REC_04_EXT_LIN_ADDR",
+    "kind": "Class",
+    "namePath": "Ihex.REC_04_EXT_LIN_ADDR",
+    "exports": [
+      "RECORD_TYPE",
+      "EXPECTED_BYTE_COUNT",
+      "SHIFT_BITS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Record 04 — Extended Linear Address",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "I32HEX 32-bit linear addressing: shifts 16-bit ULBA left by 16 bits for 4 GiB flat address space.",
+      "provenance": "Intel Hexadecimal Object File Format Specification Rev. A (1988)",
+      "aliases": [
+        "ELA",
+        "04",
+        "TYPE_04"
+      ],
+      "parameters": [
+        {
+          "key": "RECORD_TYPE",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "hex",
+          "description": "Intel HEX record type code (0x04)"
+        },
+        {
+          "key": "EXPECTED_BYTE_COUNT",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "B",
+          "description": "Payload length must be 2 bytes (ULBA)"
+        },
+        {
+          "key": "SHIFT_BITS",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "bit",
+          "description": "Linear shift left count (base = ULBA << 16)"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "REC_05_START_LIN_ADDR",
+    "kind": "Class",
+    "namePath": "Ihex.REC_05_START_LIN_ADDR",
+    "exports": [
+      "RECORD_TYPE",
+      "EXPECTED_BYTE_COUNT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Record 05 — Start Linear Address",
+      "category": "Record Types",
+      "domain": "firmware",
+      "description": "I32HEX 32-bit linear execution entry point (EIP / Reset_Handler address).",
+      "provenance": "Intel Hexadecimal Object File Format Specification Rev. A (1988)",
+      "aliases": [
+        "SLA",
+        "05",
+        "TYPE_05"
+      ],
+      "parameters": [
+        {
+          "key": "RECORD_TYPE",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "hex",
+          "description": "Intel HEX record type code (0x05)"
+        },
+        {
+          "key": "EXPECTED_BYTE_COUNT",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "B",
+          "description": "Payload length must be 4 bytes (32-bit EIP)"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "MCU_8051",
+    "kind": "Class",
+    "namePath": "Ihex.MCU_8051",
+    "exports": [
+      "FLASH_BASE",
+      "FLASH_SIZE",
+      "PAGE_SIZE",
+      "ERASE_BYTE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Intel 8051 (MCS-51) Flash Layout",
+      "category": "MCU Flash Layouts",
+      "domain": "firmware",
+      "description": "Classic 8-bit Harvard-architecture 8051 microcontroller with 64 KiB I8HEX code space at 0x0000.",
+      "provenance": "Intel MCS-51 Family User's Manual (1980)",
+      "aliases": [
+        "8051",
+        "MCS51",
+        "AT89C51"
+      ],
+      "parameters": [
+        {
+          "key": "FLASH_BASE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "addr",
+          "description": "Code ROM base address"
+        },
+        {
+          "key": "FLASH_SIZE",
+          "type": "real",
+          "defaultValue": 65536,
+          "unit": "B",
+          "description": "Maximum 16-bit code space (64 KiB)"
+        },
+        {
+          "key": "PAGE_SIZE",
+          "type": "real",
+          "defaultValue": 256,
+          "unit": "B",
+          "description": "Code page granularity"
+        },
+        {
+          "key": "ERASE_BYTE",
+          "type": "real",
+          "defaultValue": 255,
+          "unit": "hex",
+          "description": "Unprogrammed EPROM/Flash byte"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "AVR_ATMEGA328P",
+    "kind": "Class",
+    "namePath": "Ihex.AVR_ATMEGA328P",
+    "exports": [
+      "FLASH_BASE",
+      "FLASH_SIZE",
+      "PAGE_SIZE",
+      "BOOTLOADER_SIZE",
+      "ERASE_BYTE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "AVR ATmega328P Flash Layout",
+      "category": "MCU Flash Layouts",
+      "domain": "firmware",
+      "description": "Microchip/Atmel AVR ATmega328P 32 KiB flash (0x0000–0x7FFF) with 512 B Optiboot bootloader region.",
+      "provenance": "ATmega328P Datasheet (DS40002061B)",
+      "aliases": [
+        "ATMEGA328P",
+        "AVR",
+        "ARDUINO_UNO"
+      ],
+      "parameters": [
+        {
+          "key": "FLASH_BASE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "addr",
+          "description": "Flash base address"
+        },
+        {
+          "key": "FLASH_SIZE",
+          "type": "real",
+          "defaultValue": 32768,
+          "unit": "B",
+          "description": "Total internal flash (32 KiB)"
+        },
+        {
+          "key": "PAGE_SIZE",
+          "type": "real",
+          "defaultValue": 128,
+          "unit": "B",
+          "description": "SPM flash page size (64 words = 128 B)"
+        },
+        {
+          "key": "BOOTLOADER_SIZE",
+          "type": "real",
+          "defaultValue": 512,
+          "unit": "B",
+          "description": "Default Optiboot bootloader size"
+        },
+        {
+          "key": "ERASE_BYTE",
+          "type": "real",
+          "defaultValue": 255,
+          "unit": "hex",
+          "description": "Erased flash byte"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "ARM_CORTEX_M0",
+    "kind": "Class",
+    "namePath": "Ihex.ARM_CORTEX_M0",
+    "exports": [
+      "FLASH_BASE",
+      "FLASH_SIZE",
+      "PAGE_SIZE",
+      "VECTOR_TABLE_SIZE",
+      "ERASE_BYTE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ARM Cortex-M0 Flash Layout",
+      "category": "MCU Flash Layouts",
+      "domain": "firmware",
+      "description": "32-bit ARM Cortex-M0 I32HEX flash layout (64 KiB at 0x08000000, 1 KiB erase pages).",
+      "provenance": "ARMv6-M Architecture Reference Manual",
+      "aliases": [
+        "CORTEX_M0",
+        "STM32F0",
+        "RP2040"
+      ],
+      "parameters": [
+        {
+          "key": "FLASH_BASE",
+          "type": "real",
+          "defaultValue": 134217728,
+          "unit": "addr",
+          "description": "32-bit linear flash base address"
+        },
+        {
+          "key": "FLASH_SIZE",
+          "type": "real",
+          "defaultValue": 65536,
+          "unit": "B",
+          "description": "64 KiB flash memory"
+        },
+        {
+          "key": "PAGE_SIZE",
+          "type": "real",
+          "defaultValue": 1024,
+          "unit": "B",
+          "description": "1 KiB flash erase page"
+        },
+        {
+          "key": "VECTOR_TABLE_SIZE",
+          "type": "real",
+          "defaultValue": 192,
+          "unit": "B",
+          "description": "Initial SP + Reset + IRQ vector table"
+        },
+        {
+          "key": "ERASE_BYTE",
+          "type": "real",
+          "defaultValue": 255,
+          "unit": "hex",
+          "description": "Erased flash byte"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "ARM_CORTEX_M4",
+    "kind": "Class",
+    "namePath": "Ihex.ARM_CORTEX_M4",
+    "exports": [
+      "FLASH_BASE",
+      "FLASH_SIZE",
+      "PAGE_SIZE",
+      "VECTOR_TABLE_SIZE",
+      "ERASE_BYTE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ARM Cortex-M4 Flash Layout",
+      "category": "MCU Flash Layouts",
+      "domain": "firmware",
+      "description": "32-bit ARM Cortex-M4F I32HEX flash layout (512 KiB at 0x08000000, 16 KiB sectors).",
+      "provenance": "ARMv7E-M Architecture Reference Manual",
+      "aliases": [
+        "CORTEX_M4",
+        "STM32F4",
+        "NRF52840"
+      ],
+      "parameters": [
+        {
+          "key": "FLASH_BASE",
+          "type": "real",
+          "defaultValue": 134217728,
+          "unit": "addr",
+          "description": "32-bit linear flash base address"
+        },
+        {
+          "key": "FLASH_SIZE",
+          "type": "real",
+          "defaultValue": 524288,
+          "unit": "B",
+          "description": "512 KiB flash memory"
+        },
+        {
+          "key": "PAGE_SIZE",
+          "type": "real",
+          "defaultValue": 16384,
+          "unit": "B",
+          "description": "16 KiB flash sector size"
+        },
+        {
+          "key": "VECTOR_TABLE_SIZE",
+          "type": "real",
+          "defaultValue": 384,
+          "unit": "B",
+          "description": "Initial SP + Reset + NVIC vector table"
+        },
+        {
+          "key": "ERASE_BYTE",
+          "type": "real",
+          "defaultValue": 255,
+          "unit": "hex",
+          "description": "Erased flash byte"
+        }
+      ],
+      "wasmKernel": "ihexModelEval",
+      "archetypeId": 13
+    }
+  }
+]

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DicomRtPlan
+  planId="TG51-CAL-6MV"
+  planLabel="Phantom_Cal_2Gy_1Fx"
+  patientId="PHANTOM-TG51"
+  frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.101"
+  structFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.101"
+  doseFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.101"
+  prescribedDoseGy="2.0"
+  fractions="1"
+>
+  <StructureSet frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.101">
+    <ROI roiNumber="1" name="PTV_Cal_Chamber" interpretedType="PTV" volumeCc="125.0" color="255,60,60">
+      <Contour z="-25.0" geometricType="CLOSED_PLANAR" points="-25,-25,-25; 25,-25,-25; 25,25,-25; -25,25,-25" />
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-25,-25,0; 25,-25,0; 25,25,0; -25,25,0" />
+      <Contour z="25.0" geometricType="CLOSED_PLANAR" points="-25,-25,25; 25,-25,25; 25,25,25; -25,25,25" />
+    </ROI>
+  </StructureSet>
+  <BeamSequence>
+    <Beam beamNumber="1" name="AP_10x10_6MV" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="200.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="0.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-50,50" jawY_mm="-50,50">
+        <MLCLeafPair pairIndex="1" bankA_mm="-50.0" bankB_mm="50.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-50.0" bankB_mm="50.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="0.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-50,50" jawY_mm="-50,50">
+        <MLCLeafPair pairIndex="1" bankA_mm="-50.0" bankB_mm="50.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-50.0" bankB_mm="50.0" />
+      </ControlPoint>
+    </Beam>
+  </BeamSequence>
+  <DoseDistribution frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.101">
+    <DVH roiNumber="1" roiName="PTV_Cal_Chamber" d98Gy="1.96" d95Gy="1.98" d50Gy="2.00" d2Gy="2.03" meanDoseGy="2.00" maxDoseGy="2.04" minDoseGy="1.94" v20GyPercent="0.0" />
+  </DoseDistribution>
+</DicomRtPlan>

@@ -678,7 +678,9 @@ export function resolveAnsatzEntityUrn(database: LibraryDatabase, urn: string): 
     let meta: { notebook?: { title?: string; isNotebook?: boolean } } = {};
     try {
       meta = row.metadata ? (JSON.parse(row.metadata) as { notebook?: { title?: string; isNotebook?: boolean } }) : {};
-    } catch {}
+    } catch {
+      // Fall back to empty metadata when stored JSON is malformed
+    }
     const rawContent = String(row.content || "").trim();
     const firstLine =
       rawContent
@@ -700,13 +702,14 @@ export function resolveAnsatzEntityUrn(database: LibraryDatabase, urn: string): 
       const artRow = database.db
         .prepare(`SELECT id, view_type, view_config FROM artifact_views WHERE id = ?`)
         .get(row.artifact_view_id) as
-        | { id: number; view_type?: string | null; view_config?: string | null }
-        | undefined;
+        { id: number; view_type?: string | null; view_config?: string | null } | undefined;
       if (artRow && String(artRow.view_type).toLowerCase() === "pdf") {
         try {
           const cfg = JSON.parse(artRow.view_config || "{}");
           if (cfg.url) localPdfUrl = cfg.url;
-        } catch {}
+        } catch {
+          // Ignore malformed artifact view_config JSON
+        }
       }
     }
 
@@ -766,8 +769,7 @@ export function resolveAnsatzEntityUrn(database: LibraryDatabase, urn: string): 
       pkgVer = entityId.slice(atIdx + 1);
     }
     const pkgRow = database.db.prepare(`SELECT * FROM packages WHERE name = ? COLLATE NOCASE LIMIT 1`).get(pkgName) as
-      | { name?: string; description?: string; license?: string; owner_id?: number; updated_at?: string }
-      | undefined;
+      { name?: string; description?: string; license?: string; owner_id?: number; updated_at?: string } | undefined;
     const relRow = database.db
       .prepare(
         pkgVer
@@ -775,8 +777,7 @@ export function resolveAnsatzEntityUrn(database: LibraryDatabase, urn: string): 
           : `SELECT * FROM library_releases WHERE library_name = ? ORDER BY published_at DESC LIMIT 1`,
       )
       .get(...(pkgVer ? [pkgName, pkgVer] : [pkgName])) as
-      | { library_name?: string; library_version?: string; published_at?: string }
-      | undefined;
+      { library_name?: string; library_version?: string; published_at?: string } | undefined;
 
     const resolvedName = pkgRow?.name || relRow?.library_name || pkgName;
     const resolvedVersion = pkgVer || relRow?.library_version || "1.0.0";
@@ -786,8 +787,7 @@ export function resolveAnsatzEntityUrn(database: LibraryDatabase, urn: string): 
     let ownerUsername = "ansatz";
     if (pkgRow?.owner_id) {
       const u = database.db.prepare(`SELECT username, display_name FROM users WHERE id = ?`).get(pkgRow.owner_id) as
-        | { username?: string; display_name?: string }
-        | undefined;
+        { username?: string; display_name?: string } | undefined;
       if (u?.username) ownerUsername = u.username;
     }
 
@@ -873,7 +873,9 @@ export function resolveAnsatzEntityUrn(database: LibraryDatabase, urn: string): 
     } = {};
     try {
       cfg = artRow.view_config ? (JSON.parse(artRow.view_config) as typeof cfg) : {};
-    } catch {}
+    } catch {
+      // Fall back to empty config when artifact view_config JSON is malformed
+    }
 
     const title =
       artRow.title || cfg.title || `${String(artRow.view_type || "Engineering").toUpperCase()} Artifact #${artId}`;
@@ -1517,14 +1519,7 @@ export function extractCitationUrnsFromText(text: string | null | undefined): st
 export const OPENALEX_S3_HTTPS_BASE = process.env["OPENALEX_S3_BASE_URL"] || "https://openalex.s3.amazonaws.com";
 
 export type OpenAlexS3EntityType =
-  | "works"
-  | "authors"
-  | "sources"
-  | "institutions"
-  | "topics"
-  | "publishers"
-  | "funders"
-  | "concepts";
+  "works" | "authors" | "sources" | "institutions" | "topics" | "publishers" | "funders" | "concepts";
 
 export interface OpenAlexS3ManifestEntry {
   s3Url: string;
@@ -2180,7 +2175,9 @@ export async function ingestOpenAlexFromS3OrFile(
     }
 
     if (!realPath.startsWith(cacheDir + path.sep)) {
-      throw new Error(`Access denied: resolved symlink points outside allowed cache directory: ${options.localFilePath}`);
+      throw new Error(
+        `Access denied: resolved symlink points outside allowed cache directory: ${options.localFilePath}`,
+      );
     }
     const isGzipped = realPath.endsWith(".gz");
     const fileStream = fs.createReadStream(realPath);
@@ -2367,8 +2364,7 @@ export async function preloadOpenAlexS3Slice(
 
   // 5. Update partition status to 'loaded'
   const finalCountRow = oaDb.prepare("SELECT COUNT(*) AS count FROM scholarly_works").get() as
-    | { count: number }
-    | undefined;
+    { count: number } | undefined;
   const totalWorks = Number(finalCountRow?.count || 0);
 
   oaDb

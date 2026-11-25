@@ -19,11 +19,18 @@ import type { RinexDocument, SatelliteGeometryInfo } from "../types.js";
 
 type RinexTabId = "skyplot" | "satellites" | "records" | "lints";
 
-function buildDisplaySatellites(doc: RinexDocument): SatelliteGeometryInfo[] {
+function buildDisplaySatellites(doc: RinexDocument, companionNav?: RinexDocument | null): SatelliteGeometryInfo[] {
   const rxPos = doc.header.approxPositionXyz ?? { x: 4075580.0, y: 931853.0, z: 4801568.0 };
 
-  if (doc.fileType === "N" && doc.ephemerides.length > 0) {
-    return doc.ephemerides.map((ephem) => {
+  const ephemSource =
+    doc.fileType === "N" && doc.ephemerides.length > 0
+      ? doc.ephemerides
+      : companionNav && companionNav.ephemerides.length > 0
+        ? companionNav.ephemerides
+        : null;
+
+  if (doc.fileType === "N" && ephemSource) {
+    return ephemSource.map((ephem) => {
       const sv = computeSatelliteEcef(ephem, ephem.toe);
       const { azimuthDeg, elevationDeg } = computeAzEl(rxPos, sv.position);
       const rho = Math.hypot(sv.position.x - rxPos.x, sv.position.y - rxPos.y, sv.position.z - rxPos.z);
@@ -42,10 +49,26 @@ function buildDisplaySatellites(doc: RinexDocument): SatelliteGeometryInfo[] {
   const firstEpoch = doc.epochs[0];
   if (!firstEpoch) return [];
 
+  const ephemByPrn = new Map((ephemSource ?? []).map((e) => [e.prn.toUpperCase(), e]));
+
   return firstEpoch.satellites.map((sat, idx) => {
     const pr =
       sat.observations["C1"]?.value ?? sat.observations["P1"]?.value ?? sat.observations["P2"]?.value ?? 22_000_000;
-    // Distribute azimuth/elevation deterministically from PRN when NAV ephemeris is not bundled
+    const ephem = ephemByPrn.get(sat.prn.toUpperCase());
+    if (ephem) {
+      const sv = computeSatelliteEcef(ephem, ephem.toe);
+      const { azimuthDeg, elevationDeg } = computeAzEl(rxPos, sv.position);
+      const rho = Math.hypot(sv.position.x - rxPos.x, sv.position.y - rxPos.y, sv.position.z - rxPos.z);
+      return {
+        prn: sat.prn,
+        azimuthDeg,
+        elevationDeg,
+        pseudorangeM: pr,
+        computedRangeM: rho,
+        residualM: pr - rho,
+        satPos: sv.position,
+      };
+    }
     const az = (((sat.prnNumber * 37 + idx * 29) % 360) + 360) % 360;
     const el = 15 + ((sat.prnNumber * 13 + idx * 17) % 68);
     return {
@@ -65,6 +88,7 @@ export const RinexPanel: React.FC<LanguagePanelProps> = ({
   dialect,
   colorMode,
   mode,
+  projectFiles,
   viewConfig,
   isFullScreen = false,
   host,
@@ -83,7 +107,18 @@ export const RinexPanel: React.FC<LanguagePanelProps> = ({
     try {
       const doc = parseRinex(code);
       const lints = lintRinex(doc);
-      const satellites = buildDisplaySatellites(doc);
+      let companionNav: RinexDocument | null = null;
+      if (doc.fileType !== "N" && projectFiles) {
+        const navEntry = Object.entries(projectFiles).find(([name]) => /\.(nav|\d\dn)$/i.test(name));
+        if (navEntry && navEntry[1].trim()) {
+          try {
+            companionNav = parseRinex(navEntry[1]);
+          } catch {
+            companionNav = null;
+          }
+        }
+      }
+      const satellites = buildDisplaySatellites(doc, companionNav);
       return { doc, satellites, lints, error: undefined };
     } catch (err) {
       return {
@@ -93,7 +128,7 @@ export const RinexPanel: React.FC<LanguagePanelProps> = ({
         error: err instanceof Error ? err.message : String(err),
       };
     }
-  }, [code]);
+  }, [code, projectFiles]);
 
   const title =
     (typeof viewConfig?.["title"] === "string" && viewConfig["title"]) ||
@@ -144,9 +179,9 @@ export const RinexPanel: React.FC<LanguagePanelProps> = ({
                 Export SVG
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "rinex", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "rinex", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

@@ -1,0 +1,11 @@
+{
+  "id": "ocpp-04-iso15118-plug-and-charge",
+  "lang": "ocpp",
+  "subFormats": ["ocpp.json"],
+  "difficulty": 4,
+  "title": "ISO 15118 Plug & Charge Megawatt Hub Schedule",
+  "description": "OCPP 2.0.1 JSON-RPC charging profile for an ISO 15118-20 high-power commercial electric truck charging bay with stepped grid curtailment limits.",
+  "category": "Commercial Fleet Charging",
+  "tags": ["ocpp", "iso15118", "plug-and-charge", "heavy-duty"],
+  "activeFile": "pnc_megawatt.ocpp.json"
+}

@@ -1,0 +1,26 @@
+{
+  "assessment-plan": {
+    "uuid": "55555555-5555-4555-8555-555555555505",
+    "metadata": {
+      "title": "Digital Twin Cloud Platform 3PAO Assessment Plan",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "import-ssp": {
+      "href": "./ssp.oscal.json"
+    },
+    "reviewed-controls": {
+      "control-selections": [
+        {
+          "include-controls": [
+            { "control-id": "ac-3" },
+            { "control-id": "au-2" },
+            { "control-id": "sc-7" },
+            { "control-id": "sc-8" }
+          ]
+        }
+      ]
+    }
+  }
+}

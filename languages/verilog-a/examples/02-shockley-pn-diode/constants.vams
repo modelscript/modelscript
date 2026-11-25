@@ -1,0 +1,5 @@
+// Standard Physical Constants for Verilog-AMS Compact Modeling
+`define M_PI       3.14159265358979323846
+`define P_Q        1.602176634e-19
+`define P_K        1.380649e-23
+`define P_CELSIUS0 273.15

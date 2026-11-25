@@ -1,0 +1,100 @@
+(edif ripple_adder_4bit
+  (edifVersion 2 0 0)
+  (edifLevel 0)
+  (keywordMap (keywordLevel 0))
+  (status
+    (written
+      (timeStamp 2026 11 24 16 0 0)
+      (author "Ansatz EDA")
+      (program "edif-gen" (version "2.0.0"))
+      (comment "4-Bit Hierarchical Ripple-Carry Adder Netlist")))
+  (external STDCELLS
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell XOR2X1
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port B (direction INPUT))
+          (port Y (direction OUTPUT)))))
+    (cell AND2X1
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port B (direction INPUT))
+          (port Y (direction OUTPUT)))))
+    (cell OR2X1
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port B (direction INPUT))
+          (port Y (direction OUTPUT))))))
+  (library WORK
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell FULL_ADDER
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port B (direction INPUT))
+          (port CIN (direction INPUT))
+          (port SUM (direction OUTPUT))
+          (port COUT (direction OUTPUT)))
+        (contents
+          (instance X1 (viewRef netlist (cellRef XOR2X1 (libraryRef STDCELLS))))
+          (instance X2 (viewRef netlist (cellRef XOR2X1 (libraryRef STDCELLS))))
+          (instance A1 (viewRef netlist (cellRef AND2X1 (libraryRef STDCELLS))))
+          (instance A2 (viewRef netlist (cellRef AND2X1 (libraryRef STDCELLS))))
+          (instance O1 (viewRef netlist (cellRef OR2X1 (libraryRef STDCELLS))))
+          (net NA (joined (portRef A) (portRef A (instanceRef X1)) (portRef A (instanceRef A1))))
+          (net NB (joined (portRef B) (portRef B (instanceRef X1)) (portRef B (instanceRef A1))))
+          (net NCIN (joined (portRef CIN) (portRef B (instanceRef X2)) (portRef B (instanceRef A2))))
+          (net NP (joined (portRef Y (instanceRef X1)) (portRef A (instanceRef X2)) (portRef A (instanceRef A2))))
+          (net NG1 (joined (portRef Y (instanceRef A1)) (portRef A (instanceRef O1))))
+          (net NG2 (joined (portRef Y (instanceRef A2)) (portRef B (instanceRef O1))))
+          (net NSUM (joined (portRef Y (instanceRef X2)) (portRef SUM)))
+          (net NCOUT (joined (portRef Y (instanceRef O1)) (portRef COUT))))))
+    (cell ADDER4
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A0 (direction INPUT)) (port A1 (direction INPUT))
+          (port A2 (direction INPUT)) (port A3 (direction INPUT))
+          (port B0 (direction INPUT)) (port B1 (direction INPUT))
+          (port B2 (direction INPUT)) (port B3 (direction INPUT))
+          (port CIN (direction INPUT))
+          (port S0 (direction OUTPUT)) (port S1 (direction OUTPUT))
+          (port S2 (direction OUTPUT)) (port S3 (direction OUTPUT))
+          (port COUT (direction OUTPUT)))
+        (contents
+          (instance FA0 (viewRef netlist (cellRef FULL_ADDER (libraryRef WORK))))
+          (instance FA1 (viewRef netlist (cellRef FULL_ADDER (libraryRef WORK))))
+          (instance FA2 (viewRef netlist (cellRef FULL_ADDER (libraryRef WORK))))
+          (instance FA3 (viewRef netlist (cellRef FULL_ADDER (libraryRef WORK))))
+          (net NA0 (joined (portRef A0) (portRef A (instanceRef FA0))))
+          (net NB0 (joined (portRef B0) (portRef B (instanceRef FA0))))
+          (net NA1 (joined (portRef A1) (portRef A (instanceRef FA1))))
+          (net NB1 (joined (portRef B1) (portRef B (instanceRef FA1))))
+          (net NA2 (joined (portRef A2) (portRef A (instanceRef FA2))))
+          (net NB2 (joined (portRef B2) (portRef B (instanceRef FA2))))
+          (net NA3 (joined (portRef A3) (portRef A (instanceRef FA3))))
+          (net NB3 (joined (portRef B3) (portRef B (instanceRef FA3))))
+          (net NC0 (joined (portRef CIN) (portRef CIN (instanceRef FA0))))
+          (net NC1 (joined (portRef COUT (instanceRef FA0)) (portRef CIN (instanceRef FA1))))
+          (net NC2 (joined (portRef COUT (instanceRef FA1)) (portRef CIN (instanceRef FA2))))
+          (net NC3 (joined (portRef COUT (instanceRef FA2)) (portRef CIN (instanceRef FA3))))
+          (net NS0 (joined (portRef SUM (instanceRef FA0)) (portRef S0)))
+          (net NS1 (joined (portRef SUM (instanceRef FA1)) (portRef S1)))
+          (net NS2 (joined (portRef SUM (instanceRef FA2)) (portRef S2)))
+          (net NS3 (joined (portRef SUM (instanceRef FA3)) (portRef S3)))
+          (net NCOUT (joined (portRef COUT (instanceRef FA3)) (portRef COUT)))))))
+  (design Adder4Design (cellRef ADDER4 (libraryRef WORK))))

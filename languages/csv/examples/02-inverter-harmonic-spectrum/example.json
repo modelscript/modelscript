@@ -1,0 +1,11 @@
+{
+  "id": "csv-02-inverter-harmonic-spectrum",
+  "lang": "csv",
+  "subFormats": ["csv"],
+  "difficulty": 2,
+  "title": "Three-Phase Inverter Harmonic Spectrum",
+  "description": "Captured three-phase PWM inverter line-to-line voltage and phase current harmonic sweep measurements across odd harmonic orders.",
+  "category": "Power Electronics",
+  "tags": ["csv", "harmonics", "inverter", "power-quality", "fft"],
+  "activeFile": "harmonics.csv"
+}

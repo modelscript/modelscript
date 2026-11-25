@@ -1,0 +1,29 @@
+from "usb_c.ato" import UsbCInput
+from "power.ato" import PowerStage3V3
+from "generics/passives.ato" import Resistor, Capacitor
+
+module TelemetryCarrierBoard:
+    signal vbus_5v
+    signal vcc_3v3
+    signal gnd
+    signal can_tx
+    signal can_rx
+
+    usb = new UsbCInput
+    pwr = new PowerStage3V3
+    r_term = new Resistor
+    c_dec = new Capacitor
+
+    r_term.resistance = 120ohm +/- 1%
+    c_dec.capacitance = 100nF +/- 10%
+
+    usb.vbus ~ vbus_5v
+    usb.gnd ~ gnd
+    pwr.v_in ~ vbus_5v
+    pwr.v_out ~ vcc_3v3
+    pwr.gnd ~ gnd
+
+    vcc_3v3 ~> c_dec ~> gnd
+    can_tx ~> r_term ~> can_rx
+
+    assert r_term.resistance within 115ohm to 125ohm

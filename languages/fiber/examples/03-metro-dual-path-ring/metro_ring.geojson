@@ -1,0 +1,194 @@
+{
+  "type": "FeatureCollection",
+  "name": "Metro-Diverse-Ring",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.4194,
+          37.7749
+        ]
+      },
+      "properties": {
+        "id": "HUB_WEST",
+        "name": "West Core POP",
+        "node-type": "central-office"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.416,
+          37.7765
+        ]
+      },
+      "properties": {
+        "id": "MH_NORTH",
+        "name": "North Conduit Vault",
+        "node-type": "splice-closure"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.416,
+          37.7732
+        ]
+      },
+      "properties": {
+        "id": "MH_SOUTH",
+        "name": "South Conduit Vault",
+        "node-type": "splice-closure"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.4125,
+          37.7749
+        ]
+      },
+      "properties": {
+        "id": "HUB_EAST",
+        "name": "East Enterprise DC",
+        "node-type": "customer-premise"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.4194,
+            37.7749
+          ],
+          [
+            -122.416,
+            37.7765
+          ]
+        ]
+      },
+      "properties": {
+        "id": "RING-NW-144F",
+        "name": "North Path West",
+        "from": "HUB_WEST",
+        "to": "MH_NORTH",
+        "strands": 144,
+        "length": 270,
+        "slack": 20,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.416,
+            37.7765
+          ],
+          [
+            -122.4125,
+            37.7749
+          ]
+        ]
+      },
+      "properties": {
+        "id": "RING-NE-144F",
+        "name": "North Path East",
+        "from": "MH_NORTH",
+        "to": "HUB_EAST",
+        "strands": 144,
+        "length": 275,
+        "slack": 20,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.4194,
+            37.7749
+          ],
+          [
+            -122.416,
+            37.7732
+          ]
+        ]
+      },
+      "properties": {
+        "id": "RING-SW-144F",
+        "name": "South Path West",
+        "from": "HUB_WEST",
+        "to": "MH_SOUTH",
+        "strands": 144,
+        "length": 280,
+        "slack": 20,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -122.416,
+            37.7732
+          ],
+          [
+            -122.4125,
+            37.7749
+          ]
+        ]
+      },
+      "properties": {
+        "id": "RING-SE-144F",
+        "name": "South Path East",
+        "from": "MH_SOUTH",
+        "to": "HUB_EAST",
+        "strands": 144,
+        "length": 285,
+        "slack": 20,
+        "helix-factor": 1.03
+      }
+    }
+  ],
+  "splices": [
+    {
+      "id": "SPL-N1",
+      "closure": "MH_NORTH",
+      "tray": 1,
+      "in": "RING-NW-144F",
+      "in-strand": 1,
+      "out": "RING-NE-144F",
+      "out-strand": 1,
+      "type": "fusion",
+      "loss": 0.03
+    },
+    {
+      "id": "SPL-S1",
+      "closure": "MH_SOUTH",
+      "tray": 1,
+      "in": "RING-SW-144F",
+      "in-strand": 1,
+      "out": "RING-SE-144F",
+      "out-strand": 1,
+      "type": "fusion",
+      "loss": 0.04
+    }
+  ]
+}

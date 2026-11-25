@@ -1,0 +1,12 @@
+{
+  "id": "dnp3-01-substation-integrity-poll",
+  "lang": "dnp3",
+  "subFormats": ["dnp3"],
+  "difficulty": 1,
+  "title": "Substation Analog & Binary Integrity Poll Profile",
+  "description": "Basic IEEE 1815 DNP3 outstation device profile for a 138 kV distribution substation RTU exposing breaker status, bus voltage, and feeder current for Class 0 integrity polling.",
+  "category": "Power Systems SCADA",
+  "tags": ["dnp3", "ieee-1815", "scada", "rtu", "integrity-poll"],
+  "activeFile": "substation_rtu.dnp3",
+  "isDefaultStarter": true
+}

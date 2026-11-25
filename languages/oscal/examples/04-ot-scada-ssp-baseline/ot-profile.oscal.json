@@ -1,0 +1,17 @@
+{
+  "profile": {
+    "uuid": "44444444-4444-4444-8444-444444444402",
+    "metadata": {
+      "title": "OT SCADA Substation Baseline Profile",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "imports": [
+      {
+        "href": "./ot-catalog.oscal.json",
+        "include-controls": [{ "with-ids": ["ac-3", "pe-3", "sc-7", "si-4", "si-7"] }]
+      }
+    ]
+  }
+}

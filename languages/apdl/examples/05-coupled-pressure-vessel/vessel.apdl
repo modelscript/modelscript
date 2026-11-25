@@ -1,0 +1,47 @@
+! Coupled Thermo-Structural Cylindrical Pressure Vessel Analysis
+! Companion macros: mesh_macro.mac and post_stress.mac
+/TITLE, ASME SA-516 Pressure Vessel Thermo-Structural Analysis
+/UNITS, SI
+/PREP7
+
+R_IN = 0.50
+WALL_T = 0.025
+P_INT = 4.5e6
+DT_WALL = 60.0
+
+ET, 1, PLANE182
+MP, EX, 1, 200e9
+MP, PRXY, 1, 0.30
+MP, DENS, 1, 7850.0
+MP, ALPX, 1, 1.2e-5
+
+! Axisymmetric wall cross-section mesh (2x2 quads)
+N, 1, R_IN, 0.0, 0.0
+N, 2, R_IN + 0.5 * WALL_T, 0.0, 0.0
+N, 3, R_IN + WALL_T, 0.0, 0.0
+N, 4, R_IN, 0.25, 0.0
+N, 5, R_IN + 0.5 * WALL_T, 0.25, 0.0
+N, 6, R_IN + WALL_T, 0.25, 0.0
+N, 7, R_IN, 0.50, 0.0
+N, 8, R_IN + 0.5 * WALL_T, 0.50, 0.0
+N, 9, R_IN + WALL_T, 0.50, 0.0
+
+TYPE, 1
+MAT, 1
+E, 1, 2, 5, 4
+E, 2, 3, 6, 5
+E, 4, 5, 8, 7
+E, 5, 6, 9, 8
+FINISH
+
+/SOLU
+ANTYPE, STATIC
+D, 1, UY, 0.0
+D, 2, UY, 0.0
+D, 3, UY, 0.0
+D, 3, UX, 0.0
+F, 1, FX, P_INT * 0.125
+F, 4, FX, P_INT * 0.250
+F, 7, FX, P_INT * 0.125
+SOLVE
+FINISH

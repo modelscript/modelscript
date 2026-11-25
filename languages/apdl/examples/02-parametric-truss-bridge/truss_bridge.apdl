@@ -1,0 +1,54 @@
+! Parametric 2D Warren Truss Bridge with *DO Loops
+/TITLE, Parametric 2D Warren Truss Bridge
+/UNITS, SI
+/PREP7
+
+NBAY = 4
+BAYL = 3.0
+TRUS_H = 2.5
+AREA_TRUSS = 0.0025
+
+ET, 1, LINK180
+MP, EX, 1, 200e9
+MP, PRXY, 1, 0.29
+MP, DENS, 1, 7850.0
+SECTYPE, 1, LINK
+SECDATA, AREA_TRUSS
+
+! Bottom chord nodes 1..5
+*DO, I, 1, NBAY + 1, 1
+  N, I, (I - 1) * BAYL, 0.0, 0.0
+*ENDDO
+
+! Top chord nodes 11..14
+*DO, J, 1, NBAY, 1
+  N, 10 + J, (J - 0.5) * BAYL, TRUS_H, 0.0
+*ENDDO
+
+TYPE, 1
+MAT, 1
+! Bottom chord elements
+*DO, K, 1, NBAY, 1
+  E, K, K + 1
+*ENDDO
+! Top chord elements
+*DO, M, 1, NBAY - 1, 1
+  E, 10 + M, 11 + M
+*ENDDO
+! Diagonal web members
+*DO, D1, 1, NBAY, 1
+  E, D1, 10 + D1
+  E, 10 + D1, D1 + 1
+*ENDDO
+FINISH
+
+/SOLU
+ANTYPE, STATIC
+D, 1, UX, 0.0
+D, 1, UY, 0.0
+D, 5, UY, 0.0
+F, 2, FY, -45000.0
+F, 3, FY, -60000.0
+F, 4, FY, -45000.0
+SOLVE
+FINISH

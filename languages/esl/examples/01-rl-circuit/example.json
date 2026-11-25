@@ -1,0 +1,12 @@
+{
+  "id": "esl-01-rl-circuit",
+  "lang": "esl",
+  "subFormats": ["esl"],
+  "difficulty": 1,
+  "title": "Linear RL Circuit Transient",
+  "description": "First-order inductive-resistive electrical step response modeled in ESA ESL using prime derivative notation and constant parameters.",
+  "category": "Electrical Circuits",
+  "tags": ["esl", "rl-circuit", "first-order", "ode"],
+  "activeFile": "rl_circuit.esl",
+  "isDefaultStarter": true
+}

@@ -8118,9 +8118,9 @@
     "subcommands": []
   },
   {
-    "name": "playground",
+    "name": "ansatz",
     "specs": [
-      "playground"
+      "ansatz"
     ],
     "aliases": [],
     "describe": "Launch the dual-editor DSL workbench",
@@ -8129,7 +8129,7 @@
         "name": "lang",
         "aliases": [],
         "type": "string",
-        "description": "Language ID or directory (e.g. olga, psse, fea, epanet) to open in lightweight UI playground mode"
+        "description": "Language ID or directory (e.g. olga, psse, fea, epanet) to open in lightweight UI ansatz mode"
       }
     ],
     "options": [
@@ -8146,7 +8146,7 @@
           "p"
         ],
         "type": "number",
-        "description": "Dev server port (default: 5179 for language playground, 3002 for grammar workbench)"
+        "description": "Dev server port (default: 5179 for language ansatz, 3002 for grammar workbench)"
       },
       {
         "name": "file",
@@ -8154,7 +8154,7 @@
           "f"
         ],
         "type": "string",
-        "description": "Initial source file to load in language playground mode"
+        "description": "Initial source file to load in language ansatz mode"
       },
       {
         "name": "mode",
@@ -8189,10 +8189,10 @@
         "default": false
       },
       {
-        "name": "morsel",
+        "name": "ansatz",
         "aliases": [],
         "type": "boolean",
-        "description": "Launch the full Morsel web editor locked to this single language (?lang=<id>&single=1)",
+        "description": "Launch the full Ansatz web editor locked to this single language (?lang=<id>&single=1)",
         "default": false
       }
     ],

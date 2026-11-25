@@ -13,6 +13,41 @@ export interface CachedIndexSnapshot {
   workspaceFqnMap?: Record<string, number> | undefined;
 }
 
+interface MinimalIDBRequest<T> {
+  result: T;
+  error: unknown;
+  onsuccess: ((ev?: unknown) => void) | null;
+  onerror: ((ev?: unknown) => void) | null;
+}
+
+interface MinimalIDBOpenDBRequest extends MinimalIDBRequest<MinimalIDBDatabase> {
+  onupgradeneeded: ((ev?: unknown) => void) | null;
+}
+
+interface MinimalIDBObjectStore {
+  put(value: unknown, key?: string): unknown;
+  get(key: string): MinimalIDBRequest<CachedIndexSnapshot | undefined>;
+  delete(key: string): unknown;
+}
+
+interface MinimalIDBTransaction {
+  objectStore(name: string): MinimalIDBObjectStore;
+}
+
+interface MinimalIDBDatabase {
+  objectStoreNames: { contains(name: string): boolean };
+  createObjectStore(name: string): unknown;
+  transaction(storeName: string, mode: "readonly" | "readwrite"): MinimalIDBTransaction;
+}
+
+interface MinimalIDBFactory {
+  open(name: string, version?: number): MinimalIDBOpenDBRequest;
+}
+
+function getIndexedDB(): MinimalIDBFactory | undefined {
+  return (globalThis as { indexedDB?: MinimalIDBFactory }).indexedDB;
+}
+
 export class IndexedDbSnapshotStore {
   private dbName: string;
   private storeName: string;
@@ -37,10 +72,10 @@ export class IndexedDbSnapshotStore {
 
     this.memoryCache.set(key, record);
 
-    const idb = (globalThis as any).indexedDB;
+    const idb = getIndexedDB();
     if (typeof idb !== "undefined") {
       try {
-        const db = await this.openDB();
+        const db = await this.openDB(idb);
         const tx = db.transaction(this.storeName, "readwrite");
         const store = tx.objectStore(this.storeName);
         store.put(record, key);
@@ -58,10 +93,10 @@ export class IndexedDbSnapshotStore {
       return this.memoryCache.get(key)!;
     }
 
-    const idb = (globalThis as any).indexedDB;
+    const idb = getIndexedDB();
     if (typeof idb !== "undefined") {
       try {
-        const db = await this.openDB();
+        const db = await this.openDB(idb);
         return new Promise((resolve) => {
           const tx = db.transaction(this.storeName, "readonly");
           const store = tx.objectStore(this.storeName);
@@ -83,10 +118,10 @@ export class IndexedDbSnapshotStore {
    */
   async deleteSnapshot(key: string): Promise<void> {
     this.memoryCache.delete(key);
-    const idb = (globalThis as any).indexedDB;
+    const idb = getIndexedDB();
     if (typeof idb !== "undefined") {
       try {
-        const db = await this.openDB();
+        const db = await this.openDB(idb);
         const tx = db.transaction(this.storeName, "readwrite");
         tx.objectStore(this.storeName).delete(key);
       } catch (err) {
@@ -95,8 +130,7 @@ export class IndexedDbSnapshotStore {
     }
   }
 
-  private openDB(): Promise<any> {
-    const idb = (globalThis as any).indexedDB;
+  private openDB(idb: MinimalIDBFactory): Promise<MinimalIDBDatabase> {
     return new Promise((resolve, reject) => {
       const req = idb.open(this.dbName, 1);
       req.onupgradeneeded = () => {

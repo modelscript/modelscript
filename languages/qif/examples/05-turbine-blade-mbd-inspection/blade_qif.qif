@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="50000005-0000-4000-8000-000000000001">
+  <Header>
+    <Author><Name>Turbomachinery Metrology</Name></Author>
+    <Application><Name>Ansatz QIF MBD Bridge</Name></Application>
+    <FileUnits>
+      <PrimaryUnits>
+        <LinearUnit><UnitName>mm</UnitName></LinearUnit>
+      </PrimaryUnits>
+    </FileUnits>
+  </Header>
+  <DatumDefinitions>
+    <DatumDefinition id="D1" qpId="50000005-0000-4000-8000-000000000002">
+      <DatumLabel>A</DatumLabel>
+      <FeatureNominalIds><Id>F_ROOT</Id></FeatureNominalIds>
+    </DatumDefinition>
+    <DatumDefinition id="D2" qpId="50000005-0000-4000-8000-000000000003">
+      <DatumLabel>B</DatumLabel>
+      <FeatureNominalIds><Id>F_PIN</Id></FeatureNominalIds>
+    </DatumDefinition>
+  </DatumDefinitions>
+  <FeatureNominals>
+    <PlaneFeatureNominal id="F_ROOT" qpId="50000005-0000-4000-8000-000000000010">
+      <Name>DovetailRootDatumA</Name>
+      <Location>0 0 0</Location>
+      <Normal>0 0 1</Normal>
+      <StepEntityId>#30</StepEntityId>
+      <ProbingPoints>8</ProbingPoints>
+    </PlaneFeatureNominal>
+    <CylinderFeatureNominal id="F_PIN" qpId="50000005-0000-4000-8000-000000000011">
+      <Name>CoolingPassageBore</Name>
+      <Diameter>4.0</Diameter>
+      <Location>12 0 0</Location>
+      <AxisVector>0 0 1</AxisVector>
+      <StepEntityId>#31</StepEntityId>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+  <CharacteristicNominals>
+    <FlatnessCharacteristicNominal id="C_ROOT" qpId="50000005-0000-4000-8000-000000000020" balloonNumber="1">
+      <Name>RootPlatform_Flatness</Name>
+      <ToleranceValue>0.015</ToleranceValue>
+      <MaterialCondition>RFS</MaterialCondition>
+      <FeatureNominalIds><Id>F_ROOT</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM_5AXIS</MeasurementDeviceId>
+    </FlatnessCharacteristicNominal>
+    <PositionCharacteristicNominal id="C_COOL" qpId="50000005-0000-4000-8000-000000000021" balloonNumber="2">
+      <Name>CoolingPassage_Position</Name>
+      <ToleranceValue>0.04</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>RFS</MaterialCondition>
+      <DatumReferenceFrame>
+        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
+        <DatumReference precedence="2"><DatumLabel>B</DatumLabel></DatumReference>
+      </DatumReferenceFrame>
+      <FeatureNominalIds><Id>F_PIN</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM_5AXIS</MeasurementDeviceId>
+    </PositionCharacteristicNominal>
+  </CharacteristicNominals>
+  <MeasurementResources>
+    <MeasurementDevice id="CMM_5AXIS" deviceType="CMM">
+      <Name>Renishaw_REVO_5Axis</Name>
+      <CalibrationUncertainty>0.0012</CalibrationUncertainty>
+    </MeasurementDevice>
+  </MeasurementResources>
+  <Rules minTurRatio="4.0">
+    <FeatureRule featureType="Plane" minPoints="6"/>
+    <FeatureRule featureType="Cylinder" minPoints="8"/>
+  </Rules>
+  <Plan>
+    <PlanStep id="S1" stepNumber="1" featureId="F_ROOT" characteristicId="C_ROOT" deviceId="CMM_5AXIS" probingPointCount="8"/>
+    <PlanStep id="S2" stepNumber="2" featureId="F_PIN" characteristicId="C_COOL" deviceId="CMM_5AXIS" probingPointCount="8"/>
+  </Plan>
+  <Results>
+    <GeometricCharacteristicActual id="ACT_ROOT" characteristicNominalId="C_ROOT" partSerialNumber="HPT-BLD-042">
+      <MeasuredValue>0.006</MeasuredValue>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+    <GeometricCharacteristicActual id="ACT_COOL" characteristicNominalId="C_COOL" partSerialNumber="HPT-BLD-042">
+      <MeasuredValue>0.015</MeasuredValue>
+      <ActualFeatureSize>4.005</ActualFeatureSize>
+      <DeviationVector>0.006 0.004 0.0</DeviationVector>
+      <Status>PASS</Status>
+    </GeometricCharacteristicActual>
+  </Results>
+</QIFDocument>

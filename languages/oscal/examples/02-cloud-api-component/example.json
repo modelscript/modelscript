@@ -1,0 +1,11 @@
+{
+  "id": "oscal-02-cloud-api-component",
+  "lang": "oscal",
+  "subFormats": ["oscal.json"],
+  "difficulty": 2,
+  "title": "Cloud Telemetry API Component Definition",
+  "description": "OSCAL component-definition documenting an OAuth2/mTLS telemetry API gateway and its NIST SP 800-53 control implementations.",
+  "category": "Cloud Security",
+  "tags": ["oscal", "component-definition", "api-gateway", "mtls", "nist"],
+  "activeFile": "component.oscal.json"
+}

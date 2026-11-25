@@ -1,0 +1,11 @@
+{
+  "id": "gproms-03-tubular-pfr-axial-pde",
+  "lang": "gproms",
+  "subFormats": ["gproms"],
+  "difficulty": 3,
+  "title": "Tubular Plug-Flow Reactor Axial Dispersion PDE",
+  "description": "Distributed-parameter gPROMS PDE model of a tubular plug-flow reactor with axial dispersion, first-order reaction, and Danckwerts inlet boundary condition.",
+  "category": "Chemical Process Engineering",
+  "tags": ["gproms", "pfr", "pde", "distribution-domain"],
+  "activeFile": "tubular_pfr.gproms"
+}

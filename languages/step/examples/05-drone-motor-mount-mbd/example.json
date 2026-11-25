@@ -1,0 +1,11 @@
+{
+  "id": "step-05-drone-motor-mount-mbd",
+  "lang": "step",
+  "subFormats": ["step", "qif"],
+  "difficulty": 5,
+  "title": "Precision Drone Motor Mount MBD + QIF Metrology",
+  "description": "Multi-file Model-Based Definition package pairing a STEP AP242 UAV brushless motor mount assembly with its companion QIF 3.0 GD&T CMM inspection plan.",
+  "category": "Model-Based Definition",
+  "tags": ["step", "qif", "mbd", "uav", "multi-file"],
+  "activeFile": "motor_mount.step"
+}

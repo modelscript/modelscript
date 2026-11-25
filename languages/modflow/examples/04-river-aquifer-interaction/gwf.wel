@@ -1,0 +1,5 @@
+# Near-Stream Irrigation Production Wells
+BEGIN WEL6
+  1 5 4 -950.0
+  2 6 3 -1400.0
+END WEL6

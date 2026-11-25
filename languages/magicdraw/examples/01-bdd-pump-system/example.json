@@ -1,0 +1,12 @@
+{
+  "id": "magicdraw-01-bdd-pump-system",
+  "lang": "magicdraw",
+  "subFormats": ["mdxml"],
+  "difficulty": 1,
+  "title": "SysML 1.x Block Definition Diagram (BDD) Pump System",
+  "description": "Cameo/MagicDraw XMI 2.5 Block Definition Diagram modeling a centrifugal coolant pump assembly composed of an electric drive motor, impeller, and housing with typed value properties.",
+  "category": "MBSE & SysML",
+  "tags": ["magicdraw", "sysml", "bdd", "xmi", "pump"],
+  "activeFile": "pump_bdd.mdxml",
+  "isDefaultStarter": true
+}

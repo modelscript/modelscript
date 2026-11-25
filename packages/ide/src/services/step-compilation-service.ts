@@ -263,7 +263,7 @@ async function listWorkspaceCadUris(): Promise<vscode.Uri[]> {
 
 /**
  * Shared workspace service managing the Option-A `.scad` + `.qif` -> `.step` compilation pipeline
- * across both desktop VS Code and Morsel browser IDE.
+ * across both desktop VS Code and Ansatz Editor.
  */
 export class StepCompilationService implements vscode.Disposable {
   private readonly _disposables: vscode.Disposable[] = [];

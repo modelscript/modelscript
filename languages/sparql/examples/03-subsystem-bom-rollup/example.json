@@ -1,0 +1,11 @@
+{
+  "id": "sparql-03-subsystem-bom-rollup",
+  "lang": "sparql",
+  "subFormats": ["rq", "ttl"],
+  "difficulty": 3,
+  "title": "UAV Subsystem Mass & Power BOM Rollup Aggregation",
+  "description": "SPARQL 1.1 GROUP BY aggregation query computing total mass, total electrical power draw, and part counts per UAV subsystem against a companion bill-of-materials graph.",
+  "category": "Knowledge Graphs & MBSE",
+  "tags": ["sparql", "aggregation", "group-by", "uav", "multi-file"],
+  "activeFile": "rollup.rq"
+}

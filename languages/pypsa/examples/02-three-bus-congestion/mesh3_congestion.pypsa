@@ -1,0 +1,12 @@
+network Mesh3_Congestion baseMva=100
+bus BusA v_nom=230 carrier=AC
+bus BusB v_nom=230 carrier=AC
+bus BusC v_nom=230 carrier=AC
+generator Hydro_A bus=BusA carrier=hydro p_nom=400 marginal_cost=12 capital_cost=1800
+generator Gas_B bus=BusB carrier=gas p_nom=350 marginal_cost=58 capital_cost=600
+generator Peaker_C bus=BusC carrier=oil p_nom=250 marginal_cost=115 capital_cost=400
+load Demand_B bus=BusB p_set=180
+load Demand_C bus=BusC p_set=420
+line Line_AB bus0=BusA bus1=BusB r=1.2 x=12.0 s_nom=300
+line Line_BC bus0=BusB bus1=BusC r=1.5 x=15.0 s_nom=220
+line Line_AC bus0=BusA bus1=BusC r=2.0 x=18.0 s_nom=200

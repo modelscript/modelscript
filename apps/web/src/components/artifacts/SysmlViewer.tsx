@@ -1151,7 +1151,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, []);
 
@@ -1286,7 +1286,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
     copyTimerRef.current = setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const handleOpenPlayground = () => {
+  const handleOpenAnsatzEditor = () => {
     const targetDiagramType = diagramMode === "ibd" ? "IBD" : "BDD";
     const targetUrl = buildEditorUrlForArtifact({
       artifactId: viewConfig.artifactId,
@@ -1422,7 +1422,7 @@ const SysmlViewer: React.FC<SysmlViewerProps> = ({ viewConfig, isFullScreen = fa
                   <Button
                     size="small"
                     variant="primary"
-                    onClick={handleOpenPlayground}
+                    onClick={handleOpenAnsatzEditor}
                     title="Open SysML v2 model in Ansatz"
                   >
                     <DraftingTriangleIcon size={13} />

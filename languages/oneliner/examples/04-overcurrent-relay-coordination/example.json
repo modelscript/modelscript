@@ -1,0 +1,11 @@
+{
+  "id": "oneliner-04-overcurrent-relay-coordination",
+  "lang": "oneliner",
+  "subFormats": ["dxt"],
+  "difficulty": 4,
+  "title": "Overcurrent Relay (50/51) Primary-Backup Coordination",
+  "description": "Multi-section 34.5 kV industrial distribution feeder demonstrating time-overcurrent (51) and instantaneous (50) relay coordination with 0.3 s CTI margins across upstream and downstream breakers.",
+  "category": "Power System Protection",
+  "tags": ["oneliner", "50-51", "overcurrent", "coordination", "ieee-very-inverse"],
+  "activeFile": "oc_coord.dxt"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "las-03-archie-payzone-evaluation",
+  "lang": "las",
+  "subFormats": ["las"],
+  "difficulty": 3,
+  "title": "Archie Water Saturation & Net Pay-Zone Petrophysical Log",
+  "description": "Interpreted petrophysical LAS 2.0 log incorporating formation resistivity (RT), effective porosity (PHIE), shale volume (VSH), and Archie water saturation (SW) across an oil-water contact.",
+  "category": "Subsurface & Petrophysics",
+  "tags": ["las", "archie", "water-saturation", "pay-zone", "petrophysics"],
+  "activeFile": "payzone.las"
+}

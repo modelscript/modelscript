@@ -7,7 +7,7 @@ import {
   ScalarColorbarLegend,
   type CaeSimulationRunEntry,
 } from "@modelscript/editor/workbench/cad-viewer";
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CodeIcon, FlameIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
@@ -203,7 +203,7 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
 
   useEffect(() => {
     if (!loading) {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [loading]);
 
@@ -375,9 +375,9 @@ export const CfdConfigViewer: React.FC<CfdConfigViewerProps> = ({ artifactId, vi
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
               onClick={() => {
-                const hash = compressMorselPayload({
+                const hash = compressAnsatzPayload({
                   v: 1,
-                  lang: "cfd" as any,
+                  lang: "cfd",
                   code: rawText || `% ${title}\nSOLVER= EULER\n`,
                   title,
                 });

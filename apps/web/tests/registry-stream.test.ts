@@ -14,7 +14,7 @@ import {
   streamRegistryModels,
 } from "../../../packages/editor/src/workbench/util/registry-stream";
 
-describe("Morsel Ansatz Registry Streaming Client", () => {
+describe("Ansatz Network Registry Streaming Client", () => {
   const originalFetch = globalThis.fetch;
 
   beforeEach(() => {

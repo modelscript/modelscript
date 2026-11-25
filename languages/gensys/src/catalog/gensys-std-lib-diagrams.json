@@ -1,0 +1,940 @@
+[
+  {
+    "namePath": "gensys:k_s",
+    "aliases": [
+      "K_S",
+      "coupl_k_s",
+      "spring_s"
+    ],
+    "label": "3-Axis Elastic Spring Coupling (k_s)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">K_S</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:k_lin",
+    "aliases": [
+      "K_LIN",
+      "coupl_k_lin"
+    ],
+    "label": "Linear 1D/3D Stiffness Element (k_lin)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">K_LIN</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:k_p",
+    "aliases": [
+      "K_P",
+      "coupl_k_p"
+    ],
+    "label": "Parallel Coil / Rubber Spring (k_p)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">K_P</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:c_s",
+    "aliases": [
+      "C_S",
+      "coupl_c_s",
+      "damper_s"
+    ],
+    "label": "3-Axis Viscous Damper Coupling (c_s)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C_S</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:c_lin",
+    "aliases": [
+      "C_LIN",
+      "coupl_c_lin"
+    ],
+    "label": "Linear Viscous Damper (c_lin)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C_LIN</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:c_p",
+    "aliases": [
+      "C_P",
+      "coupl_c_p"
+    ],
+    "label": "Parallel Hydraulic Damper (c_p)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C_P</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:kc_s",
+    "aliases": [
+      "KC_S",
+      "coupl_kc_s",
+      "maxwell"
+    ],
+    "label": "Maxwell Series Spring-Damper (kc_s)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">KC_S</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:kpf_s",
+    "aliases": [
+      "KPF_S",
+      "coupl_kpf_s",
+      "bumpstop"
+    ],
+    "label": "Piecewise-Linear Bumpstop Spring (kpf_s)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">KPF_S</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:k_air",
+    "aliases": [
+      "K_AIR",
+      "coupl_k_air",
+      "airspring"
+    ],
+    "label": "Pneumatic Secondary Airspring (k_air)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">K_AIR</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:f_fric",
+    "aliases": [
+      "F_FRIC",
+      "coupl_f_fric",
+      "coulomb"
+    ],
+    "label": "Coulomb Dry Friction Element (f_fric)",
+    "category": "Elastic & Damping Couplings",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">CPL</text><path d=\"M46 11 L50 8 L54 14 L58 8 L62 14 L66 11\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F_FRIC</text></svg>",
+    "ports": [
+      {
+        "name": "body1",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "body2",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:wr_coupl_pe3",
+    "aliases": [
+      "WR_COUPL_PE3",
+      "pe3"
+    ],
+    "label": "3-Point Nonlinear Wheel-Rail Contact (wr_coupl_pe3)",
+    "category": "Wheel-Rail Contact",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">WRC</text><circle cx=\"58\" cy=\"10\" r=\"4\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><line x1=\"50\" y1=\"15\" x2=\"66\" y2=\"15\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WR_COUPL_P</text></svg>",
+    "ports": [
+      {
+        "name": "wheelset",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "track",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      },
+      {
+        "name": "creep",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:wr_coupl_pra",
+    "aliases": [
+      "WR_COUPL_PRA",
+      "pra"
+    ],
+    "label": "Precalculated Rail-Elastic Wheel-Rail Coupling (wr_coupl_pra)",
+    "category": "Wheel-Rail Contact",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">WRC</text><circle cx=\"58\" cy=\"10\" r=\"4\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><line x1=\"50\" y1=\"15\" x2=\"66\" y2=\"15\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WR_COUPL_P</text></svg>",
+    "ports": [
+      {
+        "name": "wheelset",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "track",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      },
+      {
+        "name": "creep",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:wr_coupl_pe1",
+    "aliases": [
+      "WR_COUPL_PE1",
+      "pe1"
+    ],
+    "label": "Single-Point Elastic Wheel-Rail Contact (wr_coupl_pe1)",
+    "category": "Wheel-Rail Contact",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">WRC</text><circle cx=\"58\" cy=\"10\" r=\"4\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><line x1=\"50\" y1=\"15\" x2=\"66\" y2=\"15\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WR_COUPL_P</text></svg>",
+    "ports": [
+      {
+        "name": "wheelset",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "track",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      },
+      {
+        "name": "creep",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:kpf_hertz",
+    "aliases": [
+      "KPF_HERTZ",
+      "hertz_contact"
+    ],
+    "label": "Hertzian Normal Contact Stiffness (kpf_hertz)",
+    "category": "Wheel-Rail Contact",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">WRC</text><circle cx=\"58\" cy=\"10\" r=\"4\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><line x1=\"50\" y1=\"15\" x2=\"66\" y2=\"15\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">KPF_HERTZ</text></svg>",
+    "ports": [
+      {
+        "name": "wheelset",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "track",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      },
+      {
+        "name": "creep",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:creep_kalker",
+    "aliases": [
+      "CREEP_KALKER",
+      "fastsim"
+    ],
+    "label": "Kalker Linear / FASTSIM Creep Force (creep_kalker)",
+    "category": "Wheel-Rail Contact",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">WRC</text><circle cx=\"58\" cy=\"10\" r=\"4\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><line x1=\"50\" y1=\"15\" x2=\"66\" y2=\"15\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CREEP_KALK</text></svg>",
+    "ports": [
+      {
+        "name": "wheelset",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "track",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      },
+      {
+        "name": "creep",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:creep_polach",
+    "aliases": [
+      "CREEP_POLACH",
+      "polach"
+    ],
+    "label": "Polach Nonlinear Creep Force (creep_polach)",
+    "category": "Wheel-Rail Contact",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">WRC</text><circle cx=\"58\" cy=\"10\" r=\"4\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.3\"/><line x1=\"50\" y1=\"15\" x2=\"66\" y2=\"15\" stroke=\"#c084fc\" stroke-width=\"1.5\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CREEP_POLA</text></svg>",
+    "ports": [
+      {
+        "name": "wheelset",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "track",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      },
+      {
+        "name": "creep",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:prof_S1002",
+    "aliases": [
+      "S1002",
+      "s1002",
+      "ORE_S1002"
+    ],
+    "label": "EN 13715 / ORE S1002 Wheel Profile",
+    "category": "Standard Profiles & Track",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">TRK</text><path d=\"M48 14 Q53 8 58 12 T68 10\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\" stroke-linecap=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PROF_S1002</text></svg>",
+    "ports": [
+      {
+        "name": "geometry",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "track_ref",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:prof_P8",
+    "aliases": [
+      "P8",
+      "p8",
+      "UK_P8"
+    ],
+    "label": "UK RSSB P8 Wheel Profile",
+    "category": "Standard Profiles & Track",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">TRK</text><path d=\"M48 14 Q53 8 58 12 T68 10\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\" stroke-linecap=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PROF_P8</text></svg>",
+    "ports": [
+      {
+        "name": "geometry",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "track_ref",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:prof_AAR1B",
+    "aliases": [
+      "AAR1B",
+      "aar1b",
+      "AAR_1B"
+    ],
+    "label": "AAR-1B North American Wheel Profile",
+    "category": "Standard Profiles & Track",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">TRK</text><path d=\"M48 14 Q53 8 58 12 T68 10\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\" stroke-linecap=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PROF_AAR1B</text></svg>",
+    "ports": [
+      {
+        "name": "geometry",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "track_ref",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:rail_UIC60",
+    "aliases": [
+      "UIC60",
+      "60E1",
+      "uic60"
+    ],
+    "label": "EN 13674-1 60E1 (UIC60) Rail Profile",
+    "category": "Standard Profiles & Track",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">TRK</text><path d=\"M48 14 Q53 8 58 12 T68 10\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\" stroke-linecap=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RAIL_UIC60</text></svg>",
+    "ports": [
+      {
+        "name": "geometry",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "track_ref",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:rail_54E1",
+    "aliases": [
+      "54E1",
+      "UIC54",
+      "uic54"
+    ],
+    "label": "EN 13674-1 54E1 (UIC54) Rail Profile",
+    "category": "Standard Profiles & Track",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">TRK</text><path d=\"M48 14 Q53 8 58 12 T68 10\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\" stroke-linecap=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RAIL_54E1</text></svg>",
+    "ports": [
+      {
+        "name": "geometry",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "track_ref",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:track_irreg_ORE",
+    "aliases": [
+      "ORE_B176",
+      "ERRI_B176",
+      "ore_irreg"
+    ],
+    "label": "ORE B176 / ERRI Track Irregularity PSD",
+    "category": "Standard Profiles & Track",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">TRK</text><path d=\"M48 14 Q53 8 58 12 T68 10\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\" stroke-linecap=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TRACK_IRRE</text></svg>",
+    "ports": [
+      {
+        "name": "geometry",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "track_ref",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:track_irreg_FRA",
+    "aliases": [
+      "FRA_PSD",
+      "FRA_CLASS6",
+      "fra_irreg"
+    ],
+    "label": "FRA Track Class 1-6 Irregularity PSD",
+    "category": "Standard Profiles & Track",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">TRK</text><path d=\"M48 14 Q53 8 58 12 T68 10\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\" stroke-linecap=\"round\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TRACK_IRRE</text></svg>",
+    "ports": [
+      {
+        "name": "geometry",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "track_ref",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:mass_rigid",
+    "aliases": [
+      "MASS_RIGID",
+      "m_rigid_6"
+    ],
+    "label": "6-DOF Rigid Body (mass_rigid)",
+    "category": "Bodies & Constraints",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">MBD</text><rect x=\"52\" y=\"7\" width=\"12\" height=\"9\" rx=\"1.5\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><circle cx=\"58\" cy=\"11.5\" r=\"1.5\" fill=\"#fbbf24\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MASS_RIGID</text></svg>",
+    "ports": [
+      {
+        "name": "frame_a",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "frame_b",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "cg",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:mass_wheelset",
+    "aliases": [
+      "MASS_WHEELSET",
+      "axl"
+    ],
+    "label": "Railway Wheelset Rigid Body (mass_wheelset)",
+    "category": "Bodies & Constraints",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">MBD</text><rect x=\"52\" y=\"7\" width=\"12\" height=\"9\" rx=\"1.5\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><circle cx=\"58\" cy=\"11.5\" r=\"1.5\" fill=\"#fbbf24\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MASS_WHEEL</text></svg>",
+    "ports": [
+      {
+        "name": "frame_a",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "frame_b",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "cg",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:mass_bogie",
+    "aliases": [
+      "MASS_BOGIE",
+      "bog"
+    ],
+    "label": "Bogie Frame Rigid Body (mass_bogie)",
+    "category": "Bodies & Constraints",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">MBD</text><rect x=\"52\" y=\"7\" width=\"12\" height=\"9\" rx=\"1.5\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><circle cx=\"58\" cy=\"11.5\" r=\"1.5\" fill=\"#fbbf24\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MASS_BOGIE</text></svg>",
+    "ports": [
+      {
+        "name": "frame_a",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "frame_b",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "cg",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:mass_carbody",
+    "aliases": [
+      "MASS_CARBODY",
+      "car"
+    ],
+    "label": "Vehicle Carbody Rigid Body (mass_carbody)",
+    "category": "Bodies & Constraints",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">MBD</text><rect x=\"52\" y=\"7\" width=\"12\" height=\"9\" rx=\"1.5\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><circle cx=\"58\" cy=\"11.5\" r=\"1.5\" fill=\"#fbbf24\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MASS_CARBO</text></svg>",
+    "ports": [
+      {
+        "name": "frame_a",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "frame_b",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "cg",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:constr_fix",
+    "aliases": [
+      "CONSTR_FIX",
+      "fix_rigid"
+    ],
+    "label": "Fixed Kinematic Constraint (constr_fix)",
+    "category": "Bodies & Constraints",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">MBD</text><rect x=\"52\" y=\"7\" width=\"12\" height=\"9\" rx=\"1.5\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><circle cx=\"58\" cy=\"11.5\" r=\"1.5\" fill=\"#fbbf24\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CONSTR_FIX</text></svg>",
+    "ports": [
+      {
+        "name": "frame_a",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "frame_b",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "cg",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gensys:constr_rev",
+    "aliases": [
+      "CONSTR_REV",
+      "revolute"
+    ],
+    "label": "Revolute Pin Joint Constraint (constr_rev)",
+    "category": "Bodies & Constraints",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">MBD</text><rect x=\"52\" y=\"7\" width=\"12\" height=\"9\" rx=\"1.5\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\"/><circle cx=\"58\" cy=\"11.5\" r=\"1.5\" fill=\"#fbbf24\"/><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CONSTR_REV</text></svg>",
+    "ports": [
+      {
+        "name": "frame_a",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "frame_b",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "cg",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  }
+]

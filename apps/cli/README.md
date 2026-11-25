@@ -202,7 +202,7 @@ npx msx --daemon <command>
 | `msx parse <file>`                   | Parse a file using its language DSL parser (supports any of the 106 languages)        |
 | `msx language <action> [target]`     | Manage registered language DSLs (`list`, `register`, `unregister`; alias: `msx lang`) |
 | `msx lsp`                            | Start the ModelScript polyglot Language Server over stdio for editor integration      |
-| `msx playground`                     | Launch the interactive dual-editor DSL grammar workbench                              |
+| `msx ansatz`                         | Launch the interactive dual-editor DSL grammar workbench                              |
 | `msx sandbox [entries...]`           | Start a VS Code Web sandbox with an on-the-fly compiled multi-language extension      |
 
 ### 7. Cloud HPC, Registry, Hub & Database Operations

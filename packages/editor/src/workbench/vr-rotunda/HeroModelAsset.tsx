@@ -1,11 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Line, useGLTF } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useXR } from "@react-three/xr";
 import React, { Suspense, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { AssemblyVisibilityState } from "../cad-viewer/assembly-visibility.js";
 import { useRetainGltfUrl } from "../cad-viewer/gltf-cache-guard.js";
+import {
+  ensureGeometryBrushedUvs,
+  getCachedHeroPbrTextures,
+  HERO_BRUSHED_NORMAL_SCALE,
+  HERO_DETAIL_NORMAL_SCALE,
+  resolveHeroSurfaceParams,
+  type HeroSurfaceFinish,
+} from "../cad-viewer/HeroCadMaterials.js";
 import { VtkRenderer } from "../cad-viewer/VtkRenderer.js";
 import { OctopusShowcaseAssembly } from "./OctopusShowcaseAssembly.js";
 import {
@@ -23,6 +32,7 @@ import {
 import {
   clampNumber,
   isLoadableGltfUri,
+  PLINTH_MODEL_NORMALIZED_SIZE,
   type RotundaAnimationControllerLike,
   type RotundaCadPartInput,
   type RotundaCaeOverlay,
@@ -106,9 +116,14 @@ function sampleThermalColor(t: number): string {
 }
 
 export interface PartMaterialProps {
-  baseColor: string;
+  finish?: HeroSurfaceFinish | undefined;
+  baseColor?: string | undefined;
   metalness?: number | undefined;
   roughness?: number | undefined;
+  clearcoat?: number | undefined;
+  clearcoatRoughness?: number | undefined;
+  anisotropy?: number | undefined;
+  envMapIntensity?: number | undefined;
   emissive?: string | undefined;
   emissiveIntensity?: number | undefined;
   stressFactor?: number | undefined;
@@ -124,15 +139,20 @@ export interface PartMaterialProps {
 }
 
 /**
- * Shared PBR/CAE/Hologram material component that cleanly honors clipping planes,
- * render styles (shaded/wireframe/xray), live scientific CAE contour overlays (both
- * geometry-aware per-vertex stress/Cp fields and procedural UV contour maps), and
- * ghost hologram styling.
+ * Shared photoreal PBR/CAE/Hologram material component backed by `MeshPhysicalMaterial`
+ * with calibrated studio finishes (brushed/anodized aluminium, satin steel, copper, brass,
+ * clearcoated ceramics, matte rubber) that cleanly honors clipping planes, render styles
+ * (shaded/wireframe/xray), live scientific CAE contour overlays, and ghost hologram styling.
  */
 export function PartMaterial({
+  finish,
   baseColor,
-  metalness = 0.72,
-  roughness = 0.28,
+  metalness,
+  roughness,
+  clearcoat,
+  clearcoatRoughness,
+  anisotropy,
+  envMapIntensity,
   emissive = "#000000",
   emissiveIntensity = 0,
   stressFactor = 0.45,
@@ -146,7 +166,22 @@ export function PartMaterial({
   clippingPlanes,
   simulationTime,
 }: PartMaterialProps): React.ReactElement {
+  const gl = useThree((s) => s.gl);
+  const pbrMaps = useMemo(() => getCachedHeroPbrTextures(gl), [gl]);
   const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const isInXr = useXR((s) => s.session != null);
+
+  const surface = resolveHeroSurfaceParams({
+    finish,
+    baseColor,
+    metalness,
+    roughness,
+    clearcoat,
+    clearcoatRoughness,
+    anisotropy,
+    envMapIntensity,
+  });
+
   const effectivePlanes = isGhost ? EMPTY_PLANES : clippingPlanes;
   const hasClipping = effectivePlanes.length > 0;
   const activeVertexColors = !isGhost && useVertexColors && caeOverlay !== "none" && renderStyle === "shaded";
@@ -158,14 +193,38 @@ export function PartMaterial({
       ? getSharedCaeGradientTexture(caeOverlay)
       : null;
 
+  const enableSurfaceMaps =
+    !isGhost &&
+    renderStyle === "shaded" &&
+    !activeVertexColors &&
+    !activeContourMap &&
+    (caeOverlay === "none" || caeOverlay === "cfd-flow") &&
+    surface.mapMode !== "none";
+
+  const activeNormalMap: THREE.DataTexture | null = enableSurfaceMaps
+    ? surface.mapMode === "detail"
+      ? pbrMaps.detailNormal
+      : pbrMaps.normal
+    : null;
+  const activeNormalScale = surface.mapMode === "detail" ? HERO_DETAIL_NORMAL_SCALE : HERO_BRUSHED_NORMAL_SCALE;
+  const activeRoughnessMap: THREE.DataTexture | null = enableSurfaceMaps
+    ? surface.mapMode === "detail"
+      ? pbrMaps.detailRoughness
+      : pbrMaps.roughness
+    : null;
+
   const prevStateRef = useRef<{
     hasClipping: boolean;
     vertexColors: boolean;
     hasMap: boolean;
+    hasNormalMap: boolean;
+    hasRoughnessMap: boolean;
   }>({
     hasClipping,
     vertexColors: activeVertexColors,
     hasMap: activeContourMap !== null,
+    hasNormalMap: activeNormalMap !== null,
+    hasRoughnessMap: activeRoughnessMap !== null,
   });
 
   // Ensure Three.js recompiles shader ONLY when shader-define flags actually toggle
@@ -175,13 +234,38 @@ export function PartMaterial({
     mat.clippingPlanes = effectivePlanes;
     mat.vertexColors = activeVertexColors;
     mat.map = activeContourMap;
+    mat.normalMap = activeNormalMap;
+    mat.roughnessMap = activeRoughnessMap;
     const prev = prevStateRef.current;
     const hasMap = activeContourMap !== null;
-    if (prev.hasClipping !== hasClipping || prev.vertexColors !== activeVertexColors || prev.hasMap !== hasMap) {
-      prevStateRef.current = { hasClipping, vertexColors: activeVertexColors, hasMap };
+    const hasNormalMap = activeNormalMap !== null;
+    const hasRoughnessMap = activeRoughnessMap !== null;
+    if (
+      prev.hasClipping !== hasClipping ||
+      prev.vertexColors !== activeVertexColors ||
+      prev.hasMap !== hasMap ||
+      prev.hasNormalMap !== hasNormalMap ||
+      prev.hasRoughnessMap !== hasRoughnessMap
+    ) {
+      prevStateRef.current = {
+        hasClipping,
+        vertexColors: activeVertexColors,
+        hasMap,
+        hasNormalMap,
+        hasRoughnessMap,
+      };
       mat.needsUpdate = true;
     }
-  }, [effectivePlanes, hasClipping, activeVertexColors, activeContourMap]);
+  }, [
+    effectivePlanes,
+    hasClipping,
+    activeVertexColors,
+    activeContourMap,
+    activeNormalMap,
+    activeRoughnessMap,
+    isGhost,
+    renderStyle,
+  ]);
 
   if (isGhost) {
     return (
@@ -201,11 +285,16 @@ export function PartMaterial({
     );
   }
 
-  let resolvedColor = baseColor;
+  let resolvedColor = surface.color;
   let resolvedEmissive = emissive;
   let resolvedEmissiveIntensity = emissiveIntensity;
-  let resolvedMetalness = metalness;
-  let resolvedRoughness = roughness;
+  let resolvedMetalness = surface.metalness;
+  let resolvedRoughness = surface.roughness;
+  let resolvedClearcoat = surface.clearcoat;
+  let resolvedClearcoatRoughness = surface.clearcoatRoughness;
+  let resolvedAnisotropy = surface.anisotropy;
+  let resolvedIridescence = surface.iridescence;
+  let resolvedEnvMapIntensity = surface.envMapIntensity;
 
   if (activeVertexColors) {
     // Let the true per-vertex Von Mises / CFD Cp / Thermal colors define the surface cleanly
@@ -214,6 +303,11 @@ export function PartMaterial({
     resolvedEmissiveIntensity = 0;
     resolvedMetalness = caeOverlay === "cfd-flow" ? 0.24 : 0.14;
     resolvedRoughness = caeOverlay === "cfd-flow" ? 0.36 : 0.42;
+    resolvedClearcoat = 0;
+    resolvedClearcoatRoughness = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
+    resolvedEnvMapIntensity = 0.85;
   } else if (caeOverlay === "fea-stress") {
     const dynamicStress = clampNumber(stressFactor + 0.05 * Math.sin(simulationTime * 1.8 + stressFactor * 4.2), 0, 1);
     resolvedColor = activeContourMap ? "#ffffff" : sampleTurboStressColor(dynamicStress);
@@ -221,6 +315,11 @@ export function PartMaterial({
     resolvedEmissiveIntensity = activeContourMap ? 0 : 0.16 + dynamicStress * 0.24;
     resolvedMetalness = 0.16;
     resolvedRoughness = 0.44;
+    resolvedClearcoat = 0;
+    resolvedClearcoatRoughness = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
+    resolvedEnvMapIntensity = 0.85;
   } else if (caeOverlay === "thermal") {
     const dynamicThermal = clampNumber(
       thermalFactor + 0.06 * Math.sin(simulationTime * 1.6 + thermalFactor * 3.1),
@@ -232,6 +331,11 @@ export function PartMaterial({
     resolvedEmissiveIntensity = activeContourMap ? 0 : 0.24 + dynamicThermal * 0.4;
     resolvedMetalness = 0.14;
     resolvedRoughness = 0.46;
+    resolvedClearcoat = 0;
+    resolvedClearcoatRoughness = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
+    resolvedEnvMapIntensity = 0.85;
   } else if (caeOverlay === "cfd-flow") {
     resolvedEmissive = "#0284c7";
     resolvedEmissiveIntensity = Math.max(emissiveIntensity, 0.08);
@@ -276,16 +380,46 @@ export function PartMaterial({
     );
   }
 
+  if (isInXr) {
+    return (
+      <meshStandardMaterial
+        ref={matRef}
+        color={resolvedColor}
+        {...(activeContourMap ? { map: activeContourMap } : {})}
+        {...(activeNormalMap ? { normalMap: activeNormalMap, normalScale: activeNormalScale } : {})}
+        {...(activeRoughnessMap ? { roughnessMap: activeRoughnessMap } : {})}
+        vertexColors={activeVertexColors}
+        emissive={resolvedEmissive}
+        emissiveIntensity={resolvedEmissiveIntensity}
+        metalness={resolvedMetalness}
+        roughness={resolvedRoughness}
+        envMapIntensity={resolvedEnvMapIntensity}
+        side={hasClipping || doubleSide ? THREE.DoubleSide : THREE.FrontSide}
+        clippingPlanes={effectivePlanes}
+        clipShadows={true}
+      />
+    );
+  }
+
   return (
-    <meshStandardMaterial
+    <meshPhysicalMaterial
       ref={matRef}
       color={resolvedColor}
-      map={activeContourMap}
+      {...(activeContourMap ? { map: activeContourMap } : {})}
+      {...(activeNormalMap ? { normalMap: activeNormalMap, normalScale: activeNormalScale } : {})}
+      {...(activeRoughnessMap ? { roughnessMap: activeRoughnessMap } : {})}
       vertexColors={activeVertexColors}
       emissive={resolvedEmissive}
       emissiveIntensity={resolvedEmissiveIntensity}
       metalness={resolvedMetalness}
       roughness={resolvedRoughness}
+      anisotropy={resolvedAnisotropy}
+      anisotropyRotation={surface.anisotropyRotation}
+      clearcoat={resolvedClearcoat}
+      clearcoatRoughness={resolvedClearcoatRoughness}
+      iridescence={resolvedIridescence}
+      iridescenceIOR={surface.iridescenceIOR}
+      envMapIntensity={resolvedEnvMapIntensity}
       side={hasClipping || doubleSide ? THREE.DoubleSide : THREE.FrontSide}
       clippingPlanes={effectivePlanes}
       clipShadows={true}
@@ -465,53 +599,48 @@ function HarmonicServoActuator({
     <group>
       {/* 1. Base Mounting Flange Ring + 6 perimeter bolt bosses */}
       <group position={[0, baseY, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.31, 0.33, 0.06, 40]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#334155"
-            metalness={0.82}
-            roughness={0.28}
+            finish="dark-anodized"
+            baseColor="#6c7582"
             stressFactor={0.32}
             thermalFactor={0.24}
           />
         </mesh>
         {SERVO_ANGLES_6.map((angle, idx) => (
-          <mesh key={`flange-boss-${idx}`} position={[Math.cos(angle) * 0.275, 0.036, Math.sin(angle) * 0.275]}>
+          <mesh
+            key={`flange-boss-${idx}`}
+            position={[Math.cos(angle) * 0.275, 0.036, Math.sin(angle) * 0.275]}
+            castShadow
+            receiveShadow
+          >
             <cylinderGeometry args={[0.022, 0.022, 0.026, 12]} />
-            <PartMaterial
-              {...sharedMat}
-              baseColor="#94a3b8"
-              metalness={0.88}
-              roughness={0.2}
-              stressFactor={0.48}
-              thermalFactor={0.22}
-            />
+            <PartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.48} thermalFactor={0.22} />
           </mesh>
         ))}
       </group>
 
       {/* 2. Stator Housing Shell with cooling ribs */}
       <group position={[0, statorY, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.255, 0.265, 0.26, 36]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.8}
-            roughness={0.3}
+            finish="anodized-aluminum"
+            baseColor="#8d96a4"
             stressFactor={0.44}
             thermalFactor={0.62}
           />
         </mesh>
         {[-0.08, -0.025, 0.03, 0.085].map((finY, idx) => (
-          <mesh key={`fin-${idx}`} position={[0, finY, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <mesh key={`fin-${idx}`} position={[0, finY, 0]} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
             <torusGeometry args={[0.268, 0.013, 10, 40]} />
             <PartMaterial
               {...sharedMat}
-              baseColor="#64748b"
-              metalness={0.84}
-              roughness={0.26}
+              finish="brushed-aluminum"
+              baseColor="#dce0e6"
               stressFactor={0.4 + idx * 0.04}
               thermalFactor={0.68}
             />
@@ -529,18 +658,9 @@ function HarmonicServoActuator({
               position={[Math.cos(angle) * r, 0, Math.sin(angle) * r]}
               rotation={[0, -angle, 0]}
             >
-              <mesh>
+              <mesh castShadow receiveShadow>
                 <boxGeometry args={[0.068, 0.15, 0.078]} />
-                <PartMaterial
-                  {...sharedMat}
-                  baseColor="#d97706"
-                  metalness={0.86}
-                  roughness={0.24}
-                  emissive="#92400e"
-                  emissiveIntensity={0.14}
-                  stressFactor={0.54}
-                  thermalFactor={0.96}
-                />
+                <PartMaterial {...sharedMat} finish="copper" stressFactor={0.54} thermalFactor={0.96} />
               </mesh>
             </group>
           );
@@ -549,27 +669,19 @@ function HarmonicServoActuator({
 
       {/* 4. Planetary Carrier Gear & Ring */}
       <group ref={carrierGroupRef} position={[0, carrierY, 0]} rotation={[0, carrierAngle, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.21, 0.21, 0.044, 32]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#94a3b8"
-            metalness={0.88}
-            roughness={0.22}
+            finish="satin-steel"
+            baseColor="#a6aeb8"
             stressFactor={0.78}
             thermalFactor={0.74}
           />
         </mesh>
-        <mesh position={[0, 0.032, 0]}>
+        <mesh position={[0, 0.032, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.065, 0.065, 0.056, 18]} />
-          <PartMaterial
-            {...sharedMat}
-            baseColor="#cbd5e1"
-            metalness={0.9}
-            roughness={0.18}
-            stressFactor={0.86}
-            thermalFactor={0.78}
-          />
+          <PartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.86} thermalFactor={0.78} />
         </mesh>
       </group>
 
@@ -586,24 +698,16 @@ function HarmonicServoActuator({
               position={[Math.cos(orbitAngle) * satOrbitR, 0, Math.sin(orbitAngle) * satOrbitR]}
               rotation={[0, satelliteSpin, 0]}
             >
-              <mesh>
+              <mesh castShadow receiveShadow>
                 <cylinderGeometry args={[0.054, 0.054, 0.052, 16]} />
-                <PartMaterial
-                  {...sharedMat}
-                  baseColor="#eab308"
-                  metalness={0.86}
-                  roughness={0.22}
-                  stressFactor={0.89}
-                  thermalFactor={0.76}
-                />
+                <PartMaterial {...sharedMat} finish="brass" stressFactor={0.89} thermalFactor={0.76} />
               </mesh>
-              <mesh position={[0, 0.034, 0]}>
+              <mesh position={[0, 0.034, 0]} castShadow receiveShadow>
                 <cylinderGeometry args={[0.018, 0.018, 0.024, 12]} />
                 <PartMaterial
                   {...sharedMat}
-                  baseColor="#475569"
-                  metalness={0.85}
-                  roughness={0.25}
+                  finish="dark-anodized"
+                  baseColor="#525b68"
                   stressFactor={0.82}
                   thermalFactor={0.7}
                 />
@@ -615,13 +719,12 @@ function HarmonicServoActuator({
 
       {/* 6. Output Shaft Spline */}
       <group ref={shaftGroupRef} position={[0, shaftY, 0]} rotation={[0, shaftSpin, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.048, 0.058, 0.22, 16]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.92}
-            roughness={0.14}
+            finish="polished-steel"
+            baseColor="#d8dce0"
             stressFactor={0.95}
             thermalFactor={0.58}
           />
@@ -633,16 +736,11 @@ function HarmonicServoActuator({
               key={`spline-${sIdx}`}
               position={[Math.cos(a) * 0.05, 0.02, Math.sin(a) * 0.05]}
               rotation={[0, -a, 0]}
+              castShadow
+              receiveShadow
             >
               <boxGeometry args={[0.018, 0.14, 0.014]} />
-              <PartMaterial
-                {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.92}
-                roughness={0.16}
-                stressFactor={0.96}
-                thermalFactor={0.56}
-              />
+              <PartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.96} thermalFactor={0.56} />
             </mesh>
           );
         })}
@@ -650,13 +748,12 @@ function HarmonicServoActuator({
 
       {/* 7. Top Optical Encoder Cap + Accent Ring */}
       <group position={[0, capY, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.205, 0.23, 0.068, 36]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#1e293b"
-            metalness={0.78}
-            roughness={0.26}
+            finish="ceramic-grey"
+            baseColor="#dfe5ec"
             stressFactor={0.24}
             thermalFactor={0.42}
           />
@@ -665,11 +762,10 @@ function HarmonicServoActuator({
           <torusGeometry args={[0.175, 0.01, 10, 40]} />
           <PartMaterial
             {...sharedMat}
+            finish="painted"
             baseColor={accentColor}
             emissive={accentColor}
-            emissiveIntensity={0.65}
-            metalness={0.4}
-            roughness={0.2}
+            emissiveIntensity={0.42}
             stressFactor={0.22}
             thermalFactor={0.38}
           />
@@ -681,13 +777,12 @@ function HarmonicServoActuator({
         {SERVO_ANGLES_6.map((angle, idx) => {
           const r = 0.17 + e * 0.04;
           return (
-            <mesh key={`cap-bolt-${idx}`} position={[Math.cos(angle) * r, 0, Math.sin(angle) * r]}>
+            <mesh key={`cap-bolt-${idx}`} position={[Math.cos(angle) * r, 0, Math.sin(angle) * r]} castShadow>
               <cylinderGeometry args={[0.016, 0.016, 0.034, 6]} />
               <PartMaterial
                 {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.9}
-                roughness={0.18}
+                finish="dark-anodized"
+                baseColor="#505966"
                 stressFactor={0.62}
                 thermalFactor={0.28}
               />
@@ -767,13 +862,12 @@ function AerospaceCantileverBracket({
   return (
     <group>
       {/* Plinth fixture pedestal block */}
-      <mesh position={[plateX + 0.02, 0.045, 0]}>
+      <mesh position={[plateX + 0.02, 0.045, 0]} castShadow receiveShadow>
         <boxGeometry args={[0.16, 0.09, 0.42]} />
         <PartMaterial
           {...sharedMat}
-          baseColor="#334155"
-          metalness={0.8}
-          roughness={0.32}
+          finish="dark-anodized"
+          baseColor="#5e6774"
           stressFactor={0.28}
           thermalFactor={0.22}
         />
@@ -781,13 +875,12 @@ function AerospaceCantileverBracket({
 
       {/* 1. Base Mounting Plate */}
       <group position={[plateX, centerY, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <boxGeometry args={[0.07, 0.46, 0.42]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#64748b"
-            metalness={0.82}
-            roughness={0.26}
+            finish="anodized-aluminum"
+            baseColor="#b0b8c3"
             stressFactor={0.42}
             thermalFactor={0.3}
           />
@@ -798,27 +891,13 @@ function AerospaceCantileverBracket({
       <group position={[boltsX, centerY, 0]}>
         {BRACKET_BOLT_CORNERS.map(([dy, dz], idx) => (
           <group key={`bolt-${idx}`} position={[0, dy, dz]} rotation={[0, 0, Math.PI / 2]}>
-            <mesh>
+            <mesh castShadow receiveShadow>
               <cylinderGeometry args={[0.026, 0.026, 0.07, 6]} />
-              <PartMaterial
-                {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.9}
-                roughness={0.18}
-                stressFactor={0.68}
-                thermalFactor={0.32}
-              />
+              <PartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.68} thermalFactor={0.32} />
             </mesh>
-            <mesh position={[0, -0.028, 0]}>
+            <mesh position={[0, -0.028, 0]} castShadow receiveShadow>
               <cylinderGeometry args={[0.036, 0.036, 0.012, 16]} />
-              <PartMaterial
-                {...sharedMat}
-                baseColor="#94a3b8"
-                metalness={0.86}
-                roughness={0.22}
-                stressFactor={0.62}
-                thermalFactor={0.3}
-              />
+              <PartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.62} thermalFactor={0.3} />
             </mesh>
           </group>
         ))}
@@ -827,49 +906,33 @@ function AerospaceCantileverBracket({
       {/* 3. Cantilever Ribbed Web & Gussets (pivoting near root for elastic flex) */}
       <group ref={beamGroupRef} position={[beamX, centerY + e * 0.12, 0]} rotation={[0, 0, flexAngle]}>
         {/* Central web spine */}
-        <mesh position={[0.06, 0, 0]}>
+        <mesh position={[0.06, 0, 0]} castShadow receiveShadow>
           <boxGeometry args={[0.48, 0.22, 0.048]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#7c8ea6"
-            metalness={0.78}
-            roughness={0.28}
+            finish="satin-steel"
+            baseColor="#bfc4ca"
             stressFactor={0.92}
             thermalFactor={0.78}
           />
         </mesh>
         {/* Top & bottom tapered flanges */}
-        <mesh position={[0.05, 0.12, 0]} rotation={[0, 0, -0.14]}>
+        <mesh position={[0.05, 0.12, 0]} rotation={[0, 0, -0.14]} castShadow receiveShadow>
           <boxGeometry args={[0.48, 0.04, 0.22]} />
-          <PartMaterial
-            {...sharedMat}
-            baseColor="#94a3b8"
-            metalness={0.82}
-            roughness={0.24}
-            stressFactor={0.88}
-            thermalFactor={0.74}
-          />
+          <PartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.88} thermalFactor={0.74} />
         </mesh>
-        <mesh position={[0.05, -0.12, 0]} rotation={[0, 0, 0.14]}>
+        <mesh position={[0.05, -0.12, 0]} rotation={[0, 0, 0.14]} castShadow receiveShadow>
           <boxGeometry args={[0.48, 0.04, 0.22]} />
-          <PartMaterial
-            {...sharedMat}
-            baseColor="#94a3b8"
-            metalness={0.82}
-            roughness={0.24}
-            stressFactor={0.96}
-            thermalFactor={0.84}
-          />
+          <PartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.96} thermalFactor={0.84} />
         </mesh>
         {/* Diagonal gusseted web ribs */}
         {[-0.08, 0.08].map((zOff, idx) => (
-          <mesh key={`rib-${idx}`} position={[-0.04, 0, zOff]} rotation={[0, 0, 0.32]}>
+          <mesh key={`rib-${idx}`} position={[-0.04, 0, zOff]} rotation={[0, 0, 0.32]} castShadow receiveShadow>
             <boxGeometry args={[0.3, 0.032, 0.028]} />
             <PartMaterial
               {...sharedMat}
-              baseColor="#64748b"
-              metalness={0.8}
-              roughness={0.26}
+              finish="anodized-aluminum"
+              baseColor="#aeb6c1"
               stressFactor={0.85}
               thermalFactor={0.7}
             />
@@ -884,29 +947,21 @@ function AerospaceCantileverBracket({
         rotation={[0, 0, flexAngle * 1.15]}
       >
         {[-0.075, 0.075].map((zEar, idx) => (
-          <mesh key={`ear-${idx}`} position={[0, 0, zEar]} rotation={[Math.PI / 2, 0, 0]}>
+          <mesh key={`ear-${idx}`} position={[0, 0, zEar]} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
             <cylinderGeometry args={[0.095, 0.095, 0.036, 24]} />
             <PartMaterial
               {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.86}
-              roughness={0.22}
+              finish="brushed-aluminum"
+              baseColor="#d8dce0"
               stressFactor={0.76}
               thermalFactor={0.56}
             />
           </mesh>
         ))}
         {/* Bronze bushing & clevis pin */}
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.044, 0.044, 0.23, 20]} />
-          <PartMaterial
-            {...sharedMat}
-            baseColor="#d97706"
-            metalness={0.88}
-            roughness={0.2}
-            stressFactor={0.9}
-            thermalFactor={0.68}
-          />
+          <PartMaterial {...sharedMat} finish="brass" stressFactor={0.9} thermalFactor={0.68} />
         </mesh>
       </group>
 
@@ -975,13 +1030,12 @@ function TurbofanDuctedRotor({
   return (
     <group>
       {/* Low-profile test cradle pylon */}
-      <mesh position={[0, 0.04, 0]}>
+      <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
         <boxGeometry args={[0.14, 0.08, 0.34]} />
         <PartMaterial
           {...sharedMat}
-          baseColor="#1e293b"
-          metalness={0.8}
-          roughness={0.34}
+          finish="dark-anodized"
+          baseColor="#59626e"
           stressFactor={0.25}
           thermalFactor={0.2}
         />
@@ -989,25 +1043,24 @@ function TurbofanDuctedRotor({
 
       {/* 1. Inlet Shroud Cowl (open annular nacelle) */}
       <group position={[0, centerY + e * 0.14, shroudZ]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.295, 0.28, 0.38, 40, 1, true]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#64748b"
-            metalness={0.82}
-            roughness={0.24}
+            finish="ceramic-grey"
+            baseColor="#dfe4eb"
+            doubleSide={true}
             stressFactor={0.34}
             thermalFactor={0.4}
           />
         </mesh>
         {/* Aerodynamic inlet lip torus */}
-        <mesh position={[0, 0, 0.19]}>
+        <mesh position={[0, 0, 0.19]} castShadow receiveShadow>
           <torusGeometry args={[0.295, 0.024, 14, 44]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#cbd5e1"
-            metalness={0.9}
-            roughness={0.16}
+            finish="polished-steel"
+            baseColor="#d8dce0"
             stressFactor={0.38}
             thermalFactor={0.34}
           />
@@ -1017,11 +1070,10 @@ function TurbofanDuctedRotor({
           <torusGeometry args={[0.304, 0.006, 8, 44]} />
           <PartMaterial
             {...sharedMat}
+            finish="painted"
             baseColor={accentColor}
             emissive={accentColor}
-            emissiveIntensity={0.7}
-            metalness={0.3}
-            roughness={0.2}
+            emissiveIntensity={0.46}
             stressFactor={0.3}
             thermalFactor={0.36}
           />
@@ -1030,41 +1082,32 @@ function TurbofanDuctedRotor({
 
       {/* 2. Nose Cone Spinner */}
       <group ref={spinnerGroupRef} position={[0, centerY, spinnerZ]} rotation={[0, 0, rotorSpin]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
           <coneGeometry args={[0.082, 0.17, 28]} />
-          <PartMaterial
-            {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.88}
-            roughness={0.18}
-            stressFactor={0.44}
-            thermalFactor={0.42}
-          />
+          <PartMaterial {...sharedMat} finish="ceramic-white" stressFactor={0.44} thermalFactor={0.42} />
         </mesh>
       </group>
 
       {/* 3. Eight Angled Fan Rotor Blades + Hub */}
       <group ref={rotorGroupRef} position={[0, centerY, rotorZ]} rotation={[0, 0, rotorSpin]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.084, 0.09, 0.09, 24]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.88}
-            roughness={0.2}
+            finish="satin-steel"
+            baseColor="#b4bac2"
             stressFactor={0.86}
             thermalFactor={0.62}
           />
         </mesh>
         {ROTOR_BLADE_ANGLES.map((angle, idx) => (
           <group key={`blade-${idx}`} rotation={[0, 0, angle]}>
-            <mesh position={[0.17, 0, 0]} rotation={[0.48, 0.14, 0]}>
+            <mesh position={[0.17, 0, 0]} rotation={[0.48, 0.14, 0]} castShadow receiveShadow>
               <boxGeometry args={[0.185, 0.056, 0.012]} />
               <PartMaterial
                 {...sharedMat}
-                baseColor="#94a3b8"
-                metalness={0.9}
-                roughness={0.18}
+                finish="brushed-aluminum"
+                baseColor="#d2d6dc"
                 stressFactor={0.92}
                 thermalFactor={0.68}
               />
@@ -1075,26 +1118,24 @@ function TurbofanDuctedRotor({
 
       {/* 4. Stator Guide Vanes & Bypass Core */}
       <group position={[0, centerY, statorZ]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.125, 0.14, 0.26, 28]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#334155"
-            metalness={0.82}
-            roughness={0.28}
+            finish="anodized-aluminum"
+            baseColor="#a3acb8"
             stressFactor={0.66}
             thermalFactor={0.94}
           />
         </mesh>
         {STATOR_VANE_ANGLES.map((angle, idx) => (
           <group key={`stator-${idx}`} rotation={[0, 0, angle]}>
-            <mesh position={[0.195, 0, 0]} rotation={[-0.36, 0, 0]}>
+            <mesh position={[0.195, 0, 0]} rotation={[-0.36, 0, 0]} castShadow receiveShadow>
               <boxGeometry args={[0.145, 0.044, 0.014]} />
               <PartMaterial
                 {...sharedMat}
-                baseColor="#64748b"
-                metalness={0.84}
-                roughness={0.24}
+                finish="satin-steel"
+                baseColor="#bfc5cc"
                 stressFactor={0.62}
                 thermalFactor={0.84}
               />
@@ -1105,28 +1146,28 @@ function TurbofanDuctedRotor({
 
       {/* 5. Convergent Exhaust Nozzle */}
       <group position={[0, centerY, nozzleZ]}>
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
+        <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.25, 0.165, 0.22, 32, 1, true]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#1e293b"
-            metalness={0.86}
-            roughness={0.3}
+            finish="satin-steel"
+            baseColor="#9c948c"
+            roughness={0.32}
+            doubleSide={true}
             emissive="#c2410c"
-            emissiveIntensity={0.24}
+            emissiveIntensity={0.08}
             stressFactor={0.74}
             thermalFactor={0.98}
           />
         </mesh>
-        <mesh position={[0, 0, -0.05]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, 0, -0.05]} rotation={[-Math.PI / 2, 0, 0]} castShadow receiveShadow>
           <coneGeometry args={[0.09, 0.18, 24]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.88}
-            roughness={0.26}
+            finish="copper"
+            baseColor="#c49476"
             emissive="#ea580c"
-            emissiveIntensity={0.32}
+            emissiveIntensity={0.1}
             stressFactor={0.7}
             thermalFactor={1.0}
           />
@@ -1199,13 +1240,12 @@ function ArticulatedRoboticArm({
     <group>
       {/* 1. Pedestal Base */}
       <group position={[0, 0.045 - e * 0.06, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.21, 0.24, 0.09, 32]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#334155"
-            metalness={0.82}
-            roughness={0.28}
+            finish="dark-anodized"
+            baseColor="#5c6572"
             stressFactor={0.28}
             thermalFactor={0.24}
           />
@@ -1214,13 +1254,12 @@ function ArticulatedRoboticArm({
 
       {/* 2. Waist Turret (Joint 1 - Yaw) */}
       <group ref={waistGroupRef} position={[0, 0.11 + e * 0.1, 0]} rotation={[0, waistYaw, 0]}>
-        <mesh position={[0, 0.055, 0]}>
+        <mesh position={[0, 0.055, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.135, 0.155, 0.12, 28]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.8}
-            roughness={0.26}
+            finish="anodized-aluminum"
+            baseColor="#adb6c2"
             stressFactor={0.56}
             thermalFactor={0.52}
           />
@@ -1229,11 +1268,10 @@ function ArticulatedRoboticArm({
           <torusGeometry args={[0.138, 0.01, 8, 32]} />
           <PartMaterial
             {...sharedMat}
+            finish="painted"
             baseColor={accentColor}
             emissive={accentColor}
-            emissiveIntensity={0.62}
-            metalness={0.4}
-            roughness={0.2}
+            emissiveIntensity={0.42}
             stressFactor={0.5}
             thermalFactor={0.48}
           />
@@ -1242,39 +1280,30 @@ function ArticulatedRoboticArm({
         {/* 3. Shoulder Joint & Upper Link (Joint 2 - Pitch) */}
         <group ref={shoulderGroupRef} position={[0, 0.145 + e * 0.14, 0]} rotation={[0, 0, shoulderPitch]}>
           {/* Harmonic shoulder drum */}
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
             <cylinderGeometry args={[0.072, 0.072, 0.16, 24]} />
             <PartMaterial
               {...sharedMat}
-              baseColor="#1e293b"
-              metalness={0.84}
-              roughness={0.24}
+              finish="dark-anodized"
+              baseColor="#58616e"
               stressFactor={0.92}
               thermalFactor={0.84}
             />
           </mesh>
           {/* Upper arm box spar */}
-          <mesh position={[0, 0.155, 0]}>
+          <mesh position={[0, 0.155, 0]} castShadow receiveShadow>
             <boxGeometry args={[0.078, 0.29, 0.088]} />
-            <PartMaterial
-              {...sharedMat}
-              baseColor="#e2e8f0"
-              metalness={0.68}
-              roughness={0.24}
-              stressFactor={0.84}
-              thermalFactor={0.68}
-            />
+            <PartMaterial {...sharedMat} finish="ceramic-white" stressFactor={0.84} thermalFactor={0.68} />
           </mesh>
           {/* Accent rail */}
           <mesh position={[0.042, 0.155, 0]}>
             <boxGeometry args={[0.01, 0.24, 0.036]} />
             <PartMaterial
               {...sharedMat}
+              finish="painted"
               baseColor={accentColor}
               emissive={accentColor}
-              emissiveIntensity={0.45}
-              metalness={0.4}
-              roughness={0.25}
+              emissiveIntensity={0.32}
               stressFactor={0.72}
               thermalFactor={0.6}
             />
@@ -1282,24 +1311,22 @@ function ArticulatedRoboticArm({
 
           {/* 4. Elbow Joint & Forearm Link (Joint 3 - Pitch) */}
           <group ref={elbowGroupRef} position={[0, 0.305 + e * 0.14, 0]} rotation={[0, 0, elbowPitch]}>
-            <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
               <cylinderGeometry args={[0.058, 0.058, 0.13, 22]} />
               <PartMaterial
                 {...sharedMat}
-                baseColor="#1e293b"
-                metalness={0.84}
-                roughness={0.24}
+                finish="dark-anodized"
+                baseColor="#58616e"
                 stressFactor={0.8}
                 thermalFactor={0.76}
               />
             </mesh>
-            <mesh position={[0, 0.13, 0]}>
+            <mesh position={[0, 0.13, 0]} castShadow receiveShadow>
               <cylinderGeometry args={[0.036, 0.048, 0.24, 20]} />
               <PartMaterial
                 {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.76}
-                roughness={0.22}
+                finish="ceramic-grey"
+                baseColor="#dfe4ec"
                 stressFactor={0.68}
                 thermalFactor={0.58}
               />
@@ -1307,52 +1334,42 @@ function ArticulatedRoboticArm({
 
             {/* 5. Wrist Roll & Parallel Gripper (Joint 4) */}
             <group ref={wristGroupRef} position={[0, 0.255 + e * 0.12, 0]} rotation={[0, wristRoll, 0]}>
-              <mesh>
+              <mesh castShadow receiveShadow>
                 <cylinderGeometry args={[0.042, 0.038, 0.055, 18]} />
-                <PartMaterial
-                  {...sharedMat}
-                  baseColor="#334155"
-                  metalness={0.84}
-                  roughness={0.22}
-                  stressFactor={0.48}
-                  thermalFactor={0.54}
-                />
+                <PartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.48} thermalFactor={0.54} />
               </mesh>
               {/* Gripper crossbar */}
-              <mesh position={[0, 0.04, 0]}>
+              <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
                 <boxGeometry args={[0.125, 0.024, 0.042]} />
                 <PartMaterial
                   {...sharedMat}
-                  baseColor="#475569"
-                  metalness={0.82}
-                  roughness={0.25}
+                  finish="brushed-aluminum"
+                  baseColor="#d4d8dd"
                   stressFactor={0.44}
                   thermalFactor={0.44}
                 />
               </mesh>
               {/* Left & Right Parallel Fingers */}
-              <mesh ref={leftFingerRef} position={[-gripperHalfGap, 0.088, 0]}>
+              <mesh ref={leftFingerRef} position={[-gripperHalfGap, 0.088, 0]} castShadow receiveShadow>
                 <boxGeometry args={[0.016, 0.08, 0.026]} />
                 <PartMaterial
                   {...sharedMat}
+                  finish="painted"
                   baseColor={accentColor}
                   emissive={accentColor}
-                  emissiveIntensity={0.3}
-                  metalness={0.6}
-                  roughness={0.22}
+                  emissiveIntensity={0.14}
                   stressFactor={0.52}
                   thermalFactor={0.42}
                 />
               </mesh>
-              <mesh ref={rightFingerRef} position={[gripperHalfGap, 0.088, 0]}>
+              <mesh ref={rightFingerRef} position={[gripperHalfGap, 0.088, 0]} castShadow receiveShadow>
                 <boxGeometry args={[0.016, 0.08, 0.026]} />
                 <PartMaterial
                   {...sharedMat}
+                  finish="painted"
                   baseColor={accentColor}
                   emissive={accentColor}
-                  emissiveIntensity={0.3}
-                  metalness={0.6}
-                  roughness={0.22}
+                  emissiveIntensity={0.14}
                   stressFactor={0.52}
                   thermalFactor={0.42}
                 />
@@ -1454,13 +1471,12 @@ function CncMachinedImpeller({
     <group>
       {/* 1. 5-Axis Rotary Fixture Chuck */}
       <group position={[0, chuckY, 0]}>
-        <mesh>
+        <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.29, 0.31, 0.075, 36]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#334155"
-            metalness={0.85}
-            roughness={0.28}
+            finish="dark-anodized"
+            baseColor="#5c6572"
             stressFactor={0.3}
             thermalFactor={0.24}
           />
@@ -1470,13 +1486,14 @@ function CncMachinedImpeller({
             key={`jaw-${idx}`}
             position={[Math.cos(angle) * 0.23, 0.052, Math.sin(angle) * 0.23]}
             rotation={[0, -angle, 0]}
+            castShadow
+            receiveShadow
           >
             <boxGeometry args={[0.095, 0.042, 0.056]} />
             <PartMaterial
               {...sharedMat}
-              baseColor="#475569"
-              metalness={0.88}
-              roughness={0.24}
+              finish="satin-steel"
+              baseColor="#adb4bd"
               stressFactor={0.5}
               thermalFactor={0.28}
             />
@@ -1486,40 +1503,25 @@ function CncMachinedImpeller({
 
       {/* 2. Machined Billet Impeller Hub + 7 Swept Blades */}
       <group position={[0, impellerY, 0]}>
-        <mesh position={[0, 0.025, 0]}>
+        <mesh position={[0, 0.025, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.25, 0.265, 0.045, 36]} />
-          <PartMaterial
-            {...sharedMat}
-            baseColor="#cbd5e1"
-            metalness={0.92}
-            roughness={0.16}
-            stressFactor={0.72}
-            thermalFactor={0.7}
-          />
+          <PartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.72} thermalFactor={0.7} />
         </mesh>
-        <mesh position={[0, 0.145, 0]}>
+        <mesh position={[0, 0.145, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.068, 0.165, 0.22, 32]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.94}
-            roughness={0.14}
+            finish="polished-steel"
+            baseColor="#dce0e4"
             stressFactor={0.84}
             thermalFactor={0.82}
           />
         </mesh>
         {IMPELLER_BLADE_ANGLES.map((angle, idx) => (
           <group key={`imp-blade-${idx}`} rotation={[0, angle, 0]}>
-            <mesh position={[0.145, 0.125, 0.024]} rotation={[0.38, 0.42, -0.32]}>
+            <mesh position={[0.145, 0.125, 0.024]} rotation={[0.38, 0.42, -0.32]} castShadow receiveShadow>
               <boxGeometry args={[0.155, 0.175, 0.014]} />
-              <PartMaterial
-                {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.92}
-                roughness={0.15}
-                stressFactor={0.88}
-                thermalFactor={0.86}
-              />
+              <PartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.88} thermalFactor={0.86} />
             </mesh>
           </group>
         ))}
@@ -1543,37 +1545,28 @@ function CncMachinedImpeller({
         rotation={[Math.sin(radialAngle) * spindleTilt, 0, -Math.cos(radialAngle) * spindleTilt]}
       >
         {/* Carbide ball-end mill cutter */}
-        <mesh ref={cutterMeshRef} position={[0, 0.065, 0]} rotation={[0, initialTime * 18, 0]}>
+        <mesh ref={cutterMeshRef} position={[0, 0.065, 0]} rotation={[0, initialTime * 18, 0]} castShadow>
           <cylinderGeometry args={[0.011, 0.009, 0.13, 12]} />
-          <PartMaterial
-            {...sharedMat}
-            baseColor="#f59e0b"
-            metalness={0.92}
-            roughness={0.14}
-            stressFactor={0.96}
-            thermalFactor={1.0}
-          />
+          <PartMaterial {...sharedMat} finish="gold" stressFactor={0.96} thermalFactor={1.0} />
         </mesh>
         {/* ER Collet nut */}
-        <mesh position={[0, 0.15, 0]}>
+        <mesh position={[0, 0.15, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.036, 0.024, 0.055, 16]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.86}
-            roughness={0.22}
+            finish="satin-steel"
+            baseColor="#b5bcc5"
             stressFactor={0.78}
             thermalFactor={0.76}
           />
         </mesh>
         {/* High-speed spindle housing */}
-        <mesh position={[0, 0.245, 0]}>
+        <mesh position={[0, 0.245, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.056, 0.048, 0.14, 24]} />
           <PartMaterial
             {...sharedMat}
-            baseColor="#1e293b"
-            metalness={0.82}
-            roughness={0.26}
+            finish="dark-anodized"
+            baseColor="#58616e"
             stressFactor={0.54}
             thermalFactor={0.62}
           />
@@ -1625,14 +1618,15 @@ function CadPartGeometry({ shape }: { shape: string | undefined }): React.ReactE
   }
 }
 
-const PROCEDURAL_PLINTH_TARGET_SIZE = 0.78;
+// Local plinth-unit normalization; `hero` scale mode multiplies the whole plinth root so this lands at ~3.2 m.
+const PROCEDURAL_PLINTH_TARGET_SIZE = PLINTH_MODEL_NORMALIZED_SIZE;
 const PROCEDURAL_PLINTH_FLOOR_Y = 0.04;
 const PROCEDURAL_DEFAULT_PALETTE: readonly string[] = [
-  "#94a3b8",
-  "#64748b",
-  "#7c8ea6",
-  "#cbd5e1",
-  "#475569",
+  "#d6d9dc",
+  "#b9bcbf",
+  "#dde3ea",
+  "#a4adb9",
+  "#d4b26a",
   "#38bdf8",
 ];
 
@@ -1688,6 +1682,7 @@ function buildProceduralBufferGeometry(
     geo.computeVertexNormals();
   }
 
+  ensureGeometryBrushedUvs(geo);
   geo.computeBoundingBox();
   geo.computeBoundingSphere();
   return geo;
@@ -2103,11 +2098,10 @@ function CadComponentsAssembly({
           >
             {item.geometry ? (
               <>
-                <mesh geometry={item.geometry}>
+                <mesh geometry={item.geometry} castShadow receiveShadow>
                   <PartMaterial
+                    finish="brushed-aluminum"
                     baseColor={proceduralBaseColor}
-                    metalness={0.76}
-                    roughness={0.28}
                     stressFactor={item.stressFactor}
                     thermalFactor={item.thermalFactor}
                     doubleSide={true}
@@ -2133,12 +2127,11 @@ function CadComponentsAssembly({
               </>
             ) : (
               <>
-                <mesh>
+                <mesh castShadow receiveShadow>
                   <CadPartGeometry shape={item.part.shape} />
                   <PartMaterial
-                    baseColor={item.part.color ?? (idx % 2 === 0 ? "#64748b" : "#94a3b8")}
-                    metalness={0.82}
-                    roughness={0.26}
+                    finish={idx % 2 === 0 ? "brushed-aluminum" : "satin-steel"}
+                    baseColor={item.part.color}
                     stressFactor={item.stressFactor}
                     thermalFactor={item.thermalFactor}
                     renderStyle={renderStyle}
@@ -2153,11 +2146,10 @@ function CadComponentsAssembly({
                   <mesh position={[0, 0.068, 0]} rotation={[Math.PI / 2, 0, 0]}>
                     <torusGeometry args={[0.092, 0.012, 10, 28]} />
                     <PartMaterial
+                      finish="painted"
                       baseColor={accentColor}
                       emissive={accentColor}
-                      emissiveIntensity={0.45}
-                      metalness={0.5}
-                      roughness={0.22}
+                      emissiveIntensity={0.38}
                       stressFactor={item.stressFactor}
                       thermalFactor={item.thermalFactor}
                       renderStyle={renderStyle}
@@ -2188,12 +2180,15 @@ interface GltfExplodeTarget {
 }
 
 interface GltfClonedMaterialRecord {
-  mat: THREE.MeshStandardMaterial;
+  mat: THREE.MeshPhysicalMaterial;
   originalColor: THREE.Color;
   originalEmissive: THREE.Color;
   originalEmissiveIntensity: number;
   originalMetalness: number;
   originalRoughness: number;
+  originalClearcoat: number;
+  originalClearcoatRoughness: number;
+  originalEnvMapIntensity: number;
   originalMap: THREE.Texture | null;
   originalOpacity: number;
   originalTransparent: boolean;
@@ -2296,8 +2291,8 @@ function GltfHeroModel({
     });
 
     sourceMeshes.forEach((mesh, idx) => {
-      mesh.castShadow = false;
-      mesh.receiveShadow = false;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
 
       // Clone geometry so per-vertex CAE color attributes never mutate shared useGLTF cache
       const clonedGeom = mesh.geometry.clone();
@@ -2338,14 +2333,29 @@ function GltfHeroModel({
         feaEdgeMat,
       });
 
-      const cloneOne = (src: THREE.Material): THREE.MeshStandardMaterial => {
-        const stdSrc = src as THREE.MeshStandardMaterial;
-        const next = new THREE.MeshStandardMaterial({
-          color: stdSrc.color ? stdSrc.color.clone() : new THREE.Color("#94a3b8"),
+      const cloneOne = (src: THREE.Material): THREE.MeshPhysicalMaterial => {
+        const stdSrc = src as THREE.MeshPhysicalMaterial;
+        const resolvedMetalness = typeof stdSrc.metalness === "number" ? stdSrc.metalness : 0.65;
+        const resolvedRoughness = typeof stdSrc.roughness === "number" ? stdSrc.roughness : 0.34;
+        const resolvedClearcoat = typeof stdSrc.clearcoat === "number" ? stdSrc.clearcoat : 0;
+        const resolvedClearcoatRoughness =
+          typeof stdSrc.clearcoatRoughness === "number" ? stdSrc.clearcoatRoughness : 0.22;
+        const resolvedEnvMapIntensity =
+          typeof stdSrc.envMapIntensity === "number" && stdSrc.envMapIntensity > 0
+            ? Math.max(stdSrc.envMapIntensity, resolvedMetalness >= 0.5 ? 1.22 : 0.96)
+            : resolvedMetalness >= 0.5
+              ? 1.24
+              : 0.96;
+
+        const next = new THREE.MeshPhysicalMaterial({
+          color: stdSrc.color ? stdSrc.color.clone() : new THREE.Color("#cfd5dc"),
           emissive: stdSrc.emissive ? stdSrc.emissive.clone() : new THREE.Color("#000000"),
           emissiveIntensity: typeof stdSrc.emissiveIntensity === "number" ? stdSrc.emissiveIntensity : 0,
-          metalness: typeof stdSrc.metalness === "number" ? stdSrc.metalness : 0.6,
-          roughness: typeof stdSrc.roughness === "number" ? stdSrc.roughness : 0.35,
+          metalness: resolvedMetalness,
+          roughness: resolvedRoughness,
+          clearcoat: resolvedClearcoat,
+          clearcoatRoughness: resolvedClearcoatRoughness,
+          envMapIntensity: resolvedEnvMapIntensity,
           map: stdSrc.map ?? null,
           normalMap: stdSrc.normalMap ?? null,
           roughnessMap: stdSrc.roughnessMap ?? null,
@@ -2360,6 +2370,9 @@ function GltfHeroModel({
           originalEmissiveIntensity: next.emissiveIntensity,
           originalMetalness: next.metalness,
           originalRoughness: next.roughness,
+          originalClearcoat: next.clearcoat,
+          originalClearcoatRoughness: next.clearcoatRoughness,
+          originalEnvMapIntensity: next.envMapIntensity,
           originalMap: next.map,
           originalOpacity: next.opacity,
           originalTransparent: next.transparent,
@@ -2442,6 +2455,7 @@ function GltfHeroModel({
       const prevSide = m.side;
       const prevVertexColors = m.vertexColors;
       const prevHasMap = m.map !== null;
+      const prevHasClearcoat = m.clearcoat > 0;
       m.clippingPlanes = planes;
       m.clipShadows = true;
 
@@ -2451,6 +2465,8 @@ function GltfHeroModel({
         m.emissiveIntensity = 0.55;
         m.metalness = 0.2;
         m.roughness = 0.25;
+        m.clearcoat = 0;
+        m.envMapIntensity = 0.85;
         m.vertexColors = false;
         m.map = null;
         m.transparent = true;
@@ -2464,6 +2480,9 @@ function GltfHeroModel({
         m.emissiveIntensity = rec.originalEmissiveIntensity;
         m.metalness = rec.originalMetalness;
         m.roughness = rec.originalRoughness;
+        m.clearcoat = rec.originalClearcoat;
+        m.clearcoatRoughness = rec.originalClearcoatRoughness;
+        m.envMapIntensity = rec.originalEnvMapIntensity;
         m.vertexColors = false;
         m.map = rec.originalMap;
 
@@ -2476,6 +2495,8 @@ function GltfHeroModel({
           m.map = null;
           m.metalness = caeOverlay === "cfd-flow" ? 0.16 : 0.08;
           m.roughness = caeOverlay === "cfd-flow" ? 0.42 : 0.54;
+          m.clearcoat = 0;
+          m.envMapIntensity = 0.85;
         } else if (caeOverlay === "fea-stress") {
           tmpColor.set(sampleTurboStressColor(rec.stressWeight));
           m.color.copy(tmpColor);
@@ -2483,6 +2504,8 @@ function GltfHeroModel({
           m.emissiveIntensity = 0.25 + rec.stressWeight * 0.3;
           m.metalness = 0.22;
           m.roughness = 0.42;
+          m.clearcoat = 0;
+          m.envMapIntensity = 0.85;
         } else if (caeOverlay === "thermal") {
           tmpColor.set(sampleThermalColor(rec.thermalWeight));
           m.color.copy(tmpColor);
@@ -2490,6 +2513,8 @@ function GltfHeroModel({
           m.emissiveIntensity = 0.36 + rec.thermalWeight * 0.5;
           m.metalness = 0.16;
           m.roughness = 0.45;
+          m.clearcoat = 0;
+          m.envMapIntensity = 0.85;
         } else if (caeOverlay === "cfd-flow") {
           m.emissive.set("#0284c7");
           m.emissiveIntensity = Math.max(rec.originalEmissiveIntensity, 0.1);
@@ -2531,7 +2556,8 @@ function GltfHeroModel({
         prevWireframe !== m.wireframe ||
         prevSide !== m.side ||
         prevVertexColors !== m.vertexColors ||
-        prevHasMap !== (m.map !== null)
+        prevHasMap !== (m.map !== null) ||
+        prevHasClearcoat !== m.clearcoat > 0
       ) {
         m.needsUpdate = true;
       }

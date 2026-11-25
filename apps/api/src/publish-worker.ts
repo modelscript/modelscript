@@ -180,7 +180,9 @@ process.on(
                 }
               }
             }
-          } catch {}
+          } catch {
+            // Optional package.json may be missing or malformed
+          }
         }
       }
 
@@ -226,7 +228,9 @@ process.on(
               if (idxEntry) {
                 bundleIndexJson = JSON.parse(idxEntry.getData().toString("utf-8"));
               }
-            } catch {}
+            } catch {
+              // Dependency bundle index.json is optional; proceed without it
+            }
           }
           const depIconHashes = database.getClassIconHashes(depName, resolvedVer);
           resolvedDeps.push({
@@ -378,7 +382,7 @@ process.on(
         }
 
         if (sysmlParser) {
-          loadEmbeddedKerMLStdlib(sysmlWs, sysmlParser);
+          loadEmbeddedKerMLStdlib(sysmlWs, sysmlParser as unknown as Parameters<typeof loadEmbeddedKerMLStdlib>[1]);
         }
 
         const sysmlTextByUri = new Map<string, string>();
@@ -586,7 +590,9 @@ process.on(
               documentation: null,
             };
           }
-        } catch {}
+        } catch {
+          // Optional manifest JSON may be unreadable or malformed
+        }
       }
 
       const readmePath = path.join(libraryPath, "README.md");
@@ -696,11 +702,15 @@ process.on(
       console.error(`[publish] Fatal error for ${name}@${version}:`, err);
       try {
         process.send?.({ type: "error", error: msg });
-      } catch {}
+      } catch {
+        // Parent IPC channel may already be closed
+      }
     } finally {
       try {
         database.close();
-      } catch {}
+      } catch {
+        // Database may already be closed
+      }
       process.exit(exitCode);
     }
   },

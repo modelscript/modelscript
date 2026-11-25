@@ -1,0 +1,40 @@
+MODEL: ElectroHydrostaticActuator
+TITLE: "Primary Flight Control Electro-Hydrostatic Actuator (EHA)"
+
+COMPONENTS:
+  UG01 TYPE=GP/UG TITLE="Aileron Deflection Command" X=80 Y=200
+    PORTS: OUT=output
+    XP: CMD_RAD=0.12
+    FORTRAN:
+      OUT = 0.12
+    ENDFORTRAN
+
+  SJ01 TYPE=GP/SJ TITLE="Position Error Junction" X=230 Y=200
+    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0
+
+  GA01 TYPE=GP/GA TITLE="Proportional Controller" X=380 Y=200
+    XP: K=18.0
+
+  LM01 TYPE=GP/LM TITLE="Motor Speed Saturation" X=520 Y=200
+    XP: UL=12.0, LL=-12.0
+
+  TF01 TYPE=GP/TF TITLE="Motor-Pump Dynamics" X=680 Y=200
+    XP: NUM=[1.0], DEN=[0.004, 0.12, 1.0]
+    S0: S1=0.0, S2=0.0
+
+  IN01 TYPE=GP/IN TITLE="Actuator Cylinder Displacement" X=850 Y=200
+    XP: GAIN=2.4, UL=0.25, LL=-0.25
+    S0: S1=0.0
+
+  TF02 TYPE=GP/TF TITLE="LVDT Sensor Filter" X=520 Y=360
+    XP: NUM=[1.0], DEN=[0.005, 1.0]
+    S0: S1=0.0
+
+CONNECTIONS:
+  UG01.OUT -> SJ01.IN1
+  SJ01.OUT -> GA01.IN
+  GA01.OUT -> LM01.IN
+  LM01.OUT -> TF01.IN
+  TF01.OUT -> IN01.IN
+  IN01.OUT -> TF02.IN
+  TF02.OUT -> SJ01.IN2

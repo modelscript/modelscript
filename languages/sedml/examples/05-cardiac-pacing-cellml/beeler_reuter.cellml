@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model name="beeler_reuter_simplified" xmlns="http://www.cellml.org/cellml/1.1#">
+  <units name="ms"><unit prefix="milli" units="second"/></units>
+  <units name="mV"><unit prefix="milli" units="volt"/></units>
+  <component name="membrane">
+    <variable name="time" units="ms"/>
+    <variable name="V" units="mV" initial_value="-84.6"/>
+    <variable name="V_rest" units="mV" initial_value="-84.6"/>
+    <variable name="tau" units="ms" initial_value="15.0"/>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <eq/>
+        <apply><diff/><bvar><ci>time</ci></bvar><ci>V</ci></apply>
+        <apply><divide/><apply><minus/><ci>V_rest</ci><ci>V</ci></apply><ci>tau</ci></apply>
+      </apply>
+    </math>
+  </component>
+</model>

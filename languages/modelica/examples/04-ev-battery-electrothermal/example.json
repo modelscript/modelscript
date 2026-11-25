@@ -1,0 +1,11 @@
+{
+  "id": "modelica-04-ev-battery-electrothermal",
+  "lang": "modelica",
+  "subFormats": ["mo"],
+  "difficulty": 4,
+  "title": "800V EV Battery Electro-Thermal Pack",
+  "description": "Coupled 2-RC Thevenin equivalent circuit and lumped thermal model of an 800V lithium-ion EV traction battery pack under fast-discharge load.",
+  "category": "Energy Storage",
+  "tags": ["modelica", "battery", "ev", "electrothermal", "thevenin"],
+  "activeFile": "EVBatteryPack.mo"
+}

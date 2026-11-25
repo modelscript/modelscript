@@ -6,6 +6,8 @@ export interface WASMMemoryLike {
   buffer: ArrayBufferLike;
 }
 
+export type ConfigOptionValue = number | boolean | string;
+
 /**
  * Host-side TypeScript client for inspecting and mutating WebAssembly linear memory runtime configurations in O(1).
  */
@@ -30,7 +32,7 @@ export class RuntimeConfigClient {
   /**
    * Retrieves a configuration option value from WASM linear memory.
    */
-  get(key: string): any {
+  get(key: string): ConfigOptionValue {
     const entry = this.layout.entries.get(key);
     if (!entry) {
       throw new Error(`[ConfigClient] Unknown configuration key '${key}'`);
@@ -50,12 +52,13 @@ export class RuntimeConfigClient {
       const idx = view.getUint8(targetOffset);
       return entry.choices && entry.choices[idx] !== undefined ? entry.choices[idx] : idx;
     }
+    throw new Error(`[ConfigClient] Unsupported configuration type for key '${key}'`);
   }
 
   /**
    * Mutates a configuration option value directly in WASM linear memory.
    */
-  set(key: string, value: any): void {
+  set(key: string, value: ConfigOptionValue): void {
     const entry = this.layout.entries.get(key);
     if (!entry) {
       throw new Error(`[ConfigClient] Unknown configuration key '${key}'`);
@@ -67,7 +70,7 @@ export class RuntimeConfigClient {
 
     if (entry.type === "float") {
       const numVal = Number(value);
-      if (isNaN(numVal)) throw new Error(`[ConfigClient] Invalid float value for key '${key}': ${value}`);
+      if (isNaN(numVal)) throw new Error(`[ConfigClient] Invalid float value for key '${key}': ${String(value)}`);
       if (entry.min !== undefined && numVal < entry.min)
         throw new Error(`[ConfigClient] Value ${numVal} below min threshold ${entry.min} for key '${key}'`);
       if (entry.max !== undefined && numVal > entry.max)
@@ -75,7 +78,7 @@ export class RuntimeConfigClient {
       view.setFloat64(targetOffset, numVal, true);
     } else if (entry.type === "int") {
       const intVal = Math.floor(Number(value));
-      if (isNaN(intVal)) throw new Error(`[ConfigClient] Invalid int value for key '${key}': ${value}`);
+      if (isNaN(intVal)) throw new Error(`[ConfigClient] Invalid int value for key '${key}': ${String(value)}`);
       if (entry.min !== undefined && intVal < entry.min)
         throw new Error(`[ConfigClient] Value ${intVal} below min threshold ${entry.min} for key '${key}'`);
       if (entry.max !== undefined && intVal > entry.max)
@@ -93,7 +96,7 @@ export class RuntimeConfigClient {
       }
       if (idx === -1 || (entry.choices && idx >= entry.choices.length)) {
         throw new Error(
-          `[ConfigClient] Invalid enum choice '${value}' for key '${key}'. Valid choices: [${entry.choices?.join(", ")}]`,
+          `[ConfigClient] Invalid enum choice '${String(value)}' for key '${key}'. Valid choices: [${entry.choices?.join(", ")}]`,
         );
       }
       view.setUint8(targetOffset, idx);
@@ -103,8 +106,8 @@ export class RuntimeConfigClient {
   /**
    * Dumps current state of all configuration entries.
    */
-  getAll(): Record<string, any> {
-    const result: Record<string, any> = {};
+  getAll(): Record<string, ConfigOptionValue> {
+    const result: Record<string, ConfigOptionValue> = {};
     for (const key of this.layout.entries.keys()) {
       result[key] = this.get(key);
     }

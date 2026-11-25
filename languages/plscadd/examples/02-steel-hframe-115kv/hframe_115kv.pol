@@ -1,0 +1,9 @@
+LINE Line_115kV_HFrame voltage_kv=115 freq=60
+CONDUCTOR Hawk_477 weight_n_per_m=9.58 r_ohm_per_km=0.119 gmr_m=0.0088 rated_tension_n=86900
+STRUCTURE H201 station_m=0 x=0 y=0 z_base=120 height_m=24.0 phase_spacing_m=3.8
+STRUCTURE H202 station_m=210 x=210 y=0 z_base=122 height_m=24.0 phase_spacing_m=3.8
+STRUCTURE H203 station_m=430 x=430 y=0 z_base=121 height_m=24.0 phase_spacing_m=3.8
+SPAN S1 from=H201 to=H202 conductor=Hawk_477 tension_n=21500 min_clearance_m=7.5
+SPAN S2 from=H202 to=H203 conductor=Hawk_477 tension_n=22000 min_clearance_m=7.5
+TERRAIN 105 0 123.0
+TERRAIN 320 0 124.2

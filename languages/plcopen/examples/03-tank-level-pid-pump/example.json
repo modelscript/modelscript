@@ -1,0 +1,11 @@
+{
+  "id": "plcopen-03-tank-level-pid-pump",
+  "lang": "plcopen",
+  "subFormats": ["st"],
+  "difficulty": 3,
+  "title": "Tank Level PI Control with Cascade Pump Alternation",
+  "description": "Process tank level controller combining discrete PI variable-speed pump regulation with anti-windup clamping and lead-lag dual-pump alternation for high-level surge protection.",
+  "category": "Process Control PLC",
+  "tags": ["plcopen", "pid", "pump-alternation", "process-control"],
+  "activeFile": "tank_pid.st"
+}

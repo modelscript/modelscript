@@ -81,7 +81,10 @@ export function resolvePlaceholder(vt?: string): PlaceholderType {
  * Maps any artifact view_type, dialect, or file format to a standardized, concise uppercase badge.
  * Examples: 'csv' -> 'CSV', 'cad-step' -> 'STEP', 'modelica-code' -> 'MODELICA', 'sysml2' -> 'SYSML'.
  */
-export function formatViewType(rawType?: string, viewConfig?: any): string {
+export function formatViewType(
+  rawType?: string,
+  viewConfig?: { view_type?: unknown; format?: unknown; dialect?: unknown } | Record<string, unknown> | null,
+): string {
   const vt = String(rawType || viewConfig?.view_type || "")
     .trim()
     .toLowerCase();
@@ -115,8 +118,8 @@ export function formatViewType(rawType?: string, viewConfig?: any): string {
     vt === "modelica" ||
     vt === "modelica-code" ||
     vt === "modelica-diagram" ||
-    vt === "morsel" ||
-    vt === "polyglot-morsel"
+    vt === "ansatz" ||
+    vt === "polyglot-ansatz"
   ) {
     if (dialect === "msx" || dialect === "modelscript") return "MODELSCRIPT";
     return "MODELICA";
@@ -173,12 +176,24 @@ export function formatViewType(rawType?: string, viewConfig?: any): string {
   return vt.replace(/-viewer$|-result$|-code$|-deck$/i, "").toUpperCase();
 }
 
-export function resolveThumbnailUrls(viewConfig: any): {
+export function resolveThumbnailUrls(
+  viewConfig?:
+    | {
+        thumbnailUrl?: unknown;
+        thumbnail_url?: unknown;
+        thumbnailUrlLight?: unknown;
+        thumbnailUrlDark?: unknown;
+        svg?: unknown;
+      }
+    | Record<string, unknown>
+    | null,
+): {
   resolvedThumbnailUrl: string | undefined;
   resolvedThumbnailUrlLight: string | undefined;
   resolvedThumbnailUrlDark: string | undefined;
 } {
-  let resolvedThumbnailUrl = viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url;
+  const rawThumb = viewConfig?.thumbnailUrl || viewConfig?.thumbnail_url;
+  let resolvedThumbnailUrl = typeof rawThumb === "string" ? rawThumb : undefined;
   if (resolvedThumbnailUrl && resolvedThumbnailUrl.startsWith("/thumbnails/")) {
     resolvedThumbnailUrl = `/api${resolvedThumbnailUrl}`;
   } else if (resolvedThumbnailUrl && resolvedThumbnailUrl.startsWith("/uploads/")) {
@@ -188,7 +203,8 @@ export function resolveThumbnailUrls(viewConfig: any): {
     resolvedThumbnailUrl = `${resolvedThumbnailUrl}?v=3d2`;
   }
 
-  let resolvedThumbnailUrlLight = viewConfig?.thumbnailUrlLight;
+  let resolvedThumbnailUrlLight =
+    typeof viewConfig?.thumbnailUrlLight === "string" ? viewConfig.thumbnailUrlLight : undefined;
   if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.startsWith("/thumbnails/")) {
     resolvedThumbnailUrlLight = `/api${resolvedThumbnailUrlLight}`;
   } else if (resolvedThumbnailUrlLight && resolvedThumbnailUrlLight.startsWith("/uploads/")) {
@@ -198,7 +214,8 @@ export function resolveThumbnailUrls(viewConfig: any): {
     resolvedThumbnailUrlLight = `${resolvedThumbnailUrlLight}?v=3d2`;
   }
 
-  let resolvedThumbnailUrlDark = viewConfig?.thumbnailUrlDark;
+  let resolvedThumbnailUrlDark =
+    typeof viewConfig?.thumbnailUrlDark === "string" ? viewConfig.thumbnailUrlDark : undefined;
   if (resolvedThumbnailUrlDark && resolvedThumbnailUrlDark.startsWith("/thumbnails/")) {
     resolvedThumbnailUrlDark = `/api${resolvedThumbnailUrlDark}`;
   } else if (resolvedThumbnailUrlDark && resolvedThumbnailUrlDark.startsWith("/uploads/")) {
@@ -211,16 +228,15 @@ export function resolveThumbnailUrls(viewConfig: any): {
   // If a pre-generated vector SVG is available in viewConfig and the thumbnail is either missing,
   // a stale auto-captured raster snapshot (/thumbnails/artifact_), or a 3D isometric scene (URDF/QIF),
   // prioritize the pristine vector SVG.
-  const hasInlineSvg = typeof viewConfig?.svg === "string" && viewConfig.svg.trim().startsWith("<svg");
-  const isUrdf3dSvg =
-    hasInlineSvg && (viewConfig.svg.includes('data-urdf-3d="true"') || viewConfig.svg.includes("3D FK Pose"));
+  const svgStr = typeof viewConfig?.svg === "string" ? viewConfig.svg : "";
+  const hasInlineSvg = svgStr.trim().startsWith("<svg");
+  const isUrdf3dSvg = hasInlineSvg && (svgStr.includes('data-urdf-3d="true"') || svgStr.includes("3D FK Pose"));
   const isQif3dSvg =
-    hasInlineSvg &&
-    (viewConfig.svg.includes('data-qif-3d="true"') || viewConfig.svg.includes('data-testid="qif-3d-svg"'));
+    hasInlineSvg && (svgStr.includes('data-qif-3d="true"') || svgStr.includes('data-testid="qif-3d-svg"'));
   const is3dSceneSvg = isUrdf3dSvg || isQif3dSvg;
   const isStaleRaster = !resolvedThumbnailUrl || resolvedThumbnailUrl.includes("/thumbnails/artifact_");
   if (hasInlineSvg && (isStaleRaster || is3dSceneSvg)) {
-    const dataUri = `data:image/svg+xml;utf8,${encodeURIComponent(viewConfig.svg.trim())}`;
+    const dataUri = `data:image/svg+xml;utf8,${encodeURIComponent(svgStr.trim())}`;
     resolvedThumbnailUrl = dataUri;
     resolvedThumbnailUrlLight =
       !is3dSceneSvg && resolvedThumbnailUrlLight && !resolvedThumbnailUrlLight.includes("/thumbnails/artifact_")

@@ -1,0 +1,11 @@
+{
+  "id": "simscript-04-air-traffic-runway",
+  "lang": "simscript",
+  "subFormats": ["sim"],
+  "difficulty": 4,
+  "title": "Air Traffic Runway Arrival and Departure Scheduler",
+  "description": "Multi-file SIMSCRIPT II.5 airport runway operations model coordinating landing and takeoff aircraft queues, shared runway wake-turbulence separation, and weather visibility shifts.",
+  "category": "Aviation Operations",
+  "tags": ["simscript", "aviation", "runway", "scheduler", "multi-file"],
+  "activeFile": "runway.sim"
+}

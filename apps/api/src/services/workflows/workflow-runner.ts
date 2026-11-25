@@ -215,7 +215,9 @@ async function runStepCommandAsync(
       killedReason = `Process timed out after ${timeoutMs}ms`;
       try {
         child.kill("SIGKILL");
-      } catch {}
+      } catch {
+        // Child process may have already exited
+      }
     }, timeoutMs);
     timer.unref?.();
 
@@ -227,7 +229,9 @@ async function runStepCommandAsync(
         killedReason = "stdout maxBuffer length exceeded";
         try {
           child.kill("SIGKILL");
-        } catch {}
+        } catch {
+          // Child process may have already exited
+        }
         return;
       }
       stdoutChunks.push(chunk);
@@ -242,7 +246,9 @@ async function runStepCommandAsync(
         killedReason = "stderr maxBuffer length exceeded";
         try {
           child.kill("SIGKILL");
-        } catch {}
+        } catch {
+          // Child process may have already exited
+        }
         return;
       }
       stderrChunks.push(chunk);
@@ -482,7 +488,9 @@ export function executeWorkflowManifest(opts: WorkflowRunOptions): WorkflowRunRe
   // Cleanup scratch directory
   try {
     fs.rmSync(scratchDir, { recursive: true, force: true });
-  } catch {}
+  } catch {
+    // Best-effort cleanup of workflow scratch directory
+  }
 
   const completedAt = new Date().toISOString();
   const durationMs = Date.now() - startTime;

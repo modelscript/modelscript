@@ -1,0 +1,77 @@
+[
+  {
+    "id": "scale-01-bare-uranium-sphere-csas6",
+    "lang": "scale",
+    "subFormats": ["csas6", "keno-vi"],
+    "difficulty": 1,
+    "title": "Bare Uranium Sphere KENO-VI Criticality",
+    "description": "ORNL SCALE CSAS6 KENO-VI criticality calculation for a bare highly enriched uranium metal sphere in vacuum boundary conditions.",
+    "category": "Nuclear Criticality Safety",
+    "tags": ["scale", "csas6", "keno-vi", "criticality"],
+    "activeFile": "bare_sphere.scale",
+    "fileNames": ["bare_sphere.scale"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "' Bare HEU Metal Sphere KENO-VI Criticality\n=csas6\nBare HEU Metal Sphere Benchmark\nv7.1-252\nread comp\n  u 1 den=18.74 1.0 300.0 92235 93.71 92238 6.29 end\nend comp\nread param\n  npg=2000 gen=200 nsk=50\nend param\nread geom\n  global unit 1\n  sphere 1 8.741\n  media 1 1 1\n  boundary 1\nend geom\nread bounds\n  all=vacuum\nend bounds\nend\n"
+  },
+  {
+    "id": "scale-02-spent-fuel-decay-origen",
+    "lang": "scale",
+    "subFormats": ["origen"],
+    "difficulty": 2,
+    "title": "Spent Fuel Decay Heat and Isotopics (ORIGEN)",
+    "description": "ORIGEN nuclear transmutation and radioactive decay simulation tracking U-235 depletion and I-135/Xe-135 fission product poisoning through irradiation and cooling.",
+    "category": "Nuclear Fuel Cycle & Depletion",
+    "tags": ["scale", "origen", "depletion", "decay-heat", "xenon"],
+    "activeFile": "spent_fuel.scale",
+    "fileNames": ["spent_fuel.scale"],
+    "fileCount": 1,
+    "code": "' PWR Spent Fuel Irradiation and Cooling Decay Heat\n=origen\nPWR UO2 Irradiation and Post-Shutdown Decay\ncase(burn_cool) {\n  lib { file=\"pwr_u235.f33\" }\n  mat {\n    units=atoms\n    iso=[ u235=1.2e21 i135=1.0e15 xe135=0.0 cs137=0.0 ]\n  }\n  time {\n    units=hours\n    t=[ 4 12 24 48 96 ]\n  }\n  flux=[ 3.5e13 3.5e13 3.5e13 0.0 0.0 ]\n  power=[ 38.0 38.0 38.0 0.0 0.0 ]\n  save\n}\nend\n"
+  },
+  {
+    "id": "scale-03-pwr-pincell-triton",
+    "lang": "scale",
+    "subFormats": ["triton", "depletion"],
+    "difficulty": 3,
+    "title": "PWR 17x17 Pin-Cell Depletion (TRITON)",
+    "description": "SCALE TRITON 2D lattice physics and depletion model of a 17x17 PWR UO2 fuel pin cell with Zircaloy-4 cladding and reflective mirror boundaries.",
+    "category": "Nuclear Reactor Physics",
+    "tags": ["scale", "triton", "pwr", "pincell", "depletion"],
+    "activeFile": "pwr_pincell.scale",
+    "fileNames": ["pwr_pincell.scale"],
+    "fileCount": 1,
+    "code": "' PWR 17x17 Pin-Cell Lattice Physics and Depletion\n=triton\nPWR 17x17 4.0 wt pct UO2 Pin Cell Depletion\nv7.1-252\nread comp\n  uo2 1 den=10.41 1.0 900.0 92235 4.0 92238 96.0 end\n  zirc4 3 den=6.56 1.0 600.0 end\n  h2o 2 den=0.71 1.0 580.0 end\nend comp\nread celldata\n  latticecell squarepitch pitch=1.26 2 fuelr=0.4096 1 cladr=0.475 3 end\nend celldata\nread param\n  npg=2000 gen=250 nsk=50\nend param\nread geom\n  global unit 1\n  cylinder 1 0.4096 182.88 -182.88\n  cylinder 2 0.4750 182.88 -182.88\n  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88\n  media 1 1 1\n  media 3 1 2 -1\n  media 2 1 3 -2\n  boundary 3\nend geom\nread bounds\n  all=mirror\nend bounds\nend\n"
+  },
+  {
+    "id": "scale-04-dry-cask-storage-mavric",
+    "lang": "scale",
+    "subFormats": ["mavric", "shielding"],
+    "difficulty": 4,
+    "title": "Dry Cask Spent-Fuel Storage Shielding (MAVRIC)",
+    "description": "Cylindrical spent nuclear fuel dry storage cask modeled in SCALE MAVRIC with homogenized fuel basket, carbon-steel canister, and concrete overpack.",
+    "category": "Nuclear Shielding & Waste Storage",
+    "tags": ["scale", "mavric", "dry-cask", "shielding"],
+    "activeFile": "dry_cask.scale",
+    "fileNames": ["dry_cask.scale"],
+    "fileCount": 1,
+    "code": "' Spent Fuel Dry Storage Cask Shielding Model\n=mavric\nDry Cask Spent Fuel Storage Concrete Overpack\nv7.1-252\nread comp\n  uo2 1 den=4.20 1.0 450.0 92235 1.2 92238 98.8 end\n  ss304 2 den=7.92 1.0 380.0 end\n  concrete 3 den=2.35 1.0 320.0 end\nend comp\nread param\n  npg=4000 gen=150 nsk=30\nend param\nread geom\n  global unit 1\n  cylinder 1 82.0 200.0 -200.0\n  cylinder 2 88.0 210.0 -210.0\n  cylinder 3 160.0 260.0 -260.0\n  media 1 1 1\n  media 2 1 2 -1\n  media 3 1 3 -2\n  boundary 3\nend geom\nread bounds\n  all=vacuum\nend bounds\nend\n"
+  },
+  {
+    "id": "scale-05-pwr-quarter-assembly-gd",
+    "lang": "scale",
+    "subFormats": ["csas6", "array", "burnable-absorber"],
+    "difficulty": 5,
+    "title": "PWR Quarter-Assembly Array with Gadolinium Absorber Pins",
+    "description": "3x3 mini-assembly lattice combining standard UO2 fuel pins, gadolinium burnable-absorber pins, and a central water guide tube with companion burnup schedule.",
+    "category": "Nuclear Reactor Physics",
+    "tags": ["scale", "csas6", "array", "gadolinium", "multi-file"],
+    "activeFile": "assembly_gd.scale",
+    "fileNames": ["assembly_gd.scale", "burnup_schedule.csv"],
+    "fileCount": 2,
+    "code": "' PWR Quarter-Assembly Lattice with Gadolinium Burnable Absorber Pins\n=csas6\nPWR 3x3 Mini-Assembly with UO2-Gd2O3 Pins and Guide Tube\nv7.1-252\nread comp\n  uo2 1 den=10.41 1.0 900.0 92235 4.2 92238 95.8 end\n  uo2 4 den=10.15 1.0 900.0 92235 3.0 92238 97.0 end\n  zirc4 3 den=6.56 1.0 600.0 end\n  h2o 2 den=0.71 1.0 580.0 end\nend comp\nread param\n  npg=3000 gen=250 nsk=50\nend param\nread geom\n  unit 1\n  cylinder 1 0.4096 182.88 -182.88\n  cylinder 2 0.4750 182.88 -182.88\n  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88\n  media 1 1 1\n  media 3 1 2 -1\n  media 2 1 3 -2\n  boundary 3\n  unit 2\n  cylinder 1 0.4096 182.88 -182.88\n  cylinder 2 0.4750 182.88 -182.88\n  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88\n  media 4 1 1\n  media 3 1 2 -1\n  media 2 1 3 -2\n  boundary 3\n  unit 3\n  cylinder 1 0.5610 182.88 -182.88\n  cylinder 2 0.6020 182.88 -182.88\n  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88\n  media 2 1 1\n  media 3 1 2 -1\n  media 2 1 3 -2\n  boundary 3\n  global unit 10\n  cuboid 1 1.89 -1.89 1.89 -1.89 182.88 -182.88\n  array 1 1\n  boundary 1\nend geom\nread array\n  ara=1 nux=3 nuy=3 nuz=1\n  fill 1 2 1 2 3 2 1 2 1 end fill\nend array\nread bounds\n  all=mirror\nend bounds\nend\n",
+    "files": {
+      "assembly_gd.scale": "' PWR Quarter-Assembly Lattice with Gadolinium Burnable Absorber Pins\n=csas6\nPWR 3x3 Mini-Assembly with UO2-Gd2O3 Pins and Guide Tube\nv7.1-252\nread comp\n  uo2 1 den=10.41 1.0 900.0 92235 4.2 92238 95.8 end\n  uo2 4 den=10.15 1.0 900.0 92235 3.0 92238 97.0 end\n  zirc4 3 den=6.56 1.0 600.0 end\n  h2o 2 den=0.71 1.0 580.0 end\nend comp\nread param\n  npg=3000 gen=250 nsk=50\nend param\nread geom\n  unit 1\n  cylinder 1 0.4096 182.88 -182.88\n  cylinder 2 0.4750 182.88 -182.88\n  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88\n  media 1 1 1\n  media 3 1 2 -1\n  media 2 1 3 -2\n  boundary 3\n  unit 2\n  cylinder 1 0.4096 182.88 -182.88\n  cylinder 2 0.4750 182.88 -182.88\n  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88\n  media 4 1 1\n  media 3 1 2 -1\n  media 2 1 3 -2\n  boundary 3\n  unit 3\n  cylinder 1 0.5610 182.88 -182.88\n  cylinder 2 0.6020 182.88 -182.88\n  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88\n  media 2 1 1\n  media 3 1 2 -1\n  media 2 1 3 -2\n  boundary 3\n  global unit 10\n  cuboid 1 1.89 -1.89 1.89 -1.89 182.88 -182.88\n  array 1 1\n  boundary 1\nend geom\nread array\n  ara=1 nux=3 nuy=3 nuz=1\n  fill 1 2 1 2 3 2 1 2 1 end fill\nend array\nread bounds\n  all=mirror\nend bounds\nend\n",
+      "burnup_schedule.csv": "step,burnup_gwd_mtu,specific_power_mw_mtu,boron_ppm,duration_days\n0,0.0,38.5,1200,0\n1,0.5,38.5,1150,13.0\n2,2.0,38.5,1020,39.0\n3,5.0,38.5,850,77.9\n4,10.0,38.5,620,129.9\n5,20.0,38.5,310,259.7\n6,35.0,38.5,50,389.6\n"
+    }
+  }
+]

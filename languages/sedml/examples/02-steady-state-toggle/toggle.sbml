@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="ToggleSwitch" name="Genetic Toggle Switch">
+    <listOfCompartments><compartment id="cell" size="1.0" constant="true"/></listOfCompartments>
+    <listOfSpecies>
+      <species id="u" compartment="cell" initialConcentration="5.0" constant="false"/>
+      <species id="v" compartment="cell" initialConcentration="0.2" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="alpha" value="10.0" constant="true"/>
+      <parameter id="n" value="2.0" constant="true"/>
+      <parameter id="kd" value="1.0" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_u_syn" reversible="false">
+        <listOfProducts><speciesReference species="u" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="v"/></listOfModifiers>
+        <kineticLaw><formula>alpha / (1 + pow(v, n))</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_u_deg" reversible="false">
+        <listOfReactants><speciesReference species="u" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd * u</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_v_syn" reversible="false">
+        <listOfProducts><speciesReference species="v" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="u"/></listOfModifiers>
+        <kineticLaw><formula>alpha / (1 + pow(u, n))</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_v_deg" reversible="false">
+        <listOfReactants><speciesReference species="v" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd * v</formula></kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

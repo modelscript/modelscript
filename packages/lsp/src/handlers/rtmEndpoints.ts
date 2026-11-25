@@ -86,8 +86,18 @@ export function registerRtmEndpoints(context: LspContext): void {
         const kind = params.linkKind ?? "satisfy";
 
         const edits = isModelica
-          ? CstLinkSynthesizer.synthesizeModelicaTraceLink(text, params.sourceName, params.targetName, kind as any)
-          : CstLinkSynthesizer.synthesizeSysMLTraceLink(text, params.sourceName, params.targetName, kind as any);
+          ? CstLinkSynthesizer.synthesizeModelicaTraceLink(
+              text,
+              params.sourceName,
+              params.targetName,
+              kind as Parameters<typeof CstLinkSynthesizer.synthesizeModelicaTraceLink>[3],
+            )
+          : CstLinkSynthesizer.synthesizeSysMLTraceLink(
+              text,
+              params.sourceName,
+              params.targetName,
+              kind as Parameters<typeof CstLinkSynthesizer.synthesizeSysMLTraceLink>[3],
+            );
 
         if (!edits || edits.length === 0) {
           return {
@@ -103,8 +113,8 @@ export function registerRtmEndpoints(context: LspContext): void {
         });
 
         return { success: res.applied };
-      } catch (e: any) {
-        return { success: false, error: e?.message ?? String(e) };
+      } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
       }
     },
   );
@@ -134,7 +144,7 @@ export function registerRtmEndpoints(context: LspContext): void {
           : CstLinkSynthesizer.removeSysMLTraceLink(
               text,
               params.targetName,
-              kind as any,
+              kind as Parameters<typeof CstLinkSynthesizer.removeSysMLTraceLink>[2],
               params.declarationRange,
               params.sourceName,
             );
@@ -153,8 +163,8 @@ export function registerRtmEndpoints(context: LspContext): void {
         });
 
         return { success: res.applied };
-      } catch (e: any) {
-        return { success: false, error: e?.message ?? String(e) };
+      } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
       }
     },
   );
@@ -183,7 +193,8 @@ export function registerRtmEndpoints(context: LspContext): void {
       try {
         let createdCount = 0;
         let deletedCount = 0;
-        const editsByUri = new Map<string, any[]>();
+        type TraceTextEdit = NonNullable<ReturnType<typeof CstLinkSynthesizer.removeModelicaTraceLink>>[number];
+        const editsByUri = new Map<string, TraceTextEdit[]>();
 
         if (params.deletions && params.deletions.length > 0) {
           for (const del of params.deletions) {
@@ -195,7 +206,7 @@ export function registerRtmEndpoints(context: LspContext): void {
               : CstLinkSynthesizer.removeSysMLTraceLink(
                   text,
                   del.targetName,
-                  (del.linkKind ?? "satisfy") as any,
+                  (del.linkKind ?? "satisfy") as Parameters<typeof CstLinkSynthesizer.removeSysMLTraceLink>[2],
                   undefined,
                   del.sourceName,
                 );
@@ -218,13 +229,13 @@ export function registerRtmEndpoints(context: LspContext): void {
                   text,
                   cr.sourceName,
                   cr.targetName,
-                  (cr.linkKind ?? "satisfy") as any,
+                  (cr.linkKind ?? "satisfy") as Parameters<typeof CstLinkSynthesizer.synthesizeModelicaTraceLink>[3],
                 )
               : CstLinkSynthesizer.synthesizeSysMLTraceLink(
                   text,
                   cr.sourceName,
                   cr.targetName,
-                  (cr.linkKind ?? "satisfy") as any,
+                  (cr.linkKind ?? "satisfy") as Parameters<typeof CstLinkSynthesizer.synthesizeSysMLTraceLink>[3],
                 );
             if (edits && edits.length > 0) {
               const list = editsByUri.get(cr.sourceUri) ?? [];
@@ -236,7 +247,7 @@ export function registerRtmEndpoints(context: LspContext): void {
         }
 
         if (editsByUri.size > 0) {
-          const changes: Record<string, any[]> = {};
+          const changes: Record<string, TraceTextEdit[]> = {};
           for (const [uri, edits] of editsByUri.entries()) {
             changes[uri] = edits;
           }
@@ -245,8 +256,13 @@ export function registerRtmEndpoints(context: LspContext): void {
         }
 
         return { success: true, createdCount: 0, deletedCount: 0 };
-      } catch (e: any) {
-        return { success: false, createdCount: 0, deletedCount: 0, error: e?.message ?? String(e) };
+      } catch (e: unknown) {
+        return {
+          success: false,
+          createdCount: 0,
+          deletedCount: 0,
+          error: e instanceof Error ? e.message : String(e),
+        };
       }
     },
   );
@@ -270,11 +286,11 @@ export function registerRtmEndpoints(context: LspContext): void {
           if (params.targetName) {
             suspectTracker.clearSuspect(params.targetName);
           }
-          return res;
+          return (res as { ok: boolean; error?: string | undefined }) ?? { ok: true };
         }
         return { ok: true };
-      } catch (e: any) {
-        return { ok: false, error: e?.message ?? String(e) };
+      } catch (e: unknown) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
       }
     },
   );
@@ -404,8 +420,8 @@ export function registerRtmEndpoints(context: LspContext): void {
         });
 
         return { success: res.applied };
-      } catch (e: any) {
-        return { success: false, error: e?.message ?? String(e) };
+      } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
       }
     },
   );

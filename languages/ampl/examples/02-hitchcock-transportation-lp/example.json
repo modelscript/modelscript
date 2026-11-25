@@ -1,0 +1,11 @@
+{
+  "id": "ampl-02-hitchcock-transportation-lp",
+  "lang": "ampl",
+  "subFormats": ["mod", "dat"],
+  "difficulty": 2,
+  "title": "Hitchcock Transportation Network LP",
+  "description": "Minimum-cost freight distribution model balancing supply across manufacturing plants and demand at regional distribution centers.",
+  "category": "Network Optimization",
+  "tags": ["ampl", "lp", "transportation", "logistics", "multi-file"],
+  "activeFile": "transport.mod"
+}

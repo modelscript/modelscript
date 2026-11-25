@@ -818,7 +818,9 @@ export function createActivityPubVerifier(databaseInstance?: LibraryDatabase) {
       if (dbWithDelivery && typeof dbWithDelivery.recordDomainDeliverySuccess === "function") {
         try {
           dbWithDelivery.recordDomainDeliverySuccess(actorDomain);
-        } catch {}
+        } catch {
+          // Delivery telemetry is non-critical; proceed with request
+        }
       }
 
       next();

@@ -1,0 +1,54 @@
+begin model
+begin parameters
+  Scaf0 100
+  Raf0 80
+  MEK0 120
+  ERK0 150
+  kp_raf 0.005
+  km_raf 0.05
+  kp_mek 0.005
+  km_mek 0.05
+  kp_erk 0.004
+  km_erk 0.06
+  k_act_mek 0.7
+  k_act_erk 0.6
+  k_dephos 0.08
+end parameters
+
+begin compartments
+  Cyt 3 1.0
+end compartments
+
+begin molecule types
+  Scaf(r,m,e)
+  Raf(s)
+  MEK(s,st~U~P)
+  ERK(s,st~U~P)
+end molecule types
+
+begin seed species
+  Scaf(r,m,e) Scaf0
+  Raf(s) Raf0
+  MEK(s,st~U) MEK0
+  ERK(s,st~U) ERK0
+end seed species
+
+begin observables
+  Molecules ActiveMEK MEK(st~P)
+  Molecules ActiveERK ERK(st~P)
+  Molecules FullComplex Scaf(r!1,m!2,e!3).Raf(s!1).MEK(s!2).ERK(s!3)
+end observables
+
+begin reaction rules
+  BindRaf: Scaf(r) + Raf(s) <-> Scaf(r!1).Raf(s!1) kp_raf, km_raf
+  BindMEK: Scaf(m) + MEK(s) <-> Scaf(m!1).MEK(s!1) kp_mek, km_mek
+  BindERK: Scaf(e) + ERK(s) <-> Scaf(e!1).ERK(s!1) kp_erk, km_erk
+  PhosMEK: Scaf(r!1,m!2).Raf(s!1).MEK(s!2,st~U) -> Scaf(r!1,m!2).Raf(s!1).MEK(s!2,st~P) k_act_mek
+  PhosERK: Scaf(m!1,e!2).MEK(s!1,st~P).ERK(s!2,st~U) -> Scaf(m!1,e!2).MEK(s!1,st~P).ERK(s!2,st~P) k_act_erk
+  DephosMEK: MEK(st~P) -> MEK(st~U) k_dephos
+  DephosERK: ERK(st~P) -> ERK(st~U) k_dephos
+end reaction rules
+end model
+
+generate_network({overwrite=>1,max_iter=>10})
+simulate({method=>"ode",t_end=>60,n_steps=>300})

@@ -48,12 +48,12 @@ function loadAvailableFileIcons(): Map<string, string> {
 
   const map = new Map<string, string>();
   try {
-    const getBuiltin = (globalThis as { process?: { getBuiltinModule?: (id: string) => any } }).process
+    const getBuiltin = (globalThis as { process?: { getBuiltinModule?: (id: string) => unknown } }).process
       ?.getBuiltinModule;
     if (typeof getBuiltin === "function") {
-      const fs = getBuiltin("node:fs");
-      const path = getBuiltin("node:path");
-      const url = getBuiltin("node:url");
+      const fs = getBuiltin("node:fs") as { existsSync(p: string): boolean; readdirSync(p: string): string[] };
+      const path = getBuiltin("node:path") as { dirname(p: string): string; resolve(...p: string[]): string };
+      const url = getBuiltin("node:url") as { fileURLToPath(u: string): string };
       const here = path.dirname(url.fileURLToPath(import.meta.url));
       const iconsDir = path.resolve(here, "../../../../../apps/web/public/file-icons");
       if (fs.existsSync(iconsDir)) {

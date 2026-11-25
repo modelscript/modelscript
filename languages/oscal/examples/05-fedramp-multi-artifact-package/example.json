@@ -1,0 +1,11 @@
+{
+  "id": "oscal-05-fedramp-multi-artifact-package",
+  "lang": "oscal",
+  "subFormats": ["oscal.json"],
+  "difficulty": 5,
+  "title": "FedRAMP Multi-Artifact Authorization Package",
+  "description": "Five-file OSCAL authorization package integrating a control catalog, tailored baseline profile, component definitions, System Security Plan, and assessment plan.",
+  "category": "Enterprise Compliance",
+  "tags": ["oscal", "fedramp", "ssp", "assessment-plan", "multi-file"],
+  "activeFile": "ssp.oscal.json"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "gdsii-03-nand2-via-array",
+  "lang": "gdsii",
+  "subFormats": ["gds"],
+  "difficulty": 3,
+  "title": "2-Input NAND Gate with Via Array",
+  "description": "Hierarchical GDSII 2-input CMOS NAND standard cell instantiating a reusable contact/via subcell via SREF placements for dual poly gates and parallel PMOS/series NMOS straps.",
+  "category": "Hierarchical Standard Cells",
+  "tags": ["gdsii", "nand2", "sref", "via", "hierarchy"],
+  "activeFile": "nand2_cell.gds"
+}

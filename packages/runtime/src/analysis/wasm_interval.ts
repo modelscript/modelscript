@@ -58,7 +58,7 @@ export interface WasmIntervalInstance {
   memory: WebAssembly.Memory;
 }
 
-import { WasmScratchPool } from "@modelscript/solve";
+import { WasmScratchPool, type WasmMemoryHost } from "@modelscript/solve";
 
 /**
  * High-level TypeScript wrapper for WASM Interval Arithmetic, McCormick Relaxations,
@@ -67,10 +67,13 @@ import { WasmScratchPool } from "@modelscript/solve";
 export class WasmIntervalEngine {
   private scratchPool: WasmScratchPool | null = null;
 
-  constructor(private instance: WasmIntervalInstance | any) {}
+  constructor(private instance: (Partial<WasmIntervalInstance> & WasmMemoryHost) | null | undefined) {}
 
   private getPool(): WasmScratchPool {
     if (!this.scratchPool) {
+      if (!this.instance) {
+        throw new Error("WasmIntervalEngine: WASM exports not initialized");
+      }
       this.scratchPool = new WasmScratchPool(this.instance, 65536);
     }
     return this.scratchPool;

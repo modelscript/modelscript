@@ -1,0 +1,1425 @@
+[
+  {
+    "name": "PipeRound",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:PipeRound",
+    "exports": [
+      "diameter",
+      "length",
+      "frictionFactor",
+      "wallTemp",
+      "roughness"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1D Round Gas-Dynamic Pipe",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "1D compressible circular pipe with Darcy-Weisbach wall friction and convective wall heat transfer.",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Ch. 6); White, Fluid Mechanics (Darcy-Weisbach)",
+      "aliases": [
+        "PipeRoundConn",
+        "pipe_round",
+        "pipe"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m",
+          "description": "Internal pipe diameter"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m",
+          "description": "Pipe axial length"
+        },
+        {
+          "key": "frictionFactor",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "1",
+          "description": "Darcy-Weisbach friction factor"
+        },
+        {
+          "key": "wallTemp",
+          "type": "real",
+          "defaultValue": 350,
+          "unit": "K",
+          "description": "Pipe wall temperature"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "m",
+          "description": "Surface roughness height"
+        }
+      ],
+      "wasmKernel": "PipeRound",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "PipeBend",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:PipeBend",
+    "exports": [
+      "diameter",
+      "length",
+      "frictionFactor",
+      "wallTemp",
+      "bendAngleDeg"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1D Curved Pipe Bend",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "1D circular pipe bend with secondary-flow curvature loss coefficient and wall friction.",
+      "provenance": "Idelchik, Handbook of Hydraulic Resistance (Bend Losses); Heywood (2nd ed., Ch. 6)",
+      "aliases": [
+        "PipeRoundBend",
+        "pipe_bend"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m",
+          "description": "Internal pipe diameter"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "m",
+          "description": "Centerline arc length"
+        },
+        {
+          "key": "frictionFactor",
+          "type": "real",
+          "defaultValue": 0.025,
+          "unit": "1",
+          "description": "Effective Darcy friction factor"
+        },
+        {
+          "key": "wallTemp",
+          "type": "real",
+          "defaultValue": 350,
+          "unit": "K",
+          "description": "Pipe wall temperature"
+        },
+        {
+          "key": "bendAngleDeg",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Bend deflection angle"
+        }
+      ],
+      "wasmKernel": "PipeBend",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "FlowSplitGeneral",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:FlowSplitGeneral",
+    "exports": [
+      "volume",
+      "initPressure",
+      "initTemp",
+      "gamma",
+      "gasConstant"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "0D Flow Split / Plenum Volume",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "Lumped 0D compressible control volume conserving mass and internal energy across multiple flow ports.",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Ch. 6 & 14 — Filling-and-Emptying Model)",
+      "aliases": [
+        "FlowSplit",
+        "plenum",
+        "flow_split"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "m3",
+          "description": "Internal plenum volume"
+        },
+        {
+          "key": "initPressure",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Initial static pressure"
+        },
+        {
+          "key": "initTemp",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Initial static temperature"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Ratio of specific heats cp/cv"
+        },
+        {
+          "key": "gasConstant",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg.K)",
+          "description": "Specific gas constant R"
+        }
+      ],
+      "wasmKernel": "FlowSplitGeneral",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "OrificeConn",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:OrificeConn",
+    "exports": [
+      "diameter",
+      "dischargeCoeff",
+      "gamma",
+      "gasConstant",
+      "openFraction"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Isentropic Compressible Orifice",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "Quasi-steady 1D isentropic compressible orifice with subsonic and choked critical flow regimes.",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Appendix C — Compressible Flow Equations)",
+      "aliases": [
+        "Orifice",
+        "orifice_conn",
+        "orifice"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "m",
+          "description": "Orifice throat diameter"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "1",
+          "description": "Orifice discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Ratio of specific heats"
+        },
+        {
+          "key": "gasConstant",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg.K)",
+          "description": "Specific gas constant R"
+        },
+        {
+          "key": "openFraction",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Effective open area fraction (0..1)"
+        }
+      ],
+      "wasmKernel": "OrificeConn",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ValveCamConn",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:ValveCamConn",
+    "exports": [
+      "diameter",
+      "dischargeCoeff",
+      "gamma",
+      "gasConstant",
+      "openFraction"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cam-Driven Poppet Valve",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "Cam-actuated intake or exhaust poppet valve with lift-dependent curtain area and discharge coefficient.",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Section 6.3 — Valve Flow & Curtain Area)",
+      "aliases": [
+        "ValveCam",
+        "valve_cam",
+        "valve"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.034,
+          "unit": "m",
+          "description": "Valve head diameter"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "1",
+          "description": "Curtain discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Ratio of specific heats"
+        },
+        {
+          "key": "gasConstant",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg.K)",
+          "description": "Specific gas constant R"
+        },
+        {
+          "key": "openFraction",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "1",
+          "description": "Instantaneous normalized lift fraction"
+        }
+      ],
+      "wasmKernel": "ValveCamConn",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ThrottleConn",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:ThrottleConn",
+    "exports": [
+      "diameter",
+      "dischargeCoeff",
+      "gamma",
+      "gasConstant",
+      "openFraction"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Butterfly Throttle Valve",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "Variable-area butterfly throttle body controlling intake manifold mass flow rate.",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Section 7.2 — Throttle Flow)",
+      "aliases": [
+        "Throttle",
+        "throttle_conn",
+        "butterfly_valve"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.056,
+          "unit": "m",
+          "description": "Throttle bore diameter"
+        },
+        {
+          "key": "dischargeCoeff",
+          "type": "real",
+          "defaultValue": 0.82,
+          "unit": "1",
+          "description": "Discharge coefficient Cd"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Ratio of specific heats"
+        },
+        {
+          "key": "gasConstant",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg.K)",
+          "description": "Specific gas constant R"
+        },
+        {
+          "key": "openFraction",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Normalized throttle opening fraction (0..1)"
+        }
+      ],
+      "wasmKernel": "ThrottleConn",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "EndEnvironment",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:EndEnvironment",
+    "exports": [
+      "pressure",
+      "temperature",
+      "relativeHumidity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ambient Pressure/Temperature Boundary",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "Infinite-reservoir ambient stagnation pressure and temperature boundary condition.",
+      "provenance": "ISO 2533 Standard Atmosphere; Heywood (2nd ed., Ch. 6 — Boundary Conditions)",
+      "aliases": [
+        "Environment",
+        "end_environment",
+        "ambient"
+      ],
+      "parameters": [
+        {
+          "key": "pressure",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Ambient stagnation pressure"
+        },
+        {
+          "key": "temperature",
+          "type": "real",
+          "defaultValue": 298.15,
+          "unit": "K",
+          "description": "Ambient stagnation temperature"
+        },
+        {
+          "key": "relativeHumidity",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Relative humidity fraction (0..1)"
+        }
+      ],
+      "wasmKernel": "EndEnvironment",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "CatalystBrick",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:CatalystBrick",
+    "exports": [
+      "diameter",
+      "length",
+      "frictionFactor",
+      "wallTemp",
+      "cellDensityCpsi"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Monolith Catalytic Converter Brick",
+      "category": "Flow & Gas Dynamics",
+      "domain": "fluid",
+      "description": "Honeycomb monolith aftertreatment substrate with laminar channel pressure drop and thermal inertia.",
+      "provenance": "Koltsakis & Stamatelos, Prog. Energy Combust. Sci. 23(1) (1997) — Monolith Converter Modeling",
+      "aliases": [
+        "Catalyst",
+        "catalyst_brick",
+        "aftertreatment"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.11,
+          "unit": "m",
+          "description": "Substrate outer diameter"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "m",
+          "description": "Monolith axial length"
+        },
+        {
+          "key": "frictionFactor",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "1",
+          "description": "Effective monolith channel friction factor"
+        },
+        {
+          "key": "wallTemp",
+          "type": "real",
+          "defaultValue": 650,
+          "unit": "K",
+          "description": "Substrate wall temperature"
+        },
+        {
+          "key": "cellDensityCpsi",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "1/in2",
+          "description": "Channel cell density"
+        }
+      ],
+      "wasmKernel": "CatalystBrick",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "EngCylinder",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:EngCylinder",
+    "exports": [
+      "bore",
+      "stroke",
+      "conRodLength",
+      "compressionRatio",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Internal Combustion Engine Cylinder",
+      "category": "Engine & Turbomachinery",
+      "domain": "mechanical",
+      "description": "Single-zone thermodynamic engine cylinder with slider-crank kinematics and first-law energy balance.",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Ch. 2 & Ch. 14 — Slider-Crank & First Law)",
+      "aliases": [
+        "Cylinder",
+        "eng_cylinder",
+        "cylinder"
+      ],
+      "parameters": [
+        {
+          "key": "bore",
+          "type": "real",
+          "defaultValue": 0.086,
+          "unit": "m",
+          "description": "Cylinder bore diameter"
+        },
+        {
+          "key": "stroke",
+          "type": "real",
+          "defaultValue": 0.086,
+          "unit": "m",
+          "description": "Piston stroke length"
+        },
+        {
+          "key": "conRodLength",
+          "type": "real",
+          "defaultValue": 0.145,
+          "unit": "m",
+          "description": "Connecting rod center-to-center length"
+        },
+        {
+          "key": "compressionRatio",
+          "type": "real",
+          "defaultValue": 10.5,
+          "unit": "1",
+          "description": "Geometric compression ratio"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.35,
+          "unit": "1",
+          "description": "Polytropic/isentropic exponent"
+        }
+      ],
+      "wasmKernel": "EngCylinder",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "EngCylCombWiebe",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:EngCylCombWiebe",
+    "exports": [
+      "anchorAngleDeg",
+      "durationDeg",
+      "wiebeExponentM",
+      "wiebeEfficiencyA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wiebe Function Combustion Model",
+      "category": "Engine & Turbomachinery",
+      "domain": "thermal",
+      "description": "Imposed mass-fraction-burned Wiebe function x_b(theta) = 1 - exp(-a * ((theta - theta0) / dTheta)^(m + 1)).",
+      "provenance": "I. I. Wiebe (1956); Heywood, Internal Combustion Engine Fundamentals (2nd ed., Eq. 14.33)",
+      "aliases": [
+        "Wiebe",
+        "wiebe_combustion",
+        "EngCylCombSIWiebe"
+      ],
+      "parameters": [
+        {
+          "key": "anchorAngleDeg",
+          "type": "real",
+          "defaultValue": -10,
+          "unit": "deg",
+          "description": "Start of combustion crank angle theta_0"
+        },
+        {
+          "key": "durationDeg",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "deg",
+          "description": "Combustion burn duration delta_theta"
+        },
+        {
+          "key": "wiebeExponentM",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Wiebe shape exponent m"
+        },
+        {
+          "key": "wiebeEfficiencyA",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "1",
+          "description": "Wiebe efficiency/completeness factor a"
+        }
+      ],
+      "wasmKernel": "EngCylCombWiebe",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "EngCylHeatTrWoschni",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:EngCylHeatTrWoschni",
+    "exports": [
+      "bore",
+      "stroke",
+      "wallTemp",
+      "c1",
+      "multiplier"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Woschni Cylinder Heat Transfer",
+      "category": "Engine & Turbomachinery",
+      "domain": "thermal",
+      "description": "Woschni empirical in-cylinder convective heat transfer correlation h_c = 3.26 * B^-0.2 * p^0.8 * T^-0.55 * w^0.8.",
+      "provenance": "G. Woschni, SAE Paper 670931 (1967); Heywood (2nd ed., Eq. 12.18)",
+      "aliases": [
+        "Woschni",
+        "woschni_ht",
+        "EngCylHeatTrWoschniGT"
+      ],
+      "parameters": [
+        {
+          "key": "bore",
+          "type": "real",
+          "defaultValue": 0.086,
+          "unit": "m",
+          "description": "Cylinder bore diameter B"
+        },
+        {
+          "key": "stroke",
+          "type": "real",
+          "defaultValue": 0.086,
+          "unit": "m",
+          "description": "Piston stroke S"
+        },
+        {
+          "key": "wallTemp",
+          "type": "real",
+          "defaultValue": 450,
+          "unit": "K",
+          "description": "Effective cylinder wall temperature"
+        },
+        {
+          "key": "c1",
+          "type": "real",
+          "defaultValue": 2.28,
+          "unit": "1",
+          "description": "Gas velocity period coefficient C1"
+        },
+        {
+          "key": "multiplier",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Heat transfer calibration multiplier"
+        }
+      ],
+      "wasmKernel": "EngCylHeatTrWoschni",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "Compressor",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:Compressor",
+    "exports": [
+      "pressureRatio",
+      "efficiency",
+      "gamma",
+      "cp",
+      "designMassFlow"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Turbocharger Centrifugal Compressor",
+      "category": "Engine & Turbomachinery",
+      "domain": "fluid",
+      "description": "Steady/quasi-steady centrifugal compressor computing isentropic enthalpy rise, outlet temperature, and shaft power.",
+      "provenance": "Watson & Janota, Turbocharging the Internal Combustion Engine (1982); Heywood (2nd ed., Ch. 6.7)",
+      "aliases": [
+        "TurboCompressor",
+        "turbo_compressor",
+        "compressor"
+      ],
+      "parameters": [
+        {
+          "key": "pressureRatio",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Total-to-total pressure ratio p2/p1"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "1",
+          "description": "Isentropic compressor efficiency eta_c"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Ratio of specific heats"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1005,
+          "unit": "J/(kg.K)",
+          "description": "Constant-pressure specific heat"
+        },
+        {
+          "key": "designMassFlow",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "kg/s",
+          "description": "Nominal reference mass flow rate"
+        }
+      ],
+      "wasmKernel": "Compressor",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "Turbine",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:Turbine",
+    "exports": [
+      "expansionRatio",
+      "efficiency",
+      "gamma",
+      "cp",
+      "designMassFlow"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Turbocharger Radial Turbine",
+      "category": "Engine & Turbomachinery",
+      "domain": "fluid",
+      "description": "Radial exhaust gas turbine computing isentropic enthalpy drop, outlet temperature, and extracted shaft power.",
+      "provenance": "Watson & Janota, Turbocharging the Internal Combustion Engine (1982); Heywood (2nd ed., Ch. 6.7)",
+      "aliases": [
+        "TurboTurbine",
+        "turbo_turbine",
+        "turbine"
+      ],
+      "parameters": [
+        {
+          "key": "expansionRatio",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Total-to-static expansion ratio p1/p2"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.72,
+          "unit": "1",
+          "description": "Isentropic turbine efficiency eta_t"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.34,
+          "unit": "1",
+          "description": "Exhaust gas ratio of specific heats"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1150,
+          "unit": "J/(kg.K)",
+          "description": "Exhaust gas specific heat cp"
+        },
+        {
+          "key": "designMassFlow",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "kg/s",
+          "description": "Nominal reference mass flow rate"
+        }
+      ],
+      "wasmKernel": "Turbine",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "ShaftTurbo",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:ShaftTurbo",
+    "exports": [
+      "inertia",
+      "initSpeedRpm",
+      "frictionCoeff"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Turbocharger Rotor Shaft",
+      "category": "Engine & Turbomachinery",
+      "domain": "mechanical",
+      "description": "Rotational inertia shaft coupling turbine and compressor torque balance with bearing friction damping.",
+      "provenance": "Watson & Janota, Turbocharging the Internal Combustion Engine (1982, Ch. 9 — Turbocharger Dynamics)",
+      "aliases": [
+        "TurboShaft",
+        "shaft_turbo",
+        "shaft"
+      ],
+      "parameters": [
+        {
+          "key": "inertia",
+          "type": "real",
+          "defaultValue": 0.000035,
+          "unit": "kg.m2",
+          "description": "Rotor polar moment of inertia J"
+        },
+        {
+          "key": "initSpeedRpm",
+          "type": "real",
+          "defaultValue": 80000,
+          "unit": "rpm",
+          "description": "Initial rotor speed"
+        },
+        {
+          "key": "frictionCoeff",
+          "type": "real",
+          "defaultValue": 0.00001,
+          "unit": "N.m.s/rad",
+          "description": "Viscous bearing friction coefficient"
+        }
+      ],
+      "wasmKernel": "ShaftTurbo",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "InjectorAFSeq",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:InjectorAFSeq",
+    "exports": [
+      "targetAfr",
+      "lhv",
+      "vaporizedFraction"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sequential Air-Fuel Ratio Injector",
+      "category": "Engine & Turbomachinery",
+      "domain": "fluid",
+      "description": "Sequential fuel injector targeting a specified air-fuel ratio with fuel lower heating value release.",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Ch. 7 — Fuel Metering & Injection)",
+      "aliases": [
+        "Injector",
+        "injector_af_seq",
+        "injector"
+      ],
+      "parameters": [
+        {
+          "key": "targetAfr",
+          "type": "real",
+          "defaultValue": 14.7,
+          "unit": "1",
+          "description": "Target air-fuel mass ratio"
+        },
+        {
+          "key": "lhv",
+          "type": "real",
+          "defaultValue": 44000000,
+          "unit": "J/kg",
+          "description": "Fuel lower heating value"
+        },
+        {
+          "key": "vaporizedFraction",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "1",
+          "description": "Fraction of injected fuel vaporized immediately"
+        }
+      ],
+      "wasmKernel": "InjectorAFSeq",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "HeatExchanger",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:HeatExchanger",
+    "exports": [
+      "effectiveness",
+      "coolantTemp",
+      "cp",
+      "pressureDropCoeff"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Effectiveness-NTU Heat Exchanger",
+      "category": "Thermal & Electrification",
+      "domain": "thermal",
+      "description": "Effectiveness-NTU heat exchanger / charge-air cooler with fluid temperature drop and pressure loss.",
+      "provenance": "Incropera & DeWitt, Fundamentals of Heat and Mass Transfer (Ch. 11 — Effectiveness-NTU Method)",
+      "aliases": [
+        "Intercooler",
+        "Radiator",
+        "heat_exchanger",
+        "intercooler"
+      ],
+      "parameters": [
+        {
+          "key": "effectiveness",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Thermal effectiveness epsilon (0..1)"
+        },
+        {
+          "key": "coolantTemp",
+          "type": "real",
+          "defaultValue": 320,
+          "unit": "K",
+          "description": "Secondary coolant sink temperature"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1005,
+          "unit": "J/(kg.K)",
+          "description": "Primary fluid specific heat"
+        },
+        {
+          "key": "pressureDropCoeff",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "Pa/(kg/s)^2",
+          "description": "Quadratic pressure loss coefficient"
+        }
+      ],
+      "wasmKernel": "HeatExchanger",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "ThermalMass",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:ThermalMass",
+    "exports": [
+      "mass",
+      "cp",
+      "initTemp",
+      "ambientConductance",
+      "ambientTemp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1st-Order Lumped Thermal Mass",
+      "category": "Thermal & Electrification",
+      "domain": "thermal",
+      "description": "Lumped-capacitance thermal body solving m * cp * dT/dt = Q_in - hA * (T - T_amb).",
+      "provenance": "Incropera & DeWitt, Fundamentals of Heat and Mass Transfer (Ch. 5 — Lumped Capacitance Method)",
+      "aliases": [
+        "LumpedThermalMass",
+        "thermal_mass"
+      ],
+      "parameters": [
+        {
+          "key": "mass",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "kg",
+          "description": "Thermal body mass m"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "J/(kg.K)",
+          "description": "Specific heat capacity cp"
+        },
+        {
+          "key": "initTemp",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Initial body temperature"
+        },
+        {
+          "key": "ambientConductance",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "W/K",
+          "description": "Ambient heat loss conductance hA"
+        },
+        {
+          "key": "ambientTemp",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Ambient reference temperature"
+        }
+      ],
+      "wasmKernel": "ThermalMass",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "Battery",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:Battery",
+    "exports": [
+      "capacityAh",
+      "vNom",
+      "r0",
+      "r1",
+      "c1",
+      "initSoc"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Thévenin Equivalent-Circuit Battery",
+      "category": "Thermal & Electrification",
+      "domain": "electrical",
+      "description": "First-order Thévenin (R0 + R1||C1) traction battery with Coulomb-counting State of Charge (SoC) dynamics.",
+      "provenance": "Plett, Battery Management Systems Vol. 1 (2015, Ch. 2 — Equivalent-Circuit Cell Models)",
+      "aliases": [
+        "BatteryThevenin",
+        "battery_pack",
+        "battery"
+      ],
+      "parameters": [
+        {
+          "key": "capacityAh",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "Ah",
+          "description": "Nominal cell/pack charge capacity"
+        },
+        {
+          "key": "vNom",
+          "type": "real",
+          "defaultValue": 350,
+          "unit": "V",
+          "description": "Nominal pack open-circuit voltage"
+        },
+        {
+          "key": "r0",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "Ohm",
+          "description": "Ohmic internal series resistance R0"
+        },
+        {
+          "key": "r1",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "Ohm",
+          "description": "RC polarization resistance R1"
+        },
+        {
+          "key": "c1",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "F",
+          "description": "RC polarization capacitance C1"
+        },
+        {
+          "key": "initSoc",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Initial state of charge (0..1)"
+        }
+      ],
+      "wasmKernel": "Battery",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "ElectricMotor",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:ElectricMotor",
+    "exports": [
+      "maxPowerW",
+      "efficiency",
+      "baseSpeedRpm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Traction Electric Motor / Generator",
+      "category": "Thermal & Electrification",
+      "domain": "electrical",
+      "description": "Electromechanical traction motor converting electrical bus power to shaft torque with efficiency loss.",
+      "provenance": "Ehsani et al., Modern Electric, Hybrid Electric, and Fuel Cell Vehicles (3rd ed., Ch. 7)",
+      "aliases": [
+        "EMotor",
+        "TractionMotor",
+        "electric_motor"
+      ],
+      "parameters": [
+        {
+          "key": "maxPowerW",
+          "type": "real",
+          "defaultValue": 150000,
+          "unit": "W",
+          "description": "Peak mechanical power rating"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.94,
+          "unit": "1",
+          "description": "Nominal electromechanical conversion efficiency"
+        },
+        {
+          "key": "baseSpeedRpm",
+          "type": "real",
+          "defaultValue": 4500,
+          "unit": "rpm",
+          "description": "Corner/base speed"
+        }
+      ],
+      "wasmKernel": "ElectricMotor",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "Inverter",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:Inverter",
+    "exports": [
+      "efficiency",
+      "vDcNom",
+      "idleLossW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "DC/AC Traction Power Inverter",
+      "category": "Thermal & Electrification",
+      "domain": "electrical",
+      "description": "Bidirectional DC-to-AC traction inverter with conduction and switching thermal dissipation.",
+      "provenance": "Mohan, Undeland & Robbins, Power Electronics (3rd ed., Ch. 8 — Three-Phase Inverters)",
+      "aliases": [
+        "PowerInverter",
+        "DCACInverter",
+        "inverter"
+      ],
+      "parameters": [
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.97,
+          "unit": "1",
+          "description": "Nominal inverter conversion efficiency"
+        },
+        {
+          "key": "vDcNom",
+          "type": "real",
+          "defaultValue": 350,
+          "unit": "V",
+          "description": "Nominal DC link voltage"
+        },
+        {
+          "key": "idleLossW",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "W",
+          "description": "Quiescent switching and gate-drive loss"
+        }
+      ],
+      "wasmKernel": "Inverter",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "CoolantPump",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:CoolantPump",
+    "exports": [
+      "refSpeedRpm",
+      "refFlowKgS",
+      "refDeltaP",
+      "efficiency",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Centrifugal Coolant Pump",
+      "category": "Thermal & Electrification",
+      "domain": "fluid",
+      "description": "Speed-controlled centrifugal coolant pump modeled via affinity laws for head rise and hydraulic power.",
+      "provenance": "White, Fluid Mechanics (Ch. 11 — Turbomachinery & Pump Affinity Laws)",
+      "aliases": [
+        "Pump",
+        "WaterPump",
+        "coolant_pump"
+      ],
+      "parameters": [
+        {
+          "key": "refSpeedRpm",
+          "type": "real",
+          "defaultValue": 3000,
+          "unit": "rpm",
+          "description": "Reference pump shaft speed"
+        },
+        {
+          "key": "refFlowKgS",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "kg/s",
+          "description": "Reference mass flow rate at reference speed"
+        },
+        {
+          "key": "refDeltaP",
+          "type": "real",
+          "defaultValue": 80000,
+          "unit": "Pa",
+          "description": "Reference pressure rise at reference speed"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "1",
+          "description": "Hydraulic efficiency"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1030,
+          "unit": "kg/m3",
+          "description": "Coolant liquid density"
+        }
+      ],
+      "wasmKernel": "CoolantPump",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "FluidAir",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:FluidAir",
+    "exports": [
+      "gasConstant",
+      "cpRef",
+      "gammaRef",
+      "cpSlope"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ideal-Gas Dry Air Property Object",
+      "category": "Thermal & Electrification",
+      "domain": "fluid",
+      "description": "NASA-9 polynomial ideal-gas thermodynamic property definition for dry air.",
+      "provenance": "NASA Glenn Coefficients for Calculating Thermodynamic Properties (NASA/TP-2002-211556)",
+      "aliases": [
+        "Air",
+        "fluid_air",
+        "IdealGasAir"
+      ],
+      "parameters": [
+        {
+          "key": "gasConstant",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg.K)",
+          "description": "Specific gas constant R"
+        },
+        {
+          "key": "cpRef",
+          "type": "real",
+          "defaultValue": 1005,
+          "unit": "J/(kg.K)",
+          "description": "Reference cp at 300 K"
+        },
+        {
+          "key": "gammaRef",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Reference ratio of specific heats"
+        },
+        {
+          "key": "cpSlope",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "J/(kg.K^2)",
+          "description": "Linearized temperature slope d(cp)/dT"
+        }
+      ],
+      "wasmKernel": "FluidAir",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "FluidGasoline",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:FluidGasoline",
+    "exports": [
+      "gasConstant",
+      "cpRef",
+      "gammaRef",
+      "lhv"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gasoline / Iso-Octane Fuel Properties",
+      "category": "Thermal & Electrification",
+      "domain": "fluid",
+      "description": "Thermodynamic and combustion property definition for gasoline (iso-octane surrogate).",
+      "provenance": "Heywood, Internal Combustion Engine Fundamentals (2nd ed., Appendix D — Fuel Properties); NASA-9",
+      "aliases": [
+        "Gasoline",
+        "Indolene",
+        "fluid_gasoline"
+      ],
+      "parameters": [
+        {
+          "key": "gasConstant",
+          "type": "real",
+          "defaultValue": 72.8,
+          "unit": "J/(kg.K)",
+          "description": "Vapor specific gas constant"
+        },
+        {
+          "key": "cpRef",
+          "type": "real",
+          "defaultValue": 2100,
+          "unit": "J/(kg.K)",
+          "description": "Liquid specific heat capacity"
+        },
+        {
+          "key": "gammaRef",
+          "type": "real",
+          "defaultValue": 1.05,
+          "unit": "1",
+          "description": "Vapor ratio of specific heats"
+        },
+        {
+          "key": "lhv",
+          "type": "real",
+          "defaultValue": 44000000,
+          "unit": "J/kg",
+          "description": "Lower heating value"
+        }
+      ],
+      "wasmKernel": "FluidGasoline",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "FluidCoolant",
+    "kind": "gtsuite_template",
+    "namePath": "gtsuite:FluidCoolant",
+    "exports": [
+      "density",
+      "cpRef",
+      "gammaRef",
+      "viscosity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "50/50 Ethylene Glycol-Water Coolant",
+      "category": "Thermal & Electrification",
+      "domain": "fluid",
+      "description": "Incompressible thermal property definition for 50/50 ethylene glycol-water engine/battery coolant.",
+      "provenance": "ASHRAE Handbook — Fundamentals (Ch. 31 — Physical Properties of Secondary Coolants)",
+      "aliases": [
+        "EGW5050",
+        "WaterGlycol",
+        "fluid_coolant"
+      ],
+      "parameters": [
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1030,
+          "unit": "kg/m3",
+          "description": "Nominal coolant density at 330 K"
+        },
+        {
+          "key": "cpRef",
+          "type": "real",
+          "defaultValue": 3550,
+          "unit": "J/(kg.K)",
+          "description": "Specific heat capacity cp"
+        },
+        {
+          "key": "gammaRef",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Incompressible effective gamma"
+        },
+        {
+          "key": "viscosity",
+          "type": "real",
+          "defaultValue": 0.0012,
+          "unit": "Pa.s",
+          "description": "Dynamic viscosity at 330 K"
+        }
+      ],
+      "wasmKernel": "FluidCoolant",
+      "archetypeId": 50
+    }
+  }
+]

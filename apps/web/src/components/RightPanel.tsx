@@ -10,6 +10,10 @@ import {
   getUnifiedUserJobs,
   getUserSuggestions,
   type ClusterStatus,
+  type LibraryListItem,
+  type SocialRepoRecord,
+  type SocialTopicRecord,
+  type SocialUserRecord,
   type UnifiedJob,
 } from "../api";
 import { useAuth } from "../AuthContext";
@@ -51,16 +55,16 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
   const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   const hasPackages = useFeatureFlag("package_browser");
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [trending, setTrending] = useState<any[]>([]);
-  const [popularPackages, setPopularPackages] = useState<any[]>([]);
-  const [popularRepos, setPopularRepos] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<SocialUserRecord[]>([]);
+  const [trending, setTrending] = useState<SocialTopicRecord[]>([]);
+  const [popularPackages, setPopularPackages] = useState<LibraryListItem[]>([]);
+  const [popularRepos, setPopularRepos] = useState<SocialRepoRecord[]>([]);
   const [hpcJobs, setHpcJobs] = useState<UnifiedJob[]>([]);
   const [isHpcLoading, setIsHpcLoading] = useState(false);
   const [fallbackClusterInfo, setFallbackClusterInfo] = useState<ClusterStatus | null>(null);
   const clusterInfo = propClusterInfo !== undefined ? propClusterInfo : fallbackClusterInfo;
   const [isSimModalOpen, setIsSimModalOpen] = useState(false);
-  const [activeTrendMenu, setActiveTrendMenu] = useState<number | null>(null);
+  const [activeTrendMenu, setActiveTrendMenu] = useState<number | string | null>(null);
   const [articleInspector, setArticleInspector] = useState<ArticleInspectorDetail | null>(null);
   const location = useLocation();
   const isExplore = location.pathname.startsWith("/explore");
@@ -150,7 +154,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({ clusterInfo: propCluster
     async function fetchSuggestions() {
       try {
         const data = await getUserSuggestions(4);
-        const filtered = (data.suggestions || []).filter((s: any) => !user || s.username !== user.username);
+        const filtered = (data.suggestions || []).filter((s) => !user || s.username !== user.username);
         setSuggestions(filtered);
       } catch (err) {
         console.error(err);

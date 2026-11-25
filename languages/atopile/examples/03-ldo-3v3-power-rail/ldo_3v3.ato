@@ -1,0 +1,33 @@
+from "generics/resistors.ato" import Resistor
+from "generics/capacitors.ato" import Capacitor
+from "generics/regulators.ato" import LDORegulator
+
+module PowerRail3V3:
+    signal v_5v
+    signal v_3v3
+    signal v_fb
+    signal gnd
+
+    u_ldo = new LDORegulator
+    c_in = new Capacitor
+    c_out = new Capacitor
+    r_fb_top = new Resistor
+    r_fb_bot = new Resistor
+
+    c_in.capacitance = 10uF +/- 10%
+    c_out.capacitance = 22uF +/- 10%
+    r_fb_top.resistance = 31.6kohm +/- 1%
+    r_fb_bot.resistance = 10kohm +/- 1%
+
+    v_5v ~ u_ldo.v_in
+    v_3v3 ~ u_ldo.v_out
+    v_fb ~ u_ldo.fb
+    gnd ~ u_ldo.gnd
+
+    v_5v ~> c_in ~> gnd
+    v_3v3 ~> c_out ~> gnd
+    v_3v3 ~> r_fb_top ~> v_fb
+    v_fb ~> r_fb_bot ~> gnd
+
+    assert r_fb_top.resistance within 31kohm to 32.2kohm
+    assert r_fb_bot.resistance within 9.8kohm to 10.2kohm

@@ -5,7 +5,7 @@
  * for `HomeSemanticCoordinator.vue` (VitePress Web Showcase).
  *
  * Thin browser adapter delegating to `@modelscript/runtime`'s shared
- * `createPolyglotCoordinator(providers)` so Web Showcase, Morsel CLI, and VS Code LSP
+ * `createPolyglotCoordinator(providers)` so Web Showcase, ModelScript CLI, and VS Code LSP
  * share identical N-ary orchestration, Nelson-Oppen theory propagation, and
  * `DigitalThreadHypergraph` status computation.
  */

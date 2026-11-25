@@ -1,0 +1,17 @@
+; Target-Mediated Drug Disposition (TMDD) monoclonal antibody model
+[LONGITUDINAL]
+input = {kel, kpt, ktp, kon, koff, ksyn, kdeg, kint, V}
+
+PK:
+compartment(cmt = 1, amount = Ac, volume = V)
+iv(cmt = 1)
+
+EQUATION:
+C = Ac / V
+ddt_Ac = -kel * Ac - kpt * Ac + ktp * At - kon * C * R * V + koff * RC * V
+ddt_At = kpt * Ac - ktp * At
+ddt_R  = ksyn - kdeg * R - kon * C * R + koff * RC
+ddt_RC = kon * C * R - (koff + kint) * RC
+
+OUTPUT:
+output = {C}

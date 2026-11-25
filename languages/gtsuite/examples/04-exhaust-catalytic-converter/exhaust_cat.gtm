@@ -1,0 +1,29 @@
+MODEL: Exhaust_TWC_Aftertreatment
+SPEED: 2800.0
+LAMBDA: 1.0
+
+COMPONENTS:
+  INLET = environment_inlet (P = 101325, T = 298.15)
+  INTAKE_PIPE = intake_runner (D = 0.050, L = 0.45, CELLS = 4)
+  CYL1 = cylinder (BORE = 0.084, STROKE = 0.090, ROD = 0.146, CR = 10.2, ANCHOR = 15, DURATION = 44)
+  CYL2 = cylinder (BORE = 0.084, STROKE = 0.090, ROD = 0.146, CR = 10.2, ANCHOR = 15, DURATION = 44)
+  EXH_MANIFOLD = plenum (VOL = 0.0022, P = 115000, T = 980.0)
+  DOWNPIPE = pipe (D = 0.055, L = 0.65, CELLS = 4)
+  TWC_INLET_CONE = plenum (VOL = 0.0012, P = 112000, T = 950.0)
+  TWC_MONOLITH = pipe (D = 0.110, L = 0.50, CELLS = 3)
+  UNDERFLOOR_RES = plenum (VOL = 0.0065, P = 105000, T = 780.0)
+  TAILPIPE = pipe (D = 0.055, L = 1.00, CELLS = 6)
+  OUTLET = environment_outlet (P = 101325, T = 298.15)
+
+CONNECTIONS:
+  INLET.out -> INTAKE_PIPE.in
+  INTAKE_PIPE.out -> CYL1.intake
+  INTAKE_PIPE.out -> CYL2.intake
+  CYL1.exhaust -> EXH_MANIFOLD.port1
+  CYL2.exhaust -> EXH_MANIFOLD.port2
+  EXH_MANIFOLD.out -> DOWNPIPE.in
+  DOWNPIPE.out -> TWC_INLET_CONE.in
+  TWC_INLET_CONE.out -> TWC_MONOLITH.in
+  TWC_MONOLITH.out -> UNDERFLOOR_RES.in
+  UNDERFLOOR_RES.out -> TAILPIPE.in
+  TAILPIPE.out -> OUTLET.in

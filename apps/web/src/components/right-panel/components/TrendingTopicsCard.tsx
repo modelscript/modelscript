@@ -5,6 +5,7 @@ import { Text } from "@primer/react";
 import React, { useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { updateUserTopic } from "../../../api";
+import type { SocialTopicRecord } from "../../../api/social";
 import { useAuth } from "../../../AuthContext";
 import { useFeatureFlag, useLanguageEnabled } from "../../../FeatureFlagContext";
 import { useClickOutside } from "../../../hooks/useClickOutside";
@@ -24,10 +25,17 @@ import {
   TrendingItem,
 } from "../styles";
 
+export interface TrendingTopicItem extends SocialTopicRecord {
+  id?: number | string | undefined;
+  concept?: string | undefined;
+  display_name?: string | undefined;
+  postsCount?: number | undefined;
+}
+
 export interface TrendingTopicsCardProps {
-  trending: any[];
-  activeTrendMenu: number | null;
-  setActiveTrendMenu: (id: number | null) => void;
+  trending: TrendingTopicItem[];
+  activeTrendMenu: number | string | null;
+  setActiveTrendMenu: (id: number | string | null) => void;
   maxItems?: number;
 }
 
@@ -103,7 +111,8 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
   });
   const visibleTrending = activeTrending.filter((t) => {
     if (!canDismiss) return true;
-    return !dismissedIds.has(t.id ?? t.concept) && !dismissedIds.has(t.concept);
+    const key = t.id ?? t.concept ?? t.tag ?? t.name ?? "";
+    return !dismissedIds.has(key) && (!t.concept || !dismissedIds.has(t.concept));
   });
   const displayedTrending = visibleTrending.slice(0, maxItems);
 
@@ -115,7 +124,7 @@ export const TrendingTopicsCard: React.FC<TrendingTopicsCardProps> = ({
       <PanelList>
         {displayedTrending.length > 0 ? (
           displayedTrending.map((topic) => {
-            const topicKey = topic.id ?? topic.concept;
+            const topicKey = topic.id ?? topic.concept ?? topic.tag ?? topic.name ?? "";
             const postCount = Number(topic.post_count ?? topic.postsCount ?? 0);
             const targetTopic = String(topic.display_name || topic.concept || "").replace(/^#/, "");
             const domainMeta = DOMAIN_META_BY_TAG.get(targetTopic.toLowerCase());

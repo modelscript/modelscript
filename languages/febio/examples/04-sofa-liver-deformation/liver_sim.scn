@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Node name="LiverSurgicalScene" dt="0.005" gravity="0 -9.81 0">
+  <Node name="LiverParenchymaFEM">
+    <EulerImplicitSolver name="ImplicitSolver" rayleighStiffness="0.1" rayleighMass="0.1" />
+    <CGLinearSolver name="LinearSolver" iterations="25" tolerance="1e-6" threshold="1e-6" />
+    <MechanicalObject name="dofs" position="0 0 0  40 0 0  0 35 0  0 0 30  40 0 30" />
+    <TetrahedronSetTopologyContainer name="topo" tetrahedra="0 1 2 3  1 4 2 3" />
+    <DiagonalMass name="LiverMass" massDensity="1.05" />
+    <TetrahedronFEMForceField name="HepaticFEM" youngModulus="4500" poissonRatio="0.45" method="large" />
+    <FixedConstraint name="FalciformLigamentAnchor" indices="0 1 2" />
+  </Node>
+</Node>

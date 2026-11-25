@@ -1,0 +1,11 @@
+{
+  "id": "modelscript-03-parametric-pump-curve",
+  "lang": "modelscript",
+  "subFormats": ["msx"],
+  "difficulty": 3,
+  "title": "Parametric Centrifugal Pump Curve & Efficiency Study",
+  "description": "Affinity-law scaled centrifugal pump head, hydraulic power, brake power, and best-efficiency-point sweep across volumetric flow rates.",
+  "category": "Fluid Machinery",
+  "tags": ["modelscript", "pump", "hydraulics", "affinity-laws", "parametric"],
+  "activeFile": "pump_curve.msx"
+}

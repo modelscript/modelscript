@@ -12,9 +12,8 @@ import {
   createRadialContactShadowTexture,
 } from "./procedural-pbr.js";
 import {
-  PLINTH_CENTER_REAL_SCALE,
-  PLINTH_CENTER_TABLETOP,
   clampNumber,
+  getRotundaPlinthPresentation,
   wrapIndex,
   type RotundaAnimationControllerLike,
   type RotundaCaeOverlay,
@@ -910,10 +909,15 @@ export function TurntableCarousel({
 
   // Ref-driven smooth animation state (zero per-frame React re-renders)
   const animatedStepRef = useRef<number>(carouselStep);
-  const currentPosRef = useRef<THREE.Vector3>(
-    new THREE.Vector3(...(scaleMode === "real-scale" ? PLINTH_CENTER_REAL_SCALE : PLINTH_CENTER_TABLETOP)),
-  );
-  const currentScaleRef = useRef<number>(scaleMode === "real-scale" ? 2.15 : 1.0);
+  const initialPresentation = getRotundaPlinthPresentation(scaleMode);
+  const currentPosRef = useRef<THREE.Vector3>(new THREE.Vector3(...initialPresentation.center));
+  const currentScaleRef = useRef<number>(initialPresentation.scale);
+  const pedestalRatioRef = useRef<number>(initialPresentation.pedestalRatio);
+  const plinthFootprintRef = useRef<number>(initialPresentation.plinthFootprint);
+  const plinthHeightScaleRef = useRef<number>(initialPresentation.plinthHeightScale);
+  // Mount-time presentation (frozen so scaleMode changes spring smoothly instead of snapping via JSX props)
+  const mountPresentationRef = useRef(initialPresentation);
+  const plinthVisualRef = useRef<THREE.Group | null>(null);
   const plinthYawRef = useRef<number>(plinthYaw);
   const plinthZoomRef = useRef<number>(plinthZoom);
   plinthZoomRef.current = plinthZoom;
@@ -1130,14 +1134,18 @@ export function TurntableCarousel({
   useFrame((state, rawDelta) => {
     const delta = Math.min(rawDelta, 0.1);
 
-    // 1. Plinth Tabletop <-> 1:1 Real-Scale spring interpolation
-    const targetCoords = scaleMode === "real-scale" ? PLINTH_CENTER_REAL_SCALE : PLINTH_CENTER_TABLETOP;
-    const targetScale = scaleMode === "real-scale" ? 2.15 : 1.0;
+    // 1. Plinth Hero <-> Tabletop <-> 1:1 Real-Scale spring interpolation
+    const target = getRotundaPlinthPresentation(scaleMode);
+    const targetCoords = target.center;
+    const targetScale = target.scale;
     const plinthAlpha = 1 - Math.exp(-delta * 7.2);
 
     tmpTargetPosRef.current.set(targetCoords[0], targetCoords[1], targetCoords[2]);
     currentPosRef.current.lerp(tmpTargetPosRef.current, plinthAlpha);
     currentScaleRef.current += (targetScale - currentScaleRef.current) * plinthAlpha;
+    pedestalRatioRef.current += (target.pedestalRatio - pedestalRatioRef.current) * plinthAlpha;
+    plinthFootprintRef.current += (target.plinthFootprint - plinthFootprintRef.current) * plinthAlpha;
+    plinthHeightScaleRef.current += (target.plinthHeightScale - plinthHeightScaleRef.current) * plinthAlpha;
 
     if (plinthRootRef.current) {
       plinthRootRef.current.position.copy(currentPosRef.current);
@@ -1145,22 +1153,26 @@ export function TurntableCarousel({
       plinthRootRef.current.updateMatrixWorld();
     }
 
-    // Smoothly retract the pedestal column as plinth drops flush into floor for real-scale walkthrough
-    if (pedestalStemRef.current) {
-      const tabletopRatio = clampNumber(
-        (currentPosRef.current.y - PLINTH_CENTER_REAL_SCALE[1]) /
-          Math.max(0.1, PLINTH_CENTER_TABLETOP[1] - PLINTH_CENTER_REAL_SCALE[1]),
-        0,
-        1,
+    // Plinth-only visual squash (hero mode: wide-but-not-huge low dais; models keep the full root scale)
+    if (plinthVisualRef.current) {
+      plinthVisualRef.current.scale.set(
+        plinthFootprintRef.current,
+        plinthHeightScaleRef.current,
+        plinthFootprintRef.current,
       );
+    }
+
+    // Smoothly retract the pedestal column as plinth drops into a dais (hero) or flush into floor (real-scale)
+    if (pedestalStemRef.current) {
+      const tabletopRatio = clampNumber(pedestalRatioRef.current, 0, 1);
       pedestalStemRef.current.visible = tabletopRatio > 0.04;
       pedestalStemRef.current.scale.y = Math.max(0.01, tabletopRatio);
       pedestalStemRef.current.position.y = -0.14 - 0.48 * tabletopRatio;
     }
 
-    // Keep lightweight floor contact-shadow disc flush with y = 0.005m across tabletop/real-scale transitions
+    // Keep lightweight floor contact-shadow disc flush with y = 0.005m across scale-mode transitions
     if (contactShadowRef.current) {
-      const safeScale = Math.max(0.05, currentScaleRef.current);
+      const safeScale = Math.max(0.05, currentScaleRef.current * plinthHeightScaleRef.current);
       contactShadowRef.current.position.y = (0.005 - currentPosRef.current.y) / safeScale;
     }
 
@@ -1253,14 +1265,23 @@ export function TurntableCarousel({
     });
   }, [models, carouselStep, activeModelIndex]);
 
-  const initialPos = scaleMode === "real-scale" ? PLINTH_CENTER_REAL_SCALE : PLINTH_CENTER_TABLETOP;
-  const initialScale = scaleMode === "real-scale" ? 2.15 : 1.0;
-  const initialShadowLocalY = (0.005 - initialPos[1]) / initialScale;
+  const mountPresentation = mountPresentationRef.current;
+  const initialPos = mountPresentation.center;
+  const initialScale = mountPresentation.scale;
+  const initialShadowLocalY = (0.005 - initialPos[1]) / (initialScale * mountPresentation.plinthHeightScale);
 
   return (
     <group ref={plinthRootRef} name="rotunda-turntable-carousel" position={initialPos} scale={initialScale}>
       {/* ── Circular Metrology Plinth Stage (CNC Machined Brushed Titanium) ── */}
-      <group name="metrology-plinth">
+      <group
+        ref={plinthVisualRef}
+        name="metrology-plinth"
+        scale={[
+          mountPresentation.plinthFootprint,
+          mountPresentation.plinthHeightScale,
+          mountPresentation.plinthFootprint,
+        ]}
+      >
         {/* Lightweight soft radial contact-shadow disc on the floor (ZERO shadow-map GPU cost) */}
         <mesh ref={contactShadowRef} position={[0, initialShadowLocalY, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <circleGeometry args={[1.18, 40]} />

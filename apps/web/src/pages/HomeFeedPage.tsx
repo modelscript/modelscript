@@ -3,12 +3,13 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getTimeline } from "../api";
+import type { SocialPostRecord } from "../api/social";
 import { useAuth } from "../AuthContext";
 import { AnsatzMark } from "../components/AnsatzLogo";
 import Box from "../components/Box";
 import ComposeBox from "../components/ComposeBox";
 import { ComposeContext } from "../components/ComposeContext";
-import { MorselIcon } from "../components/icons";
+import { AnsatzIcon } from "../components/icons";
 import PostSkeleton from "../components/PostSkeleton";
 import { scrollToTop } from "../components/ScrollToTop";
 import Spinner from "../components/Spinner";
@@ -29,6 +30,10 @@ import {
 
 export type { FilterChip };
 
+type FeedPostItem = SocialPostRecord & {
+  author?: { username?: string | undefined } | undefined;
+};
+
 const HomeFeedPage: React.FC = () => {
   usePageTitle("Home");
   const { user, token } = useAuth();
@@ -37,7 +42,7 @@ const HomeFeedPage: React.FC = () => {
   const brandName =
     !branding.instanceName || branding.instanceName === "Ansatz" ? "Ansatz Network" : branding.instanceName;
   const customLogoSrc = theme === "dark" ? branding.brandLogoDarkUrl || branding.brandLogoUrl : branding.brandLogoUrl;
-  const [posts, setPosts] = useState<any[]>([]);
+  const [posts, setPosts] = useState<FeedPostItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"forYou" | "following" | "federated">("forYou");
   const [followingSort, setFollowingSort] = useState<"popular" | "recent">("recent");
@@ -98,7 +103,7 @@ const HomeFeedPage: React.FC = () => {
         }
       } catch (err) {
         console.warn("[HomeFeedPage] Network fetch failed, reading from offline cache:", err);
-        const cached = await getCachedTimelinePosts();
+        const cached = await getCachedTimelinePosts<FeedPostItem>();
         if (cached && cached.length > 0) {
           setPosts(cached);
           setHasMore(false);
@@ -140,8 +145,8 @@ const HomeFeedPage: React.FC = () => {
   }, [loadingMore, hasMore, activeTab, followingSort, posts.length, activeFilter, activeTag]);
 
   useEffect(() => {
-    const handlePostCreated = (e: any) => {
-      const newPost = e.detail;
+    const handlePostCreated = (e: Event) => {
+      const newPost = (e as CustomEvent<FeedPostItem>).detail;
       if (newPost) {
         if (newPost.reply_to_id) return;
         setPosts((prev) => (prev.some((p) => p.id === newPost.id) ? prev : [newPost, ...prev]));
@@ -152,8 +157,8 @@ const HomeFeedPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handleUserMutedOrBlocked = (e: any) => {
-      const blockedUsername = e?.detail?.username;
+    const handleUserMutedOrBlocked = (e: Event) => {
+      const blockedUsername = (e as CustomEvent<{ username?: string }>).detail?.username;
       if (blockedUsername) {
         setPosts((prev) =>
           prev.filter((p) => p.username !== blockedUsername && p.author?.username !== blockedUsername),
@@ -233,7 +238,7 @@ const HomeFeedPage: React.FC = () => {
             flexShrink: 0,
           }}
         >
-          <MorselIcon size={16} />
+          <AnsatzIcon size={16} />
         </Link>
       </MobileFeedTopBar>
 

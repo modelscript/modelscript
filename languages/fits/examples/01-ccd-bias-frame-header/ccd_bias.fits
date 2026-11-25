@@ -1,0 +1,24 @@
+SIMPLE  =                    T / Conforms to FITS 4.0 standard
+BITPIX  =                   16 / 16-bit signed integer ADU counts
+NAXIS   =                    2 / 2D CCD detector array
+NAXIS1  =                 1024 / X-axis detector pixels
+NAXIS2  =                 1024 / Y-axis detector pixels
+BSCALE  =                  1.0 / Linear physical scaling factor
+BZERO   =              32768.0 / Unsigned 16-bit integer offset
+OBJECT  = 'MASTER_BIAS'        / Calibration frame type
+OBSTYPE = 'BIAS    '           / Zero-second exposure bias frame
+EXPTIME =                  0.0 / Integration time [s]
+INSTRUME= 'IMAGER-2K'          / Optical CCD camera
+DETTEMP =               -110.0 / Detector temperature [deg C]
+GAIN    =                 1.45 / Detector gain [e-/ADU]
+RDNOISE =                 3.20 / Readout noise [e- RMS]
+DATE-OBS= '2026-03-10T02:14:00' / UTC observation timestamp
+CTYPE1  = 'PIXEL   '           / Detector X pixel coordinate
+CTYPE2  = 'PIXEL   '           / Detector Y pixel coordinate
+CRPIX1  =                512.5 / Reference X pixel
+CRPIX2  =                512.5 / Reference Y pixel
+CRVAL1  =                512.5 / Coordinate value at CRPIX1
+CRVAL2  =                512.5 / Coordinate value at CRPIX2
+CDELT1  =                  1.0 / X pixel scale [pix/pix]
+CDELT2  =                  1.0 / Y pixel scale [pix/pix]
+END

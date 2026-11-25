@@ -1,0 +1,11 @@
+{
+  "id": "acsl-05-pitch-autopilot",
+  "lang": "acsl",
+  "subFormats": ["csl", "csv"],
+  "difficulty": 5,
+  "title": "Pilot-in-the-Loop Pitch Autopilot with Aerodynamic Table",
+  "description": "Short-period longitudinal aircraft pitch autopilot with ACSL TABLE aerodynamic lookup, elevator actuator lag, discrete flight-computer sampling, and companion aerodynamic dataset.",
+  "category": "Aerospace Control",
+  "tags": ["acsl", "autopilot", "aerospace", "table", "multi-file"],
+  "activeFile": "autopilot.csl"
+}

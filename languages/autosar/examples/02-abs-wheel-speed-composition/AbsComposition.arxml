@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>AbsSystem</SHORT-NAME>
+      <ELEMENTS>
+        <SENDER-RECEIVER-INTERFACE>
+          <SHORT-NAME>WheelSpeedIf</SHORT-NAME>
+          <DATA-ELEMENTS>
+            <VARIABLE-DATA-PROTOTYPE>
+              <SHORT-NAME>OmegaRadS</SHORT-NAME>
+            </VARIABLE-DATA-PROTOTYPE>
+          </DATA-ELEMENTS>
+        </SENDER-RECEIVER-INTERFACE>
+
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>WheelSensorSwc</SHORT-NAME>
+          <PORTS>
+            <P-PORT-PROTOTYPE>
+              <SHORT-NAME>SpeedOut</SHORT-NAME>
+              <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/AbsSystem/WheelSpeedIf</PROVIDED-INTERFACE-TREF>
+            </P-PORT-PROTOTYPE>
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>WheelSensor_IB</SHORT-NAME>
+              <RUNNABLES>
+                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>RE_ReadWheelPulse</SHORT-NAME>
+                  <EXECUTION-TIME-WCET>0.0008</EXECUTION-TIME-WCET>
+                </RUNNABLE-ENTITY>
+              </RUNNABLES>
+              <EVENTS>
+                <TIMING-EVENT>
+                  <SHORT-NAME>TE_5ms</SHORT-NAME>
+                  <START-ON-EVENT-REF>RE_ReadWheelPulse</START-ON-EVENT-REF>
+                  <PERIOD>0.005</PERIOD>
+                </TIMING-EVENT>
+              </EVENTS>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>AbsControllerSwc</SHORT-NAME>
+          <PORTS>
+            <R-PORT-PROTOTYPE>
+              <SHORT-NAME>SpeedIn</SHORT-NAME>
+              <REQUIRED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/AbsSystem/WheelSpeedIf</REQUIRED-INTERFACE-TREF>
+            </R-PORT-PROTOTYPE>
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>AbsController_IB</SHORT-NAME>
+              <RUNNABLES>
+                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>RE_ComputeSlipControl</SHORT-NAME>
+                  <EXECUTION-TIME-WCET>0.0022</EXECUTION-TIME-WCET>
+                </RUNNABLE-ENTITY>
+              </RUNNABLES>
+              <EVENTS>
+                <TIMING-EVENT>
+                  <SHORT-NAME>TE_10ms</SHORT-NAME>
+                  <START-ON-EVENT-REF>RE_ComputeSlipControl</START-ON-EVENT-REF>
+                  <PERIOD>0.010</PERIOD>
+                </TIMING-EVENT>
+              </EVENTS>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+
+        <COMPOSITION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>AbsTopComposition</SHORT-NAME>
+          <COMPONENTS>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>WheelSensor</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/AbsSystem/WheelSensorSwc</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>AbsCtrl</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/AbsSystem/AbsControllerSwc</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+          </COMPONENTS>
+          <CONNECTORS>
+            <ASSEMBLY-SW-CONNECTOR>
+              <SHORT-NAME>Conn_WheelSpeed</SHORT-NAME>
+              <PROVIDER-IREF>
+                <CONTEXT-COMPONENT-REF>WheelSensor</CONTEXT-COMPONENT-REF>
+                <TARGET-P-PORT-REF>SpeedOut</TARGET-P-PORT-REF>
+              </PROVIDER-IREF>
+              <REQUESTER-IREF>
+                <CONTEXT-COMPONENT-REF>AbsCtrl</CONTEXT-COMPONENT-REF>
+                <TARGET-R-PORT-REF>SpeedIn</TARGET-R-PORT-REF>
+              </REQUESTER-IREF>
+            </ASSEMBLY-SW-CONNECTOR>
+          </CONNECTORS>
+        </COMPOSITION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

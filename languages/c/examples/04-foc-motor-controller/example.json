@@ -1,0 +1,12 @@
+{
+  "id": "c-04-foc-motor-controller",
+  "lang": "c",
+  "subFormats": ["c99"],
+  "difficulty": 4,
+  "title": "Clarke/Park Field-Oriented Control (FOC) Motor Drive",
+  "description": "Real-time PMSM Field-Oriented Control firmware implementing Clarke/Park transforms, dq PI current regulation, and Space-Vector PWM duty cycle modulation across header modules.",
+  "category": "Power Electronics & Motor Control",
+  "tags": ["c", "foc", "pmsm", "svpwm", "multi-file"],
+  "activeFile": "foc.c",
+  "fileOrder": ["foc.c", "foc.h", "math_lut.h"]
+}

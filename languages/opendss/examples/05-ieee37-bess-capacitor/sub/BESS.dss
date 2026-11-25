@@ -1,0 +1,4 @@
+! Community Battery Energy Storage, Rooftop PV & Shunt Capacitor Bank
+New Storage.BESS704 bus1=Bus704 phases=3 kv=12.47 kWrated=1500 kWhrated=6000 %stored=75 state=DISCHARGING
+New PVSystem.PV706 bus1=Bus706 phases=3 kv=12.47 kva=1200 pmpp=1080
+New Capacitor.Cap704 bus1=Bus704 phases=3 kv=12.47 kvar=600

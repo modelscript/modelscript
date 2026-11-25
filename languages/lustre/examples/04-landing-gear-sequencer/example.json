@@ -1,0 +1,11 @@
+{
+  "id": "lustre-04-landing-gear-sequencer",
+  "lang": "lustre",
+  "subFormats": ["lus"],
+  "difficulty": 4,
+  "title": "Aircraft Landing Gear Door Sequencer with Synchronous Clocks",
+  "description": "Avionics landing-gear door and actuator sequencer using Lustre synchronous clock sampling (when / merge), hydraulic interlock invariants, and cycle counters.",
+  "category": "Avionics Control",
+  "tags": ["lustre", "avionics", "landing-gear", "clocks", "merge"],
+  "activeFile": "landing_gear.lus"
+}

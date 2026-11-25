@@ -15,6 +15,7 @@ import ProfileSpaces from "../components/ProfileSpaces";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { getApiErrorMessage } from "../util/error";
 import { formatProfileTitle, usePageTitle } from "../util/title";
 import OrganizationPage from "./OrganizationPage";
 import { ProfileHeader, ReportModal, Tab, TabBar, UnblockModal, type LinkedAccount, type ProfileData } from "./profile";
@@ -79,8 +80,8 @@ const ProfilePage: React.FC = () => {
           }),
         );
       }
-    } catch (err: any) {
-      setActionError(err.message || "Failed to block user");
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err, "Failed to block user"));
     } finally {
       setShowBlockMenu(false);
     }
@@ -99,8 +100,8 @@ const ProfilePage: React.FC = () => {
           }),
         );
       }
-    } catch (err: any) {
-      setActionError(err.message || "Failed to unblock user");
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err, "Failed to unblock user"));
     } finally {
       setShowUnblockModal(false);
     }
@@ -125,8 +126,8 @@ const ProfilePage: React.FC = () => {
           );
         }
       }
-    } catch (err: any) {
-      setActionError(err.message || "Failed to mute user");
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err, "Failed to mute user"));
     } finally {
       setShowBlockMenu(false);
     }
@@ -140,8 +141,8 @@ const ProfilePage: React.FC = () => {
       setReportDetails("");
       setReportSuccess(true);
       setTimeout(() => setReportSuccess(false), 5000);
-    } catch (err: any) {
-      setActionError(err.message || "Failed to submit report");
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err, "Failed to submit report"));
     }
   };
 

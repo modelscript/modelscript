@@ -1,0 +1,11 @@
+{
+  "id": "touchstone-04-differential-microstrip-s4p",
+  "lang": "touchstone",
+  "subFormats": ["s4p"],
+  "difficulty": 4,
+  "title": "4-Port Differential Microstrip Pair (Even/Odd Mode)",
+  "description": "1\u201310 GHz 4-port Touchstone S-parameter model of a 50 mm coupled differential microstrip pair capturing insertion loss, NEXT, and FEXT crosstalk.",
+  "category": "High-Speed Interconnects",
+  "tags": ["touchstone", "s4p", "differential-pair", "crosstalk"],
+  "activeFile": "diff_microstrip.s4p"
+}

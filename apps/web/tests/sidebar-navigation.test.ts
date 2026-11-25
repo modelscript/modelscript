@@ -36,16 +36,16 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     assert.ok(studioIndex < reposIndex, "Studio link must be placed above Repositories");
   });
 
-  it("removes redundant top-left sketch icon in favor of the split Post | Morsel button and makes BrandHeader full width", () => {
+  it("removes redundant top-left sketch icon in favor of the split Post | Ansatz button and makes BrandHeader full width", () => {
     assert.ok(content.includes("<BrandRow>"), "Sidebar.tsx must render BrandRow container wrapping brand");
     assert.ok(
-      !content.includes("<BrandSketchLink") && !content.includes("<BrandPlaygroundLink"),
+      !content.includes("<BrandSketchLink") && !content.includes("<BrandAnsatzLink"),
       "Sidebar.tsx must not render redundant BrandSketchLink in brand header",
     );
     assert.ok(
       content.includes("<SplitPostButtonContainer") &&
-        (content.includes("<SplitMorselButtonLink") || content.includes("<SplitSketchButtonLink")),
-      "Sidebar.tsx must provide Morsel action via split button",
+        (content.includes("<SplitAnsatzButtonLink") || content.includes("<SplitSketchButtonLink")),
+      "Sidebar.tsx must provide Ansatz action via split button",
     );
     assert.ok(
       content.includes("const BrandHeader = styled(Link)`") && content.includes("width: 100%"),
@@ -64,7 +64,7 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     );
   });
 
-  it("converts big blue post button into a split button for Post | Morsel", () => {
+  it("converts big blue post button into a split button for Post | Ansatz", () => {
     assert.ok(
       content.includes("<SplitPostButtonContainer") && content.includes("post-split-btn-group"),
       "Sidebar.tsx must render SplitPostButtonContainer with class post-split-btn-group",
@@ -78,31 +78,31 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
       "Sidebar.tsx must provide data-testid='sidebar-post-button' for the Post action",
     );
     assert.ok(
-      content.includes('data-testid="sidebar-morsel-button"') ||
+      content.includes('data-testid="sidebar-ansatz-button"') ||
         content.includes('data-testid="sidebar-sketch-button"'),
-      "Sidebar.tsx must provide data-testid='sidebar-morsel-button' for the Morsel action",
+      "Sidebar.tsx must provide data-testid='sidebar-ansatz-button' for the Ansatz action",
     );
     assert.ok(
       content.includes("<SplitPostButtonDivider") && content.includes("post-split-divider"),
-      "Sidebar.tsx must render SplitPostButtonDivider separating Post and Morsel",
+      "Sidebar.tsx must render SplitPostButtonDivider separating Post and Ansatz",
     );
     assert.ok(content.includes("onClick={onPostClick}"), "Sidebar.tsx Post button must invoke onPostClick");
     assert.ok(
-      content.includes('to="/editor"') || content.includes('to="/morsel"') || content.includes('to="/sketch"'),
+      content.includes('to="/editor"') || content.includes('to="/ansatz"') || content.includes('to="/sketch"'),
       "Sidebar.tsx editor button must point to /editor",
     );
     assert.ok(
-      content.includes("MorselIcon") || content.includes("AnsatzSketchIcon"),
-      "Sidebar.tsx Morsel button must render MorselIcon or AnsatzSketchIcon",
+      content.includes("AnsatzIcon") || content.includes("AnsatzSketchIcon"),
+      "Sidebar.tsx Ansatz button must render AnsatzIcon or AnsatzSketchIcon",
     );
     assert.ok(content.includes("PlusIcon"), "Sidebar.tsx Post button must render PlusIcon");
     assert.ok(
-      content.includes("onMorselClick") || content.includes("onSketchClick"),
-      "SidebarProps must accept optional onMorselClick handler",
+      content.includes("onAnsatzClick") || content.includes("onSketchClick"),
+      "SidebarProps must accept optional onAnsatzClick handler",
     );
   });
 
-  it("verifies Twitter/X-style action buttons stack renders Post with brand bg, plus Morsel and Studio as white/bordered buttons", () => {
+  it("verifies Twitter/X-style action buttons stack renders Post with brand bg, plus Ansatz and Studio as white/bordered buttons", () => {
     assert.ok(
       content.includes('data-testid="sidebar-studio-button"'),
       "Sidebar.tsx must render a Studio action button with data-testid='sidebar-studio-button'",
@@ -115,19 +115,19 @@ describe("Sidebar Navigation Structure & Workbench Placement", () => {
     );
   });
 
-  it("renders a prominent full-width Morsel button when logged out without split or post button", () => {
+  it("renders a prominent full-width Ansatz button when logged out without split or post button", () => {
     assert.ok(
-      content.includes("<GuestMorselButtonLink") || content.includes("<GuestSketchButtonLink"),
-      "Sidebar.tsx must render GuestMorselButtonLink for logged-out visitors",
+      content.includes("<GuestAnsatzButtonLink") || content.includes("<GuestSketchButtonLink"),
+      "Sidebar.tsx must render GuestAnsatzButtonLink for logged-out visitors",
     );
     assert.ok(
-      content.includes('data-testid="sidebar-guest-morsel-button"') ||
+      content.includes('data-testid="sidebar-guest-ansatz-button"') ||
         content.includes('data-testid="sidebar-guest-sketch-button"'),
-      "Sidebar.tsx must provide data-testid for the logged-out Morsel action",
+      "Sidebar.tsx must provide data-testid for the logged-out Ansatz action",
     );
     assert.ok(
       content.includes("background: var(--ms-brand)") || content.includes("background: var(--color-btn-primary-bg)"),
-      "GuestMorselButtonLink must use brand background matching the logged-in button",
+      "GuestAnsatzButtonLink must use brand background matching the logged-in button",
     );
   });
 });

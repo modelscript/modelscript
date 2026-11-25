@@ -146,12 +146,12 @@
     "dist/**"
   ],
   "scripts": {
+    "ansatz": "npx tsx ../../scripts/tools/language-ansatz.ts .",
     "bench:parser": "npx tsx tests/glr-bench.ts",
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
     "clean": "rimraf dist build *.wasm",
     "lint": "eslint src transformers tests --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
     "test": "npm run test:unit",
     "test:full": "npm run test:unit && npm run test:omc",
     "test:latex": "npx tsx tests/ctrf-to-latex.ts",

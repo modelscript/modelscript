@@ -1,0 +1,11 @@
+{
+  "id": "qif-02-flatness-perpendicularity-drf",
+  "lang": "qif",
+  "subFormats": ["qif"],
+  "difficulty": 2,
+  "title": "Flatness & Perpendicularity Datum Reference Frame (A|B|C)",
+  "description": "ASME Y14.5 QIF 3.0 datum reference frame inspection establishing primary plane Datum A, secondary Datum B, tertiary Datum C, flatness, and perpendicularity.",
+  "category": "GD&T Metrology",
+  "tags": ["qif", "gdt", "datum-frame", "flatness", "perpendicularity"],
+  "activeFile": "datum_frame.qif"
+}

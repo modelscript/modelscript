@@ -1,0 +1,11 @@
+{
+  "id": "trasys-04-parabolic-dish-solar-heating",
+  "lang": "trasys",
+  "subFormats": ["trasys", "orbit"],
+  "difficulty": 4,
+  "title": "Parabolic Dish Antenna Solar and Albedo Heating",
+  "description": "High-gain parabolic communications reflector with conical feed horn, cylindrical boom, and spacecraft bus deck evaluated for orbital solar-albedo heat loads.",
+  "category": "Spacecraft Radiation Analysis",
+  "tags": ["trasys", "paraboloid", "antenna", "qcal"],
+  "activeFile": "parabolic_dish.tra"
+}

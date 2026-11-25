@@ -1,0 +1,24 @@
+BEGIN NEW DATA CASE
+C 345 kV Substation Insulation Coordination with ZnO Surge Arrester Library
+  2.0E-6  0.04
+/BRANCH
+C System equivalent and incoming 345 kV overhead line
+SYS345  LINE_S  2.1000  34.0000  0.0000
+LINE_S  BUS345  3.6000  52.0000  0.0380
+C GIS busbar to autotransformer bushing
+BUS345  TX_HV   0.1800   1.4500  0.0045
+TX_HV   GND     950.00  68.0000  0.0032
+BLANK RECORD
+/SWITCH
+C Line energization breaker closing at peak voltage
+SYS345  LINE_S  0.004167    0.038000
+BLANK RECORD
+/SOURCE
+C 345 kVrms L-L => 281.69 kV peak L-G at 60 Hz
+14 SYS345  281691.00   60.00    0.00
+BLANK RECORD
+/OUTPUT
+SYS345 LINE_S BUS345 TX_HV
+BLANK RECORD
+C External ZnO surge arrester piecewise V-I library
+$INCLUDE, zno_arrester.lib

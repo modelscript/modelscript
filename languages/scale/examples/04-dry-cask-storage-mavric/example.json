@@ -1,0 +1,11 @@
+{
+  "id": "scale-04-dry-cask-storage-mavric",
+  "lang": "scale",
+  "subFormats": ["mavric", "shielding"],
+  "difficulty": 4,
+  "title": "Dry Cask Spent-Fuel Storage Shielding (MAVRIC)",
+  "description": "Cylindrical spent nuclear fuel dry storage cask modeled in SCALE MAVRIC with homogenized fuel basket, carbon-steel canister, and concrete overpack.",
+  "category": "Nuclear Shielding & Waste Storage",
+  "tags": ["scale", "mavric", "dry-cask", "shielding"],
+  "activeFile": "dry_cask.scale"
+}

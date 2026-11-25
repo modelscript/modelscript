@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Shared hero-grade Three.js / R3F CAD rendering helpers used by both Morsel (CadViewer)
+ * Shared hero-grade Three.js / R3F CAD rendering helpers used by both Ansatz (CadViewer)
  * and Ansatz (CadStepViewer):
  * - Procedural lathe-brushed alloy PBR maps & 7-lobe aerospace softbox studio environment
  * - Dual-pass Solid-Ahead / Feature-Edge-Wireframe-Behind split sectioning + GPU stencil cap
@@ -163,6 +163,368 @@ export function ensureGeometryBrushedUvs(geo: THREE.BufferGeometry): void {
   geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
 }
 
+/** Shared normal-scale constants (avoids per-render Vector2 allocations). */
+export const HERO_BRUSHED_NORMAL_SCALE = new THREE.Vector2(0.032, 0.014);
+export const HERO_DETAIL_NORMAL_SCALE = new THREE.Vector2(0.14, 0.14);
+export const HERO_ARM_DETAIL_NORMAL_SCALE = new THREE.Vector2(0.11, 0.11);
+
+/** Physically calibrated surface finishes shared across VR Rotunda & Studio CAD hero assemblies. */
+export type HeroSurfaceFinish =
+  | "brushed-aluminum"
+  | "anodized-aluminum"
+  | "dark-anodized"
+  | "satin-steel"
+  | "polished-steel"
+  | "cast-aluminum"
+  | "copper"
+  | "brass"
+  | "gold"
+  | "ceramic-white"
+  | "ceramic-grey"
+  | "painted"
+  | "carbon-fiber"
+  | "rubber"
+  | "glass-lens"
+  | "solar-cell"
+  | "pcb";
+
+export interface HeroSurfacePreset {
+  readonly color: string;
+  readonly metalness: number;
+  readonly roughness: number;
+  readonly anisotropy: number;
+  readonly anisotropyRotation: number;
+  readonly clearcoat: number;
+  readonly clearcoatRoughness: number;
+  readonly iridescence: number;
+  readonly iridescenceIOR: number;
+  readonly envMapIntensity: number;
+  readonly mapMode: "brushed" | "detail" | "none";
+}
+
+export const HERO_SURFACE_PRESETS: Record<HeroSurfaceFinish, HeroSurfacePreset> = {
+  "brushed-aluminum": {
+    color: "#d6d9dc",
+    metalness: 0.95,
+    roughness: 0.31,
+    anisotropy: 0.38,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.28,
+    mapMode: "brushed",
+  },
+  "anodized-aluminum": {
+    color: "#b4bcc6",
+    metalness: 0.93,
+    roughness: 0.38,
+    anisotropy: 0.28,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.2,
+    mapMode: "brushed",
+  },
+  "dark-anodized": {
+    color: "#636c78",
+    metalness: 0.92,
+    roughness: 0.4,
+    anisotropy: 0.24,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.18,
+    mapMode: "brushed",
+  },
+  "satin-steel": {
+    color: "#b9bcbf",
+    metalness: 0.96,
+    roughness: 0.3,
+    anisotropy: 0.34,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.3,
+    mapMode: "brushed",
+  },
+  "polished-steel": {
+    color: "#d2d6db",
+    metalness: 0.98,
+    roughness: 0.24,
+    anisotropy: 0.38,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.35,
+    mapMode: "brushed",
+  },
+  "cast-aluminum": {
+    color: "#c6cbd1",
+    metalness: 0.92,
+    roughness: 0.42,
+    anisotropy: 0.1,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.15,
+    mapMode: "brushed",
+  },
+  copper: {
+    color: "#e3a27a",
+    metalness: 0.96,
+    roughness: 0.31,
+    anisotropy: 0.32,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.3,
+    mapMode: "brushed",
+  },
+  brass: {
+    color: "#d4b26a",
+    metalness: 0.95,
+    roughness: 0.29,
+    anisotropy: 0.3,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.3,
+    mapMode: "brushed",
+  },
+  gold: {
+    color: "#f2c570",
+    metalness: 0.96,
+    roughness: 0.27,
+    anisotropy: 0.26,
+    anisotropyRotation: Math.PI / 2,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.35,
+    mapMode: "brushed",
+  },
+  "ceramic-white": {
+    color: "#edf1f5",
+    metalness: 0.04,
+    roughness: 0.3,
+    anisotropy: 0,
+    anisotropyRotation: 0,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.22,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.0,
+    mapMode: "none",
+  },
+  "ceramic-grey": {
+    color: "#dde3ea",
+    metalness: 0.05,
+    roughness: 0.32,
+    anisotropy: 0,
+    anisotropyRotation: 0,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.22,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.0,
+    mapMode: "none",
+  },
+  painted: {
+    color: "#e2e8f0",
+    metalness: 0.06,
+    roughness: 0.3,
+    anisotropy: 0,
+    anisotropyRotation: 0,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.22,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 1.0,
+    mapMode: "none",
+  },
+  "carbon-fiber": {
+    color: "#434b57",
+    metalness: 0.18,
+    roughness: 0.42,
+    anisotropy: 0.16,
+    anisotropyRotation: Math.PI / 4,
+    clearcoat: 0.32,
+    clearcoatRoughness: 0.24,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 0.98,
+    mapMode: "none",
+  },
+  rubber: {
+    color: "#3d434c",
+    metalness: 0,
+    roughness: 0.84,
+    anisotropy: 0,
+    anisotropyRotation: 0,
+    clearcoat: 0,
+    clearcoatRoughness: 0,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 0.78,
+    mapMode: "none",
+  },
+  "glass-lens": {
+    color: "#1e324a",
+    metalness: 0.12,
+    roughness: 0.07,
+    anisotropy: 0,
+    anisotropyRotation: 0,
+    clearcoat: 0.92,
+    clearcoatRoughness: 0.05,
+    iridescence: 0.34,
+    iridescenceIOR: 1.48,
+    envMapIntensity: 1.3,
+    mapMode: "none",
+  },
+  "solar-cell": {
+    color: "#1a3568",
+    metalness: 0.2,
+    roughness: 0.18,
+    anisotropy: 0,
+    anisotropyRotation: 0,
+    clearcoat: 0.68,
+    clearcoatRoughness: 0.08,
+    iridescence: 0.14,
+    iridescenceIOR: 1.45,
+    envMapIntensity: 1.12,
+    mapMode: "none",
+  },
+  pcb: {
+    color: "#1f6148",
+    metalness: 0.06,
+    roughness: 0.36,
+    anisotropy: 0,
+    anisotropyRotation: 0,
+    clearcoat: 0.36,
+    clearcoatRoughness: 0.2,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: 0.92,
+    mapMode: "none",
+  },
+};
+
+export interface ResolvedHeroSurfaceParams {
+  readonly color: string;
+  readonly metalness: number;
+  readonly roughness: number;
+  readonly anisotropy: number;
+  readonly anisotropyRotation: number;
+  readonly clearcoat: number;
+  readonly clearcoatRoughness: number;
+  readonly iridescence: number;
+  readonly iridescenceIOR: number;
+  readonly envMapIntensity: number;
+  readonly mapMode: "brushed" | "detail" | "none";
+}
+
+/**
+ * Resolves calibrated `MeshPhysicalMaterial` inputs from an explicit `HeroSurfaceFinish`
+ * or infers physically plausible defaults for legacy `baseColor`/`metalness`/`roughness` callers.
+ */
+export function resolveHeroSurfaceParams(opts: {
+  finish?: HeroSurfaceFinish | undefined;
+  baseColor?: string | undefined;
+  metalness?: number | undefined;
+  roughness?: number | undefined;
+  clearcoat?: number | undefined;
+  clearcoatRoughness?: number | undefined;
+  anisotropy?: number | undefined;
+  envMapIntensity?: number | undefined;
+}): ResolvedHeroSurfaceParams {
+  if (opts.finish) {
+    const preset = HERO_SURFACE_PRESETS[opts.finish];
+    return {
+      color: opts.baseColor ?? preset.color,
+      metalness: opts.metalness ?? preset.metalness,
+      roughness: opts.roughness ?? preset.roughness,
+      anisotropy: opts.anisotropy ?? preset.anisotropy,
+      anisotropyRotation: preset.anisotropyRotation,
+      clearcoat: opts.clearcoat ?? preset.clearcoat,
+      clearcoatRoughness: opts.clearcoatRoughness ?? preset.clearcoatRoughness,
+      iridescence: preset.iridescence,
+      iridescenceIOR: preset.iridescenceIOR,
+      envMapIntensity: opts.envMapIntensity ?? preset.envMapIntensity,
+      mapMode: preset.mapMode,
+    };
+  }
+
+  const rawMetal = opts.metalness ?? 0.92;
+  const rawRough = opts.roughness ?? 0.3;
+  const color = opts.baseColor ?? "#d6d9dc";
+
+  if (rawMetal >= 0.65) {
+    const metalness = Math.min(0.98, Math.max(0.92, rawMetal));
+    // Account for brushed roughnessMap (~0.82 mean) so effective surface roughness lands in 0.24..0.38
+    const roughness = Math.min(0.42, Math.max(0.28, rawRough * 1.18));
+    return {
+      color,
+      metalness,
+      roughness,
+      anisotropy: opts.anisotropy ?? 0.3,
+      anisotropyRotation: Math.PI / 2,
+      clearcoat: opts.clearcoat ?? 0,
+      clearcoatRoughness: opts.clearcoatRoughness ?? 0,
+      iridescence: 0,
+      iridescenceIOR: 1.3,
+      envMapIntensity: opts.envMapIntensity ?? 1.24,
+      mapMode: "brushed",
+    };
+  }
+
+  if (rawRough >= 0.7) {
+    return {
+      color,
+      metalness: 0,
+      roughness: Math.min(0.9, Math.max(0.78, rawRough)),
+      anisotropy: 0,
+      anisotropyRotation: 0,
+      clearcoat: opts.clearcoat ?? 0,
+      clearcoatRoughness: opts.clearcoatRoughness ?? 0,
+      iridescence: 0,
+      iridescenceIOR: 1.3,
+      envMapIntensity: opts.envMapIntensity ?? 0.78,
+      mapMode: "none",
+    };
+  }
+
+  return {
+    color,
+    metalness: Math.min(0.18, rawMetal),
+    roughness: Math.min(0.45, Math.max(0.22, rawRough)),
+    anisotropy: opts.anisotropy ?? 0,
+    anisotropyRotation: 0,
+    clearcoat: opts.clearcoat ?? 0.35,
+    clearcoatRoughness: opts.clearcoatRoughness ?? 0.22,
+    iridescence: 0,
+    iridescenceIOR: 1.3,
+    envMapIntensity: opts.envMapIntensity ?? 1.0,
+    mapMode: "none",
+  };
+}
+
 export interface HeroPhysicalMaterialConfig {
   color: number;
   metalness: number;
@@ -198,6 +560,44 @@ const COLOR_PRESERVING_PRESETS = new Set<string>([
   "safety-orange-accent",
 ]);
 
+/** Physically calibrated light-environment albedo overrides so metals read realistically under bright IBL. */
+const LIGHT_IBL_PRESET_OVERRIDES: Partial<
+  Record<
+    string,
+    {
+      colorHex?: number;
+      metalness?: number;
+      roughness?: number;
+      clearcoat?: number;
+      clearcoatRoughness?: number;
+      anisotropy?: number;
+    }
+  >
+> = {
+  "default-machined": { colorHex: 0xd6d9dc, metalness: 0.95, roughness: 0.3, anisotropy: 0.34, clearcoat: 0 },
+  "anodized-aluminum": { colorHex: 0xb6bec8, metalness: 0.93, roughness: 0.36, anisotropy: 0.28, clearcoat: 0 },
+  "cast-aluminum": { colorHex: 0xc6cbd1, metalness: 0.92, roughness: 0.38, anisotropy: 0.1, clearcoat: 0 },
+  "stainless-steel": { colorHex: 0xb9bcbf, metalness: 0.96, roughness: 0.28, anisotropy: 0.34, clearcoat: 0 },
+  "dark-anodized-joint": { colorHex: 0x5c6572, metalness: 0.92, roughness: 0.38, anisotropy: 0.24, clearcoat: 0 },
+  "al-li-nacelle": { colorHex: 0xc4cad2, metalness: 0.94, roughness: 0.28, anisotropy: 0.3, clearcoat: 0 },
+  "titanium-spinner": { colorHex: 0xa6aeb8, metalness: 0.95, roughness: 0.26, anisotropy: 0.34, clearcoat: 0 },
+  "ceramic-white-shell": {
+    colorHex: 0xeef1f5,
+    metalness: 0.04,
+    roughness: 0.3,
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.22,
+  },
+  "elastomer-rubber": { colorHex: 0x3c424b, metalness: 0.0, roughness: 0.85, clearcoat: 0, clearcoatRoughness: 0 },
+  "optical-lens-glass": {
+    colorHex: 0x1c2f46,
+    metalness: 0.12,
+    roughness: 0.07,
+    clearcoat: 0.92,
+    clearcoatRoughness: 0.05,
+  },
+};
+
 /**
  * Resolves calibrated MeshPhysicalMaterial properties for any CAD part.
  */
@@ -211,23 +611,30 @@ export function resolveHeroAlloyConfig(
   const maps = getCachedHeroPbrTextures(gl);
   const presetKey = classifyAlloyPreset(partName, colorRgba, materialHint);
   const spec: AlloyMaterialSpec = ALLOY_MATERIAL_PRESETS[presetKey];
+  const lightOverride = !dark ? LIGHT_IBL_PRESET_OVERRIDES[presetKey] : undefined;
   const useBrushed = spec.useBrushedMaps !== false;
   const useDetail = spec.useDetailMaps === true;
 
-  let colorHex = dark ? spec.colorDark : spec.colorLight;
+  let colorHex = lightOverride?.colorHex ?? (dark ? spec.colorDark : spec.colorLight);
   if (COLOR_PRESERVING_PRESETS.has(presetKey) && colorRgba && colorRgba.length >= 3) {
     const c = new THREE.Color(colorRgba[0]!, colorRgba[1]!, colorRgba[2]!);
     colorHex = c.getHex();
   }
 
+  const metalness = lightOverride?.metalness ?? spec.metalness;
+  const roughness = lightOverride?.roughness ?? spec.roughness;
+  const isMetal = metalness >= 0.65;
+  const defaultClearcoat = isMetal ? 0 : roughness >= 0.7 ? 0 : 0.35;
+  const defaultClearcoatRoughness = isMetal ? 0 : 0.22;
+
   return {
     color: colorHex,
-    metalness: spec.metalness,
-    roughness: spec.roughness,
-    anisotropy: spec.anisotropy,
+    metalness,
+    roughness,
+    anisotropy: lightOverride?.anisotropy ?? spec.anisotropy,
     anisotropyRotation: spec.anisotropyRotation,
-    clearcoat: spec.clearcoat ?? 0.14,
-    clearcoatRoughness: spec.clearcoatRoughness ?? 0.25,
+    clearcoat: lightOverride?.clearcoat ?? spec.clearcoat ?? defaultClearcoat,
+    clearcoatRoughness: lightOverride?.clearcoatRoughness ?? spec.clearcoatRoughness ?? defaultClearcoatRoughness,
     normalMap: useDetail ? maps.detailNormal : useBrushed ? maps.normal : null,
     normalScale: new THREE.Vector2(spec.normalScale[0], spec.normalScale[1]),
     roughnessMap: useDetail ? maps.detailRoughness : useBrushed ? maps.roughness : null,
@@ -239,7 +646,7 @@ export function resolveHeroAlloyConfig(
     iridescenceThicknessMap: spec.iridescence ? maps.iridescence : null,
     emissive: (dark ? spec.emissiveDark : spec.emissiveLight) ?? 0x000000,
     emissiveIntensity: spec.emissiveIntensity ?? 0,
-    envMapIntensity: spec.metalness > 0.5 ? (dark ? 1.5 : 1.55) : dark ? 0.95 : 1.05,
+    envMapIntensity: isMetal ? (dark ? 1.35 : 1.28) : roughness >= 0.7 ? 0.78 : 1.0,
   };
 }
 

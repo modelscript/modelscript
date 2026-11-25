@@ -1,0 +1,11 @@
+{
+  "id": "simulink-02-pid-dc-motor-speed",
+  "lang": "simulink",
+  "subFormats": ["mdl"],
+  "difficulty": 2,
+  "title": "PI-Controlled DC Motor Speed Loop",
+  "description": "Closed-loop DC servo motor speed regulator combining proportional and integral control paths with armature inertia integration and viscous damping feedback.",
+  "category": "Electromechanical Control",
+  "tags": ["simulink", "dc-motor", "pi-controller", "servo"],
+  "activeFile": "dc_motor_pid.mdl"
+}

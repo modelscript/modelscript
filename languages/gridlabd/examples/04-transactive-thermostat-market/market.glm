@@ -1,0 +1,58 @@
+// Transactive Double-Auction Smart Thermostat Neighborhood
+clock {
+  timezone CST+6CDT;
+  starttime '2026-08-05 12:00:00';
+  stoptime '2026-08-05 20:00:00';
+}
+
+module powerflow {
+  solver_method NR;
+}
+
+module residential;
+module market;
+
+object node {
+  name feeder_head;
+  phases ABCN;
+  bustype SWING;
+  nominal_voltage 7200 V;
+}
+
+object node {
+  name neighborhood_bus;
+  phases ABCN;
+  nominal_voltage 7200 V;
+}
+
+object overhead_line {
+  name main_line;
+  phases ABCN;
+  from feeder_head;
+  to neighborhood_bus;
+  length 2800 ft;
+}
+
+object house {
+  name home_alpha;
+  parent neighborhood_bus;
+  floor_area 2200;
+  cooling_setpoint 73.0;
+  air_temperature 73.2;
+}
+
+object house {
+  name home_beta;
+  parent neighborhood_bus;
+  floor_area 1850;
+  cooling_setpoint 75.0;
+  air_temperature 74.8;
+}
+
+object house {
+  name home_gamma;
+  parent neighborhood_bus;
+  floor_area 2600;
+  cooling_setpoint 72.0;
+  air_temperature 72.5;
+}

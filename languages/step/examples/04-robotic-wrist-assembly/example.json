@@ -1,0 +1,11 @@
+{
+  "id": "step-04-robotic-wrist-assembly",
+  "lang": "step",
+  "subFormats": ["step"],
+  "difficulty": 4,
+  "title": "Three-Part Robotic Wrist Sub-Assembly (AP242)",
+  "description": "Hierarchical STEP AP242 product structure assembling a wrist housing, harmonic-drive flange, and end-effector tool plate via NEXT_ASSEMBLY_USAGE_OCCURRENCE.",
+  "category": "Robotics CAD Assembly",
+  "tags": ["step", "ap242", "assembly", "robotics", "nauo"],
+  "activeFile": "robotic_wrist.step"
+}

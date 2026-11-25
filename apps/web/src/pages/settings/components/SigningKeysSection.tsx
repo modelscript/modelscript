@@ -32,6 +32,7 @@ import {
 import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
+import { getApiErrorMessage } from "../../../util/error";
 import {
   getAllDeviceSigningKeys,
   removeDeviceSigningKey,
@@ -239,8 +240,8 @@ export const SigningKeysSection: React.FC = () => {
       setData(res);
       const localKeys = await getAllDeviceSigningKeys();
       setLocalDeviceKeys(localKeys);
-    } catch (err: any) {
-      setError(err.response?.data?.error || err.message || "Failed to load signing keys");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to load signing keys"));
     } finally {
       setLoading(false);
     }
@@ -269,8 +270,8 @@ export const SigningKeysSection: React.FC = () => {
           : "Strict signing mode disabled.",
         "Signing Policy Updated",
       );
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || err.message || "Failed to update signing policy");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to update signing policy"));
     }
   };
 
@@ -296,8 +297,8 @@ export const SigningKeysSection: React.FC = () => {
       setNewKeyOpenssh("");
       setNewKeyLabel("");
       await fetchKeys();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || err.message || "Failed to register signing key", "Registration Error");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to register signing key"), "Registration Error");
     } finally {
       setRegistering(false);
     }
@@ -380,8 +381,8 @@ export const SigningKeysSection: React.FC = () => {
       setIsRegisterModalOpen(false);
       setNewKeyLabel("");
       await fetchKeys();
-    } catch (err: any) {
-      toast.error(err.message || "Failed to create web device key", "Key Generation Failed");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to create web device key"), "Key Generation Failed");
     } finally {
       setRegistering(false);
     }
@@ -431,11 +432,8 @@ export const SigningKeysSection: React.FC = () => {
       setDelegatingDeviceKey(null);
       setDelegationSignature("");
       await fetchKeys();
-    } catch (err: any) {
-      toast.error(
-        err.response?.data?.error || err.message || "Failed to link device key to master key",
-        "Delegation Failed",
-      );
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to link device key to master key"), "Delegation Failed");
     } finally {
       setDelegating(false);
     }
@@ -451,8 +449,8 @@ export const SigningKeysSection: React.FC = () => {
       setConfirmingRevokeKey(null);
       setRevokeReason("");
       await fetchKeys();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || err.message || "Failed to revoke key");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to revoke key"));
     } finally {
       setRevoking(false);
     }
@@ -469,8 +467,8 @@ export const SigningKeysSection: React.FC = () => {
     try {
       const entries = await getSigningKeyLog(user.username);
       setLogEntries(entries);
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || err.message || "Failed to fetch transparency log");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to fetch transparency log"));
     } finally {
       setLoadingLog(false);
     }

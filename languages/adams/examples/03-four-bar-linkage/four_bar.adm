@@ -1,0 +1,61 @@
+!------------------------------------------------------------------
+! MSC Adams Dataset: Four-Bar Grashof Crank-Rocker Linkage
+! Spatial mobility: 3 moving bodies (18 DOF)
+! Joints: REVOLUTE(5) + SPHERICAL(3) + UNIVERSAL(4) + REVOLUTE(5) = 17 => M = 1 DOF
+!------------------------------------------------------------------
+ADAMS/
+!
+!----------------------------------- PARTS ------------------------
+PART/1, GROUND
+!
+! Input crank (L2 = 0.30 m)
+PART/2, MASS = 2.4 &
+  , CM = 201 &
+  , IP = 0.04, 0.06, 0.05
+!
+! Coupler link (L3 = 0.85 m)
+PART/3, MASS = 4.2 &
+  , CM = 301 &
+  , IP = 0.14, 0.18, 0.16
+!
+! Output rocker (L4 = 0.60 m)
+PART/4, MASS = 3.1 &
+  , CM = 401 &
+  , IP = 0.09, 0.11, 0.10
+!
+!---------------------------------- MARKERS -----------------------
+! Ground pivots (L1 = 0.80 m)
+MARKER/101, PART = 1, QP = 0.0, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/102, PART = 1, QP = 0.80, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+!
+! Crank markers
+MARKER/201, PART = 2, QP = 0.0, 0.15, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/202, PART = 2, QP = 0.0, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/203, PART = 2, QP = 0.0, 0.30, 0.0, REULER = 0.0, 0.0, 0.0
+!
+! Coupler markers
+MARKER/301, PART = 3, QP = 0.40, 0.45, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/302, PART = 3, QP = 0.0, 0.30, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/303, PART = 3, QP = 0.80, 0.60, 0.0, REULER = 0.0, 0.0, 0.0
+!
+! Rocker markers
+MARKER/401, PART = 4, QP = 0.80, 0.30, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/402, PART = 4, QP = 0.80, 0.60, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/403, PART = 4, QP = 0.80, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+!
+!----------------------------------- JOINTS -----------------------
+JOINT/1, REVOLUTE, I = 101, J = 202
+JOINT/2, SPHERICAL, I = 203, J = 302
+JOINT/3, UNIVERSAL, I = 303, J = 402
+JOINT/4, REVOLUTE, I = 403, J = 102
+!
+!----------------------------------- FORCES -----------------------
+SPRINGDAMPER/1, TRANSLATIONAL, I = 101, J = 401, K = 1200.0, C = 45.0, LENGTH = 0.85
+!
+!---------------------------------- MOTIONS -----------------------
+MOTION/1, JOINT = 1, ROTATIONAL, FUNCTION = 180D * TIME
+!
+!--------------------------- SIMULATION CONTROL -------------------
+ACCGRAV/JGRAV = -9.80665
+SIMULATE/DYNAMIC, END = 4.0, DTOUT = 0.01
+END

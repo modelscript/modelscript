@@ -5,7 +5,7 @@
  * for `HomeWorkflowPairs.vue`.
  *
  * Dynamically loads `monaco-editor` + `editor.worker` when the user clicks the
- * translucent activation overlay, registering full Morsel-grade language features:
+ * translucent activation overlay, registering full Ansatz-grade language features:
  * 1. Monarch lexical grammars & language configurations (`msx-xml`, `msx-modelica`, `msx-sysml`, `msx-ieee2800`)
  * 2. `DocumentSemanticTokensProvider` for CST-backed semantic token coloring
  * 3. `CompletionItemProvider` for context-aware auto-complete (keywords, types, snippets,
@@ -179,7 +179,7 @@ function registerWorkflowLanguagesAndThemes(monaco: typeof import("monaco-editor
   if (providersRegistered) return;
   providersRegistered = true;
 
-  // Define Morsel-grade Dark & Light themes with explicit semantic token rules
+  // Define Ansatz-grade Dark & Light themes with explicit semantic token rules
   monaco.editor.defineTheme("msx-workflow-dark", {
     base: "vs-dark",
     inherit: true,

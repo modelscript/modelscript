@@ -7,7 +7,7 @@ import {
   ScalarColorbarLegend,
   type CaeSimulationRunEntry,
 } from "@modelscript/editor/workbench/cad-viewer";
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CodeIcon, EyeIcon, VersionsIcon, WorkflowIcon, ZapIcon } from "@primer/octicons-react";
 import { Button } from "@primer/react";
 import { Html } from "@react-three/drei";
@@ -1335,7 +1335,7 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
 
   useEffect(() => {
     if (!loading) {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [loading]);
 
@@ -1577,9 +1577,9 @@ export const FeaDeckViewer: React.FC<FeaDeckViewerProps> = ({ artifactId, viewCo
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
               onClick={() => {
-                const hash = compressMorselPayload({
+                const hash = compressAnsatzPayload({
                   v: 1,
-                  lang: "fea" as any,
+                  lang: "fea",
                   code: rawText || `*HEADING\n${title}\n`,
                   title,
                 });

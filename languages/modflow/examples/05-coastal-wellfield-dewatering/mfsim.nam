@@ -1,0 +1,11 @@
+# MODFLOW 6 Regional Coastal Simulation Name File
+BEGIN OPTIONS
+END OPTIONS
+
+BEGIN TIMING
+  TDIS6 gwf.tdis
+END TIMING
+
+BEGIN MODELS
+  GWF6 gwf.nam gwf_coastal
+END MODELS

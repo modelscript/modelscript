@@ -1,0 +1,23 @@
+C 1D Steady-State Aluminum Conduction Rod
+HEADER OPTIONS DATA
+  TITLE = "1D Steady-State Conduction Rod"
+  ABSZRO = 0.0
+HEADER NODE DATA, ROD
+  1, 350.0, 45.0   $ Heated end diffusion node
+  2, 330.0, 45.0   $ Mid-rod node A
+  3, 315.0, 45.0   $ Mid-rod node B
+  -4, 300.0, 0.0   $ Fixed cold-plate boundary node (300 K)
+HEADER CONDUCTOR DATA, ROD
+  10, 1, 2, 4.0    $ Linear conduction G = kA/L (W/K)
+  20, 2, 3, 4.0
+  30, 3, 4, 4.0
+HEADER SOURCE DATA, ROD
+  1, 40.0          $ Applied heater load (W)
+HEADER CONSTANTS DATA
+  TIMEO = 0.0, TIMEND = 200.0, DTIMEI = 1.0
+  DRLXCA = 1.0E-6, NLOOP = 100
+HEADER EXECUTION
+  CALL STDSTL
+HEADER OUTPUT CALLS
+  CALL TPRINT
+END OF DATA

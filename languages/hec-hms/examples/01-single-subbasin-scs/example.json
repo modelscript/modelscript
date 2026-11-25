@@ -1,0 +1,12 @@
+{
+  "id": "hec-hms-01-single-subbasin-scs",
+  "lang": "hec-hms",
+  "subFormats": ["hms", "basin", "met", "control"],
+  "difficulty": 1,
+  "title": "Single Subbasin SCS Curve Number Runoff",
+  "description": "Single rural watershed subbasin transforming 24-hour design storm precipitation into direct runoff using the SCS Curve Number loss and SCS Unit Hydrograph methods.",
+  "category": "Watershed Hydrology",
+  "tags": ["hec-hms", "scs-cn", "unit-hydrograph", "multi-file"],
+  "activeFile": "simple.basin",
+  "isDefaultStarter": true
+}

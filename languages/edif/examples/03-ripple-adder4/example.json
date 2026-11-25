@@ -1,0 +1,11 @@
+{
+  "id": "edif-03-ripple-adder4",
+  "lang": "edif",
+  "subFormats": ["edf"],
+  "difficulty": 3,
+  "title": "4-Bit Ripple-Carry Adder Structural Netlist",
+  "description": "Hierarchical 4-bit ripple-carry adder EDIF 2.0.0 netlist chaining four full-adder subcells with carry propagation nets from bit 0 to bit 3.",
+  "category": "Arithmetic Circuits",
+  "tags": ["edif", "adder", "ripple-carry", "hierarchy"],
+  "activeFile": "adder4.edf"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "sbml-05-mapk-cascade-sedml",
+  "lang": "sbml",
+  "subFormats": ["sbml-l2v4", "sedml"],
+  "difficulty": 5,
+  "title": "MAPK Signaling Cascade with SED-ML Experiment",
+  "description": "Three-tier Huang-Ferrell MAPK phosphorylation cascade (MKKK -> MKK -> MAPK) with negative feedback inhibition paired with a SED-ML simulation protocol.",
+  "category": "Systems Biology",
+  "tags": ["sbml", "sedml", "mapk", "signaling-cascade", "multi-file"],
+  "activeFile": "mapk.sbml",
+  "fileOrder": ["mapk.sbml", "mapk_sim.sedml"]
+}

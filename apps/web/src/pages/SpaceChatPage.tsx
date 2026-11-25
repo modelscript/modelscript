@@ -43,6 +43,7 @@ import { useAuth } from "../AuthContext";
 import CreateSpaceModal from "../components/spaces/CreateSpaceModal";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
 
@@ -872,8 +873,8 @@ export const SpaceChatPage: React.FC = () => {
         return next;
       });
       setTimeout(() => scrollToBottom(true), 50);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to send message");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to send message"));
     }
   };
 
@@ -907,8 +908,8 @@ export const SpaceChatPage: React.FC = () => {
         targetType === "doc" ? "Promoted message to Space Living Doc!" : "Promoted message to Change Order (ECO)!",
       );
       setMessages((prev) => prev.map((m) => (m.id === messageId ? { ...m, promoted_target_type: targetType } : m)));
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Promotion failed");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Promotion failed"));
     }
   };
 
@@ -948,8 +949,8 @@ export const SpaceChatPage: React.FC = () => {
       setTimeout(() => {
         threadEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 50);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to send thread reply");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to send thread reply"));
     }
   };
 

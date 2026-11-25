@@ -1,0 +1,11 @@
+CM 3-Element Yagi-Uda Directional Beam Antenna at 300 MHz
+CM Boom along +X axis, elements parallel to Y axis
+CE
+GW 1 21 -0.20 0.0 -0.248 -0.20 0.0 0.248 0.002
+GW 2 21  0.00 0.0 -0.235  0.00 0.0 0.235 0.002
+GW 3 21  0.18 0.0 -0.215  0.18 0.0 0.215 0.002
+GE 0
+FR 0 1 0 0 300.0 0.0
+EX 0 2 11 0 1.0 0.0
+RP 0 1 73 1000 90.0 0.0 0.0 5.0
+EN

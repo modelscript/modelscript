@@ -1,0 +1,38 @@
+Geom Title=Highway Bridge Crossing Constriction
+Program Version=6.3.1
+River Reach=CedarCreek,BridgeReach
+Reach XY=3
+0, 600
+0, 300
+0, 0
+
+Type RM CEM CS= 1 ,600     ,        ,
+DESCRIPTION=Approach Section Upstream of Bridge
+Station Elevation Data= 5
+0, 108.0  30, 102.0  60, 96.0  90, 102.0  120, 108.0
+Cross Section Reach Lengths and Manning Values=
+300, 300, 300, 3, 0.055, 0.032, 0.055, 0, 0
+Bank Sta=30,90
+Exp/Contr=0.3,0.5
+
+Type RM CEM CS= 2 ,350     ,        ,
+Inline Structure
+Weir Data= 103.5, 48, 1.44
+
+Type RM CEM CS= 1 ,300     ,        ,
+DESCRIPTION=Contracted Bridge Opening Section
+Station Elevation Data= 5
+0, 107.5  35, 101.5  60, 95.4  85, 101.5  120, 107.5
+Cross Section Reach Lengths and Manning Values=
+300, 300, 300, 3, 0.050, 0.030, 0.050, 0, 0
+Bank Sta=35,85
+Exp/Contr=0.3,0.5
+
+Type RM CEM CS= 1 ,0       ,        ,
+DESCRIPTION=Downstream Expansion Tailwater Section
+Station Elevation Data= 5
+0, 107.0  30, 101.0  60, 94.8  90, 101.0  120, 107.0
+Cross Section Reach Lengths and Manning Values=
+0, 0, 0, 3, 0.055, 0.032, 0.055, 0, 0
+Bank Sta=30,90
+Exp/Contr=0.1,0.3

@@ -84,7 +84,7 @@ const DEFAULT_PRESETS: InstanceSetupStatus["presets"] = {
   },
   tier3_flagship: {
     id: "tier3_flagship",
-    label: "Tier 3: Ansatz Social (Public Community Hub)",
+    label: "Tier 3: Ansatz Network (Public Community Hub)",
     description: "Open public registration with ActivityPub federation, waitlist, and peer invites.",
     registrationMode: "open",
     federationMode: "open",

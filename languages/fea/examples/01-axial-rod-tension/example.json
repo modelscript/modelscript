@@ -1,0 +1,12 @@
+{
+  "id": "fea-01-axial-rod-tension",
+  "lang": "fea",
+  "subFormats": ["inp"],
+  "difficulty": 1,
+  "title": "Three-Element Axial Rod Tension Test (CalculiX)",
+  "description": "CalculiX/Abaqus static uniaxial tension deck for a 3-element steel rod fixed at one end and loaded axially at the free tip.",
+  "category": "Linear Static FEA",
+  "tags": ["fea", "calculix", "inp", "axial-rod", "static"],
+  "activeFile": "axial_rod.inp",
+  "isDefaultStarter": true
+}

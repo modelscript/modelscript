@@ -1,0 +1,12 @@
+{
+  "id": "gtsuite-05-hev-turbo-engine-maps",
+  "lang": "gtsuite",
+  "subFormats": ["gtm", "csv"],
+  "difficulty": 5,
+  "title": "Hybrid EV Turbocharged Engine with Performance Maps",
+  "description": "Miller-cycle turbocharged hybrid-electric range-extender engine with intercooler, charge-air plenum, two-cylinder boosted gas path, and companion cam valve-lift and turbocharger compressor map tables.",
+  "category": "Hybrid Powertrains",
+  "tags": ["hev", "miller-cycle", "turbo-map", "multi-file"],
+  "activeFile": "hev_engine.gtm",
+  "fileOrder": ["hev_engine.gtm", "valve_lift.csv", "turbo_map.csv"]
+}

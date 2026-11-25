@@ -1,0 +1,11 @@
+{
+  "id": "csv-03-al6061-tensile-coupon",
+  "lang": "csv",
+  "subFormats": ["csv"],
+  "difficulty": 3,
+  "title": "Aluminum 6061-T6 Tensile Coupon Stress-Strain Curve",
+  "description": "Uniaxial tensile test log for an ASTM E8 Al 6061-T6 specimen capturing elastic modulus, 0.2% offset yield, ultimate tensile strength, and necking.",
+  "category": "Materials Testing",
+  "tags": ["csv", "tensile-test", "stress-strain", "al6061", "materials"],
+  "activeFile": "al6061_tensile.csv"
+}

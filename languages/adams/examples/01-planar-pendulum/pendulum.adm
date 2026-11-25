@@ -1,0 +1,30 @@
+!------------------------------------------------------------------
+! MSC Adams Dataset: Simple Planar Compound Pendulum
+!------------------------------------------------------------------
+ADAMS/
+!
+!----------------------------------- PARTS ------------------------
+PART/1, GROUND
+!
+PART/2, MASS = 2.0 &
+  , CM = 201 &
+  , IP = 0.08, 0.08, 0.04
+!
+!---------------------------------- MARKERS -----------------------
+! Pivot markers (coincident at origin)
+MARKER/101, PART = 1, QP = 0.0, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/202, PART = 2, QP = 0.0, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+!
+! Pendulum center of mass at 0.5 m below pivot
+MARKER/201, PART = 2, QP = 0.3536, -0.3536, 0.0, REULER = 0.0, 0.0, 0.0
+!
+!----------------------------------- JOINTS -----------------------
+JOINT/1, REVOLUTE, I = 101, J = 202
+!
+!----------------------------------- FORCES -----------------------
+SPRINGDAMPER/1, ROTATIONAL, I = 101, J = 202, K = 0.0, C = 0.25
+!
+!--------------------------- SIMULATION CONTROL -------------------
+ACCGRAV/JGRAV = -9.80665
+SIMULATE/DYNAMIC, END = 6.0, DTOUT = 0.01
+END

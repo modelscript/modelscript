@@ -1,0 +1,54 @@
+// Solar PV + Smart Inverter Distribution Feeder
+clock {
+  timezone MST+7MDT;
+  starttime '2026-06-21 06:00:00';
+  stoptime '2026-06-21 20:00:00';
+}
+
+module powerflow {
+  solver_method NR;
+}
+
+module generators;
+
+schedule pv_irradiance_shape {
+  * 6-8 * * * 0.35;
+  * 9-15 * * * 0.95;
+  * 16-19 * * * 0.40;
+}
+
+object node {
+  name sub_bus;
+  phases ABCN;
+  bustype SWING;
+  nominal_voltage 7200 V;
+}
+
+object load {
+  name commercial_bus;
+  phases ABCN;
+  nominal_voltage 7200 V;
+  constant_power_A 150+45j kVA;
+  constant_power_B 150+45j kVA;
+  constant_power_C 150+45j kVA;
+
+  object inverter {
+    name smart_inv_1;
+    rated_power 250 kW;
+    power_factor 0.95;
+
+    object solar {
+      name pv_array_1;
+      area 1400;
+      efficiency 0.21;
+    }
+  }
+}
+
+object overhead_line {
+  name feeder_trunk;
+  phases ABCN;
+  from sub_bus;
+  to commercial_bus;
+  length 3200 ft;
+}

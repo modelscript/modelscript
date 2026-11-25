@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document version="5.1">
+  <Model name="HydraulicPumpCylinder">
+    <Submodels>
+      <Submodel name="T_drive" type="Se" x="40" y="160">
+        <Parameters>
+          <Parameter name="effort" value="85.0" unit="N*m"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j1_shaft" type="1" x="150" y="160"/>
+      <Submodel name="J_pump" type="I" x="150" y="60">
+        <Parameters>
+          <Parameter name="i" value="0.04" unit="kg*m^2"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="TF_pump" type="TF" x="270" y="160">
+        <Parameters>
+          <Parameter name="r" value="0.000018" unit="m^3/rad"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j0_manifold" type="0" x="390" y="160"/>
+      <Submodel name="C_accum" type="C" x="390" y="60">
+        <Parameters>
+          <Parameter name="c" value="1.2e-10" unit="m^3/Pa"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="R_leak" type="R" x="390" y="260">
+        <Parameters>
+          <Parameter name="r" value="2.5e10" unit="Pa*s/m^3"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="TF_piston" type="TF" x="520" y="160">
+        <Parameters>
+          <Parameter name="r" value="0.0025" unit="m^2"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j1_load" type="1" x="640" y="160"/>
+      <Submodel name="M_load" type="I" x="640" y="60">
+        <Parameters>
+          <Parameter name="i" value="120.0" unit="kg"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="R_fric" type="R" x="640" y="260">
+        <Parameters>
+          <Parameter name="r" value="450.0" unit="N*s/m"/>
+        </Parameters>
+      </Submodel>
+    </Submodels>
+    <Connections>
+      <Connection id="b1" type="bond" from="T_drive.p" to="j1_shaft.p"/>
+      <Connection id="b2" type="bond" from="j1_shaft.p" to="J_pump.p"/>
+      <Connection id="b3" type="bond" from="j1_shaft.p" to="TF_pump.p1"/>
+      <Connection id="b4" type="bond" from="TF_pump.p2" to="j0_manifold.p"/>
+      <Connection id="b5" type="bond" from="j0_manifold.p" to="C_accum.p"/>
+      <Connection id="b6" type="bond" from="j0_manifold.p" to="R_leak.p"/>
+      <Connection id="b7" type="bond" from="j0_manifold.p" to="TF_piston.p1"/>
+      <Connection id="b8" type="bond" from="TF_piston.p2" to="j1_load.p"/>
+      <Connection id="b9" type="bond" from="j1_load.p" to="M_load.p"/>
+      <Connection id="b10" type="bond" from="j1_load.p" to="R_fric.p"/>
+    </Connections>
+    <Experiment startTime="0" finishTime="3.0" stepSize="0.001" method="RungeKutta4"/>
+  </Model>
+</Document>

@@ -1,0 +1,12 @@
+{
+  "id": "jsbsim-01-glider-longitudinal-trim",
+  "lang": "jsbsim",
+  "subFormats": ["xml"],
+  "difficulty": 1,
+  "title": "Sailplane Glider Longitudinal Aerodynamics and Trim",
+  "description": "High-aspect-ratio composite sailplane JSBSim flight dynamics model with wing metrics, mass-balance inertia tensor, and lift, drag, and pitching-moment aerodynamic coefficients.",
+  "category": "Aerospace Flight Dynamics",
+  "tags": ["jsbsim", "glider", "aerodynamics", "longitudinal-trim"],
+  "activeFile": "glider.xml",
+  "isDefaultStarter": true
+}

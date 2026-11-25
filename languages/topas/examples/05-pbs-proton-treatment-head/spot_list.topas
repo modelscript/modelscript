@@ -1,0 +1,8 @@
+# PBS Multi-Energy Pencil-Beam Spot Delivery Parameters
+s:So/PbsSpotBeam/Type = "Beam"
+s:So/PbsSpotBeam/Component = "BeamPosition"
+s:So/PbsSpotBeam/BeamParticle = "proton"
+d:So/PbsSpotBeam/BeamEnergy = 165.0 MeV
+u:So/PbsSpotBeam/BeamEnergySpread = 0.45
+i:So/PbsSpotBeam/NumberOfHistoriesInRun = 100000
+dv:So/PbsSpotBeam/EnergyLayers = 4 140.0 150.0 160.0 165.0 MeV

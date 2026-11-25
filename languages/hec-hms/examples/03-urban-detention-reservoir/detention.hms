@@ -1,0 +1,18 @@
+Project: Urban Detention Reservoir
+     Description: Peak Flood Attenuation Through Inline Detention Basin
+     Version: 4.11
+     Filepath Separator: /
+     DSS File Name: detention.dss
+End:
+
+Basin: Detention_Basin
+     Filename: detention.basin
+End:
+
+Precipitation: Urban_100yr
+     Filename: detention.met
+End:
+
+Control: Urban_Run
+     Filename: detention.control
+End:

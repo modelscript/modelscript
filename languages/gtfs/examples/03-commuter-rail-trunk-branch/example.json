@@ -1,0 +1,21 @@
+{
+  "id": "gtfs-03-commuter-rail-trunk-branch",
+  "lang": "gtfs",
+  "subFormats": ["gtfs", "txt"],
+  "difficulty": 3,
+  "title": "Commuter Rail Trunk and Branch Schedule with Transfers",
+  "description": "Electrified regional commuter rail network with a shared downtown trunk, north and south suburban branches, timed junction transfers, and a complete GTFS multi-table schedule.",
+  "category": "Commuter Rail Scheduling",
+  "tags": ["gtfs", "commuter-rail", "transfers", "trunk-branch", "multi-file"],
+  "activeFile": "feed.gtfs",
+  "fileOrder": [
+    "feed.gtfs",
+    "agency.txt",
+    "stops.txt",
+    "routes.txt",
+    "trips.txt",
+    "stop_times.txt",
+    "calendar.txt",
+    "transfers.txt"
+  ]
+}

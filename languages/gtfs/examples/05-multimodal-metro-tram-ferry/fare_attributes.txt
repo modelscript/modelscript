@@ -1,0 +1,4 @@
+fare_id,price,currency_type,payment_method,transfers,transfer_duration
+METRO_STD,3.25,USD,1,2,7200
+TRAM_STD,2.50,USD,0,2,7200
+FERRY_ZONE1,6.75,USD,1,1,7200

@@ -1,0 +1,12 @@
+{
+  "id": "apdl-01-cantilever-beam-static",
+  "lang": "apdl",
+  "subFormats": ["apdl"],
+  "difficulty": 1,
+  "title": "Cantilever Steel Beam Static Deflection",
+  "description": "Linear static bending analysis of a 2-meter structural steel cantilever beam modeled with BEAM188 elements, rectangular section properties, clamped root support, and vertical tip load.",
+  "category": "Structural & Thermal FEA",
+  "tags": ["apdl", "beam188", "static", "cantilever"],
+  "activeFile": "cantilever_beam.apdl",
+  "isDefaultStarter": true
+}

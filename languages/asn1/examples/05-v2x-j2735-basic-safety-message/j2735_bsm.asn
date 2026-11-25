@@ -1,0 +1,44 @@
+-- SAE J2735 V2X Basic Safety Message (BSM) Subset
+J2735-BasicSafetyMessage { iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprise(1) 48001 }
+DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+EXPORTS BasicSafetyMessage, BSMcoreData;
+IMPORTS Latitude, Longitude, Elevation, Speed, Heading, AccelerationSet4Way, BrakeSystemStatus, VehicleSize FROM J2735-Common;
+
+BasicSafetyMessage ::= SEQUENCE {
+  coreData     BSMcoreData,
+  partII       SEQUENCE (SIZE (1..8)) OF BSMpartIIExtension OPTIONAL
+}
+
+BSMcoreData ::= SEQUENCE {
+  msgCnt        INTEGER (0..127),
+  id            OCTET STRING (SIZE (4)),
+  secMark       INTEGER (0..65535),
+  lat           Latitude,
+  long          Longitude,
+  elev          Elevation,
+  speed         Speed,
+  heading       Heading,
+  angle         INTEGER (-126..127),
+  accelSet      AccelerationSet4Way,
+  brakes        BrakeSystemStatus,
+  size          VehicleSize
+}
+
+BSMpartIIExtension ::= CHOICE {
+  vehicleSafetyExt   [0] VehicleSafetyExtensions,
+  specialVehicleExt  [1] SpecialVehicleExtensions
+}
+
+VehicleSafetyExtensions ::= SEQUENCE {
+  hardBraking    BOOLEAN,
+  hazardLights   BOOLEAN,
+  pathRadiusCm   INTEGER (-32767..32767)
+}
+
+SpecialVehicleExtensions ::= SEQUENCE {
+  sirenActive    BOOLEAN,
+  lightBarInUse  BOOLEAN
+}
+
+END

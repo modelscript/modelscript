@@ -1,0 +1,11 @@
+{
+  "id": "netcdf-03-pressure-level-wind",
+  "lang": "netcdf",
+  "subFormats": ["cdl", "cf-1.8"],
+  "difficulty": 3,
+  "title": "3D Atmospheric Pressure-Level Wind & Temperature Field",
+  "description": "Three-dimensional isobaric atmospheric analysis (level x lat x lon) containing zonal wind (U), meridional wind (V), and temperature (T) across 850, 500, and 250 hPa.",
+  "category": "Atmospheric Science",
+  "tags": ["netcdf", "3d", "wind", "isobaric", "jet-stream"],
+  "activeFile": "atmos_3d_wind.cdl"
+}

@@ -1,0 +1,100 @@
+[
+  {
+    "id": "hec-ras-01-trapezoidal-open-channel",
+    "lang": "hec-ras",
+    "subFormats": ["prj", "g01", "f01"],
+    "difficulty": 1,
+    "title": "Trapezoidal Open Channel Steady Flow",
+    "description": "Prismatic trapezoidal concrete-lined canal reach with three cross-sections, constant bed slope, upstream steady discharge, and downstream normal depth boundary condition.",
+    "category": "Open-Channel Hydraulics",
+    "tags": ["hec-ras", "open-channel", "steady-flow", "multi-file"],
+    "activeFile": "channel.g01",
+    "fileNames": ["channel.g01", "channel.f01", "channel.prj"],
+    "fileCount": 3,
+    "isDefaultStarter": true,
+    "code": "Geom Title=Trapezoidal Concrete Canal\nProgram Version=6.3.1\nRiver Reach=Canal,MainReach\nReach XY=3\n0, 1000\n0, 500\n0, 0\n\nType RM CEM CS= 1 ,1000    ,        ,\nDESCRIPTION=Upstream Canal Section\nStation Elevation Data= 4\n0, 105.0  5, 100.0  25, 100.0  30, 105.0\nCross Section Reach Lengths and Manning Values=\n500, 500, 500, 3, 0.015, 0.015, 0.015, 0, 0\nBank Sta=5,25\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,500     ,        ,\nDESCRIPTION=Mid-Reach Canal Section\nStation Elevation Data= 4\n0, 104.5  5, 99.5  25, 99.5  30, 104.5\nCross Section Reach Lengths and Manning Values=\n500, 500, 500, 3, 0.015, 0.015, 0.015, 0, 0\nBank Sta=5,25\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Downstream Canal Outfall\nStation Elevation Data= 4\n0, 104.0  5, 99.0  25, 99.0  30, 104.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.015, 0.015, 0.015, 0, 0\nBank Sta=5,25\nExp/Contr=0.1,0.3\n",
+    "files": {
+      "channel.g01": "Geom Title=Trapezoidal Concrete Canal\nProgram Version=6.3.1\nRiver Reach=Canal,MainReach\nReach XY=3\n0, 1000\n0, 500\n0, 0\n\nType RM CEM CS= 1 ,1000    ,        ,\nDESCRIPTION=Upstream Canal Section\nStation Elevation Data= 4\n0, 105.0  5, 100.0  25, 100.0  30, 105.0\nCross Section Reach Lengths and Manning Values=\n500, 500, 500, 3, 0.015, 0.015, 0.015, 0, 0\nBank Sta=5,25\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,500     ,        ,\nDESCRIPTION=Mid-Reach Canal Section\nStation Elevation Data= 4\n0, 104.5  5, 99.5  25, 99.5  30, 104.5\nCross Section Reach Lengths and Manning Values=\n500, 500, 500, 3, 0.015, 0.015, 0.015, 0, 0\nBank Sta=5,25\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Downstream Canal Outfall\nStation Elevation Data= 4\n0, 104.0  5, 99.0  25, 99.0  30, 104.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.015, 0.015, 0.015, 0, 0\nBank Sta=5,25\nExp/Contr=0.1,0.3\n",
+      "channel.f01": "Flow Title=Steady Canal Design Discharge\nBoundary for River Reach & Node=Canal,MainReach,1000\nBoundary Type=Flow Hydrograph\nHydrograph Data= 2\n0, 45.0  24, 45.0\n\nBoundary for River Reach & Node=Canal,MainReach,0\nBoundary Type=Normal Depth\nFriction Slope=0.0010\n",
+      "channel.prj": "Proj Title=Trapezoidal Open Channel Steady Flow\nCurrent Plan=p01\nDefault Exp/Contr=0.3,0.1\nSI Units\nGeom File=g01\nFlow File=f01\n"
+    }
+  },
+  {
+    "id": "hec-ras-02-natural-river-floodplains",
+    "lang": "hec-ras",
+    "subFormats": ["prj", "g01", "f01"],
+    "difficulty": 2,
+    "title": "Natural River Reach with Overbank Floodplains",
+    "description": "Natural meandering river reach with distinct left and right vegetated overbank floodplains, higher overbank Manning roughness, and steady 100-year flood profile.",
+    "category": "Open-Channel Hydraulics",
+    "tags": ["hec-ras", "floodplain", "overbank", "multi-file"],
+    "activeFile": "river.g01",
+    "fileNames": ["river.g01", "river.f01", "river.prj"],
+    "fileCount": 3,
+    "code": "Geom Title=Willamette Valley Floodplain Reach\nProgram Version=6.3.1\nRiver Reach=Willamette,ValleyReach\nReach XY=3\n0, 2000\n400, 1000\n800, 0\n\nType RM CEM CS= 1 ,2000    ,        ,\nDESCRIPTION=Upper Valley Cross Section\nStation Elevation Data= 7\n0, 120.0  40, 114.0  70, 110.0  100, 105.0  130, 110.0  160, 114.5  200, 120.5\nCross Section Reach Lengths and Manning Values=\n1050, 1000, 980, 3, 0.065, 0.035, 0.060, 0, 0\nBank Sta=70,130\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,1000    ,        ,\nDESCRIPTION=Middle Floodplain Cross Section\nStation Elevation Data= 7\n0, 118.5  45, 112.5  75, 108.5  105, 103.5  135, 108.5  165, 113.0  200, 119.0\nCross Section Reach Lengths and Manning Values=\n1020, 1000, 960, 3, 0.065, 0.035, 0.060, 0, 0\nBank Sta=75,135\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Lower Valley Gauge Section\nStation Elevation Data= 7\n0, 117.0  40, 111.0  70, 107.0  100, 102.0  130, 107.0  160, 111.5  200, 117.5\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.065, 0.035, 0.060, 0, 0\nBank Sta=70,130\nExp/Contr=0.1,0.3\n",
+    "files": {
+      "river.g01": "Geom Title=Willamette Valley Floodplain Reach\nProgram Version=6.3.1\nRiver Reach=Willamette,ValleyReach\nReach XY=3\n0, 2000\n400, 1000\n800, 0\n\nType RM CEM CS= 1 ,2000    ,        ,\nDESCRIPTION=Upper Valley Cross Section\nStation Elevation Data= 7\n0, 120.0  40, 114.0  70, 110.0  100, 105.0  130, 110.0  160, 114.5  200, 120.5\nCross Section Reach Lengths and Manning Values=\n1050, 1000, 980, 3, 0.065, 0.035, 0.060, 0, 0\nBank Sta=70,130\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,1000    ,        ,\nDESCRIPTION=Middle Floodplain Cross Section\nStation Elevation Data= 7\n0, 118.5  45, 112.5  75, 108.5  105, 103.5  135, 108.5  165, 113.0  200, 119.0\nCross Section Reach Lengths and Manning Values=\n1020, 1000, 960, 3, 0.065, 0.035, 0.060, 0, 0\nBank Sta=75,135\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Lower Valley Gauge Section\nStation Elevation Data= 7\n0, 117.0  40, 111.0  70, 107.0  100, 102.0  130, 107.0  160, 111.5  200, 117.5\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.065, 0.035, 0.060, 0, 0\nBank Sta=70,130\nExp/Contr=0.1,0.3\n",
+      "river.f01": "Flow Title=100-Year Floodplain Steady Profile\nBoundary for River Reach & Node=Willamette,ValleyReach,2000\nBoundary Type=Flow Hydrograph\nHydrograph Data= 2\n0, 620.0  24, 620.0\n\nBoundary for River Reach & Node=Willamette,ValleyReach,0\nBoundary Type=Normal Depth\nFriction Slope=0.0015\n",
+      "river.prj": "Proj Title=Natural River Reach with Overbank Floodplains\nCurrent Plan=p01\nDefault Exp/Contr=0.3,0.1\nSI Units\nGeom File=g01\nFlow File=f01\n"
+    }
+  },
+  {
+    "id": "hec-ras-03-bridge-backwater-constriction",
+    "lang": "hec-ras",
+    "subFormats": ["prj", "g01", "f01"],
+    "difficulty": 3,
+    "title": "Bridge Pier & Culvert Backwater Constriction",
+    "description": "River crossing model evaluating upstream backwater rise caused by contracted highway bridge abutments and an inline spillway structure across three cross-sections.",
+    "category": "Hydraulic Structures",
+    "tags": ["hec-ras", "bridge", "backwater", "inline-structure", "multi-file"],
+    "activeFile": "bridge.g01",
+    "fileNames": ["bridge.g01", "bridge.f01", "bridge.prj"],
+    "fileCount": 3,
+    "code": "Geom Title=Highway Bridge Crossing Constriction\nProgram Version=6.3.1\nRiver Reach=CedarCreek,BridgeReach\nReach XY=3\n0, 600\n0, 300\n0, 0\n\nType RM CEM CS= 1 ,600     ,        ,\nDESCRIPTION=Approach Section Upstream of Bridge\nStation Elevation Data= 5\n0, 108.0  30, 102.0  60, 96.0  90, 102.0  120, 108.0\nCross Section Reach Lengths and Manning Values=\n300, 300, 300, 3, 0.055, 0.032, 0.055, 0, 0\nBank Sta=30,90\nExp/Contr=0.3,0.5\n\nType RM CEM CS= 2 ,350     ,        ,\nInline Structure\nWeir Data= 103.5, 48, 1.44\n\nType RM CEM CS= 1 ,300     ,        ,\nDESCRIPTION=Contracted Bridge Opening Section\nStation Elevation Data= 5\n0, 107.5  35, 101.5  60, 95.4  85, 101.5  120, 107.5\nCross Section Reach Lengths and Manning Values=\n300, 300, 300, 3, 0.050, 0.030, 0.050, 0, 0\nBank Sta=35,85\nExp/Contr=0.3,0.5\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Downstream Expansion Tailwater Section\nStation Elevation Data= 5\n0, 107.0  30, 101.0  60, 94.8  90, 101.0  120, 107.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.055, 0.032, 0.055, 0, 0\nBank Sta=30,90\nExp/Contr=0.1,0.3\n",
+    "files": {
+      "bridge.g01": "Geom Title=Highway Bridge Crossing Constriction\nProgram Version=6.3.1\nRiver Reach=CedarCreek,BridgeReach\nReach XY=3\n0, 600\n0, 300\n0, 0\n\nType RM CEM CS= 1 ,600     ,        ,\nDESCRIPTION=Approach Section Upstream of Bridge\nStation Elevation Data= 5\n0, 108.0  30, 102.0  60, 96.0  90, 102.0  120, 108.0\nCross Section Reach Lengths and Manning Values=\n300, 300, 300, 3, 0.055, 0.032, 0.055, 0, 0\nBank Sta=30,90\nExp/Contr=0.3,0.5\n\nType RM CEM CS= 2 ,350     ,        ,\nInline Structure\nWeir Data= 103.5, 48, 1.44\n\nType RM CEM CS= 1 ,300     ,        ,\nDESCRIPTION=Contracted Bridge Opening Section\nStation Elevation Data= 5\n0, 107.5  35, 101.5  60, 95.4  85, 101.5  120, 107.5\nCross Section Reach Lengths and Manning Values=\n300, 300, 300, 3, 0.050, 0.030, 0.050, 0, 0\nBank Sta=35,85\nExp/Contr=0.3,0.5\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Downstream Expansion Tailwater Section\nStation Elevation Data= 5\n0, 107.0  30, 101.0  60, 94.8  90, 101.0  120, 107.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.055, 0.032, 0.055, 0, 0\nBank Sta=30,90\nExp/Contr=0.1,0.3\n",
+      "bridge.f01": "Flow Title=50-Year Bridge Backwater Design Flow\nBoundary for River Reach & Node=CedarCreek,BridgeReach,600\nBoundary Type=Flow Hydrograph\nHydrograph Data= 2\n0, 280.0  24, 280.0\n\nBoundary for River Reach & Node=CedarCreek,BridgeReach,0\nBoundary Type=Normal Depth\nFriction Slope=0.0020\n",
+      "bridge.prj": "Proj Title=Bridge Pier and Culvert Backwater Constriction\nCurrent Plan=p01\nDefault Exp/Contr=0.5,0.3\nSI Units\nGeom File=g01\nFlow File=f01\n"
+    }
+  },
+  {
+    "id": "hec-ras-04-tributary-junction-mixed-flow",
+    "lang": "hec-ras",
+    "subFormats": ["prj", "g01", "f01", "p01"],
+    "difficulty": 4,
+    "title": "Tributary Junction Mixed-Flow Regime",
+    "description": "Two-reach river confluence combining a steep mountain tributary with a milder mainstem reach, complete with project, geometry, steady flow boundary conditions, and mixed-flow plan file.",
+    "category": "Open-Channel Hydraulics",
+    "tags": ["hec-ras", "confluence", "mixed-flow", "multi-file"],
+    "activeFile": "junction.g01",
+    "fileNames": ["junction.g01", "junction.f01", "junction.p01", "junction.prj"],
+    "fileCount": 4,
+    "code": "Geom Title=Mainstem and Tributary Confluence Geometry\nProgram Version=6.3.1\nRiver Reach=SnakeRiver,MainStem\nReach XY=3\n0, 1500\n0, 750\n0, 0\n\nType RM CEM CS= 1 ,1500    ,        ,\nDESCRIPTION=Mainstem Upper Reach\nStation Elevation Data= 5\n0, 212.0  25, 205.0  60, 198.0  95, 205.0  120, 212.0\nCross Section Reach Lengths and Manning Values=\n750, 750, 750, 3, 0.055, 0.034, 0.055, 0, 0\nBank Sta=25,95\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,750     ,        ,\nDESCRIPTION=Mainstem Confluence Section\nStation Elevation Data= 5\n0, 210.0  25, 203.0  60, 196.0  95, 203.0  120, 210.0\nCross Section Reach Lengths and Manning Values=\n750, 750, 750, 3, 0.055, 0.034, 0.055, 0, 0\nBank Sta=25,95\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Mainstem Tailwater Section\nStation Elevation Data= 5\n0, 208.0  25, 201.0  60, 194.0  95, 201.0  120, 208.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.055, 0.034, 0.055, 0, 0\nBank Sta=25,95\nExp/Contr=0.1,0.3\n\nRiver Reach=PineCreek,Tributary\nReach XY=2\n600, 1200\n0, 750\n\nType RM CEM CS= 1 ,800     ,        ,\nDESCRIPTION=Steep Tributary Headwater\nStation Elevation Data= 5\n0, 215.0  15, 208.0  35, 202.0  55, 208.0  70, 215.0\nCross Section Reach Lengths and Manning Values=\n800, 800, 800, 3, 0.060, 0.038, 0.060, 0, 0\nBank Sta=15,55\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Tributary Mouth at Junction\nStation Elevation Data= 5\n0, 210.5  15, 203.5  35, 196.5  55, 203.5  70, 210.5\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.060, 0.038, 0.060, 0, 0\nBank Sta=15,55\nExp/Contr=0.1,0.3\n",
+    "files": {
+      "junction.g01": "Geom Title=Mainstem and Tributary Confluence Geometry\nProgram Version=6.3.1\nRiver Reach=SnakeRiver,MainStem\nReach XY=3\n0, 1500\n0, 750\n0, 0\n\nType RM CEM CS= 1 ,1500    ,        ,\nDESCRIPTION=Mainstem Upper Reach\nStation Elevation Data= 5\n0, 212.0  25, 205.0  60, 198.0  95, 205.0  120, 212.0\nCross Section Reach Lengths and Manning Values=\n750, 750, 750, 3, 0.055, 0.034, 0.055, 0, 0\nBank Sta=25,95\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,750     ,        ,\nDESCRIPTION=Mainstem Confluence Section\nStation Elevation Data= 5\n0, 210.0  25, 203.0  60, 196.0  95, 203.0  120, 210.0\nCross Section Reach Lengths and Manning Values=\n750, 750, 750, 3, 0.055, 0.034, 0.055, 0, 0\nBank Sta=25,95\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Mainstem Tailwater Section\nStation Elevation Data= 5\n0, 208.0  25, 201.0  60, 194.0  95, 201.0  120, 208.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.055, 0.034, 0.055, 0, 0\nBank Sta=25,95\nExp/Contr=0.1,0.3\n\nRiver Reach=PineCreek,Tributary\nReach XY=2\n600, 1200\n0, 750\n\nType RM CEM CS= 1 ,800     ,        ,\nDESCRIPTION=Steep Tributary Headwater\nStation Elevation Data= 5\n0, 215.0  15, 208.0  35, 202.0  55, 208.0  70, 215.0\nCross Section Reach Lengths and Manning Values=\n800, 800, 800, 3, 0.060, 0.038, 0.060, 0, 0\nBank Sta=15,55\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Tributary Mouth at Junction\nStation Elevation Data= 5\n0, 210.5  15, 203.5  35, 196.5  55, 203.5  70, 210.5\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.060, 0.038, 0.060, 0, 0\nBank Sta=15,55\nExp/Contr=0.1,0.3\n",
+      "junction.f01": "Flow Title=Mixed-Flow Tributary Confluence Profile\nBoundary for River Reach & Node=SnakeRiver,MainStem,1500\nBoundary Type=Flow Hydrograph\nHydrograph Data= 2\n0, 420.0  24, 420.0\n\nBoundary for River Reach & Node=SnakeRiver,MainStem,0\nBoundary Type=Normal Depth\nFriction Slope=0.0026\n\nBoundary for River Reach & Node=PineCreek,Tributary,800\nBoundary Type=Flow Hydrograph\nHydrograph Data= 2\n0, 135.0  24, 135.0\n\nBoundary for River Reach & Node=PineCreek,Tributary,0\nBoundary Type=Normal Depth\nFriction Slope=0.0068\n",
+      "junction.p01": "Plan Title=Mixed-Flow Steady Confluence Plan\nShort Identifier=MixedFlow01\nGeom File=g01\nFlow File=f01\nMixed Flow Regime\nFriction Slope Method=1\nComputation Interval=1MIN\nOutput Interval=15MIN\n",
+      "junction.prj": "Proj Title=Tributary Junction Mixed-Flow Regime\nCurrent Plan=p01\nDefault Exp/Contr=0.3,0.1\nSI Units\nGeom File=g01\nFlow File=f01\nPlan File=p01\n"
+    }
+  },
+  {
+    "id": "hec-ras-05-dambreak-unsteady-floodwave",
+    "lang": "hec-ras",
+    "subFormats": ["prj", "g01", "u01", "p01"],
+    "difficulty": 5,
+    "title": "Dam-Break Unsteady Hydrograph Flood Wave",
+    "description": "Full 4-file unsteady HEC-RAS dam-break flood wave study with inline dam weir structure, downstream valley cross-sections, steep breach inflow hydrograph, and unsteady simulation plan.",
+    "category": "Dam Safety & Flood Routing",
+    "tags": ["hec-ras", "dam-break", "unsteady-flow", "flood-wave", "multi-file"],
+    "activeFile": "dambreak.g01",
+    "fileNames": ["dambreak.g01", "dambreak.p01", "dambreak.prj", "dambreak.u01"],
+    "fileCount": 4,
+    "code": "Geom Title=Canyon Dam and Downstream Floodplain Valley\nProgram Version=6.3.1\nRiver Reach=CanyonRiver,BelowDam\nReach XY=4\n0, 3000\n0, 2000\n0, 1000\n0, 0\n\nType RM CEM CS= 1 ,3000    ,        ,\nDESCRIPTION=Reservoir Headwater Section Above Dam\nStation Elevation Data= 5\n0, 175.0  40, 155.0  80, 140.0  120, 155.0  160, 175.0\nCross Section Reach Lengths and Manning Values=\n1000, 1000, 1000, 3, 0.055, 0.032, 0.055, 0, 0\nBank Sta=40,120\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 2 ,2500    ,        ,\nInline Structure\nWeir Data= 168.0, 95, 1.55\n\nType RM CEM CS= 1 ,2000    ,        ,\nDESCRIPTION=Canyon Gorge Below Spillway\nStation Elevation Data= 5\n0, 162.0  35, 146.0  80, 134.0  125, 146.0  160, 162.0\nCross Section Reach Lengths and Manning Values=\n1000, 1000, 1000, 3, 0.060, 0.035, 0.060, 0, 0\nBank Sta=35,125\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,1000    ,        ,\nDESCRIPTION=Mid-Valley Town Crossing\nStation Elevation Data= 5\n0, 154.0  40, 140.0  90, 128.0  140, 140.0  180, 154.0\nCross Section Reach Lengths and Manning Values=\n1000, 1000, 1000, 3, 0.065, 0.035, 0.065, 0, 0\nBank Sta=40,140\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Lower Valley Outfall Gauge\nStation Elevation Data= 5\n0, 146.0  45, 134.0  100, 122.0  155, 134.0  200, 146.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.065, 0.035, 0.065, 0, 0\nBank Sta=45,155\nExp/Contr=0.1,0.3\n",
+    "files": {
+      "dambreak.g01": "Geom Title=Canyon Dam and Downstream Floodplain Valley\nProgram Version=6.3.1\nRiver Reach=CanyonRiver,BelowDam\nReach XY=4\n0, 3000\n0, 2000\n0, 1000\n0, 0\n\nType RM CEM CS= 1 ,3000    ,        ,\nDESCRIPTION=Reservoir Headwater Section Above Dam\nStation Elevation Data= 5\n0, 175.0  40, 155.0  80, 140.0  120, 155.0  160, 175.0\nCross Section Reach Lengths and Manning Values=\n1000, 1000, 1000, 3, 0.055, 0.032, 0.055, 0, 0\nBank Sta=40,120\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 2 ,2500    ,        ,\nInline Structure\nWeir Data= 168.0, 95, 1.55\n\nType RM CEM CS= 1 ,2000    ,        ,\nDESCRIPTION=Canyon Gorge Below Spillway\nStation Elevation Data= 5\n0, 162.0  35, 146.0  80, 134.0  125, 146.0  160, 162.0\nCross Section Reach Lengths and Manning Values=\n1000, 1000, 1000, 3, 0.060, 0.035, 0.060, 0, 0\nBank Sta=35,125\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,1000    ,        ,\nDESCRIPTION=Mid-Valley Town Crossing\nStation Elevation Data= 5\n0, 154.0  40, 140.0  90, 128.0  140, 140.0  180, 154.0\nCross Section Reach Lengths and Manning Values=\n1000, 1000, 1000, 3, 0.065, 0.035, 0.065, 0, 0\nBank Sta=40,140\nExp/Contr=0.1,0.3\n\nType RM CEM CS= 1 ,0       ,        ,\nDESCRIPTION=Lower Valley Outfall Gauge\nStation Elevation Data= 5\n0, 146.0  45, 134.0  100, 122.0  155, 134.0  200, 146.0\nCross Section Reach Lengths and Manning Values=\n0, 0, 0, 3, 0.065, 0.035, 0.065, 0, 0\nBank Sta=45,155\nExp/Contr=0.1,0.3\n",
+      "dambreak.p01": "Plan Title=Unsteady Dam-Break Flood Routing Plan\nShort Identifier=BreachUnsteady\nGeom File=g01\nUnsteady File=u01\nSimulation Date=01JAN2026,0000,01JAN2026,1600\nComputation Interval=10SEC\nOutput Interval=5MIN\nMapping Interval=10MIN\n",
+      "dambreak.prj": "Proj Title=Dam-Break Unsteady Hydrograph Flood Wave\nCurrent Plan=p01\nDefault Exp/Contr=0.3,0.1\nSI Units\nGeom File=g01\nUnsteady File=u01\nPlan File=p01\n",
+      "dambreak.u01": "Flow Title=Dam Breach Unsteady Inflow Hydrograph\nBoundary for River Reach & Node=CanyonRiver,BelowDam,3000\nBoundary Type=Flow Hydrograph\nHydrograph Data= 6\n0, 120.0  1, 850.0  2, 3400.0  4, 2100.0  8, 650.0  16, 180.0\n\nBoundary for River Reach & Node=CanyonRiver,BelowDam,0\nBoundary Type=Normal Depth\nFriction Slope=0.0060\n"
+    }
+  }
+]

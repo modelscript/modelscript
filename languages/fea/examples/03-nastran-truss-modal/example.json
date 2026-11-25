@@ -1,0 +1,11 @@
+{
+  "id": "fea-03-nastran-truss-modal",
+  "lang": "fea",
+  "subFormats": ["bdf", "inp"],
+  "difficulty": 3,
+  "title": "Nastran Bulk Data & CalculiX Planar Warren Truss",
+  "description": "Statically determinate 5-member steel Warren truss provided in both MSC/NX Nastran Bulk Data (.bdf) and CalculiX (.inp) formats with matched nodal loads and supports.",
+  "category": "Nastran Structural FEA",
+  "tags": ["fea", "nastran", "bdf", "truss", "multi-file"],
+  "activeFile": "truss_modal.inp"
+}

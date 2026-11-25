@@ -1,0 +1,11 @@
+{
+  "id": "epanet-03-eps-tank-controls",
+  "lang": "epanet",
+  "subFormats": ["inp"],
+  "difficulty": 3,
+  "title": "Extended-Period 24-Hour Tank Fill/Drain with Controls",
+  "description": "24-hour extended-period hydraulic simulation of a pumped storage system with diurnal demand pattern multipliers and automated tank-level pump controls.",
+  "category": "Water Distribution Hydraulics",
+  "tags": ["epanet", "eps", "controls", "diurnal-pattern"],
+  "activeFile": "eps_tank_controls.inp"
+}

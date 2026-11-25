@@ -26,7 +26,7 @@ export const rinexLanguage = language({
         shortTitle: "RINEX",
         selector: ["*.obs", "*.nav", "*.rnx", "*.24o", "*.24n"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/RinexPanel.tsx",
         artifactViewTypes: ["rinex", "obs", "nav"],
       },

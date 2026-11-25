@@ -1,0 +1,11 @@
+{
+  "id": "jcamp-dx-04-caffeine-ei-mass-spec",
+  "lang": "jcamp-dx",
+  "subFormats": ["jcamp-dx-5.00"],
+  "difficulty": 4,
+  "title": "Caffeine 70 eV Electron-Ionization Mass Spectrum",
+  "description": "JCAMP-DX 5.00 EI-MS fragmentation spectrum of caffeine (C8H10N4O2) displaying the molecular ion base peak at m/z 194, retro-Diels-Alder fragment at m/z 109, and diagnostic ions at m/z 82, 67, and 55.",
+  "category": "Mass Spectrometry",
+  "tags": ["jcamp-dx", "mass-spec", "caffeine", "ei-ms", "fragmentation"],
+  "activeFile": "caffeine_eims.jdx"
+}

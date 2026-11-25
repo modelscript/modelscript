@@ -3,8 +3,35 @@
 import type * as fsType from "node:fs";
 import { hashIri64 } from "../ontology/wasm_ontology.js";
 
+interface ProcessWithBuiltinModule {
+  getBuiltinModule?: (id: string) => unknown;
+}
+
+interface OpfsWritableStreamLike {
+  write(data: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+}
+
+interface OpfsFileHandleLike {
+  createWritable(): Promise<OpfsWritableStreamLike>;
+  getFile(): Promise<{ arrayBuffer(): Promise<ArrayBuffer> }>;
+}
+
+interface OpfsDirectoryHandleLike {
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<OpfsFileHandleLike>;
+}
+
+interface OpfsStorageManagerLike {
+  getDirectory?: () => Promise<OpfsDirectoryHandleLike>;
+}
+
+function getOpfsStorage(): OpfsStorageManagerLike | undefined {
+  return (globalThis as { navigator?: { storage?: OpfsStorageManagerLike } })?.navigator?.storage;
+}
+
 function getNodeFs(): typeof fsType {
-  const mod = (process as any)?.getBuiltinModule?.("node:fs");
+  const proc = typeof process !== "undefined" ? (process as unknown as ProcessWithBuiltinModule) : undefined;
+  const mod = proc?.getBuiltinModule?.("node:fs") as typeof fsType | undefined;
   if (!mod) {
     throw new Error("PagedTripleStore disk backing requires Node.js node:fs");
   }
@@ -12,7 +39,7 @@ function getNodeFs(): typeof fsType {
 }
 const fs = new Proxy({} as typeof fsType, {
   get(_target, prop) {
-    return (getNodeFs() as any)[prop];
+    return Reflect.get(getNodeFs(), prop);
   },
 });
 
@@ -794,7 +821,9 @@ export class PagedStorageEngine {
 
       try {
         fs.fdatasyncSync(this._backingFd);
-      } catch {}
+      } catch {
+        // Best-effort sync; some virtual/temp filesystems do not support fdatasync
+      }
 
       // 3. Write Dual-Slot Ping-Pong Superblock to slot (txId % 2)
       const txId = this._wasm.paged_getTxId?.() ?? 1;
@@ -826,7 +855,9 @@ export class PagedStorageEngine {
 
       try {
         fs.fdatasyncSync(this._backingFd);
-      } catch {}
+      } catch {
+        // Best-effort sync after superblock write
+      }
 
       this._lastSyncedTxId = txId;
     }
@@ -1040,7 +1071,7 @@ export class PagedStorageEngine {
    * and serialized Node Table into a single binary snapshot in OPFS.
    */
   public async flushToOpfs(fileName: string): Promise<number> {
-    const storage = (globalThis as any)?.navigator?.storage;
+    const storage = getOpfsStorage();
     if (!storage || typeof storage.getDirectory !== "function") {
       throw new Error("Origin Private File System (navigator.storage.getDirectory) is unavailable in this environment");
     }
@@ -1084,7 +1115,7 @@ export class PagedStorageEngine {
    * the WASM 4KB B+Tree buffer pool and restores the Node Table.
    */
   public async recoverFromOpfs(fileName: string): Promise<boolean> {
-    const storage = (globalThis as any)?.navigator?.storage;
+    const storage = getOpfsStorage();
     if (!storage || typeof storage.getDirectory !== "function") {
       throw new Error("Origin Private File System (navigator.storage.getDirectory) is unavailable in this environment");
     }
@@ -1132,7 +1163,9 @@ export class PagedStorageEngine {
     if (this._backingFd !== null) {
       try {
         fs.closeSync(this._backingFd);
-      } catch {}
+      } catch {
+        // Best-effort file descriptor close during shutdown
+      }
       this._backingFd = null;
     }
   }

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<piston_engine name="lycoming_o360">
+  <minmp unit="INHG"> 6.5 </minmp>
+  <maxmp unit="INHG"> 29.9 </maxmp>
+  <displacement unit="IN3"> 361.0 </displacement>
+  <maxhp> 180.0 </maxhp>
+  <cycles> 4.0 </cycles>
+  <idlerpm> 650.0 </idlerpm>
+  <maxrpm> 2700.0 </maxrpm>
+  <numcylinders> 4 </numcylinders>
+</piston_engine>

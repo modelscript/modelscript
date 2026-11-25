@@ -320,6 +320,8 @@ export interface DynamicWireTubeBuffer {
   readonly tubularSegments: number;
   readonly radialSegments: number;
   update(ctrl: WireSplineControlPoints, radius: number): void;
+  /** Deforms the tube along a flat XYZ polyline (e.g. a Verlet rope buffer) with zero allocations. */
+  updateFromPolyline(points: Float32Array, pointCount: number, radius: number): void;
   dispose(): void;
 }
 
@@ -385,6 +387,47 @@ export function createDynamicWireTubeBuffer(tubularSegments = 28, radialSegments
     sinTable[j] = Math.sin(angle);
   }
 
+  const writeRing = (i: number, r: number) => {
+    if (i === 0) {
+      // Pick an initial perpendicular normal safely away from tangent
+      if (Math.abs(tan.y) < 0.9) {
+        normal.set(0, 1, 0).cross(tan).normalize();
+      } else {
+        normal.set(1, 0, 0).cross(tan).normalize();
+      }
+      binormal.crossVectors(tan, normal).normalize();
+    } else {
+      // Parallel transport (minimum-twist rotation from prevTan -> tan)
+      rotAxis.crossVectors(prevTan, tan);
+      const axisLen = rotAxis.length();
+      if (axisLen > 1e-5) {
+        rotAxis.divideScalar(axisLen);
+        const dot = Math.max(-1, Math.min(1, prevTan.dot(tan)));
+        rotQuat.setFromAxisAngle(rotAxis, Math.acos(dot));
+        normal.applyQuaternion(rotQuat).normalize();
+      }
+      binormal.crossVectors(tan, normal).normalize();
+      normal.crossVectors(binormal, tan).normalize();
+    }
+    prevTan.copy(tan);
+
+    for (let j = 0; j <= radialSegments; j++) {
+      const c = cosTable[j]!;
+      const s = sinTable[j]!;
+      const nx = normal.x * c + binormal.x * s;
+      const ny = normal.y * c + binormal.y * s;
+      const nz = normal.z * c + binormal.z * s;
+
+      const vIdx = (i * ringVerts + j) * 3;
+      positions[vIdx] = pt.x + nx * r;
+      positions[vIdx + 1] = pt.y + ny * r;
+      positions[vIdx + 2] = pt.z + nz * r;
+      normals[vIdx] = nx;
+      normals[vIdx + 1] = ny;
+      normals[vIdx + 2] = nz;
+    }
+  };
+
   return {
     geometry,
     tubularSegments,
@@ -394,45 +437,53 @@ export function createDynamicWireTubeBuffer(tubularSegments = 28, radialSegments
       for (let i = 0; i <= tubularSegments; i++) {
         const t = i / tubularSegments;
         sampleWireSplineAt(ctrl, t, pt, tan);
+        writeRing(i, r);
+      }
+      posAttr.needsUpdate = true;
+      normAttr.needsUpdate = true;
+      geometry.computeBoundingSphere();
+    },
+    updateFromPolyline(points: Float32Array, pointCount: number, radius: number) {
+      if (pointCount < 2 || points.length < pointCount * 3) return;
+      const r = Math.max(0.001, radius);
+      const maxIdx = pointCount - 1;
+      const exactMatch = pointCount === tubularSegments + 1;
 
-        if (i === 0) {
-          // Pick an initial perpendicular normal safely away from tangent
-          if (Math.abs(tan.y) < 0.9) {
-            normal.set(0, 1, 0).cross(tan).normalize();
-          } else {
-            normal.set(1, 0, 0).cross(tan).normalize();
-          }
-          binormal.crossVectors(tan, normal).normalize();
+      for (let i = 0; i <= tubularSegments; i++) {
+        if (exactMatch) {
+          const idx = i * 3;
+          pt.set(points[idx]!, points[idx + 1]!, points[idx + 2]!);
+          const prevI = Math.max(0, i - 1) * 3;
+          const nextI = Math.min(maxIdx, i + 1) * 3;
+          tan.set(
+            points[nextI]! - points[prevI]!,
+            points[nextI + 1]! - points[prevI + 1]!,
+            points[nextI + 2]! - points[prevI + 2]!,
+          );
         } else {
-          // Parallel transport (minimum-twist rotation from prevTan -> tan)
-          rotAxis.crossVectors(prevTan, tan);
-          const axisLen = rotAxis.length();
-          if (axisLen > 1e-5) {
-            rotAxis.divideScalar(axisLen);
-            const dot = Math.max(-1, Math.min(1, prevTan.dot(tan)));
-            rotQuat.setFromAxisAngle(rotAxis, Math.acos(dot));
-            normal.applyQuaternion(rotQuat).normalize();
-          }
-          binormal.crossVectors(tan, normal).normalize();
-          normal.crossVectors(binormal, tan).normalize();
+          const f = (i / tubularSegments) * maxIdx;
+          const k0 = Math.floor(f);
+          const k1 = Math.min(maxIdx, k0 + 1);
+          const frac = f - k0;
+          const a = k0 * 3;
+          const b = k1 * 3;
+          pt.set(
+            points[a]! + (points[b]! - points[a]!) * frac,
+            points[a + 1]! + (points[b + 1]! - points[a + 1]!) * frac,
+            points[a + 2]! + (points[b + 2]! - points[a + 2]!) * frac,
+          );
+          const pA = Math.max(0, k0 - (k0 === k1 ? 1 : 0)) * 3;
+          const pB = Math.min(maxIdx, k1 + (k0 === k1 ? 0 : 0)) * 3;
+          tan.set(points[pB]! - points[pA]!, points[pB + 1]! - points[pA + 1]!, points[pB + 2]! - points[pA + 2]!);
         }
-        prevTan.copy(tan);
-
-        for (let j = 0; j <= radialSegments; j++) {
-          const c = cosTable[j]!;
-          const s = sinTable[j]!;
-          const nx = normal.x * c + binormal.x * s;
-          const ny = normal.y * c + binormal.y * s;
-          const nz = normal.z * c + binormal.z * s;
-
-          const vIdx = (i * ringVerts + j) * 3;
-          positions[vIdx] = pt.x + nx * r;
-          positions[vIdx + 1] = pt.y + ny * r;
-          positions[vIdx + 2] = pt.z + nz * r;
-          normals[vIdx] = nx;
-          normals[vIdx + 1] = ny;
-          normals[vIdx + 2] = nz;
+        if (tan.lengthSq() > 1e-10) {
+          tan.normalize();
+        } else if (i > 0) {
+          tan.copy(prevTan);
+        } else {
+          tan.set(1, 0, 0);
         }
+        writeRing(i, r);
       }
 
       posAttr.needsUpdate = true;

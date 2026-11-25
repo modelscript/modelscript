@@ -1,0 +1,11 @@
+{
+  "id": "energyplus-05-netzero-hospital-wing",
+  "lang": "energyplus",
+  "subFormats": ["idf", "epw", "csv"],
+  "difficulty": 5,
+  "title": "Net-Zero Solar PV & Radiant Slab Hospital Wing",
+  "description": "High-performance desert hospital wing combining patient ward, surgical suite, and mechanical core with high-albedo roof, radiant concrete slab, Phoenix TMY weather, and 24-hour schedule CSV.",
+  "category": "Building Energy Modeling",
+  "tags": ["energyplus", "net-zero", "hospital", "radiant-slab", "multi-file"],
+  "activeFile": "hospital_nz.idf"
+}

@@ -1,0 +1,24 @@
+LOCUS       pExpr_GFP                135 bp    ds-DNA  linear   SYN 24-NOV-2026
+DEFINITION  Prokaryotic constitutive GFP expression cassette.
+ACCESSION   pExpr_GFP
+VERSION     pExpr_GFP.1
+KEYWORDS    synthetic biology; expression cassette; GFP.
+SOURCE      synthetic DNA construct
+  ORGANISM  Escherichia coli
+FEATURES             Location/Qualifiers
+     promoter        7..20
+                     /label="pJ23100"
+     RBS             21..30
+                     /label="B0034"
+     CDS             31..111
+                     /gene="gfp_mini"
+                     /product="Mini green fluorescent protein"
+                     /codon_start=1
+                     /translation="MSKGEELFTGVVPILVELDGDVNGHK"
+     terminator      112..135
+                     /label="B0015"
+ORIGIN
+        1 gaattcttga caaagaggaa aagaggagaa atgtctaaag gtgaagaact gttcaccggt
+       61 gttgttccga tcctggttga actggatggt gatgttaatg gtcacaaata aggatccaag
+      121 cttttttttt ctaga
+//

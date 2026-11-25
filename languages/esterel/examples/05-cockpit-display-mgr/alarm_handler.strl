@@ -1,0 +1,19 @@
+% Reusable Master Caution and Audio Alarm Handler Submodule
+module AlarmHandler:
+input FAULT_IN, ACK_BTN, FAULT_CLEARED;
+output MASTER_WARN, AUDIO_TONE;
+
+loop
+  await FAULT_IN;
+  abort
+    [
+      sustain MASTER_WARN
+    ||
+      abort
+        sustain AUDIO_TONE
+      when ACK_BTN
+    ]
+  when FAULT_CLEARED;
+  pause
+end
+end module

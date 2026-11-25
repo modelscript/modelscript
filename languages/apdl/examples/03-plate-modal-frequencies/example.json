@@ -1,0 +1,11 @@
+{
+  "id": "apdl-03-plate-modal-frequencies",
+  "lang": "apdl",
+  "subFormats": ["apdl"],
+  "difficulty": 3,
+  "title": "Clamped Aluminum Plate Modal Natural Frequencies",
+  "description": "Free-vibration modal eigenvalue analysis (ANTYPE, MODAL) of a thin 6061-T6 aluminum cantilevered plate discretized with SHELL181 elements to extract fundamental bending and torsional modes.",
+  "category": "Structural & Thermal FEA",
+  "tags": ["apdl", "modal", "shell181", "vibration"],
+  "activeFile": "plate_modal.apdl"
+}

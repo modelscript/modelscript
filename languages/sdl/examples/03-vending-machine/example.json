@@ -1,0 +1,11 @@
+{
+  "id": "sdl-03-vending-machine",
+  "lang": "sdl",
+  "subFormats": ["sdl"],
+  "difficulty": 3,
+  "title": "Vending Machine Coin and Dispense FSM",
+  "description": "SDL-88 state machine for an automated beverage dispenser tracking accumulated coin credit, item selection validation, change refund, and dispense timeout recovery.",
+  "category": "Embedded Control",
+  "tags": ["sdl", "vending-machine", "fsm", "decision"],
+  "activeFile": "vending.sdl"
+}

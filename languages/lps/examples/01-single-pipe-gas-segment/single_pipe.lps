@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineStudio id="single_pipe_gas" title="Single-Pipe Steady-State Natural Gas Segment" simulationType="TGNET">
+  <Nodes>
+    <Node name="Supply_Hub" type="SUPPLY" elevation="12m" pressure="72.0bar" flow="65.0" />
+    <Node name="City_Gate" type="DELIVERY" elevation="18m" minDeliveryPressure="40.0bar" flow="65.0" />
+  </Nodes>
+  <Pipes>
+    <Pipe name="Segment_101" from="Supply_Hub" to="City_Gate" length="50.0km" diameter="24inch" roughness="0.000045m" maop="90.0bar" />
+  </Pipes>
+  <GasComposition ch4="0.93" c2h6="0.04" c3h8="0.012" co2="0.008" n2="0.010" h2="0.00" ghv="38.9" />
+  <SimulationControls startTime="0" endTime="3600" timeStep="60" eos="AGA8" steadyStateFirst="true" />
+</PipelineStudio>

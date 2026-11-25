@@ -1,0 +1,11 @@
+{
+  "id": "hec2-04-bridge-pier-contraction",
+  "lang": "hec2",
+  "subFormats": ["hc2"],
+  "difficulty": 4,
+  "title": "Highway Bridge Pier and Roadway Contraction Loss",
+  "description": "HEC-2 Special Bridge (SB) and Bridge Table (BT) hydraulic analysis modeling pier drag, low-chord pressure flow, roadway deck overtopping, and elevated expansion/contraction head loss coefficients.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec2", "bridge", "contraction-loss", "hydraulics"],
+  "activeFile": "bridge_pier.hc2"
+}

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_uav_fcs" name="UAVFlightControlSystem">
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_uav" name="AutonomousUAV">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="part_fcc" name="flightComputer" type="blk_fcc" aggregation="composite"/>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="part_imu" name="imuSensor" type="blk_imu" aggregation="composite"/>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_fcc" name="FlightControlComputer">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_loop_hz" name="controlRateHz">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_imu" name="InertialMeasurementUnit">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_gyro_bias" name="gyroBiasDegPerHr">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="tc_fcs_sil" name="SIL_AttitudeStabilityTest"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="req_fcs_rate" name="ControlLoopRateRequirement"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="abs_uav_sat" client="blk_fcc" supplier="req_fcs_rate"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="abs_uav_ver" client="tc_fcs_sil" supplier="req_fcs_rate"/>
+  </uml:Model>
+  <sysml:Block xmi:id="st_uav" base_Class="blk_uav"/>
+  <sysml:Block xmi:id="st_fcc" base_Class="blk_fcc"/>
+  <sysml:Block xmi:id="st_imu" base_Class="blk_imu"/>
+  <sysml:Requirement xmi:id="st_req_fcs" base_Class="req_fcs_rate" id="UAV-FCS-101" text="Inner-loop attitude controller shall execute at >= 400 Hz."/>
+  <sysml:Satisfy xmi:id="st_uav_sat" base_Abstraction="abs_uav_sat"/>
+  <sysml:Verify xmi:id="st_uav_ver" base_Abstraction="abs_uav_ver"/>
+</xmi:XMI>

@@ -273,10 +273,10 @@ export class ShapeFlattener {
   }
 
   private evaluatePlacement(entry: SymbolEntry): Mat4 | null {
-    const cstNode = this.db.cstNode(entry.id) as any;
+    const cstNode = this.db.cstNode(entry.id) as CstNodeLike | null | undefined;
     if (!cstNode) return null;
 
-    const text = cstNode.text as string;
+    const text = cstNode.text;
     if (!text || !text.includes("Placement")) return null;
 
     const modVals = findNamedElementModValues(cstNode, ["origin", "rotation"]);
@@ -309,10 +309,10 @@ export class ShapeFlattener {
   }
 
   private evaluateMaterial(entry: SymbolEntry): string | undefined {
-    const cstNode = this.db.cstNode(entry.id) as any;
+    const cstNode = this.db.cstNode(entry.id) as CstNodeLike | null | undefined;
     if (!cstNode) return undefined;
 
-    const text = cstNode.text as string;
+    const text = cstNode.text;
     if (!text || !text.includes("material")) return undefined;
 
     const modVals = findNamedElementModValues(cstNode, ["material"]);

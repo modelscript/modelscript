@@ -7,12 +7,36 @@ import { VegaEmbed } from "react-vega";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
 import { useThemeTokens } from "../../theme-tokens";
+import { getErrorMessage } from "../../util/error";
 import Box from "../Box";
 import Spinner from "../Spinner";
 import CsvViewer from "./CsvViewer";
 
+interface VegaDataEntry {
+  name?: string | undefined;
+  values?: unknown[] | undefined;
+  [key: string]: unknown;
+}
+
+interface VegaSpecLike {
+  $schema?: string | undefined;
+  data?: VegaDataEntry | VegaDataEntry[] | undefined;
+  background?: string | undefined;
+  autosize?: unknown;
+  [key: string]: unknown;
+}
+
+export interface VegaViewConfig {
+  spec?: string | VegaSpecLike | Record<string, unknown> | undefined;
+  data?: unknown[] | VegaDataEntry | undefined;
+  title?: string | undefined;
+  rawData?: string | undefined;
+  sourceUrl?: string | undefined;
+  [key: string]: unknown;
+}
+
 interface VegaViewerProps {
-  viewConfig: any; // expects { spec: any, data?: any, title?: string }
+  viewConfig?: VegaViewConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 
@@ -119,7 +143,7 @@ const PlotContainer = styled.div`
 const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => {
   const { theme } = useTheme();
   const tokens = useThemeTokens();
-  const [spec, setSpec] = useState<any>(null);
+  const [spec, setSpec] = useState<VegaSpecLike | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"chart" | "table">("chart");
@@ -142,17 +166,17 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
       }
 
       try {
-        let loadedSpec = null;
+        let loadedSpec: VegaSpecLike | null = null;
         if (typeof viewConfig.spec === "string") {
           if (viewConfig.spec.startsWith("http") || viewConfig.spec.startsWith("/")) {
             const res = await fetch(viewConfig.spec, { signal: abortController.signal });
             if (!res.ok) throw new Error(`HTTP ${res.status}: Failed to fetch Vega spec`);
-            loadedSpec = await res.json();
+            loadedSpec = (await res.json()) as VegaSpecLike;
           } else {
-            loadedSpec = JSON.parse(viewConfig.spec);
+            loadedSpec = JSON.parse(viewConfig.spec) as VegaSpecLike;
           }
         } else if (viewConfig.spec) {
-          loadedSpec = JSON.parse(JSON.stringify(viewConfig.spec));
+          loadedSpec = JSON.parse(JSON.stringify(viewConfig.spec)) as VegaSpecLike;
         }
 
         if (!active || abortController.signal.aborted) return;
@@ -186,10 +210,11 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
         if (active) {
           setSpec(loadedSpec);
         }
-      } catch (err: any) {
-        if (!active || abortController.signal.aborted || err?.name === "AbortError") return;
+      } catch (err: unknown) {
+        const isAbort = err instanceof Error && err.name === "AbortError";
+        if (!active || abortController.signal.aborted || isAbort) return;
         console.error("Failed to load Vega spec", err);
-        setError(err.message || "Failed to load Vega spec");
+        setError(getErrorMessage(err, "Failed to load Vega spec"));
       } finally {
         if (active && !abortController.signal.aborted) {
           setLoading(false);
@@ -207,16 +232,17 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
 
   const tabularMatrix = useMemo<string[][] | null>(() => {
     const specValues = Array.isArray(spec?.data)
-      ? (spec.data.find((d: any) => Array.isArray(d?.values))?.values ?? spec.data[0]?.values)
+      ? (spec.data.find((d: VegaDataEntry) => Array.isArray(d?.values))?.values ?? spec.data[0]?.values)
       : spec?.data?.values;
     const rawValues = Array.isArray(viewConfig?.data) ? viewConfig.data : Array.isArray(specValues) ? specValues : null;
     if (!rawValues || rawValues.length === 0) return null;
     if (Array.isArray(rawValues[0])) {
-      return rawValues.map((row: unknown[]) => row.map((cell) => String(cell ?? "")));
+      return (rawValues as unknown[][]).map((row) => row.map((cell) => String(cell ?? "")));
     }
     if (typeof rawValues[0] === "object" && rawValues[0] !== null) {
+      const records = rawValues as Record<string, unknown>[];
       const headerSet = new Set<string>();
-      for (const r of rawValues as Record<string, unknown>[]) {
+      for (const r of records) {
         if (r && typeof r === "object") {
           for (const k of Object.keys(r)) {
             headerSet.add(k);
@@ -225,7 +251,7 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
       }
       const headers = Array.from(headerSet);
       if (headers.length === 0) return null;
-      const rows = rawValues.map((r: Record<string, unknown>) =>
+      const rows = records.map((r) =>
         headers.map((h) => (r?.[h] === null || r?.[h] === undefined ? "" : String(r[h]))),
       );
       return [headers, ...rows];
@@ -389,9 +415,9 @@ const VegaViewer: React.FC<VegaViewerProps> = ({ viewConfig, isFullScreen }) => 
       ) : (
         <PlotContainer>
           <VegaEmbed
-            spec={spec}
+            spec={spec as unknown as React.ComponentProps<typeof VegaEmbed>["spec"]}
             options={embedOptions as unknown as React.ComponentProps<typeof VegaEmbed>["options"]}
-            onError={(err: any) => setError(err?.message || "Vega rendering error")}
+            onError={(err: unknown) => setError(getErrorMessage(err, "Vega rendering error"))}
           />
         </PlotContainer>
       )}

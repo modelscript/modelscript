@@ -1,0 +1,36 @@
+PWR 17x17 UO2 Fuel Pin Cell Infinite Lattice Criticality
+C Block 1: Cell Cards
+1 1 -10.29 -1 4 -5       IMP:N=1 $ UO2 fuel pellet (r = 0.4096 cm)
+2 0         1 -2 4 -5    IMP:N=1 $ Helium fuel-clad gap (r = 0.4180 cm)
+3 2 -6.55   2 -3 4 -5    IMP:N=1 $ Zircaloy-4 cladding (r = 0.4750 cm)
+4 3 -0.71   3 -6 7 -8 9 4 -5 IMP:N=1 $ Pressurized light-water moderator
+5 0         6:-7:8:-9:-4:5   IMP:N=0 $ External graveyard
+
+C Block 2: Surface Cards
+1 CZ 0.4096  $ Fuel pellet outer radius
+2 CZ 0.4180  $ Cladding inner radius
+3 CZ 0.4750  $ Cladding outer radius
+*4 PZ -182.88 $ Active fuel bottom reflective plane
+*5 PZ  182.88 $ Active fuel top reflective plane
+*6 PX  0.6300 $ Pin pitch +X reflective boundary
+*7 PX -0.6300 $ Pin pitch -X reflective boundary
+*8 PY  0.6300 $ Pin pitch +Y reflective boundary
+*9 PY -0.6300 $ Pin pitch -Y reflective boundary
+
+C Block 3: Data Cards
+MODE N
+M1 92235.80c 0.042 &
+   92238.80c 0.958 &
+   8016.80c  2.000
+M2 40090.80c 0.507 &
+   40091.80c 0.111 &
+   40092.80c 0.170 &
+   40094.80c 0.172 &
+   50120.80c 0.015 &
+   26056.80c 0.025
+M3 1001.80c 2.0 8016.80c 1.0
+MT3 lwtr.01t
+KCODE 4000 1.25 25 125
+KSRC 0.0 0.0 0.0
+F4:N 1 4
+E4 0.625e-6 0.1 1.0 20.0

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model_cardiac" name="Beeler-Reuter Ventricular Cell" language="urn:sedml:language:cellml" source="beeler_reuter.cellml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim_pace" name="1 Hz Ventricular Pacing" initialTime="0" outputStartTime="0" outputEndTime="1000" numberOfSteps="500">
+      <algorithm kisaoID="KISAO:0000019" name="CVODE">
+        <listOfAlgorithmParameters>
+          <algorithmParameter kisaoID="KISAO:0000209" name="relative tolerance" value="1e-6"/>
+        </listOfAlgorithmParameters>
+      </algorithm>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_pace" name="Pacing Run" modelReference="model_cardiac" simulationReference="sim_pace"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_time" name="Time (ms)">
+      <listOfVariables>
+        <variable id="t" symbol="urn:sedml:symbol:time" taskReference="task_pace"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>t</ci></math>
+    </dataGenerator>
+    <dataGenerator id="dg_V" name="Membrane Voltage (mV)">
+      <listOfVariables>
+        <variable id="V" target="/cellml:model/cellml:component[@name='membrane']/cellml:variable[@name='V']" taskReference="task_pace"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>V</ci></math>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot_ap" name="Cardiac Action Potential">
+      <listOfCurves>
+        <curve id="c_V" xDataReference="dg_time" yDataReference="dg_V"/>
+      </listOfCurves>
+    </plot2D>
+  </listOfOutputs>
+</sedML>

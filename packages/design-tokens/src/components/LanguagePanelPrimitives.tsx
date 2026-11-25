@@ -12,7 +12,7 @@ export interface PanelShellProps {
 
 /**
  * Root container for decentralized language panels.
- * Uses --ms-* design tokens so it renders natively in VS Code webviews, Morsel, and Ansatz.
+ * Uses --ms-* design tokens so it renders natively in Ansatz Studio (VS Code), Ansatz Editor, and Ansatz Network.
  */
 export const PanelShell: React.FC<PanelShellProps> = ({ mode, colorMode, isFullScreen = false, children }) => {
   const isArtifactCard = mode === "artifact" && !isFullScreen;

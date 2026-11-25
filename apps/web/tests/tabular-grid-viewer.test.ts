@@ -159,9 +159,12 @@ describe("Tabular Grid Parser & Editor Helpers", () => {
     );
     const subHeaderPath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselViewSubHeader.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzViewSubHeader.tsx",
     );
-    const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
+    const navbarPath = path.resolve(
+      import.meta.dirname,
+      "../src/pages/ansatz-editor/components/AnsatzEditorNavbar.tsx",
+    );
 
     const panelSrc = fs.readFileSync(panelPath, "utf-8");
     assert.ok(panelSrc.includes("CsvViewer"), "PolyglotDomainPanel should import CsvViewer");
@@ -176,9 +179,9 @@ describe("Tabular Grid Parser & Editor Helpers", () => {
     assert.ok(biochemSrc.includes("Compound Table"), "BiochemInspector should expose SMILES Compound Table");
 
     const subHeaderSrc = fs.readFileSync(subHeaderPath, "utf-8");
-    assert.ok(subHeaderSrc.includes('"Table"'), "MorselViewSubHeader should label csv tab as Table");
+    assert.ok(subHeaderSrc.includes('"Table"'), "AnsatzViewSubHeader should label csv tab as Table");
 
     const navbarSrc = fs.readFileSync(navbarPath, "utf-8");
-    assert.ok(navbarSrc.includes('"Table"'), "PlaygroundNavbar should label csv tab as Table");
+    assert.ok(navbarSrc.includes('"Table"'), "AnsatzEditorNavbar should label csv tab as Table");
   });
 });

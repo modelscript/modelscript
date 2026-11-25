@@ -1,0 +1,5 @@
+# Coastal Estuary River Reach
+BEGIN RIV6
+  1 6 8 6.5 400.0 3.0
+  1 6 10 3.0 450.0 0.0
+END RIV6

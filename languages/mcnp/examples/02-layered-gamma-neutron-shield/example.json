@@ -1,0 +1,11 @@
+{
+  "id": "mcnp-02-layered-gamma-neutron-shield",
+  "lang": "mcnp",
+  "subFormats": ["mcnp6", "shielding"],
+  "difficulty": 2,
+  "title": "Lead and Polyethylene Layered Gamma-Neutron Shield",
+  "description": "Coupled neutron-photon transport through a two-layer borated polyethylene and lead biological slab shield with surface flux tallies.",
+  "category": "Nuclear Transport & Shielding",
+  "tags": ["mcnp", "shielding", "coupled-np", "slab"],
+  "activeFile": "layered_shield.mcnp"
+}

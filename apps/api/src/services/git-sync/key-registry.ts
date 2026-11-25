@@ -32,11 +32,15 @@ export function verifyProofOfPossession(
     if (signatureMultibaseOrBase64.startsWith("z")) {
       try {
         candidates.push(decodeMultibase(signatureMultibaseOrBase64));
-      } catch {}
+      } catch {
+        // Not valid multibase; try base64 fallback below
+      }
     }
     try {
       candidates.push(Buffer.from(signatureMultibaseOrBase64, "base64"));
-    } catch {}
+    } catch {
+      // Invalid base64 encoding; skip candidate
+    }
 
     const spkiDer = Buffer.concat([ED25519_SPKI_PREFIX, Buffer.from(rawPubkey32)]);
     const pubKeyObj = crypto.createPublicKey({

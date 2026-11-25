@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<robot name="modular_quadruped" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="leg_macro.xacro"/>
+
+  <link name="trunk">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="12.5"/>
+      <inertia ixx="0.18" ixy="0" ixz="0" iyy="0.45" iyz="0" izz="0.52"/>
+    </inertial>
+    <visual>
+      <geometry><mesh filename="chassis.stl" scale="1 1 1"/></geometry>
+    </visual>
+    <collision>
+      <geometry><box size="0.52 0.24 0.12"/></geometry>
+    </collision>
+  </link>
+
+  <!-- Front-Left Leg Chain -->
+  <link name="fl_thigh">
+    <inertial>
+      <origin xyz="0 0 -0.11" rpy="0 0 0"/>
+      <mass value="1.15"/>
+      <inertia ixx="0.008" ixy="0" ixz="0" iyy="0.008" iyz="0" izz="0.002"/>
+    </inertial>
+    <visual><origin xyz="0 0 -0.11" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.22"/></geometry></visual>
+    <collision><origin xyz="0 0 -0.11" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.22"/></geometry></collision>
+  </link>
+
+  <link name="fl_foot">
+    <inertial>
+      <origin xyz="0 0 -0.10" rpy="0 0 0"/>
+      <mass value="0.45"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.001"/>
+    </inertial>
+    <visual><geometry><mesh filename="foot.stl" scale="1 1 1"/></geometry></visual>
+    <collision><geometry><sphere radius="0.025"/></geometry></collision>
+  </link>
+
+  <!-- Front-Right Leg Chain -->
+  <link name="fr_thigh">
+    <inertial>
+      <origin xyz="0 0 -0.11" rpy="0 0 0"/>
+      <mass value="1.15"/>
+      <inertia ixx="0.008" ixy="0" ixz="0" iyy="0.008" iyz="0" izz="0.002"/>
+    </inertial>
+    <visual><origin xyz="0 0 -0.11" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.22"/></geometry></visual>
+    <collision><origin xyz="0 0 -0.11" rpy="0 0 0"/><geometry><box size="0.04 0.04 0.22"/></geometry></collision>
+  </link>
+
+  <link name="fr_foot">
+    <inertial>
+      <origin xyz="0 0 -0.10" rpy="0 0 0"/>
+      <mass value="0.45"/>
+      <inertia ixx="0.002" ixy="0" ixz="0" iyy="0.002" iyz="0" izz="0.001"/>
+    </inertial>
+    <visual><geometry><mesh filename="foot.stl" scale="1 1 1"/></geometry></visual>
+    <collision><geometry><sphere radius="0.025"/></geometry></collision>
+  </link>
+
+  <joint name="fl_hip_pitch" type="revolute">
+    <parent link="trunk"/><child link="fl_thigh"/>
+    <origin xyz="0.22 0.13 0.0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="35.0" velocity="12.0"/>
+  </joint>
+  <joint name="fl_knee_pitch" type="revolute">
+    <parent link="fl_thigh"/><child link="fl_foot"/>
+    <origin xyz="0.0 0.0 -0.22" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-2.40" upper="-0.30" effort="35.0" velocity="12.0"/>
+  </joint>
+  <joint name="fr_hip_pitch" type="revolute">
+    <parent link="trunk"/><child link="fr_thigh"/>
+    <origin xyz="0.22 -0.13 0.0" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="35.0" velocity="12.0"/>
+  </joint>
+  <joint name="fr_knee_pitch" type="revolute">
+    <parent link="fr_thigh"/><child link="fr_foot"/>
+    <origin xyz="0.0 0.0 -0.22" rpy="0 0 0"/><axis xyz="0 1 0"/>
+    <limit lower="-2.40" upper="-0.30" effort="35.0" velocity="12.0"/>
+  </joint>
+</robot>

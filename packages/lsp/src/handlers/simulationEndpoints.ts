@@ -34,7 +34,9 @@ import { getCompositeName } from "../utils/hierarchy-utils.js";
 import { extractNamedCallAttr, hasModelicaClassDefPrefix } from "../utils/lexical-utils.js";
 import { ModelScriptParticipant } from "./modelscriptParticipant.js";
 
-const notebookSessions = new Map<string, any>();
+type SimSolverOption = NonNullable<Parameters<typeof simulateArenaAsync>[1]>["solver"];
+
+const notebookSessions = new Map<string, ArenaScriptInterpreter>();
 
 export function _formatDebugValue(val: unknown): string {
   if (typeof val === "number") return val.toFixed(4);
@@ -141,7 +143,7 @@ export function resolveTargetClass(
             return {
               symbolId: id,
               className: entry.name,
-              classKind: (entry.metadata?.classKind as string) ?? "class",
+              classKind: (entry.metadata?.["classKind"] as string) ?? "class",
             };
           }
         }
@@ -151,7 +153,7 @@ export function resolveTargetClass(
     let preferredWs: { symbolId: number; className: string; classKind: string } | null = null;
     for (const [id, entry] of wsIndex.unifiedIndex.symbols.entries()) {
       if (matchesUri(entry.resourceId) && (entry.kind === "Class" || entry.kind === "Def") && entry.parentId === null) {
-        const classKind = (entry.metadata?.classKind as string) ?? "class";
+        const classKind = (entry.metadata?.["classKind"] as string) ?? "class";
         const candidate = { symbolId: id, className: entry.name, classKind };
         if (!fallbackWs) fallbackWs = candidate;
         if (isSimulatableClassKind(classKind)) {
@@ -210,8 +212,9 @@ export function flattenTargetClass(
           if (c && c.length > 0) simClassId = c[0]!;
         }
         arena = flattener.flatten(simClassId);
-      } catch (e: any) {
-        return { error: `Failed to flatten class '${target.className}': ${e?.message ?? e}` };
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return { error: `Failed to flatten class '${target.className}': ${msg}` };
       }
     }
   }
@@ -729,7 +732,7 @@ export function registerSimulationEndpoints(context: LspContext) {
               loadTags: ["motor_mount", "motor1_mount", "motor2_mount", "motor3_mount", "motor4_mount", "tip_load"],
               loadAxis: "y",
               corotational: true,
-            } as any);
+            } as ConstructorParameters<typeof FeaCoSimParticipant>[4]);
             session.addParticipant(feaParticipant);
 
             // Find all force/thrust variables in Modelica arena (supporting multi-mount drones)
@@ -947,7 +950,7 @@ export function registerSimulationEndpoints(context: LspContext) {
         }
 
         context.connection.console.info(
-          `[simulate] Arena active variables: ${(arena as any).activeVarCount ?? arena.varCount}`,
+          `[simulate] Arena active variables: ${(arena as { activeVarCount?: number }).activeVarCount ?? arena.varCount}`,
         );
         context.connection.console.info(`[simulate] Arena equations: ${arena.eqCount}`);
 
@@ -972,7 +975,10 @@ export function registerSimulationEndpoints(context: LspContext) {
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 1;
         const step = params.interval ?? exp.interval ?? (stopTime - startTime) / 500;
-        const effectiveSolver = (params.solver ?? (exp as any).solver ?? exp.algorithm ?? "dopri5") as any;
+        const effectiveSolver = (params.solver ??
+          (exp as { solver?: string }).solver ??
+          exp.algorithm ??
+          "dopri5") as SimSolverOption;
         const effectiveExp = {
           ...exp,
           startTime,
@@ -1051,7 +1057,7 @@ export function registerSimulationEndpoints(context: LspContext) {
         );
 
         const tArr = Array.from(result.t);
-        const yArr = (result.y || []).map((row: any) => (Array.isArray(row) ? row : Array.from(row)));
+        const yArr = (result.y || []).map((row) => (Array.isArray(row) ? row : Array.from(row as Iterable<number>)));
         const variableMetadata = getArenaVariableMetadata(arena, result.states);
 
         if (params.format === "csv") {
@@ -1159,7 +1165,8 @@ export function registerSimulationEndpoints(context: LspContext) {
       outputs: Record<string, number>;
       error?: string | undefined;
     } => {
-      const simState = cosimSimulators.get(params.participantId);
+      const simState = cosimSimulators.get(params.participantId) as
+        { arena: DAEBuilder; currentValues: Map<string, number>; stepSize: number } | undefined;
       if (!simState) {
         return { outputs: {}, error: `No simulator found for participant ${params.participantId}` };
       }
@@ -1191,7 +1198,7 @@ export function registerSimulationEndpoints(context: LspContext) {
           for (let vi = 0; vi < stepResult.states.length; vi++) {
             const stateName = stepResult.states[vi];
             const val = stepResult.y[lastIdx]?.[vi];
-            if (val !== undefined) {
+            if (stateName !== undefined && val !== undefined) {
               currentValues.set(stateName, val);
             }
           }
@@ -1388,7 +1395,11 @@ export function registerSimulationEndpoints(context: LspContext) {
       return { output: "", error: "File not found." };
     }
 
-    const tree = context.state.sharedContext.parse(".mos", text);
+    type ScriptTreeLike = {
+      rootNode?: Parameters<ArenaScriptInterpreter["execute"]>[0];
+      delete?: () => void;
+    };
+    const tree = context.state.sharedContext.parse(".mos", text) as ScriptTreeLike | null | undefined;
     if (!tree || !tree.rootNode) {
       tree?.delete?.();
       return { output: "", error: "Failed to parse script." };
@@ -1409,9 +1420,16 @@ export function registerSimulationEndpoints(context: LspContext) {
   });
 
   context.connection.onRequest("modelscript/runNotebookCell", async (params: { sessionId: string; code: string }) => {
+    type NotebookTreeLike = {
+      rootNode?: Parameters<ArenaScriptInterpreter["execute"]>[0];
+      delete?: () => void;
+    };
+    type NotebookParserLike = { parse(code: string): NotebookTreeLike | null | undefined };
     const qe = context.workspaceManager.getQueryEngine("modelica");
     const sharedContext = context.state.sharedContext ?? context.parserService.sharedContext;
-    const parser = context.parserService.getParser("modelica") ?? (globalThis as any).modelicaParser;
+    const parser =
+      (context.parserService.getParser("modelica") as NotebookParserLike | null | undefined) ??
+      (globalThis as { modelicaParser?: NotebookParserLike }).modelicaParser;
 
     if ((!sharedContext && !parser) || !qe) {
       return { output: "", error: "Language server not fully initialized." };
@@ -1426,7 +1444,8 @@ export function registerSimulationEndpoints(context: LspContext) {
     const isClassDef = hasModelicaClassDefPrefix(trimmed);
     const codeToParse = isClassDef ? trimmed + "\n" : `function _script\nalgorithm\n${trimmed}\nend _script;\n`;
 
-    const tree = sharedContext ? sharedContext.parse(".mo", codeToParse) : parser.parse(codeToParse);
+    const tree = (sharedContext ? sharedContext.parse(".mo", codeToParse) : parser?.parse(codeToParse)) as
+      NotebookTreeLike | null | undefined;
     if (!tree || !tree.rootNode) {
       return { output: "", error: "Failed to parse cell." };
     }
@@ -1437,16 +1456,16 @@ export function registerSimulationEndpoints(context: LspContext) {
       if (wsIndex) {
         const cellUri = `notebook://${params.sessionId}/cell_${Date.now()}.mo`;
         try {
-          wsIndex.indexDocument(cellUri, () => tree.rootNode, undefined, undefined, false);
+          wsIndex.indexDocument?.(cellUri, () => tree.rootNode, undefined, undefined, false);
           if (typeof qe.updateTree === "function") {
-            qe.updateTree(tree);
+            qe.updateTree(tree as unknown as Parameters<typeof qe.updateTree>[0]);
           }
         } catch {
           // ignore indexing errors
         }
       }
     } else if (typeof qe.updateTree === "function" && !qe.getTree?.()) {
-      qe.updateTree(tree);
+      qe.updateTree(tree as unknown as Parameters<typeof qe.updateTree>[0]);
     }
 
     let interpreter = notebookSessions.get(params.sessionId);
@@ -1510,21 +1529,25 @@ export function registerSimulationEndpoints(context: LspContext) {
       }
     }
 
-    let arena: any = null;
+    let arena: DAEBuilder | null = null;
     let targetClass = "";
 
-    if (instances && instances.length > 0) {
+    if (instances && instances.length > 0 && instances[0]) {
       const targetInstance = instances[0];
       targetClass = targetInstance.name || targetInstance.compositeName || "";
       const ctx =
         context.workspaceManager.documentContexts.get(params.uri) ??
         (doc ? context.workspaceManager.documentContexts.get(doc.uri) : undefined) ??
         context.state.sharedContext ??
-        (context.parserService as any)?.sharedContext;
-      const flattenFn = (globalThis as any).flattenArenaFromInstance ?? flattenArenaFromInstance;
+        context.parserService?.sharedContext;
+      const flattenFn = (
+        globalThis as unknown as {
+          flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder | null;
+        }
+      ).flattenArenaFromInstance;
       if (typeof flattenFn === "function") {
         try {
-          arena = flattenFn(targetInstance, ctx);
+          arena = flattenFn(targetInstance, ctx) as DAEBuilder | null;
         } catch {
           arena = null;
         }
@@ -1542,7 +1565,7 @@ export function registerSimulationEndpoints(context: LspContext) {
         }
         arena = flatRes.arena;
         targetClass = flatRes.target.className;
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (!instances || instances.length === 0) {
           throw new Error("No Modelica classes found in the active document.", { cause: e });
         }
@@ -1577,7 +1600,7 @@ export function registerSimulationEndpoints(context: LspContext) {
     };
   });
 
-  context.connection.onRequest("modelscript/debuggerContinue", (params?: any) => {
+  context.connection.onRequest("modelscript/debuggerContinue", (params?: { step?: boolean | undefined }) => {
     stepMode = params?.step || false;
     if (debuggerResumeCallback) {
       debuggerResumeCallback();
@@ -1603,7 +1626,10 @@ export function registerSimulationEndpoints(context: LspContext) {
         `[simulatePhysics] Received request for ${params.className || params.uri} (type: ${params.physicsType || "FEA"})`,
       );
       // Dispatch simulation with FEA physics domain
-      const simHandler = (context.connection as any)._requestHandlers?.get("modelscript/simulate");
+      const connWithHandlers = context.connection as unknown as {
+        _requestHandlers?: Map<string, (reqParams: unknown) => Promise<unknown>>;
+      };
+      const simHandler = connWithHandlers._requestHandlers?.get("modelscript/simulate");
       if (simHandler) {
         return await simHandler({
           ...params,
@@ -1689,6 +1715,36 @@ function getWorkspacePrefix(uri: string): string {
   return parent;
 }
 
+interface ReachabilityEnvelope {
+  name: string;
+  kind: "interval" | "affine" | "zonotope";
+  color: string;
+  fillColor: string;
+  borderDash?: number[] | undefined;
+  lo: number[];
+  hi: number[];
+  peakVal: number;
+  breachTime?: number | undefined;
+  isViolation?: boolean | undefined;
+}
+
+interface VariableReachabilityProfile {
+  nominalTrajectory: number[];
+  envelopes: ReachabilityEnvelope[];
+  requirementLimit: number;
+  requirementLabel: string;
+  isCertifiedSafe: boolean;
+  statusBadges: { text: string; kind: "pass" | "warn" | "fail" }[];
+  yRange: [number, number];
+}
+
+interface OpenDocLike {
+  uri?: string | undefined;
+  languageId?: string | undefined;
+  text?: string | undefined;
+  getText?: () => string;
+}
+
 export async function computeModelReachability(
   context: LspContext,
   params: {
@@ -1705,17 +1761,20 @@ export async function computeModelReachability(
     maxStep?: number | undefined;
     parameterOverrides?: Record<string, number> | undefined;
   },
-): Promise<any> {
+): Promise<Record<string, unknown>> {
   try {
     let moUri = params.uri;
     const sysmlTexts: string[] = [];
 
-    const allOpenDocs: any[] =
-      typeof (context.documents as any)?.all === "function"
-        ? (context.documents as any).all()
-        : typeof (context.documentManager?.documents as any)?.all === "function"
-          ? (context.documentManager.documents as any).all()
-          : Array.from((context.documentManager?.documents as any)?.values?.() ?? []);
+    const docCollection = context.documents as unknown as { all?: () => OpenDocLike[] } | undefined;
+    const mgrDocs = context.documentManager?.documents as unknown as
+      { all?: () => OpenDocLike[]; values?: () => Iterable<OpenDocLike> } | undefined;
+    const allOpenDocs: OpenDocLike[] =
+      typeof docCollection?.all === "function"
+        ? docCollection.all()
+        : typeof mgrDocs?.all === "function"
+          ? mgrDocs.all()
+          : Array.from(mgrDocs?.values?.() ?? []);
 
     // If invoked from a SysML v2 document, gather its requirements and locate the companion Modelica model
     if (params.uri.endsWith(".sysml") || params.uri.endsWith(".kerml")) {
@@ -2067,7 +2126,7 @@ export async function computeModelReachability(
       stopTime,
       step,
       numberOfIntervals: params.numberOfIntervals,
-      solver: (params.solver ?? "dopri5") as any,
+      solver: (params.solver ?? "dopri5") as SimSolverOption,
       rtol: params.rtol,
       atol: params.atol,
       outputStringIds,
@@ -2075,7 +2134,7 @@ export async function computeModelReachability(
     });
 
     const tArr = Array.from(nomResult.t);
-    const yArr = (nomResult.y || []).map((row: any) => (Array.isArray(row) ? row : Array.from(row)));
+    const yArr = (nomResult.y || []).map((row) => (Array.isArray(row) ? row : Array.from(row as Iterable<number>)));
     const states = nomResult.states;
     const numSteps = tArr.length;
     const numVars = states.length;
@@ -2095,7 +2154,9 @@ export async function computeModelReachability(
           diffStateNames.push(sName);
         }
       }
-    } catch {}
+    } catch {
+      // Simulator preparation failed; fall back to der(...) state-name heuristic below.
+    }
     for (const s of states) {
       if (!s.startsWith("der(") && states.includes(`der(${s})`) && !diffStateNames.includes(s)) {
         diffStateNames.push(s);
@@ -2185,7 +2246,7 @@ export async function computeModelReachability(
           startTime,
           stopTime,
           step: coarseStep,
-          solver: (params.solver ?? "dopri5") as any,
+          solver: (params.solver ?? "dopri5") as SimSolverOption,
           outputStringIds,
           parameterOverrides: baseOverrides,
           initialStateOverrides: new Map([[sName, x0 + delta]]),
@@ -2194,7 +2255,7 @@ export async function computeModelReachability(
           startTime,
           stopTime,
           step: coarseStep,
-          solver: (params.solver ?? "dopri5") as any,
+          solver: (params.solver ?? "dopri5") as SimSolverOption,
           outputStringIds,
           parameterOverrides: baseOverrides,
           initialStateOverrides: new Map([[sName, x0 - delta]]),
@@ -2202,12 +2263,14 @@ export async function computeModelReachability(
         if (resPlus.t.length > 1 && resMinus.t.length > 1) {
           pertPairs.push({
             plusT: Array.from(resPlus.t),
-            plusY: (resPlus.y || []).map((r: any) => (Array.isArray(r) ? r : Array.from(r))),
+            plusY: (resPlus.y || []).map((r) => (Array.isArray(r) ? r : Array.from(r as Iterable<number>))),
             minusT: Array.from(resMinus.t),
-            minusY: (resMinus.y || []).map((r: any) => (Array.isArray(r) ? r : Array.from(r))),
+            minusY: (resMinus.y || []).map((r) => (Array.isArray(r) ? r : Array.from(r as Iterable<number>))),
           });
         }
-      } catch {}
+      } catch {
+        // Individual state perturbation may diverge; skip unstable pair and continue envelope estimation.
+      }
     }
 
     // Also perturb up to 2 significant real parameters (excluding frequencies/temperatures that shift phase excessively)
@@ -2233,7 +2296,7 @@ export async function computeModelReachability(
           startTime,
           stopTime,
           step: coarseStep,
-          solver: (params.solver ?? "dopri5") as any,
+          solver: (params.solver ?? "dopri5") as SimSolverOption,
           outputStringIds,
           parameterOverrides: overPlus,
         });
@@ -2241,23 +2304,25 @@ export async function computeModelReachability(
           startTime,
           stopTime,
           step: coarseStep,
-          solver: (params.solver ?? "dopri5") as any,
+          solver: (params.solver ?? "dopri5") as SimSolverOption,
           outputStringIds,
           parameterOverrides: overMinus,
         });
         if (resPlus.t.length > 1 && resMinus.t.length > 1) {
           pertPairs.push({
             plusT: Array.from(resPlus.t),
-            plusY: (resPlus.y || []).map((r: any) => (Array.isArray(r) ? r : Array.from(r))),
+            plusY: (resPlus.y || []).map((r) => (Array.isArray(r) ? r : Array.from(r as Iterable<number>))),
             minusT: Array.from(resMinus.t),
-            minusY: (resMinus.y || []).map((r: any) => (Array.isArray(r) ? r : Array.from(r))),
+            minusY: (resMinus.y || []).map((r) => (Array.isArray(r) ? r : Array.from(r as Iterable<number>))),
           });
         }
-      } catch {}
+      } catch {
+        // Individual parameter perturbation may diverge; skip unstable pair and continue envelope estimation.
+      }
     }
 
     // Build VariableReachabilityProfile for every variable in `states`
-    const variables: Record<string, any> = {};
+    const variables: Record<string, VariableReachabilityProfile> = {};
     const totalTimeSpan = Math.max(stopTime - startTime, 1e-9);
 
     for (let vi = 0; vi < numVars; vi++) {

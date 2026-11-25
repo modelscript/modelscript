@@ -1,0 +1,93 @@
+! Multi-Instrument Heliophysics Mission Merged Dataset (MAG + SWE + Ephemeris)
+#header
+  CDF NAME: mms1_merged_l2_20260918.cdf
+  DATA ENCODING: NETWORK
+  MAJORITY: ROW_MAJOR
+  FORMAT: SINGLE
+  VERSION: 3.8.0
+
+#GLOBALattributes
+  "Project" 0: CDF_CHAR { "STP>Solar-Terrestrial Probes" }
+  "Source_name" 0: CDF_CHAR { "MMS1>Magnetospheric Multiscale 1" }
+  "Discipline" 0: CDF_CHAR { "Space Physics>Magnetospheric Science" }
+  "Data_type" 0: CDF_CHAR { "L2>Level 2 Merged Science Product" }
+  "Descriptor" 0: CDF_CHAR { "FGM-FPI-MEC>Magnetometer, Plasma & Ephemeris" }
+
+#VARIABLEattributes
+  "DEPEND_0"
+  "UNITS"
+  "VALIDMIN"
+  "VALIDMAX"
+  "FILLVAL"
+  "VAR_TYPE"
+
+#variables
+  "EPOCH" CDF_EPOCH 1 0:[] T
+    "VAR_TYPE" CDF_CHAR { "support_data" }
+    "UNITS" CDF_CHAR { "ms" }
+    [0] = "2026-09-18T08:00:00.000Z"
+    [1] = "2026-09-18T08:00:04.500Z"
+    [2] = "2026-09-18T08:00:09.000Z"
+    [3] = "2026-09-18T08:00:13.500Z"
+  .
+  "B_GSE" CDF_REAL4 1 1:[3] T T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "nT" }
+    "VALIDMIN" CDF_REAL4 { -10000.0, -10000.0, -10000.0 }
+    "VALIDMAX" CDF_REAL4 { 10000.0, 10000.0, 10000.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = { 12.4, -18.7, 29.5 }
+    [1] = { 11.8, -17.2, 24.1 }
+    [2] = { 9.5, -14.0, -6.8 }
+    [3] = { 8.2, -12.6, -21.4 }
+  .
+  "ION_DENSITY" CDF_REAL4 1 0:[] T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "cm^-3" }
+    "VALIDMIN" CDF_REAL4 { 0.001 }
+    "VALIDMAX" CDF_REAL4 { 1000.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = 1.85
+    [1] = 4.12
+    [2] = 16.40
+    [3] = 22.80
+  .
+  "ION_VELOCITY_GSE" CDF_REAL4 1 1:[3] T T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "km/s" }
+    "VALIDMIN" CDF_REAL4 { -2000.0, -2000.0, -2000.0 }
+    "VALIDMAX" CDF_REAL4 { 2000.0, 2000.0, 2000.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = { -45.0, 18.0, 12.0 }
+    [1] = { -92.5, 44.0, 35.0 }
+    [2] = { -165.0, 88.0, -142.0 }
+    [3] = { -210.4, 95.2, -98.5 }
+  .
+  "SC_POS_GSE" CDF_REAL8 1 1:[3] T T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "km" }
+    "VALIDMIN" CDF_REAL8 { -200000.0, -200000.0, -200000.0 }
+    "VALIDMAX" CDF_REAL8 { 200000.0, 200000.0, 200000.0 }
+    "FILLVAL" CDF_REAL8 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "support_data" }
+    [0] = { 62450.2, 18420.5, -4120.8 }
+    [1] = { 62448.1, 18426.3, -4122.1 }
+    [2] = { 62446.0, 18432.1, -4123.4 }
+    [3] = { 62443.9, 18437.9, -4124.7 }
+  .
+  "QUALITY_FLAG" CDF_INT2 1 0:[] T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "1" }
+    "VALIDMIN" CDF_INT2 { 0 }
+    "VALIDMAX" CDF_INT2 { 4 }
+    "FILLVAL" CDF_INT2 { -32768 }
+    "VAR_TYPE" CDF_CHAR { "support_data" }
+    [0] = 0
+    [1] = 0
+    [2] = 0
+    [3] = 0
+  .
+#end

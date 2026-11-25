@@ -1,0 +1,9 @@
+LINE Corridor_500kV_EHV voltage_kv=500 freq=60
+CONDUCTOR Bittern_1272 weight_n_per_m=21.0 r_ohm_per_km=0.046 gmr_m=0.0135 rated_tension_n=151700
+STRUCTURE DE501 station_m=0 x=0 y=0 z_base=310 height_m=46.0 phase_spacing_m=10.5
+STRUCTURE T502 station_m=380 x=380 y=0 z_base=305 height_m=46.0 phase_spacing_m=10.5
+STRUCTURE DE503 station_m=800 x=800 y=0 z_base=312 height_m=46.0 phase_spacing_m=10.5
+SPAN S1 from=DE501 to=T502 conductor=Bittern_1272 tension_n=56000 min_clearance_m=12.0
+SPAN S2 from=T502 to=DE503 conductor=Bittern_1272 tension_n=58000 min_clearance_m=12.0
+TERRAIN 190 0 308.0
+TERRAIN 590 0 310.0

@@ -424,7 +424,24 @@ export class TaylorModel {
 
     if (mulTable) {
       const M = this.basis.totalMonomials;
-      const w = getDefaultWasmExports();
+      const w = getDefaultWasmExports() as {
+        memory: WebAssembly.Memory;
+        alloc?: (size: number) => number;
+        free?: (ptr: number) => void;
+        tm_mulDenseRigorous?: (
+          M: number,
+          nv: number,
+          cAPtr: number,
+          cBPtr: number,
+          mtPtr: number,
+          mAbsPtr: number,
+          expPtr: number,
+          dLoPtr: number,
+          dHiPtr: number,
+          outCPtr: number,
+          outExPtr: number,
+        ) => void;
+      } | null;
       if (
         w &&
         typeof w.tm_mulDenseRigorous === "function" &&

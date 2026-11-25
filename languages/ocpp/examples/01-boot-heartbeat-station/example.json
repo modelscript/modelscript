@@ -1,0 +1,12 @@
+{
+  "id": "ocpp-01-boot-heartbeat-station",
+  "lang": "ocpp",
+  "subFormats": ["ocpp"],
+  "difficulty": 1,
+  "title": "Single-EVSE Workplace Charger Configuration",
+  "description": "Minimal OCPP 2.0.1 single-connector Level 2 AC workplace charging station with active EV charging session parameters.",
+  "category": "EV Charging Infrastructure",
+  "tags": ["ocpp", "evse", "workplace", "ac-charging"],
+  "activeFile": "workplace_evse.ocpp",
+  "isDefaultStarter": true
+}

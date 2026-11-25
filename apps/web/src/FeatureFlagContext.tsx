@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import api from "./api";
 import { useAuth } from "./AuthContext";
+import { getApiErrorStatus } from "./util/error";
 
 export type FeatureFlags = Record<string, boolean>;
 
@@ -129,7 +130,7 @@ const DEFAULT_LANGUAGE_FLAGS: FeatureFlags = Object.fromEntries(
 
 export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   modelica_simulation: true,
-  morsel_playground: true,
+  ansatz_editor: true,
   package_browser: true,
   git_repositories: false,
   repositories: false,
@@ -163,7 +164,7 @@ export const DEFAULT_FRONTEND_FLAGS: FeatureFlags = {
   mcp_gateway_sse: false,
   composer_ai_polish: false,
   ai_polish: false,
-  morsel_ai: false,
+  ansatz_ai: false,
   feeds_page: false,
   rss_feeds: false,
   spaces_hub: false,
@@ -236,8 +237,9 @@ export function FeatureFlagProvider({ children }: { children: React.ReactNode })
           }
         }
         break;
-      } catch (err: any) {
-        if (attempt < 2 && (err?.response?.status === 502 || err?.response?.status === 503 || !err?.response)) {
+      } catch (err: unknown) {
+        const status = getApiErrorStatus(err);
+        if (attempt < 2 && (status === 502 || status === 503 || status === undefined)) {
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
           continue;
         }

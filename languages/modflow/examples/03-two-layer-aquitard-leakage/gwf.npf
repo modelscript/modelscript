@@ -1,0 +1,7 @@
+# Anisotropic Hydraulic Conductivity (Vertical K33 controls aquitard leakage)
+BEGIN NPF6
+  K 15.0
+  K33 0.25
+  SS 1.2e-5
+  SY 0.20
+END NPF6

@@ -30,7 +30,7 @@ import {
 } from "./modelica-preview-mode.js";
 import { highlightPolyglotLine, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
-const MorselEditorLazy = React.lazy(() => import("@modelscript/editor/workbench/Morsel"));
+const AnsatzEditorLazy = React.lazy(() => import("@modelscript/editor/workbench/AnsatzEditor"));
 
 export type { ModelicaPreviewMetadata, ModelicaPreviewMode } from "./modelica-preview-mode.js";
 
@@ -67,7 +67,7 @@ interface ModelicaDiagramViewerProps {
   };
   artifactId?: string | number | undefined;
   isFullScreen?: boolean | undefined;
-  onSaved?: ((updatedArtifact: any) => void) | undefined;
+  onSaved?: ((updatedArtifact: import("../../api/artifacts").ArtifactViewRecord) => void) | undefined;
 }
 
 const CardWrapper = styled.div<{ $isFullScreen: boolean; $standalone?: boolean | undefined }>`
@@ -421,11 +421,11 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [validInlineSvg, previewMode]);
 
-  // Hibernate heavy Morsel runtime when scrolled out of view in feed mode
+  // Hibernate heavy Ansatz runtime when scrolled out of view in feed mode
   useEffect(() => {
     if (!interactive || isFullScreen) return;
     const observer = new IntersectionObserver(
@@ -470,7 +470,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
     e.stopPropagation();
     const svgEl =
       containerRef.current?.querySelector(".x6-graph-svg") ||
-      containerRef.current?.querySelector("svg.morsel-diagram-svg") ||
+      containerRef.current?.querySelector("svg.ansatz-diagram-svg") ||
       Array.from(containerRef.current?.querySelectorAll("svg") || []).find((el) => (el.clientWidth || 0) > 48);
     if (svgEl) {
       const svgStr = serializeInteractiveGraphSvg(svgEl as SVGSVGElement, {
@@ -540,7 +540,7 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
             ? "▶ Interactive Editor"
             : "▶ Interactive Schematic";
 
-  const activeMorselView =
+  const activeAnsatzView =
     viewMode === "simulation"
       ? "plot"
       : viewMode === "3d"
@@ -817,11 +817,11 @@ export const ModelicaDiagramViewer: React.FC<ModelicaDiagramViewerProps> = ({
                   </Box>
                 }
               >
-                <MorselEditorLazy
+                <AnsatzEditorLazy
                   dataUrl={null}
                   initialCode={code}
                   initialDialect={dialect}
-                  initialView={activeMorselView}
+                  initialView={activeAnsatzView}
                   initialClassName={typeof viewConfig.primaryClass === "string" ? viewConfig.primaryClass : undefined}
                   initialSimulationVariables={initialSimVars}
                   initialStartTime={initialStartTime}

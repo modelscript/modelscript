@@ -7,13 +7,93 @@
 
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 
+interface CadDiagramWasmExports {
+  memory: WebAssembly.Memory;
+  __new: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  __unpin?: (ptr: number) => void;
+  cad_aabb_distance?: (aabbAPtr: number, aabbBPtr: number) => number;
+  cad_bvh_raycast?: (
+    numItems: number,
+    aabbsPtr: number,
+    idsPtr: number,
+    rayOriginPtr: number,
+    rayDirPtr: number,
+    maxDist: number,
+    hitOutPtr: number,
+  ) => number;
+  cad_bvh_tree_raycast?: (
+    numNodes: number,
+    nodesPtr: number,
+    rayOriginPtr: number,
+    rayDirPtr: number,
+    maxDist: number,
+    hitOutPtr: number,
+  ) => number;
+  cad_tri_tri_min_distance_sq?: (triAPtr: number, triBPtr: number) => number;
+  cad_mesh_pair_min_clearance?: (
+    numTrisA: number,
+    trisAPtr: number,
+    numTrisB: number,
+    trisBPtr: number,
+    earlyExitThreshold: number,
+  ) => number;
+  cad_bsp_split_polygon?: (
+    numVerts: number,
+    vertsPtr: number,
+    planeNormalPtr: number,
+    planeW: number,
+    frontOutPtr: number,
+    backOutPtr: number,
+    countsOutPtr: number,
+  ) => number;
+  diagram_route_orthogonal_astar?: (
+    cols: number,
+    rows: number,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+    startDir: number,
+    bendPenalty: number,
+    crossingPenalty: number,
+    gridPtr: number,
+    gScorePtr: number,
+    parentPtr: number,
+    closedPtr: number,
+    heapStatesPtr: number,
+    heapPrioritiesPtr: number,
+    outWaypointsPtr: number,
+    maxWaypoints: number,
+  ) => number;
+  ecad_drc_trace_pair_min_clearance?: (
+    nPts1: number,
+    pts1Ptr: number,
+    w1: number,
+    nPts2: number,
+    pts2Ptr: number,
+    w2: number,
+  ) => number;
+  ecad_drc_point_to_polygon_dist?: (px: number, py: number, nVerts: number, polyPtr: number) => number;
+  scad_multiply_mat4?: (aPtr: number, bPtr: number, outPtr: number) => void;
+  diagram_tsm_compact_1d?: (n: number, coordsPtr: number, outPtr: number) => number;
+  diagram_port_align_1d?: (
+    n: number,
+    targetsPtr: number,
+    minSpacing: number,
+    minBound: number,
+    maxBound: number,
+    outPtr: number,
+  ) => void;
+}
+
 const scratchPools = new WeakMap<object, Map<string, { ptr: number; bytes: number }>>();
 
 /**
  * Returns a pinned WASM linear-memory scratch pointer with at least `minBytes` capacity,
  * reusing prior allocations on repeated calls and unpinning replaced blocks on growth.
  */
-function ensureScratchBuffer(wasm: any, key: string, minBytes: number): number {
+function ensureScratchBuffer(wasm: CadDiagramWasmExports, key: string, minBytes: number): number {
   let pool = scratchPools.get(wasm);
   if (!pool) {
     pool = new Map();
@@ -53,7 +133,7 @@ export function computeAabbDistanceWasm(
   minB: readonly [number, number, number],
   maxB: readonly [number, number, number],
 ): number {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.cad_aabb_distance !== "function") {
     throw new Error("WASM cad_aabb_distance kernel not available");
   }
@@ -89,7 +169,7 @@ export function raycastBvhWasm(
   dir: readonly [number, number, number],
   maxDist = 1e30,
 ): { id: number; distance: number; point: [number, number, number] } | null {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.cad_bvh_raycast !== "function") {
     throw new Error("WASM cad_bvh_raycast kernel not available");
   }
@@ -137,7 +217,7 @@ export function raycastBvhTreeWasm(
   dir: readonly [number, number, number],
   maxDist = 1e30,
 ): { id: number; distance: number; point: [number, number, number] } | null {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.cad_bvh_tree_raycast !== "function") {
     throw new Error("WASM cad_bvh_tree_raycast kernel not available");
   }
@@ -176,7 +256,7 @@ export function raycastBvhTreeWasm(
  * Computes exact squared Euclidean distance between two 3D triangles (9 f64s each) in WASM.
  */
 export function computeTriTriMinDistanceSqWasm(triA: Float64Array, triB: Float64Array): number {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.cad_tri_tri_min_distance_sq !== "function") {
     throw new Error("WASM cad_tri_tri_min_distance_sq kernel not available");
   }
@@ -197,7 +277,7 @@ export function computeMeshPairMinClearanceWasm(
   trisB: Float64Array,
   earlyExitThreshold = 0.0,
 ): number {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.cad_mesh_pair_min_clearance !== "function") {
     throw new Error("WASM cad_mesh_pair_min_clearance kernel not available");
   }
@@ -223,7 +303,7 @@ export function bspSplitPolygonWasm(
   planeNormal: readonly [number, number, number],
   planeW: number,
 ): { classification: number; front: Float64Array; back: Float64Array } {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.cad_bsp_split_polygon !== "function") {
     throw new Error("WASM cad_bsp_split_polygon kernel not available");
   }
@@ -287,7 +367,7 @@ export function routeOrthogonalAStarWasm(options: {
   crossingPenalty?: number | undefined;
   grid: Uint8Array;
 }): [number, number][] {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.diagram_route_orthogonal_astar !== "function") {
     throw new Error("WASM diagram_route_orthogonal_astar kernel not available");
   }
@@ -344,7 +424,7 @@ export function computeEcadTracePairMinClearanceWasm(
   pts2: Float64Array,
   w2: number,
 ): number {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.ecad_drc_trace_pair_min_clearance !== "function") {
     throw new Error("WASM ecad_drc_trace_pair_min_clearance kernel not available");
   }
@@ -366,7 +446,7 @@ export function computeEcadTracePairMinClearanceWasm(
  * Returns 0 if `(px, py)` is inside the polygon.
  */
 export function computeEcadPointToPolygonDistWasm(px: number, py: number, poly: Float64Array): number {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.ecad_drc_point_to_polygon_dist !== "function") {
     throw new Error("WASM ecad_drc_point_to_polygon_dist kernel not available");
   }
@@ -382,7 +462,7 @@ export function computeEcadPointToPolygonDistWasm(px: number, py: number, poly: 
  * Multiplies two 4x4 row-major affine transformation matrices in WASM linear memory.
  */
 export function multiplyMat4Wasm(a: Float64Array, b: Float64Array): Float64Array {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.scad_multiply_mat4 !== "function") {
     throw new Error("WASM scad_multiply_mat4 kernel not available");
   }
@@ -403,7 +483,7 @@ export function multiplyMat4Wasm(a: Float64Array, b: Float64Array): Float64Array
  * `{ compacted: Int32Array, span: number }`.
  */
 export function compactTsm1DWasm(coords: Int32Array): { compacted: Int32Array; span: number } {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.diagram_tsm_compact_1d !== "function") {
     throw new Error("WASM diagram_tsm_compact_1d kernel not available");
   }
@@ -428,7 +508,7 @@ export function alignPorts1DWasm(
   minBound: number,
   maxBound: number,
 ): Float64Array {
-  const wasm: any = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as CadDiagramWasmExports | null;
   if (!wasm || typeof wasm.diagram_port_align_1d !== "function") {
     throw new Error("WASM diagram_port_align_1d kernel not available");
   }

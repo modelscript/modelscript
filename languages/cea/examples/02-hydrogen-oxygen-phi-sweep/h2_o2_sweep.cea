@@ -1,0 +1,9 @@
+# Gaseous Hydrogen-Oxygen Equivalence Ratio Sweep at 10 bar
+problem case=H2_O2_SWEEP hp equilibrium
+  p,bar=10.0 phi=0.5,0.8,1.0,1.2,1.5,2.0
+reactants
+  fuel=H2 wt%=100 t(k)=298.15
+  oxid=O2 wt%=100 t(k)=298.15
+only H2O H2 O2 OH H O HO2
+output siunits short trace=1e-5
+end

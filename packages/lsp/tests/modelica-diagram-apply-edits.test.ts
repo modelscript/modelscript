@@ -213,7 +213,7 @@ equation
   );
 end RLCCircuit;`;
 
-    const rlcUri = "file:///playground/RLCCircuit.mo";
+    const rlcUri = "file:///editor/RLCCircuit.mo";
     const ops = modelicaDiagramOps as any;
     assert.ok(typeof ops.buildDiagramData === "function", "buildDiagramData must be exported");
 

@@ -1,0 +1,73 @@
+[
+  {
+    "id": "nasa-cdf-01-magnetometer-scalar",
+    "lang": "nasa-cdf",
+    "subFormats": ["skt", "istp"],
+    "difficulty": 1,
+    "title": "ISTP Scalar Magnetometer Total Field Skeleton",
+    "description": "Minimal ISTP-compliant NASA CDF skeleton table storing total magnetic field magnitude |B| with monotonic EPOCH timestamps, UNITS, VALIDMIN, VALIDMAX, and FILLVAL.",
+    "category": "Space Physics",
+    "tags": ["nasa-cdf", "istp", "magnetometer", "heliophysics"],
+    "activeFile": "mag_scalar.skt",
+    "fileNames": ["mag_scalar.skt"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "! ISTP-Compliant Scalar Magnetometer Total Field Magnitude\n#header\n  CDF NAME: sw_l2_mag_scalar_20260401.cdf\n  DATA ENCODING: NETWORK\n  MAJORITY: ROW_MAJOR\n  FORMAT: SINGLE\n  VERSION: 3.8.0\n\n#GLOBALattributes\n  \"Project\" 0: CDF_CHAR { \"ISTP>International Solar-Terrestrial Physics\" }\n  \"Source_name\" 0: CDF_CHAR { \"ACE>Advanced Composition Explorer\" }\n  \"Discipline\" 0: CDF_CHAR { \"Space Physics>Interplanetary Studies\" }\n  \"Data_type\" 0: CDF_CHAR { \"L2>Level 2 Calibrated Data\" }\n  \"Descriptor\" 0: CDF_CHAR { \"MAG>Magnetic Field Investigation\" }\n\n#VARIABLEattributes\n  \"DEPEND_0\"\n  \"UNITS\"\n  \"VALIDMIN\"\n  \"VALIDMAX\"\n  \"FILLVAL\"\n  \"VAR_TYPE\"\n\n#variables\n  \"EPOCH\" CDF_EPOCH 1 0:[] T\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    \"UNITS\" CDF_CHAR { \"ms\" }\n    [0] = \"2026-04-01T00:00:00.000Z\"\n    [1] = \"2026-04-01T00:00:16.000Z\"\n    [2] = \"2026-04-01T00:00:32.000Z\"\n    [3] = \"2026-04-01T00:00:48.000Z\"\n  .\n  \"B_TOTAL\" CDF_REAL4 1 0:[] T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"nT\" }\n    \"VALIDMIN\" CDF_REAL4 { 0.0 }\n    \"VALIDMAX\" CDF_REAL4 { 500.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = 5.42\n    [1] = 5.58\n    [2] = 5.71\n    [3] = 5.64\n  .\n#end\n"
+  },
+  {
+    "id": "nasa-cdf-02-fluxgate-rtn-vector",
+    "lang": "nasa-cdf",
+    "subFormats": ["skt", "istp"],
+    "difficulty": 2,
+    "title": "3-Axis Fluxgate Magnetometer RTN Vector Time-Series",
+    "description": "Parker Solar Probe style 3-component RTN magnetic field vector time-series with ISTP metadata, vector VALIDMIN/VALIDMAX bounds, and total field magnitude.",
+    "category": "Space Physics",
+    "tags": ["nasa-cdf", "fluxgate", "rtn", "vector", "magnetometer"],
+    "activeFile": "fgm_rtn_vector.skt",
+    "fileNames": ["fgm_rtn_vector.skt"],
+    "fileCount": 1,
+    "code": "! 3-Axis Fluxgate Magnetometer RTN Vector Time-Series\n#header\n  CDF NAME: psp_fld_l2_mag_rtn_20260510.cdf\n  DATA ENCODING: NETWORK\n  MAJORITY: ROW_MAJOR\n  FORMAT: SINGLE\n  VERSION: 3.8.0\n\n#GLOBALattributes\n  \"Project\" 0: CDF_CHAR { \"PSP>Parker Solar Probe\" }\n  \"Source_name\" 0: CDF_CHAR { \"PSP_FLD>FIELDS Suite\" }\n  \"Discipline\" 0: CDF_CHAR { \"Space Physics>Heliospheric Physics\" }\n  \"Data_type\" 0: CDF_CHAR { \"L2>Level 2 Science Data\" }\n  \"Descriptor\" 0: CDF_CHAR { \"MAG_RTN>Fluxgate Magnetometer RTN\" }\n\n#VARIABLEattributes\n  \"DEPEND_0\"\n  \"UNITS\"\n  \"VALIDMIN\"\n  \"VALIDMAX\"\n  \"FILLVAL\"\n  \"VAR_TYPE\"\n\n#variables\n  \"EPOCH\" CDF_EPOCH 1 0:[] T\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    \"UNITS\" CDF_CHAR { \"ms\" }\n    [0] = \"2026-05-10T06:00:00.000Z\"\n    [1] = \"2026-05-10T06:00:01.000Z\"\n    [2] = \"2026-05-10T06:00:02.000Z\"\n    [3] = \"2026-05-10T06:00:03.000Z\"\n    [4] = \"2026-05-10T06:00:04.000Z\"\n  .\n  \"B_RTN\" CDF_REAL4 1 1:[3] T T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"nT\" }\n    \"VALIDMIN\" CDF_REAL4 { -65536.0, -65536.0, -65536.0 }\n    \"VALIDMAX\" CDF_REAL4 { 65536.0, 65536.0, 65536.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = { -42.5, 11.2, -3.4 }\n    [1] = { -43.1, 10.8, -2.9 }\n    [2] = { -41.8, 12.4, -4.1 }\n    [3] = { -40.9, 13.0, -3.8 }\n    [4] = { -42.0, 11.6, -3.2 }\n  .\n  \"B_MAG\" CDF_REAL4 1 0:[] T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"nT\" }\n    \"VALIDMIN\" CDF_REAL4 { 0.0 }\n    \"VALIDMAX\" CDF_REAL4 { 65536.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = 44.08\n    [1] = 44.53\n    [2] = 43.79\n    [3] = 43.08\n    [4] = 43.69\n  .\n#end\n"
+  },
+  {
+    "id": "nasa-cdf-03-solar-wind-plasma-moments",
+    "lang": "nasa-cdf",
+    "subFormats": ["skt", "istp"],
+    "difficulty": 3,
+    "title": "Solar Wind Proton Density, Velocity & Temperature Moments",
+    "description": "DSCOVR Faraday Cup solar wind plasma moments dataset containing proton number density, bulk GSE velocity vector, and thermal speed.",
+    "category": "Heliophysics",
+    "tags": ["nasa-cdf", "solar-wind", "plasma", "proton", "moments"],
+    "activeFile": "solar_wind_swe.skt",
+    "fileNames": ["solar_wind_swe.skt"],
+    "fileCount": 1,
+    "code": "! Solar Wind Proton Plasma Moments (Density, Bulk Velocity, Thermal Speed)\n#header\n  CDF NAME: dscovr_fc_l2_swe_20260620.cdf\n  DATA ENCODING: NETWORK\n  MAJORITY: ROW_MAJOR\n  FORMAT: SINGLE\n  VERSION: 3.8.0\n\n#GLOBALattributes\n  \"Project\" 0: CDF_CHAR { \"DSCOVR>Deep Space Climate Observatory\" }\n  \"Source_name\" 0: CDF_CHAR { \"DSCOVR_FC>Faraday Cup\" }\n  \"Discipline\" 0: CDF_CHAR { \"Space Physics>Interplanetary Studies\" }\n  \"Data_type\" 0: CDF_CHAR { \"L2>Level 2 Plasma Moments\" }\n  \"Descriptor\" 0: CDF_CHAR { \"SWE>Solar Wind Experiment\" }\n\n#VARIABLEattributes\n  \"DEPEND_0\"\n  \"UNITS\"\n  \"VALIDMIN\"\n  \"VALIDMAX\"\n  \"FILLVAL\"\n  \"VAR_TYPE\"\n\n#variables\n  \"EPOCH\" CDF_EPOCH 1 0:[] T\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    \"UNITS\" CDF_CHAR { \"ms\" }\n    [0] = \"2026-06-20T00:00:00.000Z\"\n    [1] = \"2026-06-20T00:01:00.000Z\"\n    [2] = \"2026-06-20T00:02:00.000Z\"\n    [3] = \"2026-06-20T00:03:00.000Z\"\n  .\n  \"PROTON_DENSITY\" CDF_REAL4 1 0:[] T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"cm^-3\" }\n    \"VALIDMIN\" CDF_REAL4 { 0.01 }\n    \"VALIDMAX\" CDF_REAL4 { 200.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = 6.45\n    [1] = 6.82\n    [2] = 7.15\n    [3] = 6.90\n  .\n  \"PROTON_VELOCITY_GSE\" CDF_REAL4 1 1:[3] T T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"km/s\" }\n    \"VALIDMIN\" CDF_REAL4 { -2000.0, -500.0, -500.0 }\n    \"VALIDMAX\" CDF_REAL4 { 2000.0, 500.0, 500.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = { -428.5, 14.2, -8.6 }\n    [1] = { -435.1, 12.8, -7.1 }\n    [2] = { -441.0, 15.6, -9.4 }\n    [3] = { -438.2, 13.9, -8.0 }\n  .\n  \"PROTON_THERMAL_SPEED\" CDF_REAL4 1 0:[] T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"km/s\" }\n    \"VALIDMIN\" CDF_REAL4 { 1.0 }\n    \"VALIDMAX\" CDF_REAL4 { 500.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = 34.2\n    [1] = 35.8\n    [2] = 37.1\n    [3] = 36.4\n  .\n#end\n"
+  },
+  {
+    "id": "nasa-cdf-04-energetic-particle-spectrogram",
+    "lang": "nasa-cdf",
+    "subFormats": ["skt", "istp"],
+    "difficulty": 4,
+    "title": "Energetic Particle Energy-Flux Spectrogram",
+    "description": "Van Allen Probes ECT-REPT style differential electron energy flux spectrogram across 4 energy channels with non-record-varying energy bin support data.",
+    "category": "Magnetospheric Physics",
+    "tags": ["nasa-cdf", "spectrogram", "radiation-belts", "energetic-particles"],
+    "activeFile": "rept_spectrogram.skt",
+    "fileNames": ["rept_spectrogram.skt"],
+    "fileCount": 1,
+    "code": "! Van Allen Probes REPT Energetic Electron Differential Flux Spectrogram\n#header\n  CDF NAME: rbspa_rel03_ect_rept_l2_20260805.cdf\n  DATA ENCODING: NETWORK\n  MAJORITY: ROW_MAJOR\n  FORMAT: SINGLE\n  VERSION: 3.8.0\n\n#GLOBALattributes\n  \"Project\" 0: CDF_CHAR { \"RBSP>Radiation Belt Storm Probes\" }\n  \"Source_name\" 0: CDF_CHAR { \"RBSPA>Van Allen Probe A\" }\n  \"Discipline\" 0: CDF_CHAR { \"Space Physics>Magnetospheric Science\" }\n  \"Data_type\" 0: CDF_CHAR { \"L2>Level 2 Differential Flux\" }\n  \"Descriptor\" 0: CDF_CHAR { \"ECT-REPT>Relativistic Electron Proton Telescope\" }\n\n#VARIABLEattributes\n  \"DEPEND_0\"\n  \"DEPEND_1\"\n  \"UNITS\"\n  \"VALIDMIN\"\n  \"VALIDMAX\"\n  \"FILLVAL\"\n  \"VAR_TYPE\"\n\n#variables\n  \"EPOCH\" CDF_EPOCH 1 0:[] T\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    \"UNITS\" CDF_CHAR { \"ms\" }\n    [0] = \"2026-08-05T14:00:00.000Z\"\n    [1] = \"2026-08-05T14:05:00.000Z\"\n    [2] = \"2026-08-05T14:10:00.000Z\"\n  .\n  \"ENERGY_BINS\" CDF_REAL4 1 1:[4] F T\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    \"UNITS\" CDF_CHAR { \"MeV\" }\n    \"VALIDMIN\" CDF_REAL4 { 0.5, 0.5, 0.5, 0.5 }\n    \"VALIDMAX\" CDF_REAL4 { 20.0, 20.0, 20.0, 20.0 }\n    [0] = { 1.8, 2.6, 4.2, 6.3 }\n  .\n  \"FEDU_FLUX\" CDF_REAL4 1 1:[4] T T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"DEPEND_1\" CDF_CHAR { \"ENERGY_BINS\" }\n    \"UNITS\" CDF_CHAR { \"cm^-2 s^-1 sr^-1 MeV^-1\" }\n    \"VALIDMIN\" CDF_REAL4 { 0.0, 0.0, 0.0, 0.0 }\n    \"VALIDMAX\" CDF_REAL4 { 1.0e8, 1.0e8, 1.0e8, 1.0e8 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = { 4.25e4, 1.18e4, 2.30e3, 3.10e2 }\n    [1] = { 5.10e4, 1.42e4, 2.85e3, 3.95e2 }\n    [2] = { 4.78e4, 1.31e4, 2.54e3, 3.40e2 }\n  .\n  \"L_SHELL\" CDF_REAL4 1 0:[] T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"Re\" }\n    \"VALIDMIN\" CDF_REAL4 { 1.0 }\n    \"VALIDMAX\" CDF_REAL4 { 12.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = 4.12\n    [1] = 4.38\n    [2] = 4.65\n  .\n#end\n"
+  },
+  {
+    "id": "nasa-cdf-05-heliophysics-mission-suite",
+    "lang": "nasa-cdf",
+    "subFormats": ["skt", "istp"],
+    "difficulty": 5,
+    "title": "Multi-Instrument Heliophysics Mission Skeleton (MAG + SWE + Ephemeris)",
+    "description": "Combined MMS-class magnetospheric mission CDF merging triaxial magnetometer vectors, ion plasma density/velocity moments, spacecraft GSE ephemeris, and data quality flags.",
+    "category": "Space Physics",
+    "tags": ["nasa-cdf", "multi-instrument", "mms", "ephemeris", "istp"],
+    "activeFile": "mms_merged_suite.skt",
+    "fileNames": ["mms_merged_suite.skt"],
+    "fileCount": 1,
+    "code": "! Multi-Instrument Heliophysics Mission Merged Dataset (MAG + SWE + Ephemeris)\n#header\n  CDF NAME: mms1_merged_l2_20260918.cdf\n  DATA ENCODING: NETWORK\n  MAJORITY: ROW_MAJOR\n  FORMAT: SINGLE\n  VERSION: 3.8.0\n\n#GLOBALattributes\n  \"Project\" 0: CDF_CHAR { \"STP>Solar-Terrestrial Probes\" }\n  \"Source_name\" 0: CDF_CHAR { \"MMS1>Magnetospheric Multiscale 1\" }\n  \"Discipline\" 0: CDF_CHAR { \"Space Physics>Magnetospheric Science\" }\n  \"Data_type\" 0: CDF_CHAR { \"L2>Level 2 Merged Science Product\" }\n  \"Descriptor\" 0: CDF_CHAR { \"FGM-FPI-MEC>Magnetometer, Plasma & Ephemeris\" }\n\n#VARIABLEattributes\n  \"DEPEND_0\"\n  \"UNITS\"\n  \"VALIDMIN\"\n  \"VALIDMAX\"\n  \"FILLVAL\"\n  \"VAR_TYPE\"\n\n#variables\n  \"EPOCH\" CDF_EPOCH 1 0:[] T\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    \"UNITS\" CDF_CHAR { \"ms\" }\n    [0] = \"2026-09-18T08:00:00.000Z\"\n    [1] = \"2026-09-18T08:00:04.500Z\"\n    [2] = \"2026-09-18T08:00:09.000Z\"\n    [3] = \"2026-09-18T08:00:13.500Z\"\n  .\n  \"B_GSE\" CDF_REAL4 1 1:[3] T T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"nT\" }\n    \"VALIDMIN\" CDF_REAL4 { -10000.0, -10000.0, -10000.0 }\n    \"VALIDMAX\" CDF_REAL4 { 10000.0, 10000.0, 10000.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = { 12.4, -18.7, 29.5 }\n    [1] = { 11.8, -17.2, 24.1 }\n    [2] = { 9.5, -14.0, -6.8 }\n    [3] = { 8.2, -12.6, -21.4 }\n  .\n  \"ION_DENSITY\" CDF_REAL4 1 0:[] T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"cm^-3\" }\n    \"VALIDMIN\" CDF_REAL4 { 0.001 }\n    \"VALIDMAX\" CDF_REAL4 { 1000.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = 1.85\n    [1] = 4.12\n    [2] = 16.40\n    [3] = 22.80\n  .\n  \"ION_VELOCITY_GSE\" CDF_REAL4 1 1:[3] T T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"km/s\" }\n    \"VALIDMIN\" CDF_REAL4 { -2000.0, -2000.0, -2000.0 }\n    \"VALIDMAX\" CDF_REAL4 { 2000.0, 2000.0, 2000.0 }\n    \"FILLVAL\" CDF_REAL4 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"data\" }\n    [0] = { -45.0, 18.0, 12.0 }\n    [1] = { -92.5, 44.0, 35.0 }\n    [2] = { -165.0, 88.0, -142.0 }\n    [3] = { -210.4, 95.2, -98.5 }\n  .\n  \"SC_POS_GSE\" CDF_REAL8 1 1:[3] T T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"km\" }\n    \"VALIDMIN\" CDF_REAL8 { -200000.0, -200000.0, -200000.0 }\n    \"VALIDMAX\" CDF_REAL8 { 200000.0, 200000.0, 200000.0 }\n    \"FILLVAL\" CDF_REAL8 { -1.0e31 }\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    [0] = { 62450.2, 18420.5, -4120.8 }\n    [1] = { 62448.1, 18426.3, -4122.1 }\n    [2] = { 62446.0, 18432.1, -4123.4 }\n    [3] = { 62443.9, 18437.9, -4124.7 }\n  .\n  \"QUALITY_FLAG\" CDF_INT2 1 0:[] T\n    \"DEPEND_0\" CDF_CHAR { \"EPOCH\" }\n    \"UNITS\" CDF_CHAR { \"1\" }\n    \"VALIDMIN\" CDF_INT2 { 0 }\n    \"VALIDMAX\" CDF_INT2 { 4 }\n    \"FILLVAL\" CDF_INT2 { -32768 }\n    \"VAR_TYPE\" CDF_CHAR { \"support_data\" }\n    [0] = 0\n    [1] = 0\n    [2] = 0\n    [3] = 0\n  .\n#end\n"
+  }
+]

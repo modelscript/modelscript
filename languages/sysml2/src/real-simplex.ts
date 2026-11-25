@@ -491,8 +491,18 @@ export class RealSimplexSolver {
 
     // Try solving via WebAssembly Dutertre-de Moura Simplex solver first
     try {
-      const wasm = getDefaultWasmExports();
-      if (wasm && typeof wasm.simplex_initDutertreDeMoura === "function") {
+      interface SimplexWasmExports {
+        simplex_create: (m: number, n: number) => number;
+        simplex_initDutertreDeMoura: (sPtr: number, m: number, n: number) => void;
+        simplex_setEntry: (sPtr: number, i: number, j: number, val: number) => void;
+        simplex_setBound: (sPtr: number, idx: number, isLower: boolean, r: number, k: number) => void;
+        simplex_solveDutertreDeMoura: (sPtr: number, maxIterations: number) => number;
+        simplex_getAssignment: (sPtr: number, j: number) => number;
+        simplex_destroy: (sPtr: number) => void;
+      }
+      const rawWasm = getDefaultWasmExports() as Partial<SimplexWasmExports> | null;
+      if (rawWasm && typeof rawWasm.simplex_initDutertreDeMoura === "function") {
+        const wasm = rawWasm as SimplexWasmExports;
         const sPtr = wasm.simplex_create(m + 2, n + 2);
         wasm.simplex_initDutertreDeMoura(sPtr, m, n);
 

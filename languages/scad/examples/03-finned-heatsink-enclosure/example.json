@@ -1,0 +1,11 @@
+{
+  "id": "scad-03-finned-heatsink-enclosure",
+  "lang": "scad",
+  "subFormats": ["scad"],
+  "difficulty": 3,
+  "title": "Finned Power-Electronics Heatsink Enclosure",
+  "description": "Extruded aluminum power-inverter housing combining an internal PCB cavity, corner mounting bosses, and a parametric array of external cooling fins.",
+  "category": "Thermal Packaging CAD",
+  "tags": ["scad", "heatsink", "enclosure", "thermal", "electronics"],
+  "activeFile": "heatsink_enclosure.scad"
+}

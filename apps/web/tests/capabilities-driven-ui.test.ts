@@ -118,7 +118,7 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       assert.equal(customSteps.length, 4);
       assert.ok(!customSteps.some((s) => s.id === "registry"));
       assert.ok(customSteps.find((s) => s.id === "timeline")?.description.includes("Federated"));
-      assert.ok(customSteps.find((s) => s.id === "workbenches")?.title.includes("Playground & Docs"));
+      assert.ok(customSteps.find((s) => s.id === "workbenches")?.title.includes("Ansatz & Docs"));
       assert.ok(customSteps.find((s) => s.id === "right-panel")?.title.includes("Cloud Solvers"));
 
       const quickstartHtml = renderToStaticMarkup(
@@ -316,7 +316,7 @@ test("Capabilities-Driven UI Registry & Feature Gates", async (t) => {
       content: "",
       setContent: () => {},
       handleToggleNotebookMode: () => {},
-      setShowMorselModal: () => {},
+      setShowAnsatzModal: () => {},
       setShowPackageRepoPicker: () => {},
       setShowCodeSnippetModal: () => {},
       setShowHpcPicker: () => {},

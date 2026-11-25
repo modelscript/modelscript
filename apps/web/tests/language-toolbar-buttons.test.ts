@@ -79,7 +79,7 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
 
   it("filters by activeView, sorts by order, caps inline primary buttons, and folds excess into overflow", () => {
     const resolved = resolveLanguageToolbarButtons(sampleButtons, "diagram", {
-      target: "morsel",
+      target: "ansatz",
       maxPrimary: 2,
     });
 
@@ -97,7 +97,7 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
 
   it("shows code-specific and wildcard buttons when activeView is 'code'", () => {
     const resolved = resolveLanguageToolbarButtons(sampleButtons, "code", {
-      target: "morsel",
+      target: "ansatz",
     });
 
     assert.deepEqual(
@@ -112,7 +112,7 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
 
   it("gates buttons by featureFlag when isFeatureEnabled is provided", () => {
     const disabled = resolveLanguageToolbarButtons(sampleButtons, "3d", {
-      target: "morsel",
+      target: "ansatz",
       isFeatureEnabled: () => false,
     });
     assert.deepEqual(
@@ -121,7 +121,7 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
     );
 
     const enabled = resolveLanguageToolbarButtons(sampleButtons, "3d", {
-      target: "morsel",
+      target: "ansatz",
       isFeatureEnabled: (flag) => flag === "experimental_3d_tools",
     });
     assert.deepEqual(
@@ -177,21 +177,21 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
     }
   });
 
-  it("verifies PlaygroundNavbar, MorselViewSubHeader, CommandPalette, Morsel, playground-app, extension-generator, and vite.config.ts are wired", () => {
+  it("verifies AnsatzEditorNavbar, AnsatzViewSubHeader, CommandPalette, Ansatz, ansatz-app, extension-generator, and vite.config.ts are wired", () => {
     const navbarSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx"),
+      path.resolve(import.meta.dirname, "../src/pages/ansatz-editor/components/AnsatzEditorNavbar.tsx"),
       "utf-8",
     );
     const subHeaderSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselViewSubHeader.tsx"),
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/AnsatzViewSubHeader.tsx"),
       "utf-8",
     );
     const paletteSrc = fs.readFileSync(
       path.resolve(import.meta.dirname, "../src/components/CommandPalette.tsx"),
       "utf-8",
     );
-    const morselSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx"),
+    const ansatzSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/AnsatzEditor.tsx"),
       "utf-8",
     );
     const bridgeSrc = fs.readFileSync(
@@ -199,8 +199,8 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
       "utf-8",
     );
     const viteSrc = fs.readFileSync(path.resolve(import.meta.dirname, "../vite.config.ts"), "utf-8");
-    const devPlaygroundSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../scripts/playground/playground-app.tsx"),
+    const devAnsatzSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../../../scripts/ansatz/ansatz-app.tsx"),
       "utf-8",
     );
     const extGenSrc = fs.readFileSync(
@@ -208,22 +208,19 @@ describe("Declarative Per-Language / Per-View Toolbar Buttons", () => {
       "utf-8",
     );
 
-    assert.ok(navbarSrc.includes("<LanguageToolbarButtons"), "PlaygroundNavbar must render LanguageToolbarButtons");
+    assert.ok(navbarSrc.includes("<LanguageToolbarButtons"), "AnsatzEditorNavbar must render LanguageToolbarButtons");
     assert.ok(
       subHeaderSrc.includes("<LanguageToolbarButtons"),
-      "MorselViewSubHeader must render LanguageToolbarButtons",
+      "AnsatzViewSubHeader must render LanguageToolbarButtons",
     );
     assert.ok(paletteSrc.includes("getActiveToolbarContext"), "CommandPalette must surface active toolbar buttons");
-    assert.ok(morselSrc.includes("executeLspAction"), "Morsel must execute generic actionId via executeLspAction");
+    assert.ok(ansatzSrc.includes("executeLspAction"), "Ansatz must execute generic actionId via executeLspAction");
     assert.ok(
       bridgeSrc.includes("LANGUAGE_TOOLBAR_BUTTONS"),
       "WebEditorHostBridge must bridge LANGUAGE_TOOLBAR_BUTTONS",
     );
     assert.ok(viteSrc.includes("LANGUAGE_TOOLBAR_BUTTONS"), "vite.config.ts must export LANGUAGE_TOOLBAR_BUTTONS");
-    assert.ok(
-      devPlaygroundSrc.includes("toolbarButtons:"),
-      "Single-language playground-app must register toolbarButtons",
-    );
+    assert.ok(devAnsatzSrc.includes("toolbarButtons:"), "Single-language ansatz-app must register toolbarButtons");
     assert.ok(
       extGenSrc.includes("lang.options.ui?.toolbarButtons"),
       "VS Code extension-generator must read ui.toolbarButtons",

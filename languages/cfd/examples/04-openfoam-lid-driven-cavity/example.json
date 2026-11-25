@@ -1,0 +1,11 @@
+{
+  "id": "cfd-04-openfoam-lid-driven-cavity",
+  "lang": "cfd",
+  "subFormats": ["foam", "cfg", "su2"],
+  "difficulty": 4,
+  "title": "OpenFOAM & SU2 Lid-Driven Cavity Benchmark",
+  "description": "Multi-file lid-driven cavity benchmark pairing a complete OpenFOAM case (cavity.foam, 0/U, 0/p, constant/transportProperties) with a cross-verification SU2 configuration and mesh.",
+  "category": "OpenFOAM & SU2 CFD",
+  "tags": ["cfd", "openfoam", "cavity", "incompressible", "multi-file"],
+  "activeFile": "cavity_su2.cfg"
+}

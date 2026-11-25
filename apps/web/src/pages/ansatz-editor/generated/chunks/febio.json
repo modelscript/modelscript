@@ -1,0 +1,77 @@
+[
+  {
+    "id": "febio-01-cartilage-neohookean-compression",
+    "lang": "febio",
+    "subFormats": ["feb"],
+    "difficulty": 1,
+    "title": "Uniaxial Compression of Neo-Hookean Cartilage Cube",
+    "description": "Single-element hex8 FEBio 4.0 biomechanical model of articular cartilage modeled as a compressible Neo-Hookean solid under unconfined uniaxial compression.",
+    "category": "Soft-Tissue Biomechanics & FEA",
+    "tags": ["febio", "neo-hookean", "cartilage", "hex8"],
+    "activeFile": "cartilage_cube.feb",
+    "fileNames": ["cartilage_cube.feb"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<febio_spec version=\"4.0\">\n  <Module type=\"solid\"/>\n  <Control>\n    <analysis>STATIC</analysis>\n    <time_steps>10</time_steps>\n    <step_size>0.1</step_size>\n  </Control>\n  <Material>\n    <material id=\"1\" name=\"ArticularCartilage\" type=\"neo-Hookean\">\n      <E>1.2</E>\n      <v>0.42</v>\n      <density>1.10</density>\n    </material>\n  </Material>\n  <Mesh>\n    <Nodes name=\"CartilageNodes\">\n      <node id=\"1\">0.0, 0.0, 0.0</node>\n      <node id=\"2\">1.0, 0.0, 0.0</node>\n      <node id=\"3\">1.0, 1.0, 0.0</node>\n      <node id=\"4\">0.0, 1.0, 0.0</node>\n      <node id=\"5\">0.0, 0.0, 1.0</node>\n      <node id=\"6\">1.0, 0.0, 1.0</node>\n      <node id=\"7\">1.0, 1.0, 1.0</node>\n      <node id=\"8\">0.0, 1.0, 1.0</node>\n    </Nodes>\n    <Elements type=\"hex8\" name=\"CartilageDomain\">\n      <elem id=\"1\">1, 2, 3, 4, 5, 6, 7, 8</elem>\n    </Elements>\n    <NodeSet name=\"BottomFace\">\n      <node id=\"1\"/>\n      <node id=\"2\"/>\n      <node id=\"3\"/>\n      <node id=\"4\"/>\n    </NodeSet>\n    <NodeSet name=\"TopFace\">\n      <node id=\"5\"/>\n      <node id=\"6\"/>\n      <node id=\"7\"/>\n      <node id=\"8\"/>\n    </NodeSet>\n  </Mesh>\n  <MeshDomains>\n    <SolidDomain name=\"CartilageDomain\" mat=\"1\"/>\n  </MeshDomains>\n  <Boundary>\n    <bc name=\"FixBottom\" type=\"zero displacement\" node_set=\"BottomFace\">\n      <x_dof>1</x_dof>\n      <y_dof>1</y_dof>\n      <z_dof>1</z_dof>\n    </bc>\n    <bc name=\"CompressTop\" type=\"prescribed displacement\" node_set=\"TopFace\">\n      <dof>z</dof>\n      <value>-0.15</value>\n    </bc>\n  </Boundary>\n</febio_spec>\n"
+  },
+  {
+    "id": "febio-02-arterial-wall-mooney-rivlin",
+    "lang": "febio",
+    "subFormats": ["feb"],
+    "difficulty": 2,
+    "title": "Mooney-Rivlin Arterial Wall Inflation Pressure Test",
+    "description": "Hyperelastic Mooney-Rivlin vascular wall patch subjected to physiological systolic blood pressure (16 kPa) on the luminal surface with clamped boundary edges.",
+    "category": "Soft-Tissue Biomechanics & FEA",
+    "tags": ["febio", "mooney-rivlin", "vascular", "pressure-load"],
+    "activeFile": "arterial_inflation.feb",
+    "fileNames": ["arterial_inflation.feb"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<febio_spec version=\"4.0\">\n  <Module type=\"solid\"/>\n  <Control>\n    <analysis>STATIC</analysis>\n    <time_steps>20</time_steps>\n    <step_size>0.05</step_size>\n  </Control>\n  <Material>\n    <material id=\"1\" name=\"ArterialMedia\" type=\"Mooney-Rivlin\">\n      <c1>0.045</c1>\n      <c2>0.015</c2>\n      <k>10.0</k>\n      <density>1.06</density>\n    </material>\n  </Material>\n  <Mesh>\n    <Nodes name=\"ArteryNodes\">\n      <node id=\"1\">0.0, 0.0, 0.0</node>\n      <node id=\"2\">5.0, 0.0, 0.0</node>\n      <node id=\"3\">5.0, 5.0, 0.0</node>\n      <node id=\"4\">0.0, 5.0, 0.0</node>\n      <node id=\"5\">0.0, 0.0, 1.2</node>\n      <node id=\"6\">5.0, 0.0, 1.2</node>\n      <node id=\"7\">5.0, 5.0, 1.2</node>\n      <node id=\"8\">0.0, 5.0, 1.2</node>\n    </Nodes>\n    <Elements type=\"hex8\" name=\"ArteryWall\">\n      <elem id=\"1\">1, 2, 3, 4, 5, 6, 7, 8</elem>\n    </Elements>\n    <NodeSet name=\"ClampedEnds\">\n      <node id=\"1\"/>\n      <node id=\"4\"/>\n      <node id=\"5\"/>\n      <node id=\"8\"/>\n    </NodeSet>\n    <Surface name=\"LumenSurface\">\n      <quad4 id=\"1\">1, 2, 3, 4</quad4>\n    </Surface>\n  </Mesh>\n  <MeshDomains>\n    <SolidDomain name=\"ArteryWall\" mat=\"1\"/>\n  </MeshDomains>\n  <Boundary>\n    <bc name=\"FixArteryEnd\" type=\"zero displacement\" node_set=\"ClampedEnds\">\n      <x_dof>1</x_dof>\n      <y_dof>1</y_dof>\n      <z_dof>1</z_dof>\n    </bc>\n  </Boundary>\n  <Loads>\n    <surface_load name=\"SystolicPressure\" type=\"pressure\" surface=\"LumenSurface\">\n      <pressure>0.016</pressure>\n    </surface_load>\n  </Loads>\n</febio_spec>\n"
+  },
+  {
+    "id": "febio-03-tendon-ogden-stretch",
+    "lang": "febio",
+    "subFormats": ["feb"],
+    "difficulty": 3,
+    "title": "Ogden Hyperelastic Tendon Tensile Stretch",
+    "description": "Two-element tetrahedral Achilles tendon fascicle modeled with a nonlinear Ogden hyperelastic strain-energy function under 8% axial physiological tensile elongation.",
+    "category": "Soft-Tissue Biomechanics & FEA",
+    "tags": ["febio", "ogden", "tendon", "hyperelastic", "tet4"],
+    "activeFile": "tendon_stretch.feb",
+    "fileNames": ["tendon_stretch.feb"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<febio_spec version=\"4.0\">\n  <Module type=\"solid\"/>\n  <Control>\n    <analysis>STATIC</analysis>\n    <time_steps>25</time_steps>\n    <step_size>0.04</step_size>\n  </Control>\n  <Material>\n    <material id=\"1\" name=\"AchillesTendon\" type=\"Ogden\">\n      <c1>12.5</c1>\n      <m1>4.2</m1>\n      <k>250.0</k>\n      <density>1.12</density>\n    </material>\n  </Material>\n  <Mesh>\n    <Nodes name=\"TendonNodes\">\n      <node id=\"1\">0.0, 0.0, 0.0</node>\n      <node id=\"2\">4.0, 0.0, 0.0</node>\n      <node id=\"3\">0.0, 4.0, 0.0</node>\n      <node id=\"4\">0.0, 0.0, 20.0</node>\n      <node id=\"5\">4.0, 0.0, 20.0</node>\n    </Nodes>\n    <Elements type=\"tet4\" name=\"TendonFascicle\">\n      <elem id=\"1\">1, 2, 3, 4</elem>\n      <elem id=\"2\">2, 5, 3, 4</elem>\n    </Elements>\n    <NodeSet name=\"CalcaneusAnchor\">\n      <node id=\"1\"/>\n      <node id=\"2\"/>\n      <node id=\"3\"/>\n    </NodeSet>\n    <NodeSet name=\"MyotendinousEnd\">\n      <node id=\"4\"/>\n      <node id=\"5\"/>\n    </NodeSet>\n  </Mesh>\n  <MeshDomains>\n    <SolidDomain name=\"TendonFascicle\" mat=\"1\"/>\n  </MeshDomains>\n  <Boundary>\n    <bc name=\"FixDistal\" type=\"zero displacement\" node_set=\"CalcaneusAnchor\">\n      <x_dof>1</x_dof>\n      <y_dof>1</y_dof>\n      <z_dof>1</z_dof>\n    </bc>\n    <bc name=\"AxialTension\" type=\"prescribed displacement\" node_set=\"MyotendinousEnd\">\n      <dof>z</dof>\n      <value>1.6</value>\n    </bc>\n  </Boundary>\n</febio_spec>\n"
+  },
+  {
+    "id": "febio-04-sofa-liver-deformation",
+    "lang": "febio",
+    "subFormats": ["scn"],
+    "difficulty": 4,
+    "title": "SOFA Real-Time Soft-Tissue Liver Deformation Scene",
+    "description": "SOFA Framework surgical simulation scene graph (.scn) modeling hepatic parenchyma as a corotational tetrahedral FEM mesh with fixed ligament attachment and laparoscopic retraction.",
+    "category": "Soft-Tissue Biomechanics & FEA",
+    "tags": ["febio", "sofa", "surgical-simulation", "liver", "real-time-fem"],
+    "activeFile": "liver_sim.scn",
+    "fileNames": ["liver_sim.scn"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Node name=\"LiverSurgicalScene\" dt=\"0.005\" gravity=\"0 -9.81 0\">\n  <Node name=\"LiverParenchymaFEM\">\n    <EulerImplicitSolver name=\"ImplicitSolver\" rayleighStiffness=\"0.1\" rayleighMass=\"0.1\" />\n    <CGLinearSolver name=\"LinearSolver\" iterations=\"25\" tolerance=\"1e-6\" threshold=\"1e-6\" />\n    <MechanicalObject name=\"dofs\" position=\"0 0 0  40 0 0  0 35 0  0 0 30  40 0 30\" />\n    <TetrahedronSetTopologyContainer name=\"topo\" tetrahedra=\"0 1 2 3  1 4 2 3\" />\n    <DiagonalMass name=\"LiverMass\" massDensity=\"1.05\" />\n    <TetrahedronFEMForceField name=\"HepaticFEM\" youngModulus=\"4500\" poissonRatio=\"0.45\" method=\"large\" />\n    <FixedConstraint name=\"FalciformLigamentAnchor\" indices=\"0 1 2\" />\n  </Node>\n</Node>\n"
+  },
+  {
+    "id": "febio-05-meniscus-biphasic-contact",
+    "lang": "febio",
+    "subFormats": ["feb", "csv"],
+    "difficulty": 5,
+    "title": "Biphasic Porohyperelastic Knee Meniscus Contact Analysis",
+    "description": "Multi-file FEBio 4.0 biphasic poroelastic knee meniscus and femoral condyle cartilage sliding contact model with physiological gait load curve data.",
+    "category": "Soft-Tissue Biomechanics & FEA",
+    "tags": ["febio", "biphasic", "meniscus", "contact", "multi-file"],
+    "activeFile": "meniscus.feb",
+    "fileNames": ["meniscus.feb", "load_curve.csv"],
+    "fileCount": 2,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<febio_spec version=\"4.0\">\n  <Module type=\"biphasic\"/>\n  <Control>\n    <analysis>TRANSIENT</analysis>\n    <time_steps>40</time_steps>\n    <step_size>0.025</step_size>\n  </Control>\n  <Material>\n    <material id=\"1\" name=\"MeniscusBiphasic\" type=\"biphasic\">\n      <phi0>0.25</phi0>\n      <solid type=\"neo-Hookean\">\n        <E>0.85</E>\n        <v>0.30</v>\n        <density>1.08</density>\n      </solid>\n      <permeability type=\"perm-const-iso\">\n        <perm>0.0012</perm>\n      </permeability>\n    </material>\n    <material id=\"2\" name=\"FemoralCartilage\" type=\"neo-Hookean\">\n      <E>1.50</E>\n      <v>0.40</v>\n      <density>1.10</density>\n    </material>\n  </Material>\n  <Mesh>\n    <Nodes name=\"KneeJointNodes\">\n      <node id=\"1\">0.0, 0.0, 0.0</node>\n      <node id=\"2\">10.0, 0.0, 0.0</node>\n      <node id=\"3\">10.0, 10.0, 0.0</node>\n      <node id=\"4\">0.0, 10.0, 0.0</node>\n      <node id=\"5\">0.0, 0.0, 4.0</node>\n      <node id=\"6\">10.0, 0.0, 4.0</node>\n      <node id=\"7\">10.0, 10.0, 4.0</node>\n      <node id=\"8\">0.0, 10.0, 4.0</node>\n      <node id=\"9\">0.0, 0.0, 4.0</node>\n      <node id=\"10\">10.0, 0.0, 4.0</node>\n      <node id=\"11\">10.0, 10.0, 4.0</node>\n      <node id=\"12\">0.0, 10.0, 4.0</node>\n      <node id=\"13\">0.0, 0.0, 7.0</node>\n      <node id=\"14\">10.0, 0.0, 7.0</node>\n      <node id=\"15\">10.0, 10.0, 7.0</node>\n      <node id=\"16\">0.0, 10.0, 7.0</node>\n    </Nodes>\n    <Elements type=\"hex8\" name=\"MeniscusDomain\">\n      <elem id=\"1\">1, 2, 3, 4, 5, 6, 7, 8</elem>\n    </Elements>\n    <Elements type=\"hex8\" name=\"CondyleDomain\">\n      <elem id=\"2\">9, 10, 11, 12, 13, 14, 15, 16</elem>\n    </Elements>\n    <NodeSet name=\"TibialPlateauBase\">\n      <node id=\"1\"/>\n      <node id=\"2\"/>\n      <node id=\"3\"/>\n      <node id=\"4\"/>\n    </NodeSet>\n    <NodeSet name=\"CondyleTop\">\n      <node id=\"13\"/>\n      <node id=\"14\"/>\n      <node id=\"15\"/>\n      <node id=\"16\"/>\n    </NodeSet>\n    <Surface name=\"MeniscusSuperior\">\n      <quad4 id=\"1\">5, 6, 7, 8</quad4>\n    </Surface>\n    <Surface name=\"CondyleInferior\">\n      <quad4 id=\"2\">9, 10, 11, 12</quad4>\n    </Surface>\n  </Mesh>\n  <MeshDomains>\n    <SolidDomain name=\"MeniscusDomain\" mat=\"1\"/>\n    <SolidDomain name=\"CondyleDomain\" mat=\"2\"/>\n  </MeshDomains>\n  <Boundary>\n    <bc name=\"FixTibia\" type=\"zero displacement\" node_set=\"TibialPlateauBase\">\n      <x_dof>1</x_dof>\n      <y_dof>1</y_dof>\n      <z_dof>1</z_dof>\n    </bc>\n    <bc name=\"CondyleCompression\" type=\"prescribed displacement\" node_set=\"CondyleTop\">\n      <dof>z</dof>\n      <value>-0.45</value>\n    </bc>\n  </Boundary>\n  <contact name=\"MeniscusCondyleContact\" type=\"sliding-elastic\" primary=\"MeniscusSuperior\" secondary=\"CondyleInferior\" penalty=\"100.0\"/>\n</febio_spec>\n",
+    "files": {
+      "meniscus.feb": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<febio_spec version=\"4.0\">\n  <Module type=\"biphasic\"/>\n  <Control>\n    <analysis>TRANSIENT</analysis>\n    <time_steps>40</time_steps>\n    <step_size>0.025</step_size>\n  </Control>\n  <Material>\n    <material id=\"1\" name=\"MeniscusBiphasic\" type=\"biphasic\">\n      <phi0>0.25</phi0>\n      <solid type=\"neo-Hookean\">\n        <E>0.85</E>\n        <v>0.30</v>\n        <density>1.08</density>\n      </solid>\n      <permeability type=\"perm-const-iso\">\n        <perm>0.0012</perm>\n      </permeability>\n    </material>\n    <material id=\"2\" name=\"FemoralCartilage\" type=\"neo-Hookean\">\n      <E>1.50</E>\n      <v>0.40</v>\n      <density>1.10</density>\n    </material>\n  </Material>\n  <Mesh>\n    <Nodes name=\"KneeJointNodes\">\n      <node id=\"1\">0.0, 0.0, 0.0</node>\n      <node id=\"2\">10.0, 0.0, 0.0</node>\n      <node id=\"3\">10.0, 10.0, 0.0</node>\n      <node id=\"4\">0.0, 10.0, 0.0</node>\n      <node id=\"5\">0.0, 0.0, 4.0</node>\n      <node id=\"6\">10.0, 0.0, 4.0</node>\n      <node id=\"7\">10.0, 10.0, 4.0</node>\n      <node id=\"8\">0.0, 10.0, 4.0</node>\n      <node id=\"9\">0.0, 0.0, 4.0</node>\n      <node id=\"10\">10.0, 0.0, 4.0</node>\n      <node id=\"11\">10.0, 10.0, 4.0</node>\n      <node id=\"12\">0.0, 10.0, 4.0</node>\n      <node id=\"13\">0.0, 0.0, 7.0</node>\n      <node id=\"14\">10.0, 0.0, 7.0</node>\n      <node id=\"15\">10.0, 10.0, 7.0</node>\n      <node id=\"16\">0.0, 10.0, 7.0</node>\n    </Nodes>\n    <Elements type=\"hex8\" name=\"MeniscusDomain\">\n      <elem id=\"1\">1, 2, 3, 4, 5, 6, 7, 8</elem>\n    </Elements>\n    <Elements type=\"hex8\" name=\"CondyleDomain\">\n      <elem id=\"2\">9, 10, 11, 12, 13, 14, 15, 16</elem>\n    </Elements>\n    <NodeSet name=\"TibialPlateauBase\">\n      <node id=\"1\"/>\n      <node id=\"2\"/>\n      <node id=\"3\"/>\n      <node id=\"4\"/>\n    </NodeSet>\n    <NodeSet name=\"CondyleTop\">\n      <node id=\"13\"/>\n      <node id=\"14\"/>\n      <node id=\"15\"/>\n      <node id=\"16\"/>\n    </NodeSet>\n    <Surface name=\"MeniscusSuperior\">\n      <quad4 id=\"1\">5, 6, 7, 8</quad4>\n    </Surface>\n    <Surface name=\"CondyleInferior\">\n      <quad4 id=\"2\">9, 10, 11, 12</quad4>\n    </Surface>\n  </Mesh>\n  <MeshDomains>\n    <SolidDomain name=\"MeniscusDomain\" mat=\"1\"/>\n    <SolidDomain name=\"CondyleDomain\" mat=\"2\"/>\n  </MeshDomains>\n  <Boundary>\n    <bc name=\"FixTibia\" type=\"zero displacement\" node_set=\"TibialPlateauBase\">\n      <x_dof>1</x_dof>\n      <y_dof>1</y_dof>\n      <z_dof>1</z_dof>\n    </bc>\n    <bc name=\"CondyleCompression\" type=\"prescribed displacement\" node_set=\"CondyleTop\">\n      <dof>z</dof>\n      <value>-0.45</value>\n    </bc>\n  </Boundary>\n  <contact name=\"MeniscusCondyleContact\" type=\"sliding-elastic\" primary=\"MeniscusSuperior\" secondary=\"CondyleInferior\" penalty=\"100.0\"/>\n</febio_spec>\n",
+      "load_curve.csv": "time_s,axial_force_N,displacement_mm,fluid_pressure_kPa\n0.00,0.0,0.000,0.0\n0.10,420.0,-0.120,185.0\n0.20,1180.0,-0.285,490.0\n0.30,1850.0,-0.410,740.0\n0.40,1620.0,-0.380,620.0\n0.50,1450.0,-0.350,515.0\n0.60,1920.0,-0.445,695.0\n0.70,1310.0,-0.310,420.0\n0.80,540.0,-0.140,160.0\n0.90,180.0,-0.045,45.0\n1.00,0.0,0.000,0.0\n"
+    }
+  }
+]

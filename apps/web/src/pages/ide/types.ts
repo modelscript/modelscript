@@ -5,7 +5,7 @@ export interface IdeArtifactMetadata {
   title: string;
   viewType: string;
 
-  viewConfig: any;
+  viewConfig: Record<string, unknown>;
 }
 
 export interface LspStatusState {

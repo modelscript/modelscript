@@ -814,7 +814,7 @@ export const SysML2ErrorCode = {
     message: (ownerOrPart: string, detail: string) => `Spatial envelope violation on '${ownerOrPart}': ${detail}.`,
   },
 
-  // ── 7xxx: On-Demand Deep Formal Verification Lints (--formal / Morsel) ─
+  // ── 7xxx: On-Demand Deep Formal Verification Lints (--formal / Ansatz) ─
   HIERARCHICAL_PDR_UNSAFE_STATE: {
     code: 7001,
     rule: "hierarchical-pdr-unsafe-state",

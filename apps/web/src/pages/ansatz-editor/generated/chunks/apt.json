@@ -1,0 +1,73 @@
+[
+  {
+    "id": "apt-01-point-to-point-drilling",
+    "lang": "apt",
+    "subFormats": ["apt"],
+    "difficulty": 1,
+    "title": "Point-to-Point Bolt-Circle Drilling Pattern",
+    "description": "Four-hole mounting flange drilling sequence using APT point-to-point FROM, RAPID, and GOTO motion statements with spindle speed, coolant, and plunge feed rate control.",
+    "category": "CAD/CAM & CNC",
+    "tags": ["apt", "cnc", "drilling", "point-to-point"],
+    "activeFile": "drilling_pattern.apt",
+    "fileNames": ["drilling_pattern.apt"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "$$ APT III Point-to-Point 4-Hole Mounting Flange Drilling Pattern\nPARTNO FLANGE_DRILL_01\nMACHIN / MILL, 1\nUNITS / MM\nINTOL / 0.01\nOUTTOL / 0.01\nCUTTER / 8.0\nSPINDL / 2200, CLW\nFEDRAT / 120.0\nCOOLNT / ON\n\n$$ Clearance and hole center geometry\nSETPT = POINT / 0.0, 0.0, 50.0\nH1 = POINT / 25.0, 25.0, 5.0\nH1D = POINT / 25.0, 25.0, -15.0\nH2 = POINT / 75.0, 25.0, 5.0\nH2D = POINT / 75.0, 25.0, -15.0\nH3 = POINT / 75.0, 75.0, 5.0\nH3D = POINT / 75.0, 75.0, -15.0\nH4 = POINT / 25.0, 75.0, 5.0\nH4D = POINT / 25.0, 75.0, -15.0\n\n$$ Point-to-point drilling cycle\nFROM / SETPT\nRAPID\nGOTO / H1\nGOTO / H1D\nRAPID\nGOTO / H1\nRAPID\nGOTO / H2\nGOTO / H2D\nRAPID\nGOTO / H2\nRAPID\nGOTO / H3\nGOTO / H3D\nRAPID\nGOTO / H3\nRAPID\nGOTO / H4\nGOTO / H4D\nRAPID\nGOTO / H4\nRAPID\nGOTO / SETPT\nCOOLNT / OFF\nSPINDL / OFF\nFINI\n"
+  },
+  {
+    "id": "apt-02-rectangular-pocket-milling",
+    "lang": "apt",
+    "subFormats": ["apt"],
+    "difficulty": 2,
+    "title": "3-Axis Rectangular Pocket Milling Path",
+    "description": "Three-axis CNC rectangular pocket roughing and perimeter finishing toolpath in 6061-T6 aluminum using APT geometry definitions, plane drive surfaces, and continuous contour motion.",
+    "category": "CAD/CAM & CNC",
+    "tags": ["apt", "milling", "pocket", "3-axis"],
+    "activeFile": "rect_pocket.apt",
+    "fileNames": ["rect_pocket.apt"],
+    "fileCount": 1,
+    "code": "$$ 3-Axis Rectangular Pocket Milling in 6061-T6 Aluminum\nPARTNO RECT_POCKET_102\nMACHIN / MILL, 2\nUNITS / INCHES\nINTOL / 0.001\nOUTTOL / 0.001\nCUTTER / 0.5\nSPINDL / 3200, CLW\nFEDRAT / 18.0\nCOOLNT / ON\n\n$$ Pocket boundary corners and depth plane\nSETPT = POINT / -1.0, -1.0, 2.0\nP1 = POINT / 0.5, 0.5, -0.25\nP2 = POINT / 4.5, 0.5, -0.25\nP3 = POINT / 4.5, 3.0, -0.25\nP4 = POINT / 0.5, 3.0, -0.25\nPC1 = POINT / 1.5, 1.25, -0.25\nPC2 = POINT / 3.5, 1.25, -0.25\nPC3 = POINT / 3.5, 2.25, -0.25\nPC4 = POINT / 1.5, 2.25, -0.25\n\nL1 = LINE / P1, P2\nL2 = LINE / P2, P3\nL3 = LINE / P3, P4\nL4 = LINE / P4, P1\nPLB = PLANE / 0, 0, 1, -0.25\n\n$$ Center clearing pass\nFROM / SETPT\nRAPID\nGOTO / (POINT / 1.5, 1.25, 0.2)\nGOTO / PC1\nGOTO / PC2\nGOTO / PC3\nGOTO / PC4\nGOTO / PC1\n\n$$ Perimeter wall finish contour\nGO / TO, L1, TO, PLB, TO, L4\nGORGT / L1, TO, L2\nGOLFT / L2, TO, L3\nGOLFT / L3, TO, L4\nGOLFT / L4, TO, L1\nRAPID\nGOTO / SETPT\nCOOLNT / OFF\nSPINDL / OFF\nFINI\n"
+  },
+  {
+    "id": "apt-03-circular-flange-contour",
+    "lang": "apt",
+    "subFormats": ["apt"],
+    "difficulty": 3,
+    "title": "Circular Flange Contour with Tangent Corner Arcs",
+    "description": "External profiling of a pump mounting flange with tangent circular corner fillets using APT LINE, CIRCLE, PLANE, GORGT, GOFWD, and GOLFT continuous-path motion commands.",
+    "category": "CAD/CAM & CNC",
+    "tags": ["apt", "contour", "flange", "tangent-arcs"],
+    "activeFile": "flange_contour.apt",
+    "fileNames": ["flange_contour.apt"],
+    "fileCount": 1,
+    "code": "$$ External Profile of Pump Mounting Flange with Tangent Corner Fillets\nPARTNO PUMP_FLANGE_103\nMACHIN / MILL, 1\nUNITS / INCHES\nINTOL / 0.0005\nOUTTOL / 0.0005\nCUTTER / 0.5\nSPINDL / 2400, CLW\nFEDRAT / 14.0\nCOOLNT / ON\n\n$$ Flange corner centers and perimeter lines\nSETPT = POINT / -1.5, -1.5, 1.5\nP1 = POINT / 0.0, 0.0, 0.0\nP2 = POINT / 6.0, 0.0, 0.0\nP3 = POINT / 6.0, 4.0, 0.0\nP4 = POINT / 0.0, 4.0, 0.0\nC2CTR = POINT / 5.25, 0.75, 0.0\nC3CTR = POINT / 5.25, 3.25, 0.0\n\nL1 = LINE / P1, P2\nL2 = LINE / P2, P3\nL3 = LINE / P3, P4\nL4 = LINE / P4, P1\nC2 = CIRCLE / CENTER, C2CTR, RADIUS, 0.75\nC3 = CIRCLE / CENTER, C3CTR, RADIUS, 0.75\nPL1 = PLANE / 0, 0, 1, 0\n\n$$ Continuous tangent contour around flange perimeter\nFROM / SETPT\nRAPID\nGO / TO, L1, TO, PL1, TO, L4\nGORGT / L1, TANTO, C2\nGOFWD / C2, TANTO, L2\nGOFWD / L2, TANTO, C3\nGOFWD / C3, TANTO, L3\nGOFWD / L3, PAST, L4\nGOLFT / L4, PAST, L1\nRAPID\nGOTO / SETPT\nCOOLNT / OFF\nSPINDL / OFF\nFINI\n"
+  },
+  {
+    "id": "apt-04-angled-ramp-chamfer-boss",
+    "lang": "apt",
+    "subFormats": ["apt"],
+    "difficulty": 4,
+    "title": "Angled Ramp and Chamfered Boss Profile",
+    "description": "Machining of an aerospace actuator housing with an angled 45-degree chamfered boss and circular bearing seat using inclined planes, multi-line intersections, and tangent circular arcs.",
+    "category": "CAD/CAM & CNC",
+    "tags": ["apt", "chamfer", "boss", "contouring"],
+    "activeFile": "chamfer_boss.apt",
+    "fileNames": ["chamfer_boss.apt"],
+    "fileCount": 1,
+    "code": "$$ Aerospace Actuator Housing: Angled Chamfer Boss and Bearing Seat\nPARTNO ACTUATOR_BOSS_104\nMACHIN / MILL, 3\nUNITS / MM\nINTOL / 0.005\nOUTTOL / 0.005\nCUTTER / 12.0\nSPINDL / 4500, CLW\nFEDRAT / 350.0\nCOOLNT / ON\n\n$$ Part geometry: chamfered pentagonal boss and circular seat\nSETPT = POINT / -20.0, -20.0, 40.0\nP1 = POINT / 0.0, 0.0, 0.0\nP2 = POINT / 100.0, 0.0, 0.0\nP3 = POINT / 120.0, 20.0, 0.0\nP4 = POINT / 120.0, 80.0, 0.0\nP5 = POINT / 0.0, 80.0, 0.0\nBC = POINT / 60.0, 40.0, 0.0\nPC1 = POINT / 0.0, 40.0, 0.0\nPC2 = POINT / 120.0, 40.0, 0.0\n\nL1 = LINE / P1, P2\nLCH = LINE / P2, P3\nL2 = LINE / P3, P4\nL3 = LINE / P4, P5\nL4 = LINE / P5, P1\nLCTR = LINE / PC1, PC2\nBORE = CIRCLE / CENTER, BC, RADIUS, 20.0\nPLTOP = PLANE / 0, 0, 1, 0\nPLZ1 = PLANE / 0, 0, 1, -5.0\n\n$$ Rough and finish outer chamfered profile\nFROM / SETPT\nRAPID\nGO / TO, L1, TO, PLZ1, TO, L4\nGORGT / L1, TO, LCH\nGOLFT / LCH, TO, L2\nGOLFT / L2, TO, L3\nGOLFT / L3, TO, L4\nGOLFT / L4, PAST, L1\n\n$$ Retract and interpolate central circular bearing seat\nRAPID\nGOTO / (POINT / 60.0, 40.0, 20.0)\nFEDRAT / 180.0\nGOTO / (POINT / 60.0, 40.0, -5.0)\nGO / TO, BORE, TO, PLZ1\nGOFWD / BORE, ON, LCTR\nRAPID\nGOTO / SETPT\nCOOLNT / OFF\nSPINDL / OFF\nFINI\n"
+  },
+  {
+    "id": "apt-05-aerospace-rib-pocket",
+    "lang": "apt",
+    "subFormats": ["apt"],
+    "difficulty": 5,
+    "title": "Aerospace Wing Rib Pocket with Multi-Pass Depth Cuts",
+    "description": "Multi-pass roughing and finishing APT program for a monolithic 7075-T6 aluminum wing rib pocket featuring tapered spar walls, corner blend fillets, and stepped Z-level planes.",
+    "category": "CAD/CAM & CNC",
+    "tags": ["apt", "aerospace", "rib-pocket", "multi-pass"],
+    "activeFile": "wing_rib_pocket.apt",
+    "fileNames": ["wing_rib_pocket.apt"],
+    "fileCount": 1,
+    "code": "$$ Monolithic 7075-T6 Aerospace Wing Rib Multi-Pass Pocket Program\nPARTNO WING_RIB_7075_105\nMACHIN / MILL, 5\nUNITS / MM\nINTOL / 0.005\nOUTTOL / 0.005\nCUTTER / 16.0\nSPINDL / 8000, CLW\nFEDRAT / 900.0\nCOOLNT / ON\n\n$$ Tapered wing rib pocket geometry with corner fillet circles\nSETPT = POINT / -25.0, -25.0, 60.0\nR1 = POINT / 15.0, 15.0, 0.0\nR2 = POINT / 215.0, 25.0, 0.0\nR3 = POINT / 215.0, 115.0, 0.0\nR4 = POINT / 15.0, 135.0, 0.0\nC2C = POINT / 199.0, 41.0, 0.0\nC3C = POINT / 199.0, 99.0, 0.0\n\nLW1 = LINE / R1, R2\nLW2 = LINE / R2, R3\nLW3 = LINE / R3, R4\nLW4 = LINE / R4, R1\nCF2 = CIRCLE / CENTER, C2C, RADIUS, 16.0\nCF3 = CIRCLE / CENTER, C3C, RADIUS, 16.0\n\n$$ Stepped Z-depth planes for roughing and finish passes\nPLZ1 = PLANE / 0, 0, 1, -8.0\nPLZ2 = PLANE / 0, 0, 1, -16.0\nPLZ3 = PLANE / 0, 0, 1, -20.0\n\n$$ Pass 1: Roughing depth Z = -8.0 mm\nFROM / SETPT\nRAPID\nGOTO / (POINT / 40.0, 40.0, 10.0)\nGOTO / (POINT / 40.0, 40.0, -8.0)\nGO / TO, LW1, TO, PLZ1, TO, LW4\nGORGT / LW1, TANTO, CF2\nGOFWD / CF2, TANTO, LW2\nGOFWD / LW2, TANTO, CF3\nGOFWD / CF3, TANTO, LW3\nGOFWD / LW3, TO, LW4\nGOLFT / LW4, TO, LW1\n\n$$ Pass 2: Roughing depth Z = -16.0 mm\nGOTO / (POINT / 40.0, 40.0, -16.0)\nGO / TO, LW1, TO, PLZ2, TO, LW4\nGORGT / LW1, TANTO, CF2\nGOFWD / CF2, TANTO, LW2\nGOFWD / LW2, TANTO, CF3\nGOFWD / CF3, TANTO, LW3\nGOFWD / LW3, TO, LW4\nGOLFT / LW4, TO, LW1\n\n$$ Pass 3: Finish floor and walls at Z = -20.0 mm\nFEDRAT / 450.0\nGOTO / (POINT / 40.0, 40.0, -20.0)\nGO / TO, LW1, TO, PLZ3, TO, LW4\nGORGT / LW1, TANTO, CF2\nGOFWD / CF2, TANTO, LW2\nGOFWD / LW2, TANTO, CF3\nGOFWD / CF3, TANTO, LW3\nGOFWD / LW3, TO, LW4\nGOLFT / LW4, TO, LW1\n\nRAPID\nGOTO / SETPT\nCOOLNT / OFF\nSPINDL / OFF\nFINI\n"
+  }
+]

@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MqttConnectionState, MqttParticipantMeta, VariableUpdateCallback } from "./mqtt-client";
-import { getMorselMqttClient } from "./mqtt-client";
+import { getAnsatzMqttClient } from "./mqtt-client";
 
 /** Simulation data source mode. */
 export type SimulationDataSource = "local" | "mqtt-live" | "historian-replay";
@@ -60,7 +60,7 @@ export interface MqttSimulationState {
  * @returns MQTT simulation state
  */
 export function useMqttSimulation(config: MqttSimulationConfig): MqttSimulationState {
-  const mqttClient = getMorselMqttClient();
+  const mqttClient = getAnsatzMqttClient();
   const [connectionState, setConnectionState] = useState<MqttConnectionState>(mqttClient.connectionState);
   const [participants, setParticipants] = useState<Map<string, MqttParticipantMeta>>(
     () => new Map(mqttClient.participants),

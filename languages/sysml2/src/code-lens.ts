@@ -2,7 +2,24 @@
 
 export interface Sysml2CodeLens {
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
-  command: { title: string; command: string; arguments?: any[] };
+  command: { title: string; command: string; arguments?: unknown[] };
+}
+
+interface Sysml2ThreadEntry {
+  slot: string;
+  meta?: { name?: string };
+}
+
+interface Sysml2AlignedElement {
+  domain: string;
+}
+
+interface Sysml2CstNodeLike {
+  type?: string;
+  text?: string;
+  startPosition?: { row: number; column: number };
+  children?: Sysml2CstNodeLike[];
+  childForFieldName?(name: string): Sysml2CstNodeLike | null | undefined;
 }
 
 export interface Sysml2CodeLensContext {
@@ -15,8 +32,17 @@ export interface Sysml2CodeLensContext {
     scaffolding?: boolean;
     demos?: boolean;
   };
-  workspaceManager?: any;
-  documentManager?: any;
+  workspaceManager?: {
+    getThreadsForUri?(uri: string): Sysml2ThreadEntry[];
+    findAlignedElementsBySlot?(slot: string): Sysml2AlignedElement[];
+  };
+  documentManager?: {
+    getTree?(uri: string): { rootNode?: Sysml2CstNodeLike; tree?: { rootNode?: Sysml2CstNodeLike } } | null | undefined;
+    getDocumentTree?(
+      uri: string,
+    ): { rootNode?: Sysml2CstNodeLike; tree?: { rootNode?: Sysml2CstNodeLike } } | null | undefined;
+    documentTrees?: Map<string, { rootNode?: Sysml2CstNodeLike; tree?: { rootNode?: Sysml2CstNodeLike } }>;
+  };
 }
 
 type SysmlDefKind = "part" | "requirement" | "verification" | "action" | "state";
@@ -100,12 +126,12 @@ export function getSysml2CodeLenses(text: string, uri: string, ctx?: Sysml2CodeL
       const threadEntries =
         showPolyglotLinks && ctx?.workspaceManager?.getThreadsForUri ? ctx.workspaceManager.getThreadsForUri(uri) : [];
       const matchingThread =
-        threadEntries.find((e: any) => e.meta?.name?.includes(name)) ??
+        threadEntries.find((e) => e.meta?.name?.includes(name)) ??
         (threadEntries.length === 1 ? threadEntries[0] : undefined);
 
       if (matchingThread && showPolyglotLinks && ctx?.workspaceManager?.findAlignedElementsBySlot) {
         const aligned = ctx.workspaceManager.findAlignedElementsBySlot(matchingThread.slot);
-        const engAligned = aligned.filter((el: any) => el.domain.toLowerCase() !== "requirements");
+        const engAligned = aligned.filter((el) => el.domain.toLowerCase() !== "requirements");
         const domainCount = engAligned.length > 0 ? engAligned.length : aligned.length;
         const labelMap: Record<string, string> = {
           sysml2: "SYSML",
@@ -115,7 +141,7 @@ export function getSysml2CodeLenses(text: string, uri: string, ctx?: Sysml2CodeL
           cfd: "CFD",
         };
         const activeDomainList = (engAligned.length > 0 ? engAligned : aligned).map(
-          (el: any) => labelMap[el.domain.toLowerCase()] ?? el.domain.toUpperCase(),
+          (el) => labelMap[el.domain.toLowerCase()] ?? el.domain.toUpperCase(),
         );
         lenses.push({
           range,
@@ -250,12 +276,12 @@ export function getSysml2CodeLenses(text: string, uri: string, ctx?: Sysml2CodeL
       calculationdefinition: "action",
       statedefinition: "state",
     };
-    const visitSysml = (node: any) => {
+    const visitSysml = (node: Sysml2CstNodeLike | undefined) => {
       if (!node) return;
       const normType = (node.type || "").toLowerCase();
       const kind = cstTypeToKind[normType];
       if (kind) {
-        const nameNode = node.childForFieldName?.("declaredName") ?? node.children?.find((c: any) => c.type === "Name");
+        const nameNode = node.childForFieldName?.("declaredName") ?? node.children?.find((c) => c.type === "Name");
         const name = nameNode?.text?.trim();
         if (name) {
           usedSysmlCst = true;

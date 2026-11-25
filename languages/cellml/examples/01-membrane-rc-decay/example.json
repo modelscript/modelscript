@@ -1,0 +1,12 @@
+{
+  "id": "cellml-01-membrane-rc-decay",
+  "lang": "cellml",
+  "subFormats": ["cellml"],
+  "difficulty": 1,
+  "title": "First-Order Passive Membrane RC Decay",
+  "description": "Passive cellular membrane equivalent RC circuit modeling exponential voltage relaxation toward resting potential via a linear Ohmic leak conductance in CellML 1.1.",
+  "category": "Electrophysiology & Systems Biology",
+  "tags": ["cellml", "membrane", "rc-circuit", "ode"],
+  "activeFile": "rc_membrane.cellml",
+  "isDefaultStarter": true
+}

@@ -257,10 +257,10 @@ export const SimulationToolbar: React.FC<SimulationToolbarProps> = ({
                   if (!file) return;
                   try {
                     const text = await file.text();
-                    (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot =
+                    (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot =
                       JSON.parse(text);
                   } catch {
-                    (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot = undefined;
+                    (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot = undefined;
                   }
                 };
                 inp.click();

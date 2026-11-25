@@ -1,0 +1,14 @@
+# NASA HDF4 Single 2D Scientific Data Set (SDS) Radiance Image
+HDF4 Radiance_Image_L1B VERSION="4.2"
+  ATTR Mission = "Terra"
+  ATTR Instrument = "ASTER"
+
+  SDS Band1_Radiance TYPE=FLOAT32 REF=10 UNIT="W/(m2.sr.um)"
+    DIM lines = 3
+    DIM pixels = 4
+    ATTR scale_factor = 1.0
+    ATTR add_offset = 0.0
+    ATTR _FillValue = -999.0
+    DATA [42.1, 43.5, 45.0, 44.2, 41.8, 44.0, 46.3, 45.7, 40.9, 43.1, 45.4, 44.8]
+  END
+END

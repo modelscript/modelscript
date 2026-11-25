@@ -1,0 +1,418 @@
+[
+  {
+    "name": "PAL16L8",
+    "kind": "Component",
+    "namePath": "jedec.PAL16L8",
+    "exports": [
+      "pinCount",
+      "fuseCount",
+      "matrixRows",
+      "matrixCols",
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PAL16L8 Combinational PLD",
+      "category": "Programmable Logic Devices",
+      "domain": "electronics",
+      "description": "Monolithic Memories 20-pin combinational PAL with 10 dedicated inputs, 6 bidirectional I/Os, 2 dedicated active-low outputs, and 64x32 (2048) AND-OR fuse array.",
+      "provenance": "MMI PAL Device Data Book (1981) / JEDEC JESD3",
+      "aliases": [
+        "16L8",
+        "MMI_PAL16L8"
+      ],
+      "parameters": [
+        {
+          "key": "pinCount",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "pins",
+          "description": "20-pin DIP package"
+        },
+        {
+          "key": "fuseCount",
+          "type": "real",
+          "defaultValue": 2048,
+          "unit": "fuses",
+          "description": "64 product terms x 32 input columns"
+        },
+        {
+          "key": "matrixRows",
+          "type": "real",
+          "defaultValue": 64,
+          "unit": "rows",
+          "description": "8 outputs x 8 product terms (1 OE + 7 SOP)"
+        },
+        {
+          "key": "matrixCols",
+          "type": "real",
+          "defaultValue": 32,
+          "unit": "cols",
+          "description": "16 true/complement input literal pairs"
+        },
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "ns",
+          "description": "Nominal propagation delay (PAL16L8-15)"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "PAL16R8",
+    "kind": "Component",
+    "namePath": "jedec.PAL16R8",
+    "exports": [
+      "pinCount",
+      "fuseCount",
+      "matrixRows",
+      "matrixCols",
+      "fmaxMHz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PAL16R8 Registered PLD",
+      "category": "Programmable Logic Devices",
+      "domain": "electronics",
+      "description": "Monolithic Memories 20-pin registered PAL with 8 D-flip-flop outputs clocked by pin 1, common /OE on pin 11, and 64x32 (2048) AND-OR fuse array.",
+      "provenance": "MMI PAL Device Data Book (1981) / JEDEC JESD3",
+      "aliases": [
+        "16R8",
+        "MMI_PAL16R8"
+      ],
+      "parameters": [
+        {
+          "key": "pinCount",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "pins",
+          "description": "20-pin DIP package"
+        },
+        {
+          "key": "fuseCount",
+          "type": "real",
+          "defaultValue": 2048,
+          "unit": "fuses",
+          "description": "64 product terms x 32 input columns"
+        },
+        {
+          "key": "matrixRows",
+          "type": "real",
+          "defaultValue": 64,
+          "unit": "rows",
+          "description": "8 registered outputs x 8 SOP product terms"
+        },
+        {
+          "key": "matrixCols",
+          "type": "real",
+          "defaultValue": 32,
+          "unit": "cols",
+          "description": "16 true/complement input literal pairs"
+        },
+        {
+          "key": "fmaxMHz",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "MHz",
+          "description": "Maximum clock frequency"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "GAL16V8",
+    "kind": "Component",
+    "namePath": "jedec.GAL16V8",
+    "exports": [
+      "pinCount",
+      "fuseCount",
+      "matrixRows",
+      "matrixCols",
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GAL16V8 Electrically Erasable PLD",
+      "category": "Programmable Logic Devices",
+      "domain": "electronics",
+      "description": "Lattice Semiconductor 20-pin E2CMOS Generic Array Logic emulating PAL16L8/16R8 with 8 OLMC macrocells, programmable XOR output polarity, and 2194 fuses.",
+      "provenance": "Lattice Semiconductor GAL16V8 Datasheet (1985) / JEDEC JESD3",
+      "aliases": [
+        "16V8",
+        "LATTICE_GAL16V8"
+      ],
+      "parameters": [
+        {
+          "key": "pinCount",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "pins",
+          "description": "20-pin DIP/PLCC package"
+        },
+        {
+          "key": "fuseCount",
+          "type": "real",
+          "defaultValue": 2194,
+          "unit": "fuses",
+          "description": "2048 AND array + 8 XOR + 64 UES + 8 AC1 + 64 PTD + SYN + AC0"
+        },
+        {
+          "key": "matrixRows",
+          "type": "real",
+          "defaultValue": 64,
+          "unit": "rows",
+          "description": "8 OLMC macrocells x 8 product terms"
+        },
+        {
+          "key": "matrixCols",
+          "type": "real",
+          "defaultValue": 32,
+          "unit": "cols",
+          "description": "16 true/complement input literal pairs"
+        },
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "ns",
+          "description": "Nominal propagation delay (GAL16V8D-10)"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "GAL22V10",
+    "kind": "Component",
+    "namePath": "jedec.GAL22V10",
+    "exports": [
+      "pinCount",
+      "fuseCount",
+      "matrixRows",
+      "matrixCols",
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GAL22V10 Variable-Product-Term PLD",
+      "category": "Programmable Logic Devices",
+      "domain": "electronics",
+      "description": "24-pin E2CMOS PLD with 10 OLMC macrocells, variable product terms (8..16 per output), global AR/SP terms, and 5892 fuses (132x44 AND array).",
+      "provenance": "AMD AmPAL22V10 (1983) / Lattice GAL22V10 Datasheet / JEDEC JESD3",
+      "aliases": [
+        "22V10",
+        "AMD_PAL22V10",
+        "LATTICE_GAL22V10"
+      ],
+      "parameters": [
+        {
+          "key": "pinCount",
+          "type": "real",
+          "defaultValue": 24,
+          "unit": "pins",
+          "description": "24-pin Skinny DIP / 28-pin PLCC"
+        },
+        {
+          "key": "fuseCount",
+          "type": "real",
+          "defaultValue": 5892,
+          "unit": "fuses",
+          "description": "5808 AND array (132x44) + 20 architecture + 64 UES fuses"
+        },
+        {
+          "key": "matrixRows",
+          "type": "real",
+          "defaultValue": 132,
+          "unit": "rows",
+          "description": "1 AR + 10 macrocells (8..16 SOP + OE) + 1 SP"
+        },
+        {
+          "key": "matrixCols",
+          "type": "real",
+          "defaultValue": 44,
+          "unit": "cols",
+          "description": "22 true/complement input literal pairs"
+        },
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "ns",
+          "description": "Nominal propagation delay (GAL22V10D-10)"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "QP",
+    "kind": "Component",
+    "namePath": "jedec.QP",
+    "exports": [
+      "pinCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "QP — Pin Count Field",
+      "category": "JESD3 Field Descriptors",
+      "domain": "electronics",
+      "description": "JESD3 device pin count declaration (`QP<n>*`, e.g., `QP20*` for 20-pin PAL/GAL).",
+      "provenance": "JEDEC Standard 3 (JESD3-C) §3.2",
+      "aliases": [
+        "FIELD_QP",
+        "PIN_COUNT"
+      ],
+      "parameters": [
+        {
+          "key": "pinCount",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "pins",
+          "description": "Number of device pins"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "QF",
+    "kind": "Component",
+    "namePath": "jedec.QF",
+    "exports": [
+      "fuseCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "QF — Fuse Count Field",
+      "category": "JESD3 Field Descriptors",
+      "domain": "electronics",
+      "description": "Mandatory JESD3 total fuse count declaration (`QF<n>*`, e.g., `QF2048*` for PAL16L8).",
+      "provenance": "JEDEC Standard 3 (JESD3-C) §3.2",
+      "aliases": [
+        "FIELD_QF",
+        "FUSE_COUNT"
+      ],
+      "parameters": [
+        {
+          "key": "fuseCount",
+          "type": "real",
+          "defaultValue": 2048,
+          "unit": "fuses",
+          "description": "Total addressable fuse count"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "L",
+    "kind": "Component",
+    "namePath": "jedec.L",
+    "exports": [
+      "startAddress",
+      "bitWidth"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L — Fuse Data List Field",
+      "category": "JESD3 Field Descriptors",
+      "domain": "electronics",
+      "description": "JESD3 fuse address and binary bit-string (`L<addr> <0|1...>*`, where 0 = intact, 1 = blown).",
+      "provenance": "JEDEC Standard 3 (JESD3-C) §3.2",
+      "aliases": [
+        "FIELD_L",
+        "FUSE_LIST"
+      ],
+      "parameters": [
+        {
+          "key": "startAddress",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "index",
+          "description": "0-based starting fuse address"
+        },
+        {
+          "key": "bitWidth",
+          "type": "real",
+          "defaultValue": 32,
+          "unit": "bits",
+          "description": "Typical row width per L record"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "C",
+    "kind": "Component",
+    "namePath": "jedec.C",
+    "exports": [
+      "checksumWidthBits"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "C — 16-bit Fuse Checksum Field",
+      "category": "JESD3 Field Descriptors",
+      "domain": "electronics",
+      "description": "JESD3 16-bit hexadecimal fuse checksum (`C<hhhh>*`) computed as LSB-first 8-bit byte sum mod 0x10000.",
+      "provenance": "JEDEC Standard 3 (JESD3-C) §3.3",
+      "aliases": [
+        "FIELD_C",
+        "FUSE_CHECKSUM"
+      ],
+      "parameters": [
+        {
+          "key": "checksumWidthBits",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "bits",
+          "description": "16-bit unsigned hexadecimal checksum"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "V",
+    "kind": "Component",
+    "namePath": "jedec.V",
+    "exports": [
+      "vectorIndex"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "V — Functional Test Vector Field",
+      "category": "JESD3 Field Descriptors",
+      "domain": "electronics",
+      "description": "JESD3 functional test vector (`V<n> <pins>*`) specifying per-pin stimulus (`0`,`1`,`C`) and expected response (`H`,`L`,`Z`,`X`,`N`).",
+      "provenance": "JEDEC Standard 3 (JESD3-C) §3.4",
+      "aliases": [
+        "FIELD_V",
+        "TEST_VECTOR"
+      ],
+      "parameters": [
+        {
+          "key": "vectorIndex",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "index",
+          "description": "1-based sequential test vector number"
+        }
+      ],
+      "wasmKernel": "jedecFuseCountForDevice",
+      "archetypeId": 14
+    }
+  }
+]

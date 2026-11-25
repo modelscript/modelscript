@@ -1,0 +1,12 @@
+{
+  "id": "jsbsim-04-f16-supersonic-fighter",
+  "lang": "jsbsim",
+  "subFormats": ["xml"],
+  "difficulty": 4,
+  "title": "F-16 Supersonic Fighter with FCS Pitch Damper",
+  "description": "High-agility F-16 supersonic fighter flight dynamics model featuring an afterburning F100 turbofan engine, direct nozzle thruster, flight control system pitch-rate damper, and full 6-DOF aerodynamics.",
+  "category": "High-Performance Aerospace",
+  "tags": ["jsbsim", "f16", "turbofan", "fcs", "multi-file"],
+  "activeFile": "f16.xml",
+  "fileOrder": ["f16.xml", "engine/f100.xml", "direct.xml"]
+}

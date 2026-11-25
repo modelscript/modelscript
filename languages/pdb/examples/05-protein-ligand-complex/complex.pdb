@@ -1,0 +1,41 @@
+HEADER    TRANSFERASE/INHIBITOR                   01-JAN-26   1KIN
+TITLE     KINASE DFG-MOTIF ACTIVE SITE COMPLEX WITH LIGAND
+REMARK   2 RESOLUTION.    1.75 ANGSTROMS.
+HELIX    1  H1 ASP A    1  THR A    8  1                                   8
+ATOM      1  N   ASP A   1       0.000   0.000   0.000  1.00 18.00           N
+ATOM      2  CA  ASP A   1       1.460   0.000   0.000  1.00 17.20           C
+ATOM      3  C   ASP A   1       2.005   1.419   0.000  1.00 17.50           C
+ATOM      4  O   ASP A   1       2.928   1.743   0.746  1.00 19.10           O
+ATOM      5  N   PHE A   2       1.425   2.266  -0.845  1.00 18.00           N
+ATOM      6  CA  PHE A   2       1.844   3.661  -0.953  1.00 17.20           C
+ATOM      7  C   PHE A   2       1.682   4.383   0.374  1.00 17.50           C
+ATOM      8  O   PHE A   2       2.568   5.116   0.809  1.00 19.10           O
+ATOM      9  N   GLY A   3       0.538   4.169   1.018  1.00 18.00           N
+ATOM     10  CA  GLY A   3       0.245   4.796   2.304  1.00 17.20           C
+ATOM     11  C   GLY A   3       1.272   4.398   3.351  1.00 17.50           C
+ATOM     12  O   GLY A   3       1.767   5.236   4.103  1.00 19.10           O
+ATOM     13  N   LEU A   4       1.590   3.108   3.394  1.00 18.00           N
+ATOM     14  CA  LEU A   4       2.562   2.582   4.349  1.00 17.20           C
+ATOM     15  C   LEU A   4       3.922   3.234   4.157  1.00 17.50           C
+ATOM     16  O   LEU A   4       4.576   3.629   5.120  1.00 19.10           O
+ATOM     17  N   ALA A   5       4.343   3.343   2.900  1.00 18.00           N
+ATOM     18  CA  ALA A   5       5.630   3.947   2.565  1.00 17.20           C
+ATOM     19  C   ALA A   5       5.695   5.389   3.044  1.00 17.50           C
+ATOM     20  O   ALA A   5       6.691   5.819   3.623  1.00 19.10           O
+ATOM     21  N   SER A   6       4.622   6.134   2.797  1.00 18.00           N
+ATOM     22  CA  SER A   6       4.544   7.536   3.199  1.00 17.20           C
+ATOM     23  C   SER A   6       4.685   7.678   4.706  1.00 17.50           C
+ATOM     24  O   SER A   6       5.413   8.540   5.195  1.00 19.10           O
+ATOM     25  N   HIS A   7       3.979   6.824   5.441  1.00 18.00           N
+ATOM     26  CA  HIS A   7       4.016   6.844   6.900  1.00 17.20           C
+ATOM     27  C   HIS A   7       5.427   6.606   7.413  1.00 17.50           C
+ATOM     28  O   HIS A   7       5.899   7.297   8.314  1.00 19.10           O
+ATOM     29  N   THR A   8       6.101   5.619   6.829  1.00 18.00           N
+ATOM     30  CA  THR A   8       7.466   5.278   7.218  1.00 17.20           C
+ATOM     31  C   THR A   8       8.402   6.458   7.016  1.00 17.50           C
+ATOM     32  O   THR A   8       9.221   6.772   7.877  1.00 19.10           O
+HETATM   33  C1  LIG A 201      15.000  10.000   5.000  1.00 24.50           C
+HETATM   34  C2  LIG A 201      16.400  10.000   5.000  1.00 24.50           C
+HETATM   35  N1  LIG A 201      17.100  11.200   5.000  1.00 24.50           N
+HETATM   36  O1  LIG A 201      14.300  11.200   5.000  1.00 24.50           O
+END

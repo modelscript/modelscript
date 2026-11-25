@@ -2,13 +2,14 @@
 
 import type { NotebookCell, TutorialDifficulty } from "../../util/notebook";
 import type { SpatialPin } from "../artifacts/spatial-pin";
+import type { ComposePostRef, CreatedPostItem } from "../compose/types";
 import type { ComposeInitialState } from "../ComposeContext";
 
 export interface ComposeModalProps {
   onClose: () => void;
-  onPostCreated?: ((post: any) => void) | undefined;
-  quotePost?: any;
-  replyToPost?: any;
+  onPostCreated?: ((post: CreatedPostItem) => void) | undefined;
+  quotePost?: ComposePostRef | null | undefined;
+  replyToPost?: ComposePostRef | null | undefined;
   pendingPin?: SpatialPin | undefined;
   initialState?: ComposeInitialState | undefined;
 }
@@ -26,8 +27,8 @@ export interface DraftPost {
   notebookCompanionRepo?: string | undefined;
   notebookTopics?: string[] | undefined;
   notebookCells?: NotebookCell[] | undefined;
-  quotePost?: any;
-  replyToPost?: any;
+  quotePost?: ComposePostRef | null | undefined;
+  replyToPost?: ComposePostRef | null | undefined;
   pendingPin?: SpatialPin | undefined;
   timestamp: number;
 }

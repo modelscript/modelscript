@@ -1,0 +1,11 @@
+{
+  "id": "plot3d-02-channel-mach03-flow",
+  "lang": "plot3d",
+  "subFormats": ["xyz", "q"],
+  "difficulty": 2,
+  "title": "Subsonic Channel Grid and Uniform Mach 0.3 Flow",
+  "description": "Paired structured channel mesh (channel.xyz) and conservative PLOT3D flow solution (channel.q) at freestream Mach 0.30, Reynolds number 1.0e6, and sea-level standard density.",
+  "category": "Structured CFD & Aerodynamics",
+  "tags": ["plot3d", "channel-flow", "subsonic", "multi-file"],
+  "activeFile": "channel.xyz"
+}

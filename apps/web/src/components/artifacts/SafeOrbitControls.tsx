@@ -127,7 +127,7 @@ export const SafeOrbitControls: React.FC<SafeOrbitControlsProps> = ({
   return (
     <>
       <DreiOrbitControls
-        ref={controlsRef as any}
+        ref={controlsRef as unknown as React.Ref<React.ComponentRef<typeof DreiOrbitControls>> | undefined}
         makeDefault
         enableZoom={isZoomAllowed}
         enableDamping={enableDamping}

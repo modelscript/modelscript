@@ -61,9 +61,9 @@ export const NmodlPanel: React.FC<LanguagePanelProps> = ({
         subtitle="NEURON NMODL Electrophysiology"
         badge={computed.error ? { label: "Parse Error", tone: "danger" } : { label: "NMODL", tone: "info" }}
         actions={
-          mode === "artifact" && host.openInMorsel && code ? (
-            <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "nmodl", title)}>
-              Open in Morsel
+          mode === "artifact" && host.openInAnsatzEditor && code ? (
+            <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "nmodl", title)}>
+              Open in Ansatz Editor
             </PanelButton>
           ) : undefined
         }

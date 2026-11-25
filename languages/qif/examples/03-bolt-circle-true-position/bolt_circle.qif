@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="30000003-0000-4000-8000-000000000001">
+  <Header>
+    <Author><Name>CMM Programmer</Name></Author>
+    <Application><Name>Ansatz QIF Suite</Name></Application>
+    <FileUnits>
+      <PrimaryUnits>
+        <LinearUnit><UnitName>mm</UnitName></LinearUnit>
+      </PrimaryUnits>
+    </FileUnits>
+  </Header>
+  <DatumDefinitions>
+    <DatumDefinition id="D1" qpId="30000003-0000-4000-8000-000000000002">
+      <DatumLabel>A</DatumLabel>
+      <FeatureNominalIds><Id>F_FACE</Id></FeatureNominalIds>
+    </DatumDefinition>
+    <DatumDefinition id="D2" qpId="30000003-0000-4000-8000-000000000003">
+      <DatumLabel>B</DatumLabel>
+      <FeatureNominalIds><Id>F_PILOT</Id></FeatureNominalIds>
+    </DatumDefinition>
+  </DatumDefinitions>
+  <FeatureNominals>
+    <PlaneFeatureNominal id="F_FACE" qpId="30000003-0000-4000-8000-000000000010">
+      <Name>FlangeMountingFace</Name>
+      <Location>0 0 0</Location>
+      <Normal>0 0 1</Normal>
+      <ProbingPoints>6</ProbingPoints>
+    </PlaneFeatureNominal>
+    <CylinderFeatureNominal id="F_PILOT" qpId="30000003-0000-4000-8000-000000000011">
+      <Name>CenterPilotBore</Name>
+      <Diameter>40.0</Diameter>
+      <Location>0 0 0</Location>
+      <AxisVector>0 0 1</AxisVector>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+    <CylinderFeatureNominal id="F_HOLE1" qpId="30000003-0000-4000-8000-000000000012">
+      <Name>BoltHole_0deg</Name>
+      <Diameter>8.4</Diameter>
+      <Location>35 0 0</Location>
+      <AxisVector>0 0 1</AxisVector>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+    <CylinderFeatureNominal id="F_HOLE2" qpId="30000003-0000-4000-8000-000000000013">
+      <Name>BoltHole_90deg</Name>
+      <Diameter>8.4</Diameter>
+      <Location>0 35 0</Location>
+      <AxisVector>0 0 1</AxisVector>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+  <CharacteristicNominals>
+    <PositionCharacteristicNominal id="C_POS1" qpId="30000003-0000-4000-8000-000000000020" balloonNumber="10">
+      <Name>BoltHole1_TruePosition</Name>
+      <ToleranceValue>0.08</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>MMC</MaterialCondition>
+      <DatumReferenceFrame>
+        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
+        <DatumReference precedence="2"><DatumLabel>B</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
+      </DatumReferenceFrame>
+      <CompositeLowerTier toleranceZone="0.025" materialCondition="MMC">
+        <DatumReference><DatumLabel>A</DatumLabel></DatumReference>
+      </CompositeLowerTier>
+      <FeatureNominalIds><Id>F_HOLE1</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM1</MeasurementDeviceId>
+    </PositionCharacteristicNominal>
+    <PositionCharacteristicNominal id="C_POS2" qpId="30000003-0000-4000-8000-000000000021" balloonNumber="11">
+      <Name>BoltHole2_TruePosition</Name>
+      <ToleranceValue>0.08</ToleranceValue>
+      <DiametricalZone>true</DiametricalZone>
+      <MaterialCondition>MMC</MaterialCondition>
+      <DatumReferenceFrame>
+        <DatumReference precedence="1"><DatumLabel>A</DatumLabel></DatumReference>
+        <DatumReference precedence="2"><DatumLabel>B</DatumLabel><MaterialCondition>MMC</MaterialCondition></DatumReference>
+      </DatumReferenceFrame>
+      <FeatureNominalIds><Id>F_HOLE2</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM1</MeasurementDeviceId>
+    </PositionCharacteristicNominal>
+  </CharacteristicNominals>
+  <MeasurementResources>
+    <MeasurementDevice id="CMM1" deviceType="CMM">
+      <Name>Mitutoyo_Crysta_Apex</Name>
+      <CalibrationUncertainty>0.0018</CalibrationUncertainty>
+    </MeasurementDevice>
+  </MeasurementResources>
+  <Rules minTurRatio="4.0">
+    <FeatureRule featureType="Plane" minPoints="4"/>
+    <FeatureRule featureType="Cylinder" minPoints="6"/>
+  </Rules>
+  <Plan>
+    <PlanStep id="S1" stepNumber="1" featureId="F_HOLE1" characteristicId="C_POS1" deviceId="CMM1" probingPointCount="8"/>
+    <PlanStep id="S2" stepNumber="2" featureId="F_HOLE2" characteristicId="C_POS2" deviceId="CMM1" probingPointCount="8"/>
+  </Plan>
+</QIFDocument>

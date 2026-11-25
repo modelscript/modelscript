@@ -68,7 +68,7 @@ export function ideWorkbenchRouter(database?: LibraryDatabase): express.Router {
     },
   );
 
-  // Static mounts for VS Code Web, ModelScript Extension, Morsel LSP, GitHub FS, and WebLLM models
+  // Static mounts for VS Code Web, ModelScript Extension, Ansatz LSP, GitHub FS, and WebLLM models
   router.use("/vscode-static", express.static(vscodeWebDir, { dotfiles: "ignore" }));
   router.use(
     ["/static/devextensions", "/lsp"],

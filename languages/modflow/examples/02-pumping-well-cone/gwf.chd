@@ -1,0 +1,7 @@
+# Perimeter Constant-Head Boundary
+BEGIN CHD6
+  1 1 1 55.0
+  1 1 9 55.0
+  1 9 1 55.0
+  1 9 9 55.0
+END CHD6

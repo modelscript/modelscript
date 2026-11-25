@@ -5,7 +5,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import styledImport from "styled-components";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 const Nav = styled.nav`
   display: flex;

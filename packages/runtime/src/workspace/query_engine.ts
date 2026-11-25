@@ -41,6 +41,7 @@ import {
 } from "../interop/symbol_interop.js";
 import {
   type CSTTree,
+  type CycleInfo,
   type DependencyKey,
   Durability,
   type ExpressionEvaluator,
@@ -326,6 +327,68 @@ class DependencyTracker {
   }
 }
 
+/** Minimal record shape returned by cross-domain TGG correspondence indices. */
+export interface CorrespondenceRecordLike {
+  isRemoved?: boolean | undefined;
+  domainNodes?: Record<number, number> | Record<string, number> | undefined;
+}
+
+/** Structural interface for cross-language TGG correspondence indices (e.g. DigitalThreadHypergraph / WasmCorrespondenceIndex). */
+export interface CorrespondenceIndexLike {
+  markStale?: ((idOrSlot: number) => void) | undefined;
+  markStaleCascading?: ((slot: number) => number) | undefined;
+  propagateAllStale?: (() => number) | undefined;
+  getRecord?: ((slot: number) => CorrespondenceRecordLike | null | undefined) | undefined;
+  resolveOrRegisterDomain?: ((language: string) => number) | undefined;
+  findSlotsByDomainNode?: ((domain: number, nodeId: number) => number[] | null | undefined) | undefined;
+  findThreadsByDomainNode?: ((domain: number, nodeId: number) => number[] | null | undefined) | undefined;
+}
+
+interface MerkleHashable {
+  merkleLow?: unknown;
+  merkleHigh?: unknown;
+  _merkleLow?: unknown;
+  _merkleHigh?: unknown;
+}
+
+interface CstSyntaxNodeLike {
+  text?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  children?: readonly CstSyntaxNodeLike[] | undefined;
+  tree?: { sourceCode?: string | undefined; text?: string | undefined } | undefined;
+  descendantForIndex?: ((start: number, end: number) => unknown) | undefined;
+  descendantForByteRange?: ((start: number, end: number) => unknown) | undefined;
+}
+
+interface CstTreeLike {
+  getText?: ((start: number, end: number, entry?: SymbolEntry) => string | null | undefined) | undefined;
+  getNode?: ((start: number, end: number, entry?: SymbolEntry) => unknown) | undefined;
+  sourceCode?: string | undefined;
+  rootNode?: CstSyntaxNodeLike | undefined;
+}
+
+interface WorkspaceDocumentLike {
+  getText?: (() => string) | undefined;
+  tree?: CstTreeLike | undefined;
+}
+
+interface WorkspaceLike {
+  documents?: Map<string, WorkspaceDocumentLike> | undefined;
+  ensureFQNIndexed?: ((fqn: string) => void) | undefined;
+  takeLazyChangedIds?: (() => { changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> }) | undefined;
+  getIndex?: (() => SymbolIndex | undefined) | undefined;
+}
+
+type SymbolIndexWithWorkspace = SymbolIndex & {
+  documents?: Map<string, WorkspaceDocumentLike> | undefined;
+  workspace?: WorkspaceLike | undefined;
+  workspaceIndex?: WorkspaceLike | undefined;
+  globalWorkspaceIndex?: WorkspaceLike | undefined;
+};
+
 /**
  * Bounded recursive structural equality check used by Salsa backdating to determine
  * whether a recomputed query value is equivalent to its prior memoized result.
@@ -338,8 +401,8 @@ function shallowEqual(a: unknown, b: unknown, depth = 0): boolean {
   if (depth > 10) return false;
 
   // Fast-path O(1) 64-bit Merkle hash comparison for CST nodes, symbols, or AST fragments
-  const aObj = a as any;
-  const bObj = b as any;
+  const aObj = a as MerkleHashable;
+  const bObj = b as MerkleHashable;
   if (aObj.merkleLow !== undefined && bObj.merkleLow !== undefined) {
     if (aObj.merkleLow !== 0 || aObj.merkleHigh !== 0 || bObj.merkleLow !== 0 || bObj.merkleHigh !== 0) {
       return aObj.merkleLow === bObj.merkleLow && aObj.merkleHigh === bObj.merkleHigh;
@@ -674,7 +737,7 @@ export class WasmQueryEngine {
   >();
 
   /** Optional cross-language TGG correspondence index linking symbols across polyglot domains. */
-  private correspondenceIndex?: any;
+  private correspondenceIndex?: CorrespondenceIndexLike | undefined;
   /** Mapping from `SymbolId` to its slot index within `correspondenceIndex` for cascading staleness propagation. */
   private correspondenceSlotMap?: Map<SymbolId, number> | undefined;
   /** Reverse mapping from correspondence slot index to the set of `SymbolId`s sharing that slot (O(1) lookup). */
@@ -721,7 +784,7 @@ export class WasmQueryEngine {
 
   /** Attaches a cross-language Triple Graph Grammar (TGG) correspondence index and optional symbol-to-slot map(s). */
   public setCorrespondenceIndex(
-    corr: any,
+    corr: CorrespondenceIndexLike | undefined,
     slotMap?: Map<SymbolId, number>,
     slotsBySymbol?: Map<SymbolId, Set<number>>,
   ): void {
@@ -762,7 +825,7 @@ export class WasmQueryEngine {
   }
 
   /** Returns the currently attached cross-language TGG correspondence index, if any. */
-  public getCorrespondenceIndex(): any {
+  public getCorrespondenceIndex(): CorrespondenceIndexLike | undefined {
     return this.correspondenceIndex;
   }
 
@@ -1284,7 +1347,8 @@ export class WasmQueryEngine {
 
   /** Resolves a `SymbolId` (either a regular indexed ID or a negative virtual specialized ID) to its `SymbolEntry`. */
   public resolveEntry(id: SymbolId): SymbolEntry | undefined {
-    const resolvedId = typeof id === "object" && id !== null && "id" in (id as any) ? (id as any).id : id;
+    const resolvedId: SymbolId =
+      typeof id === "object" && id !== null && "id" in (id as object) ? (id as unknown as { id: SymbolId }).id : id;
     if (resolvedId < 0) {
       return this.virtualEntries.get(resolvedId) ?? this.index.symbols.get(resolvedId);
     }
@@ -1305,28 +1369,27 @@ export class WasmQueryEngine {
   public getCstText(startOffset: number, endOffset: number, entry?: SymbolEntry): string | null {
     const start = startOffset !== undefined ? startOffset : entry ? entry.startOffset : 0;
     const end = endOffset !== undefined ? endOffset : entry ? entry.endOffset : 0;
-    if (this.tree && typeof (this.tree as any).getText === "function") {
-      const text = (this.tree as any).getText(start, end, entry);
+    const treeLike = this.tree as CstTreeLike | null | undefined;
+    if (treeLike && typeof treeLike.getText === "function") {
+      const text = treeLike.getText(start, end, entry);
       if (text !== null && text !== undefined) return text;
     }
-    const docs =
-      (this.index as any).documents ||
-      (this.index as any).workspace?.documents ||
-      (this.index as any).workspaceIndex?.documents;
+    const idxWithWs = this.index as SymbolIndexWithWorkspace;
+    const docs = idxWithWs.documents || idxWithWs.workspace?.documents || idxWithWs.workspaceIndex?.documents;
     if (entry?.resourceId && docs) {
       const doc = docs.get(entry.resourceId);
       if (doc && typeof doc.getText === "function") {
         return doc.getText().substring(start, end);
       }
     }
-    if (this.tree && typeof (this.tree as any).sourceCode === "string") {
-      const src = (this.tree as any).sourceCode as string;
+    if (treeLike && typeof treeLike.sourceCode === "string") {
+      const src = treeLike.sourceCode;
       if (start >= 0 && start <= src.length) {
         return src.substring(start, Math.min(end, src.length));
       }
     }
-    if (this.tree && (this.tree as any).rootNode) {
-      const root = (this.tree as any).rootNode;
+    if (treeLike && treeLike.rootNode) {
+      const root = treeLike.rootNode;
       const src = root.tree?.sourceCode ?? root.tree?.text;
       if (typeof src === "string" && start >= 0 && start <= src.length) {
         return src.substring(start, Math.min(end, src.length));
@@ -1351,30 +1414,28 @@ export class WasmQueryEngine {
   public getCstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry): unknown | null {
     const start = startOffset !== undefined ? startOffset : entry ? entry.startOffset : 0;
     const end = endOffset !== undefined ? endOffset : entry ? entry.endOffset : 0;
-    let treeToUse = this.tree;
-    const docs =
-      (this.index as any).documents ||
-      (this.index as any).workspace?.documents ||
-      (this.index as any).workspaceIndex?.documents;
+    let treeToUse: CstTreeLike | null | undefined = this.tree as CstTreeLike | null | undefined;
+    const idxWithWs = this.index as SymbolIndexWithWorkspace;
+    const docs = idxWithWs.documents || idxWithWs.workspace?.documents || idxWithWs.workspaceIndex?.documents;
     if (entry?.resourceId && docs) {
       const doc = docs.get(entry.resourceId);
       if (doc && doc.tree) {
         treeToUse = doc.tree;
       }
     }
-    if (treeToUse && typeof (treeToUse as any).getNode === "function") {
-      const node = (treeToUse as any).getNode(start, end, entry);
+    if (treeToUse && typeof treeToUse.getNode === "function") {
+      const node = treeToUse.getNode(start, end, entry);
       if (node) return node;
     }
-    if (treeToUse && (treeToUse as any).rootNode) {
-      const root = (treeToUse as any).rootNode;
+    if (treeToUse && treeToUse.rootNode) {
+      const root = treeToUse.rootNode;
       if (typeof root.descendantForIndex === "function") {
         return root.descendantForIndex(start, end);
       }
       if (typeof root.descendantForByteRange === "function") {
         return root.descendantForByteRange(start, end);
       }
-      const findNode = (n: any): any | null => {
+      const findNode = (n: CstSyntaxNodeLike): CstSyntaxNodeLike | null => {
         const s = n.startOffset ?? n.startIndex ?? -1;
         const e = n.endOffset ?? n.endIndex ?? -1;
         if (s === start && e === end) return n;
@@ -1552,7 +1613,9 @@ export class WasmQueryEngine {
         for (const q of queryNames) {
           try {
             this.fetch(q, id);
-          } catch {}
+          } catch {
+            // Speculative warmup query; errors will surface on explicit demand
+          }
         }
       }
     }
@@ -1723,34 +1786,41 @@ export class WasmQueryEngine {
 
     // Step 5: Propagate staleness across cross-domain TGG correspondence links if configured.
     if (this.correspondenceIndex) {
-      const isWasmCorrIndex = typeof this.correspondenceIndex.markStaleCascading === "function";
+      const markStaleCascading =
+        typeof this.correspondenceIndex.markStaleCascading === "function"
+          ? this.correspondenceIndex.markStaleCascading.bind(this.correspondenceIndex)
+          : null;
+      const markStale =
+        typeof this.correspondenceIndex.markStale === "function"
+          ? this.correspondenceIndex.markStale.bind(this.correspondenceIndex)
+          : null;
       for (const id of ids) {
-        if (isWasmCorrIndex) {
-          if (typeof this.correspondenceIndex.markStale === "function") {
-            this.correspondenceIndex.markStale(id);
+        if (markStaleCascading) {
+          if (markStale) {
+            markStale(id);
           }
           const slots = this.correspondenceSlotsBySymbol?.get(id);
           if (slots && slots.size > 0) {
             for (const slot of slots) {
-              this.correspondenceIndex.markStaleCascading(slot);
+              markStaleCascading(slot);
             }
           } else {
             const parentSlot = this.correspondenceSlotMap?.get(id);
             if (parentSlot !== undefined) {
-              this.correspondenceIndex.markStaleCascading(parentSlot);
+              markStaleCascading(parentSlot);
             }
           }
-        } else if (typeof this.correspondenceIndex.markStale === "function") {
+        } else if (markStale) {
           // DigitalThreadHypergraph.markStale(slot) expects a 0-based slot index, NOT a SymbolId.
           const slots = this.correspondenceSlotsBySymbol?.get(id);
           if (slots && slots.size > 0) {
             for (const slot of slots) {
-              this.correspondenceIndex.markStale(slot);
+              markStale(slot);
             }
           } else {
             const slot = this.correspondenceSlotMap?.get(id);
             if (slot !== undefined) {
-              this.correspondenceIndex.markStale(slot);
+              markStale(slot);
             }
           }
         }
@@ -1807,8 +1877,9 @@ export class WasmQueryEngine {
             results.push({ lintName, result });
           }
         }
-      } catch (e: any) {
-        const errMsg = e?.message ? String(e.message) : String(e);
+      } catch (e: unknown) {
+        const errObj = e instanceof Error ? e : null;
+        const errMsg = errObj?.message ? String(errObj.message) : String(e);
         let list = this.lintFailuresBySymbol.get(symbolId);
         if (!list) {
           list = [];
@@ -1820,7 +1891,7 @@ export class WasmQueryEngine {
           lintName,
           message: errMsg,
         });
-        console.warn(`[lint] ${lintName} failed for ${entry.name}: ${e?.stack ?? e}`);
+        console.warn(`[lint] ${lintName} failed for ${entry.name}: ${errObj?.stack ?? String(e)}`);
       }
     }
     return results;
@@ -1940,8 +2011,8 @@ export class WasmQueryEngine {
       const resourceSymbolIds = this.index.symbolsByResource.get(resourceId);
       if (!resourceSymbolIds) return diagnostics;
       symbolsToCheck = resourceSymbolIds
-        .map((id: SymbolId) => [id, this.index.symbols.get(id)] as [SymbolId, SymbolEntry | undefined])
-        .filter((pair: any): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
+        .map((id: SymbolId): [SymbolId, SymbolEntry | undefined] => [id, this.index.symbols.get(id)])
+        .filter((pair): pair is [SymbolId, SymbolEntry] => pair[1] !== undefined);
     } else {
       symbolsToCheck = this.index.symbols;
     }
@@ -2358,11 +2429,7 @@ export class WasmQueryEngine {
     const rawQuery = hooks?.[queryName];
     if (!rawQuery) return undefined;
     const queryFn: QueryFn | undefined =
-      typeof rawQuery === "function"
-        ? (rawQuery as QueryFn)
-        : typeof (rawQuery as any)?.execute === "function"
-          ? (rawQuery as any).execute
-          : undefined;
+      typeof rawQuery === "function" ? rawQuery : typeof rawQuery.execute === "function" ? rawQuery.execute : undefined;
     if (!queryFn) return undefined;
 
     const key = this.memoKey(queryName, symbolId, argsHash);
@@ -2376,9 +2443,14 @@ export class WasmQueryEngine {
         for (let j = i; j < this.executionStack.length; j++) {
           this.executionStack[j]!.inCycle = true;
         }
-        const recoveryFn =
-          typeof rawQuery === "object" && rawQuery !== null && typeof (rawQuery as any).recovery === "function"
-            ? (rawQuery as any).recovery
+        type ExtendedCycleRecoveryFn = (
+          cycle: CycleInfo & QueryDB,
+          self: SymbolEntry,
+          args?: Record<string, unknown>,
+        ) => unknown;
+        const recoveryFn: ExtendedCycleRecoveryFn | undefined =
+          typeof rawQuery === "object" && rawQuery !== null && typeof rawQuery.recovery === "function"
+            ? (rawQuery.recovery as ExtendedCycleRecoveryFn)
             : undefined;
         if (recoveryFn) {
           const participants = [
@@ -2389,7 +2461,8 @@ export class WasmQueryEngine {
           const savedTracker = this.activeTracker;
           this.activeTracker = null;
           try {
-            const cycleDb = Object.assign(Object.create(this.createTrackedDB()), { participants });
+            const cycleDb = Object.assign(Object.create(this.createTrackedDB()), { participants }) as CycleInfo &
+              QueryDB;
             return recoveryFn(cycleDb, entry, args);
           } finally {
             this.activeTracker = savedTracker;
@@ -2855,16 +2928,11 @@ export class WasmQueryEngine {
    * for newly populated package scopes.
    */
   public ensureFQNIndexed(fqn: string): void {
-    const ws =
-      (this.index as any)?.workspace ??
-      (this.index as any)?.workspaceIndex ??
-      (this.index as any)?.globalWorkspaceIndex;
+    const idxWithWs = this.index as SymbolIndexWithWorkspace | undefined;
+    const ws = idxWithWs?.workspace ?? idxWithWs?.workspaceIndex ?? idxWithWs?.globalWorkspaceIndex;
     if (ws && typeof ws.ensureFQNIndexed === "function") {
       ws.ensureFQNIndexed(fqn);
-      const lazyChanges =
-        typeof ws.takeLazyChangedIds === "function"
-          ? (ws.takeLazyChangedIds() as { changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> })
-          : null;
+      const lazyChanges = typeof ws.takeLazyChangedIds === "function" ? ws.takeLazyChangedIds() : null;
       const hadChanges = lazyChanges ? lazyChanges.changedIds.size > 0 : true;
       if (hadChanges && typeof ws.getIndex === "function" && this.index) {
         const newIdx = ws.getIndex();
@@ -3082,7 +3150,9 @@ export class WasmQueryEngine {
       const slots: number[] =
         typeof this.correspondenceIndex.findSlotsByDomainNode === "function"
           ? (this.correspondenceIndex.findSlotsByDomainNode(hgDom, symbolId) ?? [])
-          : (this.correspondenceIndex.findThreadsByDomainNode(hgDom, symbolId) ?? []);
+          : typeof this.correspondenceIndex.findThreadsByDomainNode === "function"
+            ? (this.correspondenceIndex.findThreadsByDomainNode(hgDom, symbolId) ?? [])
+            : [];
       for (const slot of slots) {
         const rec = this.correspondenceIndex.getRecord?.(slot);
         if (rec && !rec.isRemoved && rec.domainNodes) {

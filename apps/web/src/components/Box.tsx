@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import styled, { css } from "styled-components";
+import styled, { css, type CSSObject } from "styled-components";
+
+export type BoxSxProp = Record<string, unknown>;
 
 export interface BoxProps {
   display?: string | string[] | undefined;
@@ -76,7 +78,7 @@ export interface BoxProps {
   overflowY?: string | undefined;
   cursor?: string | undefined;
   userSelect?: string | undefined;
-  sx?: any;
+  sx?: BoxSxProp | undefined;
   children?: React.ReactNode | undefined;
   style?: React.CSSProperties | undefined;
   className?: string | undefined;
@@ -203,12 +205,12 @@ function formatSpace(val: string | number | undefined): string | undefined {
   return typeof val === "number" ? `${val * 4}px` : val;
 }
 
-function normalizeSx(sx: any): any {
-  if (!sx || typeof sx !== "object" || Array.isArray(sx)) return sx;
-  const result: Record<string, any> = {};
+function normalizeSx(sx: BoxSxProp): CSSObject {
+  if (!sx || typeof sx !== "object" || Array.isArray(sx)) return {};
+  const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(sx)) {
     if (val !== null && typeof val === "object" && !Array.isArray(val)) {
-      result[key] = normalizeSx(val);
+      result[key] = normalizeSx(val as BoxSxProp);
       continue;
     }
     switch (key) {
@@ -286,10 +288,10 @@ function normalizeSx(sx: any): any {
         break;
     }
   }
-  return result;
+  return result as CSSObject;
 }
 
-const styledBase: typeof styled = (styled as any).default ?? styled;
+const styledBase: typeof styled = (styled as { default?: typeof styled }).default ?? styled;
 
 const Box = styledBase.div.withConfig({
   shouldForwardProp: (prop) => !styleProps.has(prop),

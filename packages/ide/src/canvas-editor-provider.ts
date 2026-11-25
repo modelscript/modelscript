@@ -13,7 +13,7 @@ import { openExternalVrRotunda } from "./vr-handoff.js";
 import { BaseCustomEditorProvider } from "./webview/base-custom-editor-provider.js";
 
 /**
- * VS Code / ModelScript IDE Custom Editor for `.mscanvas` Polyglot Infinite Spatial Canvas files.
+ * VS Code / Ansatz Studio Custom Editor for `.mscanvas` Polyglot Infinite Spatial Canvas files.
  *
  * Keeps the underlying `.mscanvas` JSON TextDocument bidirectionally synchronized
  * with the interactive SpatialCanvas webview and supports exporting FMI topologies to `.ssd` (SSP 1.0).

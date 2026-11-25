@@ -18,6 +18,7 @@ import {
   isImpureCalledInEquationSection,
   isImpureCalledInPureFunction,
   isPreviousOnNonClocked,
+  type ModelicaGrammarSymbols,
 } from "./helpers.js";
 
 /**
@@ -34,7 +35,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 6001,
     message: (target) => `Clocked expression '${target.text}' mixes signals from different clock domains.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if left and right sub-expressions reference distinct Clock(...) definitions or mix sample() and previous()
       if (hasMixedClockDomains(db, node, $)) {
         db.diagnostic(node);
@@ -52,7 +53,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 6002,
     message: () => `Sub-clock factor must be a non-negative integer (or 0 for inferred factor).`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Inspect calls to synchronous multi-rate clock conversion operators
       const name = getCallCalleeNode(db, node, $);
       if (
@@ -81,7 +82,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     code: 6003,
     message: (target) =>
       `Operator 'previous()' may only be applied to clocked discrete-time variables in '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       const name = getCallCalleeNode(db, node, $);
       if (name != 0 && db.ast.textEquals(name, "previous")) {
         // Reject `previous(time)` or `previous(paramOrConst)` per MLS §16.4.1
@@ -103,7 +104,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     code: 6004,
     message: (target) =>
       `Operator 'hold()' converts a clocked signal to continuous-time and cannot be used inside a clocked partition: '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       const name = getCallCalleeNode(db, node, $);
       if (name != 0 && db.ast.textEquals(name, "hold")) {
         // Walk ancestor call expressions to detect illegal nesting inside der(), previous(), subSample(), or superSample()
@@ -144,7 +145,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     code: 6010,
     message: (target) =>
       `More than one state marked as initialState in state machine '${target["name"] || target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       let targetNode = node;
       for (const spec of db.ast.getDescendants(node, $.long_class_specifier)) {
         const nameId = db.ast.getChildByFieldId(spec, "name");
@@ -347,7 +348,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 6020,
     message: (target) => `Impure function '${target.text}' cannot be called inside a pure function.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Verify that the enclosing function is pure and the target callee is declared impure
       if (isImpureCalledInPureFunction(db, node, $)) {
         const callee = db.ast.getFirstChild(node);
@@ -367,7 +368,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     code: 6021,
     message: (target) =>
       `Impure function '${target.text}' may only be called inside a when-equation or when-statement.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if an impure function is invoked directly inside an equation_section outside any when_equation
       if (isImpureCalledInEquationSection(db, node, $)) {
         const callee = db.ast.getFirstChild(node);
@@ -385,7 +386,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     code: 6050,
     message: (target) =>
       `Transition priority '${target.text}' must be a positive integer (>= 1) and unique among transitions exiting the same state.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (db.ast.getType(node) == $.primary) {
         const fc = db.ast.getFirstChild(node);
         if (fc != 0 && db.ast.getType(fc) == $.function_call) return;
@@ -406,7 +407,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     code: 6051,
     message: (target) =>
       `Operator 'firstTick(${target.text})' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (db.ast.getType(node) == $.primary) {
         const fc = db.ast.getFirstChild(node);
         if (fc != 0 && db.ast.getType(fc) == $.function_call) return;
@@ -430,7 +431,7 @@ export const modelicaSyncLints: Record<string, CompilerLint> = {
     code: 6052,
     message: (target) =>
       `Operator 'interval(${target.text})' cannot be applied to continuous-time 'time' or non-clocked constant/parameter expressions.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (db.ast.getType(node) == $.primary) {
         const fc = db.ast.getFirstChild(node);
         if (fc != 0 && db.ast.getType(fc) == $.function_call) return;

@@ -1,0 +1,11 @@
+{
+  "id": "csmp-04-nonlinear-pendulum",
+  "lang": "csmp",
+  "subFormats": ["csmp"],
+  "difficulty": 4,
+  "title": "Nonlinear Pendulum Phase-Plane Dynamics",
+  "description": "Large-angle nonlinear gravity pendulum with viscous pivot friction and external periodic torque forcing, illustrating phase-plane trajectories.",
+  "category": "Nonlinear Dynamics",
+  "tags": ["csmp", "pendulum", "nonlinear", "phase-plane"],
+  "activeFile": "nonlinear_pendulum.csmp"
+}

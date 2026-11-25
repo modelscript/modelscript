@@ -1,0 +1,11 @@
+{
+  "id": "verilog-04-pwm-motor-driver",
+  "lang": "verilog",
+  "subFormats": ["v", "vh"],
+  "difficulty": 4,
+  "title": "Parameterized PWM Motor Driver with Testbench",
+  "description": "Multi-file complementary H-bridge PWM motor controller with dead-time insertion, shared Verilog header definitions (pwm_defs.vh), and verification testbench (tb_pwm.v).",
+  "category": "Power Electronics & Motor Control",
+  "tags": ["verilog", "pwm", "motor-control", "testbench", "multi-file"],
+  "activeFile": "pwm.v"
+}

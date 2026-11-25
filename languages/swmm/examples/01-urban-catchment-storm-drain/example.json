@@ -1,0 +1,12 @@
+{
+  "id": "swmm-01-urban-catchment-storm-drain",
+  "lang": "swmm",
+  "subFormats": ["swmm"],
+  "difficulty": 1,
+  "title": "Single Urban Catchment & Circular Storm Drain",
+  "description": "Minimal urban stormwater runoff model routing rainfall from a single impervious catchment through two circular storm sewer conduits to a free outfall.",
+  "category": "Urban Stormwater Hydraulics",
+  "tags": ["swmm", "storm-drain", "horton", "circular-conduit"],
+  "activeFile": "urban_drain.swmm",
+  "isDefaultStarter": true
+}

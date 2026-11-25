@@ -1,0 +1,12 @@
+{
+  "id": "owl2-01-mechanical-taxonomy",
+  "lang": "owl2",
+  "subFormats": ["ofn"],
+  "difficulty": 1,
+  "title": "Mechanical Components Functional Taxonomy",
+  "description": "OWL 2 Functional-Style Syntax ontology classifying rotating machinery components, bearings, shafts, and gears with disjointness axioms.",
+  "category": "Knowledge Engineering",
+  "tags": ["owl2", "ontology", "functional-syntax", "mechanical", "taxonomy"],
+  "activeFile": "mechanical_taxonomy.ofn",
+  "isDefaultStarter": true
+}

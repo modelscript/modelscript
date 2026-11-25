@@ -1,0 +1,11 @@
+{
+  "id": "scale-02-spent-fuel-decay-origen",
+  "lang": "scale",
+  "subFormats": ["origen"],
+  "difficulty": 2,
+  "title": "Spent Fuel Decay Heat and Isotopics (ORIGEN)",
+  "description": "ORIGEN nuclear transmutation and radioactive decay simulation tracking U-235 depletion and I-135/Xe-135 fission product poisoning through irradiation and cooling.",
+  "category": "Nuclear Fuel Cycle & Depletion",
+  "tags": ["scale", "origen", "depletion", "decay-heat", "xenon"],
+  "activeFile": "spent_fuel.scale"
+}

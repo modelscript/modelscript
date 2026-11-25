@@ -1,0 +1,81 @@
+[
+  {
+    "id": "modelica-01-rc-thermal-tank",
+    "lang": "modelica",
+    "subFormats": ["mo"],
+    "difficulty": 1,
+    "title": "First-Order RC Thermal Tank",
+    "description": "Lumped-capacitance heated water tank with convective heat loss to ambient and step heater power input.",
+    "category": "Thermal Systems",
+    "tags": ["modelica", "thermal", "ode", "lumped-capacitance", "first-order"],
+    "activeFile": "ThermalTank.mo",
+    "fileNames": ["ThermalTank.mo"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "model ThermalTank \"First-order lumped-capacitance heated liquid tank\"\n  parameter Real C(unit=\"J/K\") = 41840.0 \"Thermal capacitance of 10 kg water\";\n  parameter Real R(unit=\"K/W\") = 0.08 \"Thermal resistance to ambient\";\n  parameter Real T_amb(unit=\"K\") = 293.15 \"Ambient temperature (20 degC)\";\n  parameter Real Q_heater(unit=\"W\") = 1200.0 \"Electric immersion heater power\";\n  parameter Real T0(unit=\"K\") = 293.15 \"Initial tank temperature\";\n\n  Real T(unit=\"K\", start=T0, fixed=true) \"Bulk liquid temperature\";\n  Real Q_loss(unit=\"W\") \"Convective heat loss to environment\";\n  Real T_degC(unit=\"degC\") \"Tank temperature in Celsius\";\n\nequation\n  Q_loss = (T - T_amb) / R;\n  C * der(T) = Q_heater - Q_loss;\n  T_degC = T - 273.15;\n\n  annotation(\n    experiment(StartTime=0, StopTime=6000, Tolerance=1e-6),\n    Documentation(info=\"<html><p>First-order thermal tank model with steady-state temperature T_ss = T_amb + R*Q_heater.</p></html>\")\n  );\nend ThermalTank;\n"
+  },
+  {
+    "id": "modelica-02-rlc-resonant-circuit",
+    "lang": "modelica",
+    "subFormats": ["mo"],
+    "difficulty": 2,
+    "title": "Series RLC Resonant Circuit",
+    "description": "Underdamped series RLC circuit driven by a sinusoidal AC voltage source demonstrating resonance and energy exchange.",
+    "category": "Electrical Systems",
+    "tags": ["modelica", "electrical", "rlc", "resonance", "acausal"],
+    "activeFile": "RLCResonantCircuit.mo",
+    "fileNames": ["RLCResonantCircuit.mo"],
+    "fileCount": 1,
+    "code": "model RLCResonantCircuit \"Underdamped series RLC resonant circuit\"\n  parameter Real R(unit=\"Ohm\") = 4.0 \"Series resistance\";\n  parameter Real L(unit=\"H\") = 0.025 \"Series inductance\";\n  parameter Real C(unit=\"F\") = 100e-6 \"Series capacitance\";\n  parameter Real V_amp(unit=\"V\") = 24.0 \"AC source amplitude\";\n  parameter Real f_drive(unit=\"Hz\") = 100.66 \"Driving frequency near resonance\";\n  constant Real pi = 3.141592653589793;\n\n  Real v_src(unit=\"V\") \"Source voltage\";\n  Real i(unit=\"A\", start=0.0, fixed=true) \"Series loop current\";\n  Real v_C(unit=\"V\", start=0.0, fixed=true) \"Capacitor voltage\";\n  Real v_L(unit=\"V\") \"Inductor voltage\";\n  Real v_R(unit=\"V\") \"Resistor voltage\";\n  Real E_stored(unit=\"J\") \"Total electromagnetic stored energy\";\n\nequation\n  v_src = V_amp * sin(2.0 * pi * f_drive * time);\n  v_R = R * i;\n  v_L = L * der(i);\n  C * der(v_C) = i;\n  v_src = v_R + v_L + v_C;\n  E_stored = 0.5 * L * i * i + 0.5 * C * v_C * v_C;\n\n  annotation(\n    experiment(StartTime=0, StopTime=0.15, Tolerance=1e-6)\n  );\nend RLCResonantCircuit;\n"
+  },
+  {
+    "id": "modelica-03-chua-chaotic-oscillator",
+    "lang": "modelica",
+    "subFormats": ["mo"],
+    "difficulty": 3,
+    "title": "Chua's Chaotic Double-Scroll Oscillator",
+    "description": "Nonlinear third-order autonomous circuit featuring a piecewise-linear Chua diode exhibiting double-scroll chaotic attractors.",
+    "category": "Nonlinear Dynamics",
+    "tags": ["modelica", "chaos", "nonlinear", "oscillator", "circuit"],
+    "activeFile": "ChuaOscillator.mo",
+    "fileNames": ["ChuaOscillator.mo"],
+    "fileCount": 1,
+    "code": "model ChuaOscillator \"Chua's double-scroll chaotic electronic oscillator\"\n  parameter Real alpha = 15.6 \"Capacitance ratio C2/C1\";\n  parameter Real beta = 28.0 \"Normalized inductance parameter\";\n  parameter Real m0 = -1.143 \"Inner slope of piecewise-linear Chua diode\";\n  parameter Real m1 = -0.714 \"Outer slope of piecewise-linear Chua diode\";\n\n  Real x(start=0.7, fixed=true) \"Normalized voltage across C1\";\n  Real y(start=0.0, fixed=true) \"Normalized voltage across C2\";\n  Real z(start=0.0, fixed=true) \"Normalized inductor current\";\n  Real h \"Chua diode nonlinear current characteristic\";\n\nequation\n  h = m1 * x + 0.5 * (m0 - m1) * (abs(x + 1.0) - abs(x - 1.0));\n  der(x) = alpha * (y - x - h);\n  der(y) = x - y + z;\n  der(z) = -beta * y;\n\n  annotation(\n    experiment(StartTime=0, StopTime=60, Tolerance=1e-7)\n  );\nend ChuaOscillator;\n"
+  },
+  {
+    "id": "modelica-04-ev-battery-electrothermal",
+    "lang": "modelica",
+    "subFormats": ["mo"],
+    "difficulty": 4,
+    "title": "800V EV Battery Electro-Thermal Pack",
+    "description": "Coupled 2-RC Thevenin equivalent circuit and lumped thermal model of an 800V lithium-ion EV traction battery pack under fast-discharge load.",
+    "category": "Energy Storage",
+    "tags": ["modelica", "battery", "ev", "electrothermal", "thevenin"],
+    "activeFile": "EVBatteryPack.mo",
+    "fileNames": ["EVBatteryPack.mo"],
+    "fileCount": 1,
+    "code": "model EVBatteryPack \"Coupled 800V EV traction battery electro-thermal pack model\"\n  parameter Integer n_series = 216 \"Cells in series (nominal 800V)\";\n  parameter Integer n_parallel = 2 \"Strings in parallel\";\n  parameter Real Q_cell(unit=\"A.s\") = 50.0 * 3600.0 \"Cell capacity (50 Ah)\";\n  parameter Real R0_ref(unit=\"Ohm\") = 0.0018 \"Ohmic resistance per cell at 25 degC\";\n  parameter Real R1(unit=\"Ohm\") = 0.0012 \"Fast RC polarization resistance\";\n  parameter Real C1(unit=\"F\") = 2500.0 \"Fast RC polarization capacitance\";\n  parameter Real C_th(unit=\"J/K\") = 380000.0 \"Pack thermal mass\";\n  parameter Real hA_cool(unit=\"W/K\") = 180.0 \"Liquid cooling plate conductance\";\n  parameter Real T_cool(unit=\"K\") = 298.15 \"Coolant inlet temperature\";\n  parameter Real P_load(unit=\"W\") = 150000.0 \"Constant traction discharge power (150 kW)\";\n\n  Real soc(start=0.85, fixed=true) \"Pack state of charge [0..1]\";\n  Real v_rc1(unit=\"V\", start=0.0, fixed=true) \"Cell RC polarization voltage\";\n  Real T_pack(unit=\"K\", start=298.15, fixed=true) \"Pack core temperature\";\n  Real V_oc_cell(unit=\"V\") \"Open-circuit voltage per cell\";\n  Real R0_cell(unit=\"Ohm\") \"Temperature-dependent ohmic resistance\";\n  Real I_pack(unit=\"A\") \"Pack discharge current\";\n  Real I_cell(unit=\"A\") \"Per-cell discharge current\";\n  Real V_pack(unit=\"V\") \"Pack terminal voltage\";\n  Real Q_gen(unit=\"W\") \"Total Joule heat generation\";\n\nequation\n  V_oc_cell = 3.25 + 0.85 * soc + 0.08 * soc * soc;\n  R0_cell = R0_ref * (1.0 + 0.004 * (298.15 - T_pack));\n  I_cell = I_pack / n_parallel;\n  C1 * der(v_rc1) = I_cell - v_rc1 / R1;\n  V_pack = n_series * (V_oc_cell - I_cell * R0_cell - v_rc1);\n  P_load = V_pack * I_pack;\n  der(soc) = -I_cell / Q_cell;\n  Q_gen = n_series * n_parallel * (I_cell * I_cell * R0_cell + v_rc1 * v_rc1 / R1);\n  C_th * der(T_pack) = Q_gen - hA_cool * (T_pack - T_cool);\n\n  annotation(\n    experiment(StartTime=0, StopTime=900, Tolerance=1e-6)\n  );\nend EVBatteryPack;\n"
+  },
+  {
+    "id": "modelica-05-wind-turbine-drivetrain",
+    "lang": "modelica",
+    "subFormats": ["mo", "mos"],
+    "difficulty": 5,
+    "title": "Multi-File Wind Turbine Drivetrain Package",
+    "description": "Structured Modelica package combining aerodynamic rotor, compliant planetary gearbox, synchronous generator, and simulation script.",
+    "category": "Renewable Energy",
+    "tags": ["modelica", "wind-turbine", "drivetrain", "package", "multi-file"],
+    "activeFile": "WindTurbine.mo",
+    "fileNames": ["WindTurbine.mo", "Gearbox.mo", "Generator.mo", "package.mo", "package.order", "simulate.mos"],
+    "fileCount": 6,
+    "code": "within WindDrivetrain;\nmodel WindTurbine \"5 MW horizontal-axis wind turbine drivetrain assembly\"\n  parameter Real J_rotor(unit=\"kg.m2\") = 3.54e7 \"Aerodynamic rotor inertia\";\n  parameter Real rho(unit=\"kg/m3\") = 1.225 \"Air density\";\n  parameter Real R_blade(unit=\"m\") = 63.0 \"Rotor blade radius\";\n  parameter Real Cp = 0.45 \"Aerodynamic power coefficient\";\n  parameter Real v_wind(unit=\"m/s\") = 11.4 \"Rated hub-height wind speed\";\n  constant Real pi = 3.141592653589793;\n\n  Real omega_rotor(unit=\"rad/s\", start=1.24, fixed=true) \"Low-speed rotor angular velocity\";\n  Real tau_aero(unit=\"N.m\") \"Aerodynamic rotor torque\";\n  Real P_aero(unit=\"W\") \"Aerodynamic rotor power\";\n\n  Gearbox gearbox;\n  Generator generator;\n\nequation\n  P_aero = 0.5 * rho * pi * R_blade * R_blade * Cp * v_wind * v_wind * v_wind;\n  tau_aero = P_aero / max(omega_rotor, 0.1);\n  J_rotor * der(omega_rotor) = tau_aero - gearbox.tau_low;\n\n  gearbox.omega_low = omega_rotor;\n  gearbox.omega_high = generator.omega_gen;\n  generator.tau_mech = gearbox.tau_high;\n\n  annotation(\n    experiment(StartTime=0, StopTime=30, Tolerance=1e-6)\n  );\nend WindTurbine;\n",
+    "files": {
+      "WindTurbine.mo": "within WindDrivetrain;\nmodel WindTurbine \"5 MW horizontal-axis wind turbine drivetrain assembly\"\n  parameter Real J_rotor(unit=\"kg.m2\") = 3.54e7 \"Aerodynamic rotor inertia\";\n  parameter Real rho(unit=\"kg/m3\") = 1.225 \"Air density\";\n  parameter Real R_blade(unit=\"m\") = 63.0 \"Rotor blade radius\";\n  parameter Real Cp = 0.45 \"Aerodynamic power coefficient\";\n  parameter Real v_wind(unit=\"m/s\") = 11.4 \"Rated hub-height wind speed\";\n  constant Real pi = 3.141592653589793;\n\n  Real omega_rotor(unit=\"rad/s\", start=1.24, fixed=true) \"Low-speed rotor angular velocity\";\n  Real tau_aero(unit=\"N.m\") \"Aerodynamic rotor torque\";\n  Real P_aero(unit=\"W\") \"Aerodynamic rotor power\";\n\n  Gearbox gearbox;\n  Generator generator;\n\nequation\n  P_aero = 0.5 * rho * pi * R_blade * R_blade * Cp * v_wind * v_wind * v_wind;\n  tau_aero = P_aero / max(omega_rotor, 0.1);\n  J_rotor * der(omega_rotor) = tau_aero - gearbox.tau_low;\n\n  gearbox.omega_low = omega_rotor;\n  gearbox.omega_high = generator.omega_gen;\n  generator.tau_mech = gearbox.tau_high;\n\n  annotation(\n    experiment(StartTime=0, StopTime=30, Tolerance=1e-6)\n  );\nend WindTurbine;\n",
+      "Gearbox.mo": "within WindDrivetrain;\nmodel Gearbox \"Compliant planetary step-up gearbox with torsional stiffness and damping\"\n  parameter Real ratio = 97.0 \"Gear step-up ratio\";\n  parameter Real k_shaft(unit=\"N.m/rad\") = 8.67e8 \"Low-speed shaft torsional stiffness\";\n  parameter Real c_shaft(unit=\"N.m.s/rad\") = 6.21e6 \"Low-speed shaft torsional damping\";\n  parameter Real eta = 0.965 \"Mechanical transmission efficiency\";\n\n  input Real omega_low(unit=\"rad/s\") \"Rotor shaft angular speed\";\n  input Real omega_high(unit=\"rad/s\") \"Generator shaft angular speed\";\n  output Real tau_low(unit=\"N.m\") \"Low-speed shaft reaction torque\";\n  output Real tau_high(unit=\"N.m\") \"High-speed shaft driving torque\";\n\n  Real theta_twist(unit=\"rad\", start=0.0, fixed=true) \"Shaft torsional twist angle\";\n\nequation\n  der(theta_twist) = omega_low - omega_high / ratio;\n  tau_low = k_shaft * theta_twist + c_shaft * (omega_low - omega_high / ratio);\n  tau_high = eta * tau_low / ratio;\nend Gearbox;\n",
+      "Generator.mo": "within WindDrivetrain;\nmodel Generator \"Permanent-magnet synchronous generator with electromagnetic torque control\"\n  parameter Real J_gen(unit=\"kg.m2\") = 534.0 \"Generator rotor inertia\";\n  parameter Real k_opt(unit=\"N.m.s2/rad2\") = 2.33 \"Optimal MPPT torque gain\";\n  parameter Real eta_elec = 0.94 \"Power electronics and stator efficiency\";\n\n  input Real tau_mech(unit=\"N.m\") \"Driving mechanical torque from gearbox\";\n  output Real omega_gen(unit=\"rad/s\") \"Generator angular speed\";\n  output Real P_elec(unit=\"W\") \"Delivered electrical power\";\n\n  Real omega(unit=\"rad/s\", start=120.0, fixed=true) \"Generator speed state\";\n  Real tau_em(unit=\"N.m\") \"Electromagnetic braking torque\";\n\nequation\n  tau_em = k_opt * omega * omega;\n  J_gen * der(omega) = tau_mech - tau_em;\n  omega_gen = omega;\n  P_elec = eta_elec * tau_em * omega;\nend Generator;\n",
+      "package.mo": "within ;\npackage WindDrivetrain \"5 MW Offshore Wind Turbine Drivetrain Library\"\n  annotation(\n    version=\"1.0.0\",\n    Documentation(info=\"<html><p>Modular wind turbine mechanical-electrical drivetrain package.</p></html>\")\n  );\nend WindDrivetrain;\n",
+      "package.order": "Gearbox\nGenerator\nWindTurbine\n",
+      "simulate.mos": "// Simulation script for 5 MW Wind Turbine Drivetrain Package\nloadFile(\"package.mo\");\nsimulate(WindDrivetrain.WindTurbine, startTime=0.0, stopTime=30.0, numberOfIntervals=600, tolerance=1e-6);\nplot({omega_rotor, generator.omega_gen, generator.P_elec});\n"
+    }
+  }
+]

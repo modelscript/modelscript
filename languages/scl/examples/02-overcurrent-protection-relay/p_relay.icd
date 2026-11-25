@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="FEEDER_OC_RELAY_ICD" version="1.0" revision="1.0" toolID="Ansatz"/>
+  <Communication>
+    <SubNetwork name="STATION_BUS" type="8-MMS">
+      <ConnectedAP iedName="RELAY_OC1" apName="AP1">
+        <GSE ldInst="PROT" cbName="GC_OC_TRIP">
+          <Address>
+            <P type="MAC-Address">01-0C-CD-01-00-11</P>
+            <P type="APPID">0011</P>
+            <P type="VLAN-ID">100</P>
+            <P type="VLAN-PRIORITY">4</P>
+          </Address>
+        </GSE>
+      </ConnectedAP>
+    </SubNetwork>
+  </Communication>
+  <IED name="RELAY_OC1" desc="Feeder Overcurrent Protection Relay" type="SEL-351" manufacturer="SEL">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="PROT">
+          <LN0 lnClass="LLN0" lnType="LLN0_Type" inst="">
+            <DataSet name="DS_OC_TRIP">
+              <FCDA ldInst="PROT" lnClass="PTRC" lnInst="1" doName="Tr" daName="general" fc="ST"/>
+              <FCDA ldInst="PROT" lnClass="PTOC" lnInst="1" doName="Op" daName="general" fc="ST"/>
+            </DataSet>
+            <GSEControl name="GC_OC_TRIP" appID="OC_TRIP_01" datSet="DS_OC_TRIP" confRev="1" minTime="2.0" maxTime="1000.0"/>
+          </LN0>
+          <LN lnClass="LPHD" inst="1" lnType="LPHD_Type"/>
+          <LN lnClass="PTOC" inst="1" lnType="PTOC_Type"/>
+          <LN lnClass="PIOC" inst="1" lnType="PIOC_Type"/>
+          <LN lnClass="PTRC" inst="1" lnType="PTRC_Type"/>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>

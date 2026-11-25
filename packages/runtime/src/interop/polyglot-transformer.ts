@@ -124,6 +124,8 @@ export interface PolyglotNode {
     | {
         source: string;
         target: string;
+        from?: string | undefined;
+        to?: string | undefined;
         kind?: "flow" | "binding" | "physical" | undefined;
       }[]
     | undefined;
@@ -131,8 +133,37 @@ export interface PolyglotNode {
   equations?: string[] | undefined;
   /** Formal constraints or invariant assertions. */
   constraints?: string[] | undefined;
+  /** Structured key-value properties carried on polyglot TGG nodes. */
+  properties?: Record<string, unknown> | undefined;
   /** Dynamic extension properties for custom language schemas. */
-  [key: string]: any;
+  [key: string]: unknown;
+}
+
+/**
+ * Input shape accepted by `PolyglotTransformer.assertTggConstraint` and theory sync methods.
+ */
+export interface TggConstraintInput {
+  kind: string;
+  args?: unknown[] | undefined;
+  corrNodeId?: string | number | undefined;
+  varA?: string | undefined;
+  varB?: string | undefined;
+  sourceVar?: string | undefined;
+  targetVar?: string | undefined;
+  bounds?: string | { min?: number | undefined; max?: number | undefined } | undefined;
+  strategy?: string | undefined;
+  varName?: string | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
+  bound?: number | undefined;
+  dimensionVector?: unknown;
+  unit?: string | undefined;
+  direction?: string | undefined;
+  portName?: string | undefined;
+  portA?: string | undefined;
+  portB?: string | undefined;
+  subClass?: string | undefined;
+  superClass?: string | undefined;
 }
 
 /**
@@ -168,8 +199,7 @@ export class PolyglotTransformer {
 
   /** Optional unified CompiledTGGPlan IR shared with WASM kernel. */
   public compiledPlan?:
-    | { rules: { rule: TGGRuleOptions }[]; typeMaps: Record<string, Record<string, string>> }
-    | undefined;
+    { rules: { rule: TGGRuleOptions }[]; typeMaps: Record<string, Record<string, string>> } | undefined;
 
   /**
    * Initializes a new PolyglotTransformer instance.
@@ -528,13 +558,17 @@ export class PolyglotTransformer {
 
     // 5. JSON-Schema default emitter
     this.registerEmitter("json-schema", (node) => {
-      const properties: Record<string, any> = {};
+      const properties: Record<
+        string,
+        { type: string; default?: string | undefined; description?: string | undefined }
+      > = {};
       if (node.attributes) {
         for (const a of node.attributes) {
-          properties[a.name] = {
+          const propSchema: { type: string; default?: string | undefined } = {
             type: a.type === "Real" || a.type === "Integer" ? "number" : a.type === "Boolean" ? "boolean" : "string",
           };
-          if (a.value !== undefined) properties[a.name].default = a.value;
+          if (a.value !== undefined) propSchema.default = a.value;
+          properties[a.name] = propSchema;
         }
       }
       if (node.components) {
@@ -802,7 +836,7 @@ export class PolyglotTransformer {
   }
 
   /** Shadow complement store preserving unmapped fields during asymmetric projection */
-  private shadowComplements = new Map<string, Record<string, any>>();
+  private shadowComplements = new Map<string, Record<string, unknown>>();
 
   /** Set of retracted node identifiers (DBSP negative deltas) */
   private retractedNodes = new Set<string>();
@@ -829,14 +863,14 @@ export class PolyglotTransformer {
   /**
    * Stores unmapped shadow complement data for an asymmetric transformation.
    */
-  storeComplement(id: string, data: Record<string, any>): void {
+  storeComplement(id: string, data: Record<string, unknown>): void {
     this.shadowComplements.set(id, data);
   }
 
   /**
    * Retrieves shadow complement data for an asymmetric transformation.
    */
-  getComplement(id: string): Record<string, any> | undefined {
+  getComplement(id: string): Record<string, unknown> | undefined {
     return this.shadowComplements.get(id);
   }
 
@@ -1042,7 +1076,7 @@ export class PolyglotTransformer {
   /**
    * Asserts a TGG correspondence constraint into the Theory Coordinator for a thread slot.
    */
-  assertTggConstraint(threadSlot: number, constraint: any, ruleName?: string): number {
+  assertTggConstraint(threadSlot: number, constraint: TggConstraintInput, ruleName?: string): number {
     const srcCtx = { ruleName, threadSlot, corrNodeId: constraint.corrNodeId, constraint };
     let lit: TheoryLiteral | null = null;
 
@@ -1072,11 +1106,12 @@ export class PolyglotTransformer {
         sourceContext: { ...srcCtx, strategy },
       };
       if (constraint.kind === "reconcilePhysics" && bounds && typeof bounds === "object") {
-        if (typeof bounds.min === "number" && typeof bounds.max === "number") {
+        const boundsObj = bounds as { min?: unknown; max?: unknown };
+        if (typeof boundsObj.min === "number" && typeof boundsObj.max === "number") {
           const boundLitId = this.coordinator.assertLiteral({
             id: 0,
             predicate: "interval",
-            args: [vA, bounds.min, bounds.max],
+            args: [vA, boundsObj.min, boundsObj.max],
             domain: "constraint",
             sourceContext: srcCtx,
           });
@@ -1181,7 +1216,7 @@ export class PolyglotTransformer {
    * Synchronizes TGG constraints with formal theory coordination for a specific thread slot.
    * Retracts old literals (if any), asserts new constraints, and updates DigitalThreadHypergraph status.
    */
-  syncThreadTheory(threadSlot: number, constraints: any[], ruleName?: string): CoordinatorSatResult {
+  syncThreadTheory(threadSlot: number, constraints: TggConstraintInput[], ruleName?: string): CoordinatorSatResult {
     this.retractThreadConstraints(threadSlot);
     for (const c of constraints) {
       this.assertTggConstraint(threadSlot, c, ruleName);
@@ -1212,7 +1247,7 @@ export class PolyglotTransformer {
   syncThreadRule(
     threadSlot: number,
     rule: TGGRuleOptions,
-    varBindings: Record<string, any> = {},
+    varBindings: Record<string, unknown> = {},
   ): CoordinatorSatResult {
     const vResolver = (name: string) => {
       if (varBindings && varBindings[name] !== undefined && varBindings[name] !== null) {
@@ -1232,7 +1267,7 @@ export class PolyglotTransformer {
   reconcileNode(
     domainName: string,
     nodeId: number,
-    updatedConstraints: any[],
+    updatedConstraints: TggConstraintInput[],
     ruleName?: string,
   ): CoordinatorSatResult | null {
     const domIdx = DOMAIN_NAME_TO_INDEX[domainName.toLowerCase()] ?? this.hypergraph.getDomainId(domainName);
@@ -1266,7 +1301,7 @@ export class PolyglotTransformer {
   reconcileBlastRadius(
     domainName: string,
     nodeId: number,
-    updatedConstraints: any[],
+    updatedConstraints: TggConstraintInput[],
     ruleName?: string,
   ): {
     blastRadius: BlastRadiusResult;
@@ -1339,7 +1374,7 @@ export class PolyglotTransformer {
     targetLang?: string,
     threadId?: string,
     contextNode?: PolyglotNode,
-  ): { targetNode: PolyglotNode; matchedRule: EvaluatedTGGRule; env: Record<string, any> } | null {
+  ): { targetNode: PolyglotNode; matchedRule: EvaluatedTGGRule; env: Record<string, unknown> } | null {
     const candidates: PatternMatchResult[] = [];
     for (const r of this.rules) {
       if (targetLang && r.targetLang && r.targetLang.toLowerCase() !== targetLang.toLowerCase()) {
@@ -1367,13 +1402,14 @@ export class PolyglotTransformer {
 
     // Automatically store shadow complement fields declared via tggComplement([...]) plus full source snapshot
     const complementFields = extractComplementFields(best.rule.constraints);
-    const complementData: Record<string, any> = {
-      __sourceSnapshot: { ...sourceNode, ...((sourceNode["properties"] as Record<string, any> | undefined) || {}) },
+    const srcProps = sourceNode["properties"] as Record<string, unknown> | undefined;
+    const complementData: Record<string, unknown> = {
+      __sourceSnapshot: { ...sourceNode, ...(srcProps || {}) },
       __matchedEnv: { ...best.env },
       __ruleName: best.rule.rule.name,
     };
     for (const f of complementFields) {
-      const val = sourceNode[f] ?? (sourceNode["properties"] as Record<string, any> | undefined)?.[f];
+      const val = sourceNode[f] ?? srcProps?.[f];
       if (val !== undefined) {
         complementData[f] = val;
       }
@@ -1401,9 +1437,9 @@ export class PolyglotTransformer {
   ): {
     sourceNode: PolyglotNode;
     matchedRule: EvaluatedTGGRule;
-    env: Record<string, any>;
+    env: Record<string, unknown>;
     changes: GraphSyncChange[];
-    complement: Record<string, any>;
+    complement: Record<string, unknown>;
   } | null {
     const candidates: PatternMatchResult[] = [];
     for (const r of this.rules) {
@@ -1435,14 +1471,16 @@ export class PolyglotTransformer {
       options?.fallbackThreadId,
     ].filter((k): k is string => Boolean(k));
 
-    let complement: Record<string, any> | undefined;
+    let complement: Record<string, unknown> | undefined;
     for (const k of candidateKeys) {
       complement = this.getComplement(k);
       if (complement) break;
     }
 
-    const prevSnapshot: Record<string, any> = complement?.["__sourceSnapshot"] || {};
-    const prevEnv: Record<string, any> = complement?.["__matchedEnv"] || {};
+    const prevSnapshot: Record<string, unknown> =
+      (complement?.["__sourceSnapshot"] as Record<string, unknown> | undefined) || {};
+    const prevEnv: Record<string, unknown> =
+      (complement?.["__matchedEnv"] as Record<string, unknown> | undefined) || {};
     const changes: GraphSyncChange[] = [];
 
     // Reconcile conflicts when previous source bindings differ from backward-propagated target bindings
@@ -1494,7 +1532,7 @@ export class PolyglotTransformer {
     }
 
     const complementFields = extractComplementFields(best.rule.constraints);
-    const restoredComplement: Record<string, any> = { ...prevSnapshot };
+    const restoredComplement: Record<string, unknown> = { ...prevSnapshot };
     if (complement) {
       for (const f of complementFields) {
         if (complement[f] !== undefined) {
@@ -1517,7 +1555,10 @@ export class PolyglotTransformer {
     const rootEval = this.evaluateRuleForward(sourceGraph, targetLang, `root:${sourceGraph.name}`);
     const projectedRoot: PolyglotNode = rootEval
       ? { ...rootEval.targetNode }
-      : { ...sourceGraph, properties: { ...((sourceGraph["properties"] as Record<string, any> | undefined) || {}) } };
+      : {
+          ...sourceGraph,
+          properties: { ...((sourceGraph["properties"] as Record<string, unknown> | undefined) || {}) },
+        };
 
     if (Array.isArray(sourceGraph["children"])) {
       projectedRoot["children"] = (sourceGraph["children"] as PolyglotNode[]).map((child, idx) => {
@@ -1644,8 +1685,10 @@ export class PolyglotTransformer {
       }
     }
 
-    const getConnFrom = (conn: { source?: string; from?: string }): string | undefined => conn.source ?? conn.from;
-    const getConnTo = (conn: { target?: string; to?: string }): string | undefined => conn.target ?? conn.to;
+    const getConnFrom = (conn: { source?: string | undefined; from?: string | undefined }): string | undefined =>
+      conn.source ?? conn.from;
+    const getConnTo = (conn: { target?: string | undefined; to?: string | undefined }): string | undefined =>
+      conn.target ?? conn.to;
 
     // 2. Check Dangling Edge Condition
     if (rule.danglingEdgePolicy === "strict" || !rule.danglingEdgePolicy) {
@@ -1659,8 +1702,8 @@ export class PolyglotTransformer {
         const targetName = resolveSpecName(delSpec);
         if (!targetName) continue;
 
-        const connections = (containerNode as any).connections || [];
-        const incidentConns = connections.filter((conn: any) => {
+        const connections = containerNode.connections || [];
+        const incidentConns = connections.filter((conn) => {
           const from = getConnFrom(conn);
           const to = getConnTo(conn);
           return (
@@ -1706,9 +1749,9 @@ export class PolyglotTransformer {
         }
       }
 
-      if ((containerNode as any).connections) {
-        const conns = (containerNode as any).connections;
-        const remaining = conns.filter((conn: any) => {
+      if (containerNode.connections) {
+        const conns = containerNode.connections;
+        const remaining = conns.filter((conn) => {
           const from = getConnFrom(conn);
           const to = getConnTo(conn);
           return (
@@ -1718,7 +1761,7 @@ export class PolyglotTransformer {
             to !== targetName
           );
         });
-        (containerNode as any).connections = remaining;
+        containerNode.connections = remaining;
       }
     }
 
@@ -1728,21 +1771,25 @@ export class PolyglotTransformer {
 
     for (const createSpec of createSpecs) {
       if (createSpec.nodeType.toLowerCase().includes("connect")) {
-        const src = createSpec.bindings?.["source"] ?? createSpec.bindings?.["from"];
-        const tgt = createSpec.bindings?.["target"] ?? createSpec.bindings?.["to"];
+        const rawSrc = createSpec.bindings?.["source"] ?? createSpec.bindings?.["from"];
+        const rawTgt = createSpec.bindings?.["target"] ?? createSpec.bindings?.["to"];
+        const src = rawSrc !== undefined ? String(rawSrc) : "";
+        const tgt = rawTgt !== undefined ? String(rawTgt) : "";
         const connObj = {
           source: src,
           target: tgt,
           from: src,
           to: tgt,
         };
-        (containerNode as any).connections = (containerNode as any).connections || [];
-        (containerNode as any).connections.push(connObj);
+        containerNode.connections = containerNode.connections || [];
+        containerNode.connections.push(connObj);
       } else {
-        const newComp: any = {
-          name: createSpec.bindings?.["name"] || `created_${createSpec.nodeType}`,
+        const newComp: PolyglotNode & { typeSpecifier: string } = {
+          name: String(createSpec.bindings?.["name"] || `created_${createSpec.nodeType}`),
           typeSpecifier: createSpec.nodeType,
-          attributes: createSpec.bindings?.["attributes"] || [],
+          attributes: Array.isArray(createSpec.bindings?.["attributes"])
+            ? (createSpec.bindings["attributes"] as NonNullable<PolyglotNode["attributes"]>)
+            : [],
           value: createSpec.bindings?.["value"],
         };
         containerNode.components = containerNode.components || [];
@@ -1753,7 +1800,7 @@ export class PolyglotTransformer {
     }
 
     // 5. Coupled Target Synchronization
-    let targetSyncResult: any = undefined;
+    let targetSyncResult: unknown = undefined;
     if (rule.targetSyncHandler) {
       targetSyncResult = rule.targetSyncHandler(createdNodes[0], undefined);
     }
@@ -2024,14 +2071,21 @@ export function symbolEntryToPolyglotNode(
   const metaPorts = Array.isArray(meta["ports"]) ? meta["ports"] : Array.isArray(meta["pins"]) ? meta["pins"] : null;
   if (metaPorts) {
     for (const p of metaPorts) {
-      if (p && typeof p === "object" && typeof (p as any).name === "string") {
-        const pName = String((p as any).name);
-        if (!ports.some((ep) => ep.name === pName)) {
-          ports.push({
-            name: pName,
-            type: String((p as any).type ?? "Real"),
-            direction: (p as any).direction,
-          });
+      if (p && typeof p === "object") {
+        const portRec = p as { name?: unknown; type?: unknown; direction?: unknown };
+        if (typeof portRec.name === "string") {
+          const pName = portRec.name;
+          if (!ports.some((ep) => ep.name === pName)) {
+            const dir =
+              portRec.direction === "in" || portRec.direction === "out" || portRec.direction === "inout"
+                ? portRec.direction
+                : undefined;
+            ports.push({
+              name: pName,
+              type: String(portRec.type ?? "Real"),
+              direction: dir,
+            });
+          }
         }
       }
     }
@@ -2059,5 +2113,5 @@ export interface DpoExecutionResult {
   preservedNodes?: string[] | undefined;
   negativeDelta?: string[] | undefined;
   positiveDelta?: PolyglotNode[] | undefined;
-  targetSyncResult?: any;
+  targetSyncResult?: unknown;
 }

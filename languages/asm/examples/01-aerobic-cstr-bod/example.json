@@ -1,0 +1,12 @@
+{
+  "id": "asm-01-aerobic-cstr-bod",
+  "lang": "asm",
+  "subFormats": ["asm"],
+  "difficulty": 1,
+  "title": "Single Aerobic CSTR BOD Removal (ASM1)",
+  "description": "Minimal IWA ASM1 municipal wastewater treatment plant with a single continuously stirred aerobic bioreactor and secondary settling clarifier for carbonaceous BOD removal.",
+  "category": "Wastewater Biokinetics",
+  "tags": ["asm", "asm1", "cstr", "bod-removal"],
+  "activeFile": "aerobic_cstr.asm",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "verilog-a-02-shockley-pn-diode",
+  "lang": "verilog-a",
+  "subFormats": ["va", "vams"],
+  "difficulty": 2,
+  "title": "Shockley PN-Junction Diode with Junction Capacitance",
+  "description": "Nonlinear Shockley diode compact model using limexp() for numerical convergence and ddt() charge-conservative junction capacitance.",
+  "category": "Semiconductor Devices",
+  "tags": ["verilog-a", "diode", "shockley", "limexp", "multi-file"],
+  "activeFile": "diode.va"
+}

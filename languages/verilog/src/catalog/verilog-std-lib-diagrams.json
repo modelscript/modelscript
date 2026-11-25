@@ -1,0 +1,935 @@
+[
+  {
+    "namePath": "Verilog.Std.and",
+    "aliases": [
+      "AND2",
+      "AND_GATE"
+    ],
+    "label": "AND Gate",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AND</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.nand",
+    "aliases": [
+      "NAND2",
+      "NAND_GATE"
+    ],
+    "label": "NAND Gate",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NAND</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.or",
+    "aliases": [
+      "OR2",
+      "OR_GATE"
+    ],
+    "label": "OR Gate",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OR</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.nor",
+    "aliases": [
+      "NOR2",
+      "NOR_GATE"
+    ],
+    "label": "NOR Gate",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NOR</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.xor",
+    "aliases": [
+      "XOR2",
+      "XOR_GATE"
+    ],
+    "label": "XOR Gate",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">XOR</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.xnor",
+    "aliases": [
+      "XNOR2",
+      "XNOR_GATE"
+    ],
+    "label": "XNOR Gate",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">XNOR</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.buf",
+    "aliases": [
+      "BUFFER"
+    ],
+    "label": "Buffer",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BUF</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.not",
+    "aliases": [
+      "INV",
+      "INVERTER"
+    ],
+    "label": "Inverter (NOT)",
+    "category": "Logic Gates",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NOT</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.bufif0",
+    "aliases": [
+      "TRISTATE_BUF_L"
+    ],
+    "label": "Tri-State Buffer (Active-Low)",
+    "category": "Tri-State Buffers",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">TRI</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BUFIF0</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "en",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.bufif1",
+    "aliases": [
+      "TRISTATE_BUF_H"
+    ],
+    "label": "Tri-State Buffer (Active-High)",
+    "category": "Tri-State Buffers",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">TRI</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BUFIF1</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "en",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.notif0",
+    "aliases": [
+      "TRISTATE_INV_L"
+    ],
+    "label": "Tri-State Inverter (Active-Low)",
+    "category": "Tri-State Buffers",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">TRI</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NOTIF0</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "en",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.notif1",
+    "aliases": [
+      "TRISTATE_INV_H"
+    ],
+    "label": "Tri-State Inverter (Active-High)",
+    "category": "Tri-State Buffers",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">TRI</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NOTIF1</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "en",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.dff",
+    "aliases": [
+      "D_FF",
+      "FLIPFLOP"
+    ],
+    "label": "D Flip-Flop",
+    "category": "Sequential Elements",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SEQ</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DFF</text></svg>",
+    "ports": [
+      {
+        "name": "d",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.dffr",
+    "aliases": [
+      "D_FF_RST"
+    ],
+    "label": "D Flip-Flop w/ Reset",
+    "category": "Sequential Elements",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SEQ</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DFFR</text></svg>",
+    "ports": [
+      {
+        "name": "d",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 42
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.dffe",
+    "aliases": [
+      "D_FF_EN"
+    ],
+    "label": "D Flip-Flop w/ Enable",
+    "category": "Sequential Elements",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SEQ</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DFFE</text></svg>",
+    "ports": [
+      {
+        "name": "d",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 12
+      },
+      {
+        "name": "en",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.dlatch",
+    "aliases": [
+      "D_LATCH"
+    ],
+    "label": "D Latch",
+    "category": "Sequential Elements",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SEQ</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DLATCH</text></svg>",
+    "ports": [
+      {
+        "name": "d",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "en",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.mux2",
+    "aliases": [
+      "MUX2TO1"
+    ],
+    "label": "2:1 Multiplexer",
+    "category": "Multiplexers",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">MUX</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MUX2</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "sel",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.mux4",
+    "aliases": [
+      "MUX4TO1"
+    ],
+    "label": "4:1 Multiplexer",
+    "category": "Multiplexers",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">MUX</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MUX4</text></svg>",
+    "ports": [
+      {
+        "name": "d0",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 10
+      },
+      {
+        "name": "d1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 20
+      },
+      {
+        "name": "d2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 32
+      },
+      {
+        "name": "d3",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 42
+      },
+      {
+        "name": "sel",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.half_adder",
+    "aliases": [
+      "HA"
+    ],
+    "label": "Half Adder",
+    "category": "Arithmetic & ALU",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a2511\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">ALU</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">HALF_ADDER</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "sum",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "cout",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.full_adder",
+    "aliases": [
+      "FA"
+    ],
+    "label": "Full Adder",
+    "category": "Arithmetic & ALU",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a2511\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">ALU</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">FULL_ADDER</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 12
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "cin",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 40
+      },
+      {
+        "name": "sum",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "cout",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.alu4",
+    "aliases": [
+      "ALU_4BIT"
+    ],
+    "label": "4-Bit ALU",
+    "category": "Arithmetic & ALU",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a2511\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">ALU</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ALU4</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 12
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "op",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 40
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "zero",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.shift_reg",
+    "aliases": [
+      "SISO",
+      "SIPO"
+    ],
+    "label": "Shift Register",
+    "category": "Registers & Counters",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">REG</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">SHIFT_REG</text></svg>",
+    "ports": [
+      {
+        "name": "sin",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 42
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.lfsr7",
+    "aliases": [
+      "PRBS7"
+    ],
+    "label": "PRBS-7 LFSR",
+    "category": "Registers & Counters",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">REG</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">LFSR7</text></svg>",
+    "ports": [
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Verilog.Std.counter",
+    "aliases": [
+      "UP_COUNTER"
+    ],
+    "label": "Binary Counter",
+    "category": "Registers & Counters",
+    "domain": "digital-rtl",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">REG</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">COUNTER</text></svg>",
+    "ports": [
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 28
+      },
+      {
+        "name": "en",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 42
+      },
+      {
+        "name": "count",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

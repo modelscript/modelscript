@@ -91,7 +91,7 @@ const DOMAIN_MAP: Record<string, DomainClassification> = {
     domain: "Modelica & Physical Modeling",
     hashtags: ["#Modelica", "#DAE", "#PhysicalModeling"],
   },
-  morsel: {
+  ansatz: {
     domain: "Multi-Domain Simulation",
     hashtags: ["#ModelScript", "#Simulation", "#DAE"],
   },
@@ -476,7 +476,7 @@ export function buildDeterministicArtifactDraft(
     const expanded = [
       `Sharing **${ctx.title}** for ${ctx.domain.toLowerCase()} verification and collaborative analysis.`,
       `### Key Engineering Highlights\n${bulletLines}`,
-      `Open the attached artifact in the playground or workbench to inspect parameters, boundary conditions, and trajectories.\n\n${tags}`,
+      `Open the attached artifact in the ansatz or workbench to inspect parameters, boundary conditions, and trajectories.\n\n${tags}`,
     ].join("\n\n");
     return {
       draft: expanded.trim(),

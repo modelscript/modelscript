@@ -1,0 +1,83 @@
+[TITLE]
+Chlorine Decay Water Quality Transport Model
+
+[JUNCTIONS]
+;ID              Elev         Demand       Pattern
+ J1              40           0            ;
+ J2              38           16           DemandPat
+ J3              35           22           DemandPat
+ J4              33           19           DemandPat
+ J5              30           14           DemandPat
+ J6              28           12           DemandPat
+
+[RESERVOIRS]
+;ID              Head         Pattern
+ WTP_Clearwell   45           ;
+
+[TANKS]
+;ID              Elev         InitLvl      MinLvl       MaxLvl       Diam         MinVol       VolCurve
+ EastTank        78           11           4            16           16.0         0            ;
+
+[PIPES]
+;ID              Node1        Node2        Length       Diam         Roughness    MinorLoss    Status
+ P1              J1           J2           1100         350          130          0            OPEN
+ P2              J2           J3           950          300          120          0            OPEN
+ P3              J3           J4           880          250          115          0            OPEN
+ P4              J2           J5           1050         250          115          0            OPEN
+ P5              J5           J6           920          200          110          0            OPEN
+ P6              J4           J6           840          200          110          0            OPEN
+ P7              J3           EastTank     500          300          125          0            OPEN
+
+[PUMPS]
+;ID              Node1        Node2        Parameters
+ WTP_Pump        WTP_Clearwell J1          HEAD WTP_Curve
+
+[CURVES]
+;ID              X-Value      Y-Value
+ WTP_Curve       0            75
+ WTP_Curve       60           65
+ WTP_Curve       120          45
+
+[PATTERNS]
+;ID              Multipliers
+ DemandPat       0.60  0.55  0.80  1.25  1.40  1.20
+ DemandPat       1.05  1.00  1.15  1.35  1.10  0.70
+
+[QUALITY]
+;Node            InitQual
+ WTP_Clearwell   1.40
+ EastTank        0.75
+ J1              1.20
+ J2              1.05
+ J3              0.95
+ J4              0.85
+ J5              0.80
+ J6              0.70
+
+[SOURCES]
+;Node            Type         Quality      Pattern
+ WTP_Clearwell   CONCEN       1.40         ;
+
+[REACTIONS]
+ Order Bulk           1
+ Order Tank           1
+ Order Wall           1
+ Global Bulk          -0.55
+ Global Wall          -0.18
+ Limiting Potential   0.0
+
+[TIMES]
+ Duration             48:00
+ Hydraulic Timestep   1:00
+ Quality Timestep     0:05
+ Pattern Timestep     2:00
+ Report Timestep      1:00
+
+[OPTIONS]
+ Units                LPS
+ Headloss             H-W
+ Quality              Chlorine mg/L
+ Accuracy             0.001
+ Trials               40
+
+[END]

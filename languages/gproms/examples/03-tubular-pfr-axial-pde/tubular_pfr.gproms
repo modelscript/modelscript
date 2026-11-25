@@ -1,0 +1,40 @@
+DECLARE
+  TYPE
+    Concentration = 1.0 : 0.0 : 100.0 UNIT = "mol/L"
+  END
+END
+
+MODEL AxialDispersionPFR
+  PARAMETER
+    v    AS REAL DEFAULT 0.6
+    D_ax AS REAL DEFAULT 0.015
+    k    AS REAL DEFAULT 0.35
+    C_in AS REAL DEFAULT 8.0
+
+  DISTRIBUTION_DOMAIN
+    Axial AS [ 0.0 : 1.0 ] N = 15
+
+  VARIABLE
+    C AS DISTRIBUTION(Axial) OF Concentration
+
+  BOUNDARY
+    C(0.0) = C_in ;
+
+  EQUATION
+    $C = -v * PARTIAL(C, Axial) + D_ax * PARTIAL(PARTIAL(C, Axial), Axial) - k * C ;
+END
+
+PROCESS TubularPfrSimulation
+  UNIT
+    T301 AS AxialDispersionPFR
+  SET
+    T301.v := 0.6 ;
+    T301.D_ax := 0.015 ;
+    T301.k := 0.35 ;
+    T301.C_in := 8.0 ;
+  INITIAL
+    T301.C := 0.0 ;
+  SOLUTIONPARAMETERS
+    TotalTime := 8.0 ;
+    TimeStep := 0.005 ;
+END

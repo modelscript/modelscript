@@ -1,0 +1,11 @@
+{
+  "id": "asm-03-bsm1-five-tank-clarifier",
+  "lang": "asm",
+  "subFormats": ["asm"],
+  "difficulty": 3,
+  "title": "Benchmark Simulation Model No. 1 (BSM1 5-Tank Plant)",
+  "description": "Standard IWA/COST Benchmark Simulation Model No. 1 (BSM1) featuring two 1000 m3 anoxic tanks, three 1333 m3 aerated reactors, 3x internal recycle, and a 10-layer Takacs clarifier.",
+  "category": "Wastewater Biokinetics",
+  "tags": ["asm", "bsm1", "asm1", "takacs-clarifier", "benchmark"],
+  "activeFile": "bsm1_plant.asm"
+}

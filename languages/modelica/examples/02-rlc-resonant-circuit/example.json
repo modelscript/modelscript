@@ -1,0 +1,11 @@
+{
+  "id": "modelica-02-rlc-resonant-circuit",
+  "lang": "modelica",
+  "subFormats": ["mo"],
+  "difficulty": 2,
+  "title": "Series RLC Resonant Circuit",
+  "description": "Underdamped series RLC circuit driven by a sinusoidal AC voltage source demonstrating resonance and energy exchange.",
+  "category": "Electrical Systems",
+  "tags": ["modelica", "electrical", "rlc", "resonance", "acausal"],
+  "activeFile": "RLCResonantCircuit.mo"
+}

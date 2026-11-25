@@ -1,0 +1,11 @@
+{
+  "id": "gridlabd-02-ieee4-transformer-feeder",
+  "lang": "gridlabd",
+  "subFormats": ["glm"],
+  "difficulty": 2,
+  "title": "IEEE 4-Node Distribution Transformer Test Feeder",
+  "description": "Classic IEEE 4-node radial distribution benchmark with a 12.47/4.16 kV 6 MVA Wye-Wye step-down transformer, 336 kcmil ACSR overhead lines, and unbalanced three-phase spot load.",
+  "category": "Distribution Power Systems",
+  "tags": ["gridlabd", "ieee-4", "transformer", "powerflow", "distribution"],
+  "activeFile": "ieee4_feeder.glm"
+}

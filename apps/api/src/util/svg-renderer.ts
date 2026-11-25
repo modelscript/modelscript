@@ -774,7 +774,9 @@ export async function processLibrary(
         context.workspaceIndex.hydrate(
           `dep-bundle:/${dep.name}@${dep.version}`,
           {
-            symbols: new Map(dep.bundleIndexJson.symbols as [number, unknown][]),
+            symbols: new Map(
+              dep.bundleIndexJson.symbols as [number, Partial<import("@modelscript/runtime").SymbolEntry>][],
+            ),
             byName: new Map(dep.bundleIndexJson.byName),
             childrenOf: new Map(dep.bundleIndexJson.childrenOf),
           },
@@ -1103,14 +1105,18 @@ export async function processLibrary(
               if (!causality) {
                 try {
                   causality = queryDB.query("causality", child.id)?.toString() ?? null;
-                } catch {}
+                } catch {
+                  // Causality query is optional for diagram metadata
+                }
               }
 
               let variability: string | null = (child.metadata?.["variability"] as string) ?? null;
               if (!variability) {
                 try {
                   variability = queryDB.query("variability", child.id)?.toString() ?? null;
-                } catch {}
+                } catch {
+                  // Variability query is optional for diagram metadata
+                }
               }
 
               if (needsCompCstForMod && !compCst) {
@@ -1190,7 +1196,9 @@ export async function processLibrary(
                   if (doc?.info) {
                     documentation = doc.info;
                   }
-                } catch {}
+                } catch {
+                  // Documentation annotation evaluation is optional
+                }
               }
             }
           }
@@ -1227,7 +1235,9 @@ export async function processLibrary(
                   if (svgStr && hasVisualContent(svgStr)) diagramSvg = svgStr;
                 }
               }
-            } catch {}
+            } catch {
+              // Diagram SVG rendering is optional; continue with metadata only
+            }
           }
 
           const metadata: ClassMetadata = {

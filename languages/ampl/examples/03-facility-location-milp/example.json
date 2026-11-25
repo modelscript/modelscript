@@ -1,0 +1,11 @@
+{
+  "id": "ampl-03-facility-location-milp",
+  "lang": "ampl",
+  "subFormats": ["mod", "dat"],
+  "difficulty": 3,
+  "title": "Capacitated Facility Location MILP",
+  "description": "Mixed-integer linear program selecting which regional warehouses to open and how to assign customer demand to minimize fixed opening and shipping costs.",
+  "category": "Integer Programming",
+  "tags": ["ampl", "milp", "facility-location", "binary", "multi-file"],
+  "activeFile": "facility.mod"
+}

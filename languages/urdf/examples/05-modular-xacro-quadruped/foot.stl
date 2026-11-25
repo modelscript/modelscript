@@ -1,0 +1,16 @@
+solid quadruped_foot
+  facet normal 0 0 -1
+    outer loop
+      vertex -0.02 -0.02 -0.21
+      vertex  0.02  0.02 -0.21
+      vertex  0.02 -0.02 -0.21
+    endloop
+  endfacet
+  facet normal 0 0 -1
+    outer loop
+      vertex -0.02 -0.02 -0.21
+      vertex -0.02  0.02 -0.21
+      vertex  0.02  0.02 -0.21
+    endloop
+  endfacet
+endsolid quadruped_foot

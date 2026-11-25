@@ -181,7 +181,9 @@ export function resolveRequestUserId(req: express.Request, database: LibraryData
       if (process.env["NODE_ENV"] === "test") {
         return decoded.id;
       }
-    } catch {}
+    } catch {
+      // Invalid or expired JWT token; fall through to anonymous
+    }
     return null;
   };
 
@@ -197,7 +199,9 @@ export function resolveRequestUserId(req: express.Request, database: LibraryData
     try {
       const resolved = verifyCandidateToken(decodeURIComponent(cookieMatch[1]));
       if (resolved !== null) return resolved;
-    } catch {}
+    } catch {
+      // Malformed URL encoding in auth cookie; ignore and continue
+    }
   }
 
   if (process.env["NODE_ENV"] !== "test") {

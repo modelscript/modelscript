@@ -74,7 +74,7 @@ $ESTIMATION METHOD=1 INTER MAXEVAL=9999
 
     const { getNmtranWasmParser } = await import("../src/parser/wasm-loader.js");
     const { validateNmtran } = await import("../src/lsp.js");
-    const morselDefaultCode = `$PROBLEM Two-Compartment Oral & IV Population PK Model
+    const ansatzDefaultCode = `$PROBLEM Two-Compartment Oral & IV Population PK Model
 $INPUT ID TIME AMT DV CMT EVID MDV WT
 $DATA oral_pk_study.csv IGNORE=@
 $SUBROUTINES ADVAN4 TRANS4
@@ -91,9 +91,9 @@ $OMEGA 0.09 0.06
 $SIGMA 0.04
 $ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999
 `;
-    const morselTree = getNmtranWasmParser().parse(morselDefaultCode);
-    assert.ok(morselTree?.rootNode);
-    assert.equal(morselTree.rootNode.hasError, false);
+    const ansatzTree = getNmtranWasmParser().parse(ansatzDefaultCode);
+    assert.ok(ansatzTree?.rootNode);
+    assert.equal(ansatzTree.rootNode.hasError, false);
 
     const brokenDiags = validateNmtran("$PROBLEM Bad\n$PK\n  CL = (1 + * )\n");
     assert.ok(brokenDiags.some((d) => d.code === "M9400" && d.severity === 1));

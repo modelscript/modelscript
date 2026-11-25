@@ -1,0 +1,890 @@
+[
+  {
+    "name": "BIT",
+    "kind": "Class",
+    "namePath": "STD.STANDARD.BIT",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BIT",
+      "category": "STD.STANDARD",
+      "domain": "digital",
+      "description": "IEEE 1076-1987 unresolved 2-value binary enumeration ('0', '1').",
+      "provenance": "IEEE Std 1076-1987 Clause 14.2 (STD.STANDARD)",
+      "aliases": [
+        "std.standard.bit"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bit",
+          "description": "Scalar bit width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "BIT_VECTOR",
+    "kind": "Class",
+    "namePath": "STD.STANDARD.BIT_VECTOR",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BIT_VECTOR",
+      "category": "STD.STANDARD",
+      "domain": "digital",
+      "description": "Unconstrained array of STD.STANDARD.BIT indexed by NATURAL.",
+      "provenance": "IEEE Std 1076-1987 Clause 14.2 (STD.STANDARD)",
+      "aliases": [
+        "std.standard.bit_vector"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 8,
+          "unit": "bit",
+          "description": "Vector bit width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "BOOLEAN",
+    "kind": "Class",
+    "namePath": "STD.STANDARD.BOOLEAN",
+    "exports": [
+      "default"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BOOLEAN",
+      "category": "STD.STANDARD",
+      "domain": "digital",
+      "description": "Predefined enumeration type (FALSE, TRUE).",
+      "provenance": "IEEE Std 1076-1987 Clause 14.2 (STD.STANDARD)",
+      "aliases": [
+        "std.standard.boolean"
+      ],
+      "parameters": [
+        {
+          "key": "default",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "Default value (FALSE)"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "INTEGER",
+    "kind": "Class",
+    "namePath": "STD.STANDARD.INTEGER",
+    "exports": [
+      "bits"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "INTEGER",
+      "category": "STD.STANDARD",
+      "domain": "digital",
+      "description": "Predefined 32-bit signed integer type (-2147483647 to 2147483647).",
+      "provenance": "IEEE Std 1076-1987 Clause 14.2 (STD.STANDARD)",
+      "aliases": [
+        "std.standard.integer"
+      ],
+      "parameters": [
+        {
+          "key": "bits",
+          "type": "integer",
+          "defaultValue": 32,
+          "unit": "bit",
+          "description": "Signed integer width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "NATURAL",
+    "kind": "Class",
+    "namePath": "STD.STANDARD.NATURAL",
+    "exports": [
+      "min"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NATURAL",
+      "category": "STD.STANDARD",
+      "domain": "digital",
+      "description": "Subtype of INTEGER constrained to range 0 to INTEGER'HIGH.",
+      "provenance": "IEEE Std 1076-1987 Clause 14.2 (STD.STANDARD)",
+      "aliases": [
+        "std.standard.natural"
+      ],
+      "parameters": [
+        {
+          "key": "min",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "int",
+          "description": "Minimum value"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "POSITIVE",
+    "kind": "Class",
+    "namePath": "STD.STANDARD.POSITIVE",
+    "exports": [
+      "min"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "POSITIVE",
+      "category": "STD.STANDARD",
+      "domain": "digital",
+      "description": "Subtype of INTEGER constrained to range 1 to INTEGER'HIGH.",
+      "provenance": "IEEE Std 1076-1987 Clause 14.2 (STD.STANDARD)",
+      "aliases": [
+        "std.standard.positive"
+      ],
+      "parameters": [
+        {
+          "key": "min",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "int",
+          "description": "Minimum value"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "TIME",
+    "kind": "Class",
+    "namePath": "STD.STANDARD.TIME",
+    "exports": [
+      "resolutionPs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TIME",
+      "category": "STD.STANDARD",
+      "domain": "digital",
+      "description": "Predefined physical type for simulation time (fs, ps, ns, us, ms, sec).",
+      "provenance": "IEEE Std 1076-1987 Clause 14.2 (STD.STANDARD)",
+      "aliases": [
+        "std.standard.time"
+      ],
+      "parameters": [
+        {
+          "key": "resolutionPs",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "ps",
+          "description": "Base time resolution"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "STD_ULOGIC",
+    "kind": "Class",
+    "namePath": "IEEE.STD_LOGIC_1164.STD_ULOGIC",
+    "exports": [
+      "states"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "STD_ULOGIC",
+      "category": "IEEE.STD_LOGIC_1164",
+      "domain": "digital",
+      "description": "Unresolved 9-value logic enumeration ('U','X','0','1','Z','W','L','H','-').",
+      "provenance": "IEEE Std 1164-1993 (Multivalue Logic System)",
+      "aliases": [
+        "ieee.std_logic_1164.std_ulogic"
+      ],
+      "parameters": [
+        {
+          "key": "states",
+          "type": "integer",
+          "defaultValue": 9,
+          "unit": "enum",
+          "description": "Number of logic states"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "STD_LOGIC",
+    "kind": "Class",
+    "namePath": "IEEE.STD_LOGIC_1164.STD_LOGIC",
+    "exports": [
+      "states"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "STD_LOGIC",
+      "category": "IEEE.STD_LOGIC_1164",
+      "domain": "digital",
+      "description": "Resolved 9-value logic subtype using IEEE 1164 RESOLVED resolution function.",
+      "provenance": "IEEE Std 1164-1993 (Multivalue Logic System)",
+      "aliases": [
+        "ieee.std_logic_1164.std_logic"
+      ],
+      "parameters": [
+        {
+          "key": "states",
+          "type": "integer",
+          "defaultValue": 9,
+          "unit": "enum",
+          "description": "Number of logic states"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "STD_LOGIC_VECTOR",
+    "kind": "Class",
+    "namePath": "IEEE.STD_LOGIC_1164.STD_LOGIC_VECTOR",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "STD_LOGIC_VECTOR",
+      "category": "IEEE.STD_LOGIC_1164",
+      "domain": "digital",
+      "description": "Unconstrained array of resolved STD_LOGIC indexed by NATURAL.",
+      "provenance": "IEEE Std 1164-1993 (Multivalue Logic System)",
+      "aliases": [
+        "ieee.std_logic_1164.std_logic_vector"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 8,
+          "unit": "bit",
+          "description": "Default bus width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "RESOLVED",
+    "kind": "Class",
+    "namePath": "IEEE.STD_LOGIC_1164.RESOLVED",
+    "exports": [
+      "tableSize"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RESOLVED",
+      "category": "IEEE.STD_LOGIC_1164",
+      "domain": "digital",
+      "description": "IEEE 1164 9x9 symmetric resolution function for multi-driver STD_LOGIC nets.",
+      "provenance": "IEEE Std 1164-1993 Resolution Table",
+      "aliases": [
+        "ieee.std_logic_1164.resolved"
+      ],
+      "parameters": [
+        {
+          "key": "tableSize",
+          "type": "integer",
+          "defaultValue": 81,
+          "unit": "entries",
+          "description": "9x9 resolution matrix"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "RISING_EDGE",
+    "kind": "Class",
+    "namePath": "IEEE.STD_LOGIC_1164.RISING_EDGE",
+    "exports": [
+      "polarity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RISING_EDGE",
+      "category": "IEEE.STD_LOGIC_1164",
+      "domain": "digital",
+      "description": "Detects '0'/'L' to '1'/'H' rising clock transition on STD_ULOGIC.",
+      "provenance": "IEEE Std 1164-1993 Edge Detection",
+      "aliases": [
+        "ieee.std_logic_1164.rising_edge"
+      ],
+      "parameters": [
+        {
+          "key": "polarity",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "edge",
+          "description": "Rising edge polarity"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "FALLING_EDGE",
+    "kind": "Class",
+    "namePath": "IEEE.STD_LOGIC_1164.FALLING_EDGE",
+    "exports": [
+      "polarity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FALLING_EDGE",
+      "category": "IEEE.STD_LOGIC_1164",
+      "domain": "digital",
+      "description": "Detects '1'/'H' to '0'/'L' falling clock transition on STD_ULOGIC.",
+      "provenance": "IEEE Std 1164-1993 Edge Detection",
+      "aliases": [
+        "ieee.std_logic_1164.falling_edge"
+      ],
+      "parameters": [
+        {
+          "key": "polarity",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "edge",
+          "description": "Falling edge polarity"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "UNSIGNED",
+    "kind": "Class",
+    "namePath": "IEEE.NUMERIC_STD.UNSIGNED",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "UNSIGNED",
+      "category": "IEEE.NUMERIC_STD",
+      "domain": "digital",
+      "description": "Unsigned binary integer vector of STD_LOGIC elements.",
+      "provenance": "IEEE Std 1076.3-1997 (NUMERIC_STD)",
+      "aliases": [
+        "ieee.numeric_std.unsigned"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 8,
+          "unit": "bit",
+          "description": "Vector width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "SIGNED",
+    "kind": "Class",
+    "namePath": "IEEE.NUMERIC_STD.SIGNED",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SIGNED",
+      "category": "IEEE.NUMERIC_STD",
+      "domain": "digital",
+      "description": "Two's-complement signed binary integer vector of STD_LOGIC elements.",
+      "provenance": "IEEE Std 1076.3-1997 (NUMERIC_STD)",
+      "aliases": [
+        "ieee.numeric_std.signed"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 8,
+          "unit": "bit",
+          "description": "Vector width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "TO_UNSIGNED",
+    "kind": "Class",
+    "namePath": "IEEE.NUMERIC_STD.TO_UNSIGNED",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TO_UNSIGNED",
+      "category": "IEEE.NUMERIC_STD",
+      "domain": "digital",
+      "description": "Converts a NATURAL integer to an N-bit UNSIGNED vector.",
+      "provenance": "IEEE Std 1076.3-1997 (NUMERIC_STD)",
+      "aliases": [
+        "ieee.numeric_std.to_unsigned"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bit",
+          "description": "Target vector width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "TO_INTEGER",
+    "kind": "Class",
+    "namePath": "IEEE.NUMERIC_STD.TO_INTEGER",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TO_INTEGER",
+      "category": "IEEE.NUMERIC_STD",
+      "domain": "digital",
+      "description": "Converts UNSIGNED or SIGNED vector to STD.STANDARD.INTEGER.",
+      "provenance": "IEEE Std 1076.3-1997 (NUMERIC_STD)",
+      "aliases": [
+        "ieee.numeric_std.to_integer"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bit",
+          "description": "Source vector width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "ADD_UNSIGNED",
+    "kind": "Class",
+    "namePath": "IEEE.NUMERIC_STD.ADD_UNSIGNED",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ADD_UNSIGNED",
+      "category": "IEEE.NUMERIC_STD",
+      "domain": "digital",
+      "description": "Modular unsigned addition on N-bit vectors.",
+      "provenance": "IEEE Std 1076.3-1997 (NUMERIC_STD)",
+      "aliases": [
+        "add_u"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bit",
+          "description": "Operand width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "SUB_UNSIGNED",
+    "kind": "Class",
+    "namePath": "IEEE.NUMERIC_STD.SUB_UNSIGNED",
+    "exports": [
+      "width"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SUB_UNSIGNED",
+      "category": "IEEE.NUMERIC_STD",
+      "domain": "digital",
+      "description": "Modular unsigned subtraction on N-bit vectors.",
+      "provenance": "IEEE Std 1076.3-1997 (NUMERIC_STD)",
+      "aliases": [
+        "sub_u"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bit",
+          "description": "Operand width"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "AND2",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.AND2",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "AND2",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "2-input IEEE 1164 9-value AND gate.",
+      "provenance": "IEEE Std 1164-1993 Truth Table",
+      "aliases": [
+        "and_gate",
+        "and2"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "OR2",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.OR2",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "OR2",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "2-input IEEE 1164 9-value OR gate.",
+      "provenance": "IEEE Std 1164-1993 Truth Table",
+      "aliases": [
+        "or_gate",
+        "or2"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "XOR2",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.XOR2",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "XOR2",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "2-input IEEE 1164 9-value XOR gate.",
+      "provenance": "IEEE Std 1164-1993 Truth Table",
+      "aliases": [
+        "xor_gate",
+        "xor2"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "NAND2",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.NAND2",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NAND2",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "2-input IEEE 1164 9-value NAND gate.",
+      "provenance": "IEEE Std 1164-1993 Truth Table",
+      "aliases": [
+        "nand_gate",
+        "nand2"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "NOR2",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.NOR2",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NOR2",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "2-input IEEE 1164 9-value NOR gate.",
+      "provenance": "IEEE Std 1164-1993 Truth Table",
+      "aliases": [
+        "nor_gate",
+        "nor2"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "INV",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.INV",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "INV",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "IEEE 1164 9-value inverter (NOT gate).",
+      "provenance": "IEEE Std 1164-1993 Truth Table",
+      "aliases": [
+        "not_gate",
+        "inverter"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 35
+    }
+  },
+  {
+    "name": "MUX2",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.MUX2",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MUX2",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "2-to-1 IEEE 1164 9-value multiplexer.",
+      "provenance": "IEEE Std 1076-1987 Combinational Logic",
+      "aliases": [
+        "mux2_1",
+        "multiplexer"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 36
+    }
+  },
+  {
+    "name": "FA1",
+    "kind": "Class",
+    "namePath": "VHDL.GATES.FA1",
+    "exports": [
+      "tpdNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FA1",
+      "category": "Logic Gates",
+      "domain": "digital",
+      "description": "1-bit full adder producing sum and carry-out.",
+      "provenance": "IEEE Std 1076-1987 Arithmetic Primitives",
+      "aliases": [
+        "full_adder",
+        "full_adder_1bit"
+      ],
+      "parameters": [
+        {
+          "key": "tpdNs",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 37
+    }
+  },
+  {
+    "name": "DFF",
+    "kind": "Class",
+    "namePath": "VHDL.SEQ.DFF",
+    "exports": [
+      "tcoNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "DFF",
+      "category": "Sequential",
+      "domain": "digital",
+      "description": "Rising-edge triggered D flip-flop with synchronous/asynchronous reset.",
+      "provenance": "IEEE Std 1076-1987 Sequential Logic",
+      "aliases": [
+        "d_flip_flop",
+        "dff"
+      ],
+      "parameters": [
+        {
+          "key": "tcoNs",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "ns",
+          "description": "Clock-to-Q delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 38
+    }
+  },
+  {
+    "name": "REG4",
+    "kind": "Class",
+    "namePath": "VHDL.SEQ.REG4",
+    "exports": [
+      "width",
+      "tcoNs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "REG4",
+      "category": "Sequential",
+      "domain": "digital",
+      "description": "4-bit rising-edge triggered register with reset.",
+      "provenance": "IEEE Std 1076-1987 Sequential Logic",
+      "aliases": [
+        "register4",
+        "reg4"
+      ],
+      "parameters": [
+        {
+          "key": "width",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bit",
+          "description": "Register width"
+        },
+        {
+          "key": "tcoNs",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "ns",
+          "description": "Clock-to-Q delay"
+        }
+      ],
+      "wasmKernel": "vhdlStdEval",
+      "archetypeId": 39
+    }
+  }
+]

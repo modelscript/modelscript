@@ -1,0 +1,78 @@
+[
+  {
+    "id": "sel-01-sel351-feeder-overcurrent",
+    "lang": "sel",
+    "subFormats": ["txt"],
+    "difficulty": 1,
+    "title": "SEL-351 Distribution Feeder Overcurrent Protection",
+    "description": "SEL-351 feeder protection relay settings configuring phase and ground instantaneous (50P/50G) and inverse-time (51P/51G) overcurrent elements with SELogic trip and breaker close equations.",
+    "category": "Power System Protection",
+    "tags": ["sel", "sel-351", "overcurrent", "selogic", "feeder"],
+    "activeFile": "sel351_feeder.txt",
+    "fileNames": ["sel351_feeder.txt"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "// SEL-351 Distribution Feeder Overcurrent Protection Settings (12.47 kV)\n=>>SHOW SET\nRELAY=\"SEL-351\"\nRID=\"SUB_OAK_FDR12\"\nTID=\"SEL-351 FEEDER 12 MAIN\"\nACTIVE_GROUP=1\nNFREQ=60.0\nPHROT=ABC\nCTRH=120\nCTRL=120\nPTR=120\nPTRN=120\n\nGROUP 1\n50P1P=12.00\n50P2P=24.00\n51P1P=4.00\n51P1C=U3\n51P1TD=2.00\n50G1P=3.00\n51G1P=1.20\n51G1C=U3\n51G1TD=1.50\nTRIP=50P1P OR 51P1T OR 50G1P OR 51G1T\nCLOSE=!TRIP AND IN101\nOUT101=TRIP\nOUT102=CLOSE\n"
+  },
+  {
+    "id": "sel-02-sel421-distance-protection",
+    "lang": "sel",
+    "subFormats": ["txt"],
+    "difficulty": 2,
+    "title": "SEL-421 Transmission Line Distance Protection (Zones 1–3)",
+    "description": "SEL-421 230 kV transmission line protection settings with stepped Zone 1/2/3 mho distance reaches, phase/ground backup overcurrent, and SELogic zone-timer trip supervision.",
+    "category": "Power System Protection",
+    "tags": ["sel", "sel-421", "distance-protection", "230kv", "selogic"],
+    "activeFile": "sel421_line.txt",
+    "fileNames": ["sel421_line.txt"],
+    "fileCount": 1,
+    "code": "// SEL-421 230 kV Transmission Line Stepped Distance Protection\n=>>SHOW SET\nRELAY=\"SEL-421\"\nRID=\"SUB_NORTH_LN230_1\"\nTID=\"SEL-421 LINE 230-1 NORTH\"\nACTIVE_GROUP=1\nNFREQ=60.0\nPHROT=ABC\nCTRH=240\nCTRL=240\nPTR=2000\nPTRN=2000\n\nGROUP 1\n50P1P=18.00\n51P1P=5.00\n51P1C=U3\n51P1TD=3.00\n50G1P=4.00\n51G1P=1.50\n51G1C=U3\n51G1TD=2.00\nZ1P=4.20\nZ2P=6.80\nZ3P=11.50\nZ1D=0\nZ2D=21\nZ3D=60\n27P=52.0\n59P=132.0\nSV01=Z2P AND IN102\nSV02=Z3P AND !IN103\nTRIP=Z1P OR Z1G OR SV01 OR SV02 OR 50P1P OR 51P1T\nCLOSE=!TRIP AND !27P AND IN101\nOUT101=TRIP\nOUT102=CLOSE\nOUT103=Z1P OR Z1G\n"
+  },
+  {
+    "id": "sel-03-sel487e-transformer-diff",
+    "lang": "sel",
+    "subFormats": ["txt"],
+    "difficulty": 3,
+    "title": "SEL-487E Power Transformer Protection & Backup Logic",
+    "description": "SEL-487E dual-group settings for a 138/34.5 kV 60 MVA substation power transformer with phase/ground backup overcurrent, overvoltage/underfrequency supervision, and lockout latch equations.",
+    "category": "Power System Protection",
+    "tags": ["sel", "sel-487e", "transformer", "multi-group", "selogic"],
+    "activeFile": "sel487e_xfmr.txt",
+    "fileNames": ["sel487e_xfmr.txt"],
+    "fileCount": 1,
+    "code": "// SEL-487E 138/34.5 kV 60 MVA Transformer Protection Settings\n=>>SHOW SET\nRELAY=\"SEL-487E\"\nRID=\"SUB_MAIN_XFMR_T1\"\nTID=\"SEL-487E TRANSFORMER T1\"\nACTIVE_GROUP=1\nNFREQ=60.0\nPHROT=ABC\nCTRH=120\nCTRL=400\nPTR=1200\nPTRN=300\n\nGROUP 1\n50P1P=16.00\n50P2P=32.00\n51P1P=5.50\n51P1C=U3\n51P1TD=3.50\n50G1P=3.50\n51G1P=1.25\n51G1C=U3\n51G1TD=2.20\n27P=50.0\n59P=135.0\n81U=58.2\n81O=61.8\nSV01=50P1P OR 50G1P\nSV02=51P1T OR 51G1T\nSV03=IN103 AND !IN104\nLT01=SV01 OR SV03\nTRIP=LT01 OR SV02 OR 59P\nCLOSE=!TRIP AND !LT01 AND IN101\nOUT101=TRIP\nOUT102=LT01\nOUT103=81U OR 81O\n\nGROUP 2\n50P1P=14.00\n51P1P=4.50\n51P1C=U3\n51P1TD=2.50\nTRIP=50P1P OR 51P1T OR IN103\nOUT101=TRIP\n"
+  },
+  {
+    "id": "sel-04-sel411l-line-diff-reclosing",
+    "lang": "sel",
+    "subFormats": ["txt"],
+    "difficulty": 4,
+    "title": "SEL-411L Line Differential & Automatic Reclosing Logic",
+    "description": "SEL-411L 345 kV line protection settings combining stepped distance backup, directional ground overcurrent, permissive pilot supervision, and single-shot automatic reclosing SELogic.",
+    "category": "Power System Protection",
+    "tags": ["sel", "sel-411l", "reclosing", "line-differential", "345kv"],
+    "activeFile": "sel411l_reclose.txt",
+    "fileNames": ["sel411l_reclose.txt"],
+    "fileCount": 1,
+    "code": "// SEL-411L 345 kV Line Protection with Pilot Supervision & Reclosing Logic\n=>>SHOW SET\nRELAY=\"SEL-411L\"\nRID=\"SUB_WEST_LN345_A\"\nTID=\"SEL-411L LINE 345-A WEST\"\nACTIVE_GROUP=1\nNFREQ=60.0\nPHROT=ABC\nCTRH=400\nCTRL=400\nPTR=3000\nPTRN=3000\n\nGROUP 1\n50P1P=20.00\n50P2P=38.00\n51P1P=6.00\n51P1C=U3\n51P1TD=3.00\n50G1P=4.50\n51G1P=1.50\n51G1C=U3\n51G1TD=2.00\nZ1P=3.40\nZ2P=5.80\nZ3P=10.20\nZ1D=0\nZ2D=18\nZ3D=60\n27P=54.0\n59P=130.0\n81U=58.5\n81O=61.5\nSV01=Z1P OR Z1G\nSV02=Z2P AND IN102\nSV03=50P1P OR 50G1P\nSV04=51P1T OR 51G1T\nSV05=SV01 OR SV02\nLT01=IN105 AND !IN106\nTRIP=SV05 OR SV03 OR SV04\nCLOSE=!TRIP AND !LT01 AND !27P AND IN101 AND IN104\nOUT101=TRIP\nOUT102=CLOSE\nOUT103=SV05\nOUT104=LT01\n"
+  },
+  {
+    "id": "sel-05-coordinated-main-backup-package",
+    "lang": "sel",
+    "subFormats": ["rdb", "txt"],
+    "difficulty": 5,
+    "title": "Coordinated Main & Backup Substation Protection Package",
+    "description": "Multi-file substation protection package coordinating a JSON SEL-351 primary feeder relay (.rdb) with a JSON SEL-421 backup distance relay (.rdb) and shared ASCII SELogic breaker-failure transfer equations.",
+    "category": "Power System Protection",
+    "tags": ["sel", "rdb", "multi-file", "main-backup", "breaker-failure"],
+    "activeFile": "main_sel351.rdb",
+    "fileNames": ["main_sel351.rdb", "backup_sel421.rdb", "seLogic.txt"],
+    "fileCount": 3,
+    "code": "{\n  \"relayType\": \"SEL-351\",\n  \"relayId\": \"SUB_EAST_MAIN_351\",\n  \"terminalId\": \"FEEDER_1_MAIN_BREAKER_52\",\n  \"activeGroup\": 1,\n  \"frequencyHz\": 60.0,\n  \"phaseRotation\": \"ABC\",\n  \"ratios\": {\n    \"ctRatioPhase\": 160,\n    \"ctRatioGround\": 160,\n    \"ptRatioPhase\": 1200,\n    \"ptRatioNeutral\": 1200\n  },\n  \"groups\": {\n    \"1\": {\n      \"groupId\": 1,\n      \"phaseOvercurrent\": {\n        \"inst50P1P\": 14.0,\n        \"inst50P2P\": 28.0,\n        \"time51P1P\": 4.5,\n        \"curve51P1C\": \"U3\",\n        \"timeDial51P1TD\": 2.0\n      },\n      \"groundOvercurrent\": {\n        \"inst50G1P\": 3.5,\n        \"time51G1P\": 1.2,\n        \"curve51G1C\": \"U3\",\n        \"timeDial51G1TD\": 1.5\n      },\n      \"voltage\": {\n        \"underVoltage27P\": 55.0,\n        \"overVoltage59P\": 132.0\n      },\n      \"equations\": {\n        \"SV01\": \"50P1P OR 50G1P\",\n        \"SV02\": \"51P1T OR 51G1T\",\n        \"TRIP\": \"SV01 OR SV02\",\n        \"CLOSE\": \"!TRIP AND !27P AND IN101\",\n        \"OUT101\": \"TRIP\",\n        \"OUT102\": \"SV01 AND IN102\"\n      }\n    }\n  },\n  \"globalEquations\": {}\n}\n",
+    "files": {
+      "main_sel351.rdb": "{\n  \"relayType\": \"SEL-351\",\n  \"relayId\": \"SUB_EAST_MAIN_351\",\n  \"terminalId\": \"FEEDER_1_MAIN_BREAKER_52\",\n  \"activeGroup\": 1,\n  \"frequencyHz\": 60.0,\n  \"phaseRotation\": \"ABC\",\n  \"ratios\": {\n    \"ctRatioPhase\": 160,\n    \"ctRatioGround\": 160,\n    \"ptRatioPhase\": 1200,\n    \"ptRatioNeutral\": 1200\n  },\n  \"groups\": {\n    \"1\": {\n      \"groupId\": 1,\n      \"phaseOvercurrent\": {\n        \"inst50P1P\": 14.0,\n        \"inst50P2P\": 28.0,\n        \"time51P1P\": 4.5,\n        \"curve51P1C\": \"U3\",\n        \"timeDial51P1TD\": 2.0\n      },\n      \"groundOvercurrent\": {\n        \"inst50G1P\": 3.5,\n        \"time51G1P\": 1.2,\n        \"curve51G1C\": \"U3\",\n        \"timeDial51G1TD\": 1.5\n      },\n      \"voltage\": {\n        \"underVoltage27P\": 55.0,\n        \"overVoltage59P\": 132.0\n      },\n      \"equations\": {\n        \"SV01\": \"50P1P OR 50G1P\",\n        \"SV02\": \"51P1T OR 51G1T\",\n        \"TRIP\": \"SV01 OR SV02\",\n        \"CLOSE\": \"!TRIP AND !27P AND IN101\",\n        \"OUT101\": \"TRIP\",\n        \"OUT102\": \"SV01 AND IN102\"\n      }\n    }\n  },\n  \"globalEquations\": {}\n}\n",
+      "backup_sel421.rdb": "{\n  \"relayType\": \"SEL-421\",\n  \"relayId\": \"SUB_EAST_BACKUP_421\",\n  \"terminalId\": \"BUS_TIE_BACKUP_BREAKER\",\n  \"activeGroup\": 1,\n  \"frequencyHz\": 60.0,\n  \"phaseRotation\": \"ABC\",\n  \"ratios\": {\n    \"ctRatioPhase\": 240,\n    \"ctRatioGround\": 240,\n    \"ptRatioPhase\": 1200,\n    \"ptRatioNeutral\": 1200\n  },\n  \"groups\": {\n    \"1\": {\n      \"groupId\": 1,\n      \"phaseOvercurrent\": {\n        \"inst50P1P\": 18.0,\n        \"time51P1P\": 5.5,\n        \"curve51P1C\": \"U3\",\n        \"timeDial51P1TD\": 3.5\n      },\n      \"distance\": {\n        \"zone1Reach\": 3.5,\n        \"zone2Reach\": 6.2,\n        \"zone3Reach\": 11.0,\n        \"zone1DelayCycles\": 0,\n        \"zone2DelayCycles\": 20,\n        \"zone3DelayCycles\": 60\n      },\n      \"equations\": {\n        \"SV01\": \"Z1P OR Z2P\",\n        \"SV02\": \"IN103 AND 50P1P\",\n        \"TRIP\": \"SV01 OR SV02 OR 51P1T\",\n        \"OUT101\": \"TRIP\"\n      }\n    }\n  },\n  \"globalEquations\": {}\n}\n",
+      "seLogic.txt": "// Shared Breaker-Failure & Transfer-Trip SELogic Reference\n=>>SHOW SET\nRELAY=\"SEL-451\"\nRID=\"SUB_EAST_BF_451\"\nTID=\"BREAKER FAILURE INITIATE UNIT\"\nACTIVE_GROUP=1\nNFREQ=60.0\nPHROT=ABC\nCTRH=240\nCTRL=240\nPTR=1200\nPTRN=1200\n\nGROUP 1\n50P1P=16.00\n51P1P=5.00\n51P1C=U3\n51P1TD=3.00\nSV01=IN101 AND 50P1P\nTRIP=SV01 OR 51P1T\nOUT101=TRIP\nOUT102=SV01\n"
+    }
+  }
+]

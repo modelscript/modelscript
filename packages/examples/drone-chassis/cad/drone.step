@@ -10,7 +10,7 @@ FILE_NAME(
   ('ModelScript'),
   ('ModelScript'),
   'ModelScript Procedural CAD v1',
-  'ModelScript IDE',
+  'Ansatz Studio',
   '');
 
 FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));

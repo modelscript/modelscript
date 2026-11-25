@@ -1,0 +1,77 @@
+[
+  {
+    "id": "lustre-01-edge-detector-toggle",
+    "lang": "lustre",
+    "subFormats": ["lus"],
+    "difficulty": 1,
+    "title": "Edge Detector and Toggle Flip-Flop",
+    "description": "Synchronous dataflow rising-edge detector and T-type toggle flip-flop in Lustre using initialized pre-delay operators (-> and pre).",
+    "category": "Synchronous Digital Logic",
+    "tags": ["lustre", "edge-detector", "flip-flop", "synchronous"],
+    "activeFile": "edge_toggle.lus",
+    "fileNames": ["edge_toggle.lus"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "-- Synchronous Rising-Edge Detector and Toggle Flip-Flop in Lustre\nnode RisingEdge(sig: bool) returns (edge: bool);\nlet\n  edge = false -> (sig and not pre(sig));\ntel\n\nnode ToggleFF(btn, reset: bool) returns (q: bool);\nvar\n  press: bool;\nlet\n  press = RisingEdge(btn);\n  q = false -> (if reset then false else if press then not pre(q) else pre(q));\ntel\n"
+  },
+  {
+    "id": "lustre-02-moving-average-filter",
+    "lang": "lustre",
+    "subFormats": ["lus"],
+    "difficulty": 2,
+    "title": "Digital Moving-Average Low-Pass Filter",
+    "description": "Four-tap finite impulse response (FIR) moving-average filter and first-order exponential low-pass smoother for noisy sensor streams in Lustre.",
+    "category": "Digital Signal Processing",
+    "tags": ["lustre", "filter", "dsp", "moving-average"],
+    "activeFile": "moving_avg.lus",
+    "fileNames": ["moving_avg.lus"],
+    "fileCount": 1,
+    "code": "-- 4-Tap FIR Moving-Average and First-Order IIR Low-Pass Sensor Filter\nconst\n  ALPHA: real = 0.25;\n\nnode MovingAverage4(x: real) returns (y_fir, y_iir: real);\nvar\n  d1, d2, d3: real;\nlet\n  d1 = x -> pre(x);\n  d2 = x -> pre(d1);\n  d3 = x -> pre(d2);\n  y_fir = 0.25 * (x + d1 + d2 + d3);\n  y_iir = x -> (ALPHA * x + (1.0 - ALPHA) * pre(y_iir));\ntel\n"
+  },
+  {
+    "id": "lustre-03-cruise-control-logic",
+    "lang": "lustre",
+    "subFormats": ["lus"],
+    "difficulty": 3,
+    "title": "Cruise Control Mode Logic with Safety Latch",
+    "description": "Automotive cruise control engagement state logic with brake-override safety latch, speed envelope checks, and clamped proportional-integral throttle regulation.",
+    "category": "Automotive Safety",
+    "tags": ["lustre", "cruise-control", "safety", "automotive"],
+    "activeFile": "cruise_ctrl.lus",
+    "fileNames": ["cruise_ctrl.lus"],
+    "fileCount": 1,
+    "code": "-- Automotive Cruise Control Mode Logic with Brake Safety Override\nconst\n  MIN_SPEED: real = 30.0;\n  MAX_SPEED: real = 140.0;\n  KP: real = 0.8;\n\nfunction Clamp(val, lo, hi: real) returns (out_v: real);\nlet\n  out_v = if val < lo then lo else if val > hi then hi else val;\ntel\n\nnode CruiseControl(on_cmd, off_cmd, brake: bool; speed, target_speed: real)\nreturns (engaged: bool; throttle: real);\nvar\n  speed_ok: bool;\n  err: real;\nlet\n  speed_ok = (speed >= MIN_SPEED) and (speed <= MAX_SPEED);\n  engaged = false -> (if brake or off_cmd or not speed_ok then false\n                      else if on_cmd then true\n                      else pre(engaged));\n  err = target_speed - speed;\n  throttle = if engaged then Clamp(KP * err, 0.0, 100.0) else 0.0;\n  assert speed >= 0.0;\ntel\n"
+  },
+  {
+    "id": "lustre-04-landing-gear-sequencer",
+    "lang": "lustre",
+    "subFormats": ["lus"],
+    "difficulty": 4,
+    "title": "Aircraft Landing Gear Door Sequencer with Synchronous Clocks",
+    "description": "Avionics landing-gear door and actuator sequencer using Lustre synchronous clock sampling (when / merge), hydraulic interlock invariants, and cycle counters.",
+    "category": "Avionics Control",
+    "tags": ["lustre", "avionics", "landing-gear", "clocks", "merge"],
+    "activeFile": "landing_gear.lus",
+    "fileNames": ["landing_gear.lus"],
+    "fileCount": 1,
+    "code": "-- Aircraft Landing Gear Door Sequencer with Synchronous Clock Partitioning\nnode LandingGearSequencer(handle_down, door_open, gear_locked, hyd_ok: bool)\nreturns (open_door_cmd, extend_gear_cmd: bool; active_ticks: int);\nvar\n  extend_phase: bool;\n  inc_ticks: int when hyd_ok;\n  hold_ticks: int when not hyd_ok;\nlet\n  extend_phase = handle_down and hyd_ok;\n  open_door_cmd = extend_phase and not gear_locked;\n  extend_gear_cmd = extend_phase and door_open and not gear_locked;\n\n  inc_ticks = (1 -> (pre(active_ticks) + 1)) when hyd_ok;\n  hold_ticks = (0 -> pre(active_ticks)) when not hyd_ok;\n  active_ticks = merge hyd_ok (inc_ticks) (hold_ticks);\n\n  assert not (extend_gear_cmd and not door_open);\ntel\n"
+  },
+  {
+    "id": "lustre-05-flight-control-voter",
+    "lang": "lustre",
+    "subFormats": ["lus"],
+    "difficulty": 5,
+    "title": "Dual-Channel Flight Control Voter with Observer Contracts",
+    "description": "Multi-file redundant flight-control command voter with discrepancy persistence fault detection, failover switching (voter_sys.lus), and formal synchronous observer contracts (contracts.lus).",
+    "category": "Safety-Critical Avionics",
+    "tags": ["lustre", "voter", "redundancy", "observer", "multi-file"],
+    "activeFile": "voter_sys.lus",
+    "fileNames": ["voter_sys.lus", "contracts.lus"],
+    "fileCount": 2,
+    "code": "-- Dual-Channel Redundant Flight Control Voter with Discrepancy Persistence\nconst\n  MAX_DIFF: real = 0.05;\n  FAULT_LIMIT: int = 3;\n\nfunction AbsDiff(a, b: real) returns (d: real);\nlet\n  d = if a >= b then a - b else b - a;\ntel\n\nnode FlightControlVoter(ch_a, ch_b: real; valid_a, valid_b: bool)\nreturns (cmd_out: real; fault_latched: bool; mismatch_cnt: int);\nvar\n  disagree: bool;\n  both_valid: bool;\nlet\n  both_valid = valid_a and valid_b;\n  disagree = both_valid and (AbsDiff(ch_a, ch_b) > MAX_DIFF);\n  mismatch_cnt = 0 -> (if disagree then pre(mismatch_cnt) + 1 else 0);\n  fault_latched = false -> (pre(fault_latched) or (mismatch_cnt >= FAULT_LIMIT));\n  cmd_out = if fault_latched then 0.0\n            else if both_valid then 0.5 * (ch_a + ch_b)\n            else if valid_a then ch_a\n            else if valid_b then ch_b\n            else 0.0;\n  assert mismatch_cnt >= 0;\ntel\n",
+    "files": {
+      "voter_sys.lus": "-- Dual-Channel Redundant Flight Control Voter with Discrepancy Persistence\nconst\n  MAX_DIFF: real = 0.05;\n  FAULT_LIMIT: int = 3;\n\nfunction AbsDiff(a, b: real) returns (d: real);\nlet\n  d = if a >= b then a - b else b - a;\ntel\n\nnode FlightControlVoter(ch_a, ch_b: real; valid_a, valid_b: bool)\nreturns (cmd_out: real; fault_latched: bool; mismatch_cnt: int);\nvar\n  disagree: bool;\n  both_valid: bool;\nlet\n  both_valid = valid_a and valid_b;\n  disagree = both_valid and (AbsDiff(ch_a, ch_b) > MAX_DIFF);\n  mismatch_cnt = 0 -> (if disagree then pre(mismatch_cnt) + 1 else 0);\n  fault_latched = false -> (pre(fault_latched) or (mismatch_cnt >= FAULT_LIMIT));\n  cmd_out = if fault_latched then 0.0\n            else if both_valid then 0.5 * (ch_a + ch_b)\n            else if valid_a then ch_a\n            else if valid_b then ch_b\n            else 0.0;\n  assert mismatch_cnt >= 0;\ntel\n",
+      "contracts.lus": "-- Synchronous Safety Observer Contracts for Dual-Channel Flight Control Voter\nnode FailSafeObserver(fault_latched: bool; cmd_out: real) returns (ok: bool);\nvar\n  latched_forever: bool;\nlet\n  latched_forever = true -> (if pre(fault_latched) then fault_latched else true);\n  ok = latched_forever and (if fault_latched then cmd_out = 0.0 else true);\n  assert ok;\ntel\n"
+    }
+  }
+]

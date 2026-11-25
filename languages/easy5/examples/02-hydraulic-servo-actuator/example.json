@@ -1,0 +1,11 @@
+{
+  "id": "easy5-02-hydraulic-servo-actuator",
+  "lang": "easy5",
+  "subFormats": ["ez5"],
+  "difficulty": 2,
+  "title": "Hydraulic Actuator Servo Valve Position Loop",
+  "description": "Closed-loop aerospace hydraulic servo actuator featuring a position error summing junction, lead-lag phase compensator, servo valve flow limiter, and piston displacement integrator.",
+  "category": "Hydraulic Flight Control",
+  "tags": ["easy5", "hydraulic", "servo-valve", "lead-lag"],
+  "activeFile": "hydraulic_servo.ez5"
+}

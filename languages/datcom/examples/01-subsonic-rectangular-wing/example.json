@@ -1,0 +1,12 @@
+{
+  "id": "datcom-01-subsonic-rectangular-wing",
+  "lang": "datcom",
+  "subFormats": ["digital-datcom"],
+  "difficulty": 1,
+  "title": "Subsonic Rectangular Straight Wing",
+  "description": "USAF Digital DATCOM baseline subsonic NACA 0012 rectangular wing (AR = 6.0) evaluated across angles of attack from -4 to +10 degrees at Mach 0.20.",
+  "category": "Aerodynamics & Stability",
+  "tags": ["datcom", "subsonic", "wing", "naca-0012"],
+  "activeFile": "rect_wing.dcm",
+  "isDefaultStarter": true
+}

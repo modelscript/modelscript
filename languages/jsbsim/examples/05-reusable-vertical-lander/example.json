@@ -1,0 +1,12 @@
+{
+  "id": "jsbsim-05-reusable-vertical-lander",
+  "lang": "jsbsim",
+  "subFormats": ["xml"],
+  "difficulty": 5,
+  "title": "Reusable Vertical-Landing Launch Vehicle Mission",
+  "description": "Vertical-takeoff vertical-landing (VTVL) reusable booster stage with aerodynamic grid fins, throttleable LOX/CH4 methalox rocket engine, gimbaled bell nozzle, and autonomous powered-descent landing script.",
+  "category": "Spacecraft & Launch Vehicles",
+  "tags": ["jsbsim", "vtvl", "rocket", "methalox", "multi-file"],
+  "activeFile": "lander.xml",
+  "fileOrder": ["lander.xml", "engine/methalox.xml", "nozzle.xml", "landing_script.xml"]
+}

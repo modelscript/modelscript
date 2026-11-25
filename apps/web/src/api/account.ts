@@ -262,7 +262,7 @@ export const revokePublicKey = async (id: number) => {
 
 export const verifyEmail = async (
   token: string,
-): Promise<{ success: boolean; message: string; creditsGranted: number; user: any }> => {
+): Promise<{ success: boolean; message: string; creditsGranted: number; user: Record<string, unknown> }> => {
   const { data } = await api.post("/auth/verify-email", { token });
   return data;
 };
@@ -309,7 +309,7 @@ export interface Verify2FAResponse {
 
 export interface Challenge2FAResponse {
   token: string;
-  user: any;
+  user: Record<string, unknown>;
   message: string;
 }
 

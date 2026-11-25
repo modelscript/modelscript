@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineStudio id="compressor_boost" title="Compressor Station Pressure Boost Loop" simulationType="TGNET">
+  <Nodes>
+    <Node name="Gas_Plant_Inlet" type="SUPPLY" elevation="15m" pressure="70.0bar" flow="115.0" />
+    <Node name="CS1_Suction" type="JUNCTION" elevation="32m" />
+    <Node name="CS1_Discharge" type="JUNCTION" elevation="32m" />
+    <Node name="Metro_Terminal" type="DELIVERY" elevation="10m" minDeliveryPressure="38.0bar" flow="115.0" />
+  </Nodes>
+  <Pipes>
+    <Pipe name="Trunk_Upstream" from="Gas_Plant_Inlet" to="CS1_Suction" length="85.0km" diameter="30inch" roughness="0.000045m" maop="95.0bar" />
+    <Pipe name="Trunk_Downstream" from="CS1_Discharge" to="Metro_Terminal" length="105.0km" diameter="30inch" roughness="0.000045m" maop="95.0bar" />
+  </Pipes>
+  <Compressors>
+    <Compressor name="Compressor_Station_1" from="CS1_Suction" to="CS1_Discharge" type="CENTRIFUGAL" power="18000000" maxRatio="1.75" efficiency="0.83" mode="DISCHARGE_PRESSURE" setpoint="82.0bar" status="RUNNING" />
+  </Compressors>
+  <GasComposition ch4="0.92" c2h6="0.045" c3h8="0.015" co2="0.010" n2="0.010" h2="0.00" ghv="39.1" />
+  <SimulationControls startTime="0" endTime="21600" timeStep="60" eos="AGA8" steadyStateFirst="true" />
+</PipelineStudio>

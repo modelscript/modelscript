@@ -400,7 +400,7 @@ export function SimulationExperimentSettings({
       }
     | undefined;
   overrides: ExperimentOverrides;
-  onChange: (name: keyof ExperimentOverrides, value: any) => void;
+  onChange: <K extends keyof ExperimentOverrides>(name: K, value: ExperimentOverrides[K]) => void;
   onReset: (name: keyof ExperimentOverrides) => void;
 }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -450,7 +450,7 @@ export function SimulationExperimentSettings({
         return (
           <NumericParameterRow
             key={key}
-            info={{ name: label, type: "real", defaultValue: defaults[key] } as any}
+            info={{ name: label, type: "real", defaultValue: defaults[key] }}
             currentValue={currentValue}
             isOverridden={isOverridden}
             onChange={(_, val) => onChange(key, val)}
@@ -530,7 +530,7 @@ export function SimulationExperimentSettings({
         >
           <NumericParameterRow
             key="numberOfIntervals"
-            info={{ name: "Intervals", type: "integer", defaultValue: defaults.numberOfIntervals } as any}
+            info={{ name: "Intervals", type: "integer", defaultValue: defaults.numberOfIntervals }}
             currentValue={
               overrides.numberOfIntervals !== undefined ? overrides.numberOfIntervals : defaults.numberOfIntervals
             }
@@ -540,7 +540,7 @@ export function SimulationExperimentSettings({
           />
           <NumericParameterRow
             key="atol"
-            info={{ name: "Absolute Tol", type: "real", defaultValue: defaults.atol } as any}
+            info={{ name: "Absolute Tol", type: "real", defaultValue: defaults.atol }}
             currentValue={overrides.atol !== undefined ? overrides.atol : defaults.atol}
             isOverridden={overrides.atol !== undefined}
             onChange={(_, val) => onChange("atol", val)}

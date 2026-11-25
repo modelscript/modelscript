@@ -1,0 +1,54 @@
+DECLARE
+  TYPE
+    Concentration = 1.0 : 0.0 : 100.0 UNIT = "mol/L"
+    FlowRate      = 2.0 : 0.0 : 1000.0 UNIT = "L/s"
+    ReactionRate  = 0.0 : -1000.0 : 1000.0 UNIT = "mol/(L*s)"
+  END
+END
+
+MODEL ReactorSeparatorPlant
+  PARAMETER
+    V_rx  AS REAL DEFAULT 25.0
+    V_sep AS REAL DEFAULT 15.0
+    k_rx  AS REAL DEFAULT 0.35
+    eta_s AS REAL DEFAULT 0.85
+
+  VARIABLE
+    C_A_rx  AS Concentration
+    C_B_rx  AS Concentration
+    C_A_sep AS Concentration
+    C_B_sep AS Concentration
+    F_fresh AS FlowRate
+    F_rec   AS FlowRate
+    C_A0    AS Concentration
+    r_rx    AS ReactionRate
+
+  EQUATION
+    r_rx = k_rx * C_A_rx ;
+    V_rx * $C_A_rx = F_fresh * C_A0 + F_rec * C_A_sep - (F_fresh + F_rec) * C_A_rx - V_rx * r_rx ;
+    V_rx * $C_B_rx = F_rec * (1.0 - eta_s) * C_B_sep - (F_fresh + F_rec) * C_B_rx + V_rx * r_rx ;
+    V_sep * $C_A_sep = (F_fresh + F_rec) * (C_A_rx - C_A_sep) ;
+    V_sep * $C_B_sep = (F_fresh + F_rec) * (C_B_rx - C_B_sep) ;
+END
+
+PROCESS PlantwideRecycleRun
+  UNIT
+    P501 AS ReactorSeparatorPlant
+  SET
+    P501.V_rx  := 25.0 ;
+    P501.V_sep := 15.0 ;
+    P501.k_rx  := 0.35 ;
+    P501.eta_s := 0.85 ;
+  ASSIGN
+    P501.F_fresh := 2.0 ;
+    P501.F_rec   := 1.5 ;
+    P501.C_A0    := 10.0 ;
+  INITIAL
+    P501.C_A_rx  := 2.0 ;
+    P501.C_B_rx  := 0.0 ;
+    P501.C_A_sep := 2.0 ;
+    P501.C_B_sep := 0.0 ;
+  SOLUTIONPARAMETERS
+    ReportingInterval := 0.2 ;
+    TotalTime := 30.0 ;
+END

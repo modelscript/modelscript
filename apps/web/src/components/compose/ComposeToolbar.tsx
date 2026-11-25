@@ -30,7 +30,7 @@ export interface ComposeToolbarProps {
   content: string;
   setContent: (val: string) => void;
   handleToggleNotebookMode?: (() => void) | undefined;
-  setShowMorselModal: (show: boolean) => void;
+  setShowAnsatzModal: (show: boolean) => void;
   setShowPackageRepoPicker: (show: boolean) => void;
   setShowCodeSnippetModal: (show: boolean) => void;
   setShowHpcPicker: (show: boolean) => void;
@@ -69,7 +69,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
   isNotebookMode,
   content,
   setContent,
-  setShowMorselModal,
+  setShowAnsatzModal,
   setShowPackageRepoPicker,
   setShowCodeSnippetModal,
   setShowHpcPicker,
@@ -475,7 +475,7 @@ export const ComposeToolbar: React.FC<ComposeToolbarProps> = ({
           }}
         >
           <ActionIconButton
-            onClick={() => setShowMorselModal(true)}
+            onClick={() => setShowAnsatzModal(true)}
             aria-label="Add model"
             title="Add model — an interactive, simulatable diagram (attach multiple to build an Article)"
           >

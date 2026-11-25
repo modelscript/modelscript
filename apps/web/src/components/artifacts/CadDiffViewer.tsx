@@ -6,6 +6,7 @@ import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { convertCadGeometry } from "../../api";
 import { useThemeTokens } from "../../theme-tokens";
 import Spinner from "../Spinner";
@@ -122,7 +123,17 @@ const LegendItem = styled.div<{ $color: string }>`
   }
 `;
 
-function parseMeshToGeometries(rawMeshes: any[]): THREE.BufferGeometry[] {
+interface RawCadMesh {
+  attributes?:
+    | {
+        position?: { array?: ArrayLike<number> | undefined } | undefined;
+        normal?: { array?: ArrayLike<number> | undefined } | undefined;
+      }
+    | undefined;
+  index?: { array?: ArrayLike<number> | undefined } | undefined;
+}
+
+function parseMeshToGeometries(rawMeshes: RawCadMesh[]): THREE.BufferGeometry[] {
   const geos: THREE.BufferGeometry[] = [];
   for (const meshData of rawMeshes) {
     if (!meshData.attributes?.position?.array) continue;
@@ -282,7 +293,7 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
   const [clipInvert, setClipInvert] = useState(false);
   const [showWireframe, setShowWireframe] = useState(false);
 
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -352,7 +363,7 @@ export const CadDiffViewer: React.FC<CadDiffViewerProps> = ({
 
   useEffect(() => {
     if (!loading && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [loading]);
 

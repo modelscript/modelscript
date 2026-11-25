@@ -1,0 +1,7 @@
+<simpack_model name="UIC60RailTrackSubstructure">
+  <!-- UIC60 1:40 Inclined Rail Pad & Sleeper Track Substructure (.sub) -->
+  <body id="sleeper_bay" name="ConcreteSleeperBay" mass="310.0" ixx="145.0" iyy="18.0" izz="150.0" />
+  <marker id="m_ballast" body="$inertial" x="0.0" y="0.0" z="-0.25" />
+  <marker id="m_sleeper_cg" body="sleeper_bay" x="0.0" y="0.0" z="0.0" />
+  <spring id="ballast_bed" from="m_ballast" to="m_sleeper_cg" kx="4.5e7" ky="5.2e7" kz="1.1e8" cx="45000" cy="48000" cz="85000" />
+</simpack_model>

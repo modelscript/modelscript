@@ -4,6 +4,7 @@ import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { useEffect, useState } from "react";
 import styled from "styled-components";
+import { getErrorMessage } from "../../util/error";
 import Box from "../Box";
 import Spinner from "../Spinner";
 
@@ -64,8 +65,15 @@ const TeiContainer = styled.div<{ $isFullScreen?: boolean | undefined }>`
   }
 `;
 
+export interface TeiViewerConfig {
+  data?: string | undefined;
+  code?: string | undefined;
+  url?: string | undefined;
+  [key: string]: unknown;
+}
+
 interface TeiViewerProps {
-  viewConfig: any;
+  viewConfig: TeiViewerConfig;
   isFullScreen?: boolean | undefined;
 }
 
@@ -85,14 +93,14 @@ const TeiViewer: React.FC<TeiViewerProps> = ({ viewConfig, isFullScreen }) => {
         throw new Error("Invalid XML format");
       }
       setTeiData(xmlDoc);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e: unknown) {
+      setError(getErrorMessage(e, "Failed to parse TEI XML"));
     }
   };
 
   useEffect(() => {
     if (teiData || error) {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [teiData, error]);
 

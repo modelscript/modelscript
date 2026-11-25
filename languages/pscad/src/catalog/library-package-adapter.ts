@@ -91,15 +91,13 @@ export function getPscadSchemasFromLibraries(): PscadComponentSchema[] {
         description: (meta["description"] as string) ?? "",
         defaultWidth: diag?.width ?? 60,
         defaultHeight: diag?.height ?? 60,
-        ports: (diag?.ports ?? []).map(
-          (p): PscadPortSchema => ({
-            name: p.name,
-            kind: p.kind === "signal" ? "signal" : "electrical",
-            side: p.side,
-            offsetX: p.dx,
-            offsetY: p.dy,
-          }),
-        ),
+        ports: (diag?.ports ?? []).map((p): PscadPortSchema => ({
+          name: p.name,
+          kind: p.kind === "signal" ? "signal" : "electrical",
+          side: p.side,
+          offsetX: p.dx,
+          offsetY: p.dy,
+        })),
         parameters: Array.isArray(meta["parameters"]) ? (meta["parameters"] as PscadParameterSchema[]) : [],
       });
     }
@@ -991,7 +989,7 @@ export function ensureBuiltInPscadLibraryRegistered(): LoadedLibraryPackage | un
 
 /**
  * Registers an external `package.json#modelscript` library bundle (e.g. mined clean-room
- * `symbols.json` + `diagrams.json` + optional `.wasm`) for PSCAD in Node or Browser/Morsel.
+ * `symbols.json` + `diagrams.json` + optional `.wasm`) for PSCAD in Node or Browser/Ansatz.
  */
 export function registerPscadLibraryBundle(
   pkgJson: { name: string; version?: string; modelscript: ModelscriptLibraryManifest },

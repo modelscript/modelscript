@@ -16,7 +16,7 @@ const VIRTUAL_ENTRY_URL = "/__vr_rotunda_e2e_entry.tsx";
 const VIRTUAL_ENTRY_RESOLVED = path.join(WEB_ROOT, "__vr_rotunda_e2e_entry.tsx");
 
 const CHROMIUM_CANDIDATES = ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"] as const;
-const ROTUNDA_ENV_IDS = ["warehouse", "office", "outdoors", "dark-lab", "passthrough"] as const;
+const ROTUNDA_ENV_IDS = ["atrium", "warehouse", "office", "outdoors", "dark-lab", "passthrough"] as const;
 
 function findChromiumExecutable(): string | null {
   for (const candidate of CHROMIUM_CANDIDATES) {
@@ -114,8 +114,8 @@ if (typeof window !== "undefined") {
 }
 
 const SpatialCanvasPage = React.lazy(() => import("./src/pages/SpatialCanvasPage.tsx"));
-const PlaygroundPage = React.lazy(() => import("./src/pages/PlaygroundPage.tsx"));
-const EmbedPlaygroundPage = React.lazy(() => import("./src/pages/EmbedPlaygroundPage.tsx"));
+const AnsatzEditorPage = React.lazy(() => import("./src/pages/AnsatzEditorPage.tsx"));
+const EmbedAnsatzEditorPage = React.lazy(() => import("./src/pages/EmbedAnsatzEditorPage.tsx"));
 
 function PreserveParamsNavigate({ to }: { to: string }): React.ReactElement {
   const location = useLocation();
@@ -139,9 +139,9 @@ function RouterShell(): React.ReactElement {
               <Routes>
                 <Route path="/canvas" element={<SpatialCanvasPage />} />
                 <Route path="/canvas/:boardId" element={<SpatialCanvasPage />} />
-                <Route path="/editor" element={<PlaygroundPage />} />
-                <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
-                <Route path="/embed/editor" element={<EmbedPlaygroundPage />} />
+                <Route path="/editor" element={<AnsatzEditorPage />} />
+                <Route path="/editor" element={<PreserveParamsNavigate to="/editor" />} />
+                <Route path="/embed/editor" element={<EmbedAnsatzEditorPage />} />
                 <Route path="*" element={<SpatialCanvasPage />} />
               </Routes>
             </Suspense>
@@ -190,7 +190,7 @@ function createVirtualHarnessPlugin(): Plugin {
   const indexerWorkerPath = path.resolve(REPO_ROOT, "packages/lsp/dist/workers/indexer.worker.js");
   const entrySource = buildVirtualEntrySource();
 
-  const spaRoutes = new Set(["/", "/canvas", "/editor", "/playground", "/embed/editor"]);
+  const spaRoutes = new Set(["/", "/canvas", "/editor", "/editor", "/embed/editor"]);
 
   return {
     name: "vr-rotunda-e2e-virtual-harness",
@@ -211,7 +211,7 @@ function createVirtualHarnessPlugin(): Plugin {
       if (id === VIRTUAL_LANGUAGE_UI_RESOLVED) {
         return `
 export const LANGUAGE_PANEL_META = [];
-export const MORSEL_PANEL_LOADERS = {};
+export const ANSATZ_PANEL_LOADERS = {};
 export const ARTIFACT_PANEL_LOADERS = {};
 export const LANGUAGE_STENCILS = {};
 export const LANGUAGE_SIMULATION_CARDS = [];
@@ -632,8 +632,8 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       optimizeDeps: {
         entries: [
           "src/pages/SpatialCanvasPage.tsx",
-          "src/pages/PlaygroundPage.tsx",
-          "src/pages/EmbedPlaygroundPage.tsx",
+          "src/pages/AnsatzEditorPage.tsx",
+          "src/pages/EmbedAnsatzEditorPage.tsx",
         ],
         include: [
           "react",
@@ -940,11 +940,11 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
     const { page, pageErrors, fatalWebGlErrors } = session;
 
     try {
-      // 4A. Full Playground / Editor route with SCAD 3D template
-      await page.goto(`${baseUrl}/playground?template=scad-flanged-hub`, { waitUntil: "domcontentloaded" });
+      // 4A. Full Ansatz / Editor route with SCAD 3D template
+      await page.goto(`${baseUrl}/editor?template=scad-flanged-hub`, { waitUntil: "domcontentloaded" });
 
       const editorVrTrigger = page
-        .locator('[data-testid="morsel-vr-rotunda-toggle"], [data-testid="cad-viewer-open-vr-rotunda"]')
+        .locator('[data-testid="ansatz-vr-rotunda-toggle"], [data-testid="cad-viewer-open-vr-rotunda"]')
         .first();
       await editorVrTrigger.waitFor({ state: "visible", timeout: 25_000 });
       await editorVrTrigger.click();
@@ -954,10 +954,10 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       await waitForLiveWebGlCanvas(page, '[data-testid="spatial-vr-surface"]', 20_000);
 
       const editorWebGl = await inspectWebGlCanvas(page, '[data-testid="spatial-vr-surface"]');
-      assertHealthyWebGl(editorWebGl, "PlaygroundPage VR Rotunda WebGL canvas");
+      assertHealthyWebGl(editorWebGl, "AnsatzEditorPage VR Rotunda WebGL canvas");
 
       const fullBleedMetrics = await page.evaluate(() => {
-        const pane = document.querySelector<HTMLElement>('[data-testid="morsel-vr-rotunda-pane"]');
+        const pane = document.querySelector<HTMLElement>('[data-testid="ansatz-vr-rotunda-pane"]');
         const header = document.querySelector<HTMLElement>("header");
         const carouselBar = document.querySelector<HTMLElement>('[data-testid="rotunda-carousel-bar"]');
         const paneRect = pane?.getBoundingClientRect();
@@ -980,7 +980,7 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
           carouselTop: carouselRect ? Math.round(carouselRect.top) : 0,
         };
       });
-      assert.ok(fullBleedMetrics.paneRect, "Expected morsel-vr-rotunda-pane bounding rect");
+      assert.ok(fullBleedMetrics.paneRect, "Expected ansatz-vr-rotunda-pane bounding rect");
       assert.equal(fullBleedMetrics.paneRect.x, 0, "VR Rotunda pane must start at x=0");
       assert.equal(fullBleedMetrics.paneRect.y, 0, "VR Rotunda pane must stretch behind floating topbar from y=0");
       assert.equal(
@@ -995,32 +995,32 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       );
       assert.ok(
         fullBleedMetrics.headerZ > fullBleedMetrics.paneZ,
-        `Floating Morsel navbar z-index (${fullBleedMetrics.headerZ}) must sit above VR Rotunda pane (${fullBleedMetrics.paneZ})`,
+        `Floating Ansatz navbar z-index (${fullBleedMetrics.headerZ}) must sit above VR Rotunda pane (${fullBleedMetrics.paneZ})`,
       );
       assert.ok(
         fullBleedMetrics.carouselTop >= fullBleedMetrics.headerBottom,
-        `VR Rotunda HUD (${fullBleedMetrics.carouselTop}px) must clear floating Morsel navbar bottom (${fullBleedMetrics.headerBottom}px)`,
+        `VR Rotunda HUD (${fullBleedMetrics.carouselTop}px) must clear floating Ansatz navbar bottom (${fullBleedMetrics.headerBottom}px)`,
       );
 
       await page.getByRole("button", { name: "Return to 2D Canvas" }).click();
       await editorRotunda.waitFor({ state: "detached", timeout: 10_000 });
 
-      // 4B. Morsel embedded editor floating toolbar toggle (`morsel-vr-rotunda-toggle`)
+      // 4B. Ansatz embedded editor floating toolbar toggle (`ansatz-vr-rotunda-toggle`)
       await page.goto(`${baseUrl}/embed/editor?lang=modelica`, { waitUntil: "domcontentloaded" });
 
-      const morselToggle = page.locator('[data-testid="morsel-vr-rotunda-toggle"]');
-      await morselToggle.waitFor({ state: "visible", timeout: 25_000 });
-      await morselToggle.click();
+      const ansatzToggle = page.locator('[data-testid="ansatz-vr-rotunda-toggle"]');
+      await ansatzToggle.waitFor({ state: "visible", timeout: 25_000 });
+      await ansatzToggle.click();
 
-      const morselRotunda = page.locator('[data-testid="spatial-vr-surface"][data-rotunda="engineering-rotunda"]');
-      await morselRotunda.waitFor({ state: "visible", timeout: 20_000 });
+      const ansatzRotunda = page.locator('[data-testid="spatial-vr-surface"][data-rotunda="engineering-rotunda"]');
+      await ansatzRotunda.waitFor({ state: "visible", timeout: 20_000 });
       await waitForLiveWebGlCanvas(page, '[data-testid="spatial-vr-surface"]', 20_000);
 
-      const morselWebGl = await inspectWebGlCanvas(page, '[data-testid="spatial-vr-surface"]');
-      assertHealthyWebGl(morselWebGl, "MorselVisualizerPane VR Rotunda WebGL canvas");
+      const ansatzWebGl = await inspectWebGlCanvas(page, '[data-testid="spatial-vr-surface"]');
+      assertHealthyWebGl(ansatzWebGl, "AnsatzVisualizerPane VR Rotunda WebGL canvas");
 
       await page.getByRole("button", { name: "Return to 2D Canvas" }).click();
-      await morselRotunda.waitFor({ state: "detached", timeout: 10_000 });
+      await ansatzRotunda.waitFor({ state: "detached", timeout: 10_000 });
 
       assert.deepEqual(pageErrors, [], `Uncaught pageerror exceptions in Editor VR launch: ${pageErrors.join("; ")}`);
       assert.deepEqual(
@@ -1069,7 +1069,7 @@ describe("Engineering Rotunda VR Mode — Real Headless Chromium WebGL E2E", () 
       })()`);
 
       // 5A. STEP Aerospace Bracket in CadViewer (data: GLB asset under React.StrictMode)
-      await page.goto(`${baseUrl}/playground?template=step-aerospace-bracket`, {
+      await page.goto(`${baseUrl}/editor?template=step-aerospace-bracket`, {
         waitUntil: "domcontentloaded",
       });
       await page.waitForTimeout(3000);

@@ -1,0 +1,11 @@
+{
+  "id": "comtrade-03-transformer-inrush-cff",
+  "lang": "comtrade",
+  "subFormats": ["cff"],
+  "difficulty": 3,
+  "title": "Unified COMTRADE 2013 (.cff) Transformer Inrush Capture",
+  "description": "Single-file IEEE C37.111-2013 CFF disturbance record capturing power transformer magnetizing inrush with strong 2nd-harmonic restraint assertion.",
+  "category": "Transformer Protection",
+  "tags": ["comtrade", "cff", "2013", "transformer-inrush"],
+  "activeFile": "inrush.cff"
+}

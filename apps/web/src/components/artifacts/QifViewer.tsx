@@ -537,7 +537,7 @@ const QifViewerInner: React.FC<QifViewerProps & { parsedDoc?: QifDocument }> = (
     URL.revokeObjectURL(url);
   };
 
-  const handleOpenInPlayground = () => {
+  const handleOpenInAnsatzEditor = () => {
     const targetUrl = buildEditorUrlForArtifact({
       artifactId: typeof artifactId === "number" ? artifactId : Number(viewConfig?.artifactId) || undefined,
       viewType: "qif",
@@ -757,7 +757,7 @@ const QifViewerInner: React.FC<QifViewerProps & { parsedDoc?: QifDocument }> = (
                   size="small"
                   variant="primary"
                   leadingVisual={DraftingTriangleIcon}
-                  onClick={handleOpenInPlayground}
+                  onClick={handleOpenInAnsatzEditor}
                 >
                   Open in Ansatz
                 </Button>

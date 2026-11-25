@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { cellsToDiagramData, renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
-import { DiagramApplyEditsParams, DiagramMethods } from "../diagramProtocol.js";
+import {
+  DiagramApplyEditsParams,
+  DiagramDrillDownParams,
+  DiagramGetPaletteParams,
+  DiagramMethods,
+} from "../diagramProtocol.js";
 import { LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getCompositeName } from "../utils/hierarchy-utils.js";
@@ -36,7 +41,32 @@ export interface DiagramPreviewItemResult {
   edgeCount: number;
 }
 
-export const cadComponentsCache = new Map<string, { version: string; data: any }>();
+interface WorkspaceIndexFqnLookupLike {
+  ensureFQNIndexed?: (fqn: string) => void;
+  getFileUriForFQN?: (fqn: string) => string | undefined;
+  getIndex?: () => PreviewSymbolIndexLike | undefined;
+  byName?: Map<string, number[]>;
+  symbols?: Map<number, { name: string; parentId: number | null; resourceId?: string }>;
+}
+
+interface PreviewSymbolIndexLike {
+  byName?: Map<string, number[]>;
+  symbols?: Map<number, { name: string; parentId: number | null; resourceId?: string }>;
+}
+
+interface ComponentPropertyParamLike {
+  name?: unknown;
+  type?: unknown;
+  value?: unknown;
+  defaultValue?: unknown;
+  isBoolean?: boolean;
+  unit?: string;
+  description?: string;
+  group?: string;
+  tab?: string;
+}
+
+export const cadComponentsCache = new Map<string, { version: string; data: unknown[] }>();
 export const diagramPreviewSvgCache = new Map<string, DiagramPreviewItemResult>();
 export { simpleHash };
 
@@ -104,19 +134,20 @@ function resolvePreviewUriForItem(context: LspContext, item: DiagramPreviewItemR
     return `file:///__open_model_preview_${safeId}__.${ext}`;
   }
   if (item.className) {
-    const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
-    const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2");
-    (context.workspaceManager.unifiedWorkspace as any)?.ensureFQNIndexed?.(item.className);
-    (moIdx as any)?.ensureFQNIndexed?.(item.className);
-    (sysmlIdx as any)?.ensureFQNIndexed?.(item.className);
+    const moIdx = context.workspaceManager.getWorkspaceIndex("modelica") as WorkspaceIndexFqnLookupLike | undefined;
+    const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2") as WorkspaceIndexFqnLookupLike | undefined;
+    const uw = context.workspaceManager.unifiedWorkspace as unknown as WorkspaceIndexFqnLookupLike | undefined;
+    uw?.ensureFQNIndexed?.(item.className);
+    moIdx?.ensureFQNIndexed?.(item.className);
+    sysmlIdx?.ensureFQNIndexed?.(item.className);
 
     let candidateUri: string | undefined =
-      (context.workspaceManager.unifiedWorkspace as any)?.getFileUriForFQN?.(item.className) ||
-      (moIdx as any)?.getFileUriForFQN?.(item.className) ||
-      (sysmlIdx as any)?.getFileUriForFQN?.(item.className);
+      uw?.getFileUriForFQN?.(item.className) ||
+      moIdx?.getFileUriForFQN?.(item.className) ||
+      sysmlIdx?.getFileUriForFQN?.(item.className);
 
     if (!candidateUri) {
-      const unified = (context.workspaceManager.unifiedWorkspace as any)?.getIndex?.() ?? (moIdx as any);
+      const unified: PreviewSymbolIndexLike | undefined = uw?.getIndex?.() ?? moIdx;
       if (unified?.byName && unified?.symbols) {
         const shortName = item.className.split(".").pop() || item.className;
         const ids = unified.byName.get(item.className) ?? unified.byName.get(shortName);
@@ -125,7 +156,11 @@ function resolvePreviewUriForItem(context: LspContext, item: DiagramPreviewItemR
             const sym = unified.symbols.get(id);
             if (
               sym &&
-              (getCompositeName(sym, unified) === item.className || sym.name === item.className) &&
+              (getCompositeName(
+                sym as unknown as Parameters<typeof getCompositeName>[0],
+                unified as unknown as Parameters<typeof getCompositeName>[1],
+              ) === item.className ||
+                sym.name === item.className) &&
               sym.resourceId
             ) {
               candidateUri = sym.resourceId;
@@ -231,12 +266,12 @@ export function registerDiagramHandlers(context: LspContext) {
 
           const normalizedData =
             rawData && !Array.isArray(rawData.nodes) && Array.isArray(rawData.cells)
-              ? cellsToDiagramData({ cells: rawData.cells })
+              ? cellsToDiagramData({ cells: rawData.cells as Parameters<typeof cellsToDiagramData>[0]["cells"] })
               : rawData;
 
           const realNodes = Array.isArray(normalizedData?.nodes)
             ? normalizedData.nodes.filter(
-                (n: any) =>
+                (n) =>
                   n &&
                   typeof n.id === "string" &&
                   !n.id.startsWith("__") &&
@@ -251,12 +286,15 @@ export function registerDiagramHandlers(context: LspContext) {
 
           const edgeCount = Array.isArray(normalizedData?.edges) ? normalizedData.edges.length : 0;
           const scopePrefix = `${simpleHash(cacheKey)}`;
-          const rawSvg = renderPolyglotDiagramToSvg(normalizedData, {
-            theme: isDark ? "dark" : "light",
-            padding: 26,
-            background: bg,
-            idPrefix: scopePrefix,
-          });
+          const rawSvg = renderPolyglotDiagramToSvg(
+            normalizedData as Parameters<typeof renderPolyglotDiagramToSvg>[0],
+            {
+              theme: isDark ? "dark" : "light",
+              padding: 26,
+              background: bg,
+              idPrefix: scopePrefix,
+            },
+          );
           const svg = makeResponsiveScopedSvg(rawSvg, scopePrefix);
           const result: DiagramPreviewItemResult = {
             svg,
@@ -271,9 +309,10 @@ export function registerDiagramHandlers(context: LspContext) {
             diagramPreviewSvgCache.set(cacheKey, result);
           }
           previews[item.id] = result;
-        } catch (e: any) {
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
           context.connection.console.warn?.(
-            `[diagram-preview] Could not render preview for '${item.className ?? item.uri ?? item.id}': ${e?.message ?? e}`,
+            `[diagram-preview] Could not render preview for '${item.className ?? item.uri ?? item.id}': ${msg}`,
           );
         }
       }
@@ -297,14 +336,21 @@ export function registerDiagramHandlers(context: LspContext) {
       const classInstance = context.workspaceManager.resolveClassInstance(params.uri, params.className);
       if (!classInstance) return null;
 
-      const buildProps = (globalThis as any).modelicaDiagramOps?.buildComponentProperties;
+      const diagramOps = (
+        globalThis as {
+          modelicaDiagramOps?: {
+            buildComponentProperties?: (cls: unknown, componentName: string) => unknown;
+          };
+        }
+      ).modelicaDiagramOps;
+      const buildProps = diagramOps?.buildComponentProperties;
       if (typeof buildProps === "function") {
         try {
           return buildProps(classInstance, params.componentName);
-        } catch (e: any) {
-          context.connection.console.error(
-            `[diagram] Error building component properties: ${e?.message ?? e}\n  ${e?.stack ?? ""}`,
-          );
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const stack = e instanceof Error ? (e.stack ?? "") : "";
+          context.connection.console.error(`[diagram] Error building component properties: ${msg}\n  ${stack}`);
         }
       }
       return null;
@@ -330,13 +376,20 @@ export function registerDiagramHandlers(context: LspContext) {
       }
 
       try {
-        const data = await dispatchLanguageRequest(context, "modelscript/getCadComponents", params.uri, params, []);
+        const data = await dispatchLanguageRequest<unknown[]>(
+          context,
+          "modelscript/getCadComponents",
+          params.uri,
+          params,
+          [],
+        );
         if (version !== "unknown" && Array.isArray(data) && data.length > 0) {
           cadComponentsCache.set(params.uri, { version, data });
         }
         return data;
-      } catch (e: any) {
-        context.connection.console.error(`[cad] Error extracting CAD components: ${e?.message ?? e}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        context.connection.console.error(`[cad] Error extracting CAD components: ${msg}`);
         return [];
       }
     },
@@ -346,18 +399,18 @@ export function registerDiagramHandlers(context: LspContext) {
     return await context.diagramService.getDiagramDispatch().applyEdits(params);
   });
 
-  context.connection.onRequest(DiagramMethods.getPalette, async (params: any) => {
+  context.connection.onRequest(DiagramMethods.getPalette, async (params: DiagramGetPaletteParams) => {
     return await context.diagramService.getDiagramDispatch().getPalette(params);
   });
 
-  context.connection.onRequest(DiagramMethods.drillDown, async (params: any) => {
+  context.connection.onRequest(DiagramMethods.drillDown, async (params: DiagramDrillDownParams) => {
     return await context.diagramService.getDiagramDispatch().drillDown(params);
   });
 
   context.connection.onRequest(
     "modelscript/getStepMeshes",
-    async (params: { uri: string; documentText?: string }): Promise<any[]> => {
-      return await dispatchLanguageRequest(context, "modelscript/getStepMeshes", params.uri, params, []);
+    async (params: { uri: string; documentText?: string }): Promise<unknown[]> => {
+      return await dispatchLanguageRequest<unknown[]>(context, "modelscript/getStepMeshes", params.uri, params, []);
     },
   );
 
@@ -389,7 +442,9 @@ export function registerDiagramHandlers(context: LspContext) {
             properties: [],
           };
         }
-        const rawParams: any[] = Array.isArray(props.parameters) ? props.parameters : [];
+        const rawParams: ComponentPropertyParamLike[] = Array.isArray(props.parameters)
+          ? (props.parameters as ComponentPropertyParamLike[])
+          : [];
         const properties = rawParams.map((p) => {
           const val = p.value ?? p.defaultValue ?? "";
           let inferredType = "string";
@@ -417,9 +472,10 @@ export function registerDiagramHandlers(context: LspContext) {
           properties,
           ...(props.schema ? { schema: props.schema } : {}),
         };
-      } catch (e: any) {
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
         context.connection.console.warn?.(
-          `[diagram] Error building property schema for '${params.componentName}': ${e?.message ?? e}`,
+          `[diagram] Error building property schema for '${params.componentName}': ${msg}`,
         );
         return {
           componentName: params.componentName,

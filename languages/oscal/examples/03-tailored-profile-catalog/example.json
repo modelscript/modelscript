@@ -1,0 +1,11 @@
+{
+  "id": "oscal-03-tailored-profile-catalog",
+  "lang": "oscal",
+  "subFormats": ["oscal.json"],
+  "difficulty": 3,
+  "title": "Tailored Security Profile Resolving Custom Catalog",
+  "description": "Multi-file OSCAL profile selecting controls from a companion custom catalog and binding organizational parameter values.",
+  "category": "Cybersecurity Compliance",
+  "tags": ["oscal", "profile", "catalog", "tailoring", "multi-file"],
+  "activeFile": "profile.oscal.json"
+}

@@ -64,6 +64,20 @@ export function computeArenaExprPurityBitset(arena: DAEBuilder): Uint8Array {
  * directly in WASM linear memory via `dae_evalDualJacobianColumn` (zero Dual heap allocations).
  * Returns `null` if the arena is not backed by WASM or if `MSX_WASM_EVAL === "ts"`.
  */
+interface CstNodeLike {
+  type?: string | undefined;
+  text?: string | undefined;
+  children?: CstNodeLike[] | undefined;
+}
+
+function readNumericLookup(values: Float64Array | Map<number, number>, id: number): number | undefined {
+  const mapLike = values as unknown as { get?: (k: number) => number | undefined };
+  if (typeof mapLike.get === "function") {
+    return mapLike.get(id);
+  }
+  return (values as Float64Array)[id];
+}
+
 export function evaluateArenaDualJacobianColumnWasm(
   arena: DAEBuilder,
   eqIndices: Int32Array | number[],
@@ -71,7 +85,7 @@ export function evaluateArenaDualJacobianColumnWasm(
   seedVarId: number,
 ): Float64Array | null {
   if (typeof process !== "undefined" && process.env?.["MSX_WASM_EVAL"] === "ts") return null;
-  const exp = arena.exports as any;
+  const exp = arena.exports;
   if (arena.ptr === 0 || !exp || typeof exp.dae_evalDualJacobianColumn !== "function") return null;
 
   const nEqs = eqIndices.length;
@@ -387,14 +401,15 @@ export function evaluateArenaDualExpression(
       if (preEnv instanceof Float64Array) {
         return Dual.constant(evaluateArenaRuntime(arena, argId, preEnv, preEnv));
       }
-      if (preEnv && typeof (preEnv as any).get === "function") {
+      const preMap = preEnv as unknown as { get?: (k: number) => number | undefined } | undefined;
+      if (preMap && typeof preMap.get === "function") {
         if (arena.getExprKind(argId) === ExprKind.Name) {
-          const v = (preEnv as Map<number, number>).get(arena.getExprData1(argId));
+          const v = preMap.get(arena.getExprData1(argId));
           if (typeof v === "number") return Dual.constant(v);
         } else if (arena.getExprKind(argId) === ExprKind.Subscript) {
           const subName = resolveSubscriptNameDual(arena, argId, dualVarsByStringId, preValuesByStringId);
           if (subName) {
-            const v = (preEnv as Map<number, number>).get(arena.interner.intern(subName));
+            const v = preMap.get(arena.interner.intern(subName));
             if (typeof v === "number") return Dual.constant(v);
           }
         }
@@ -1570,7 +1585,7 @@ export function evaluateArenaRuntime(
             ? Math.round(evaluateArenaRuntime(arena, idxExprId, valuesByStringId, preValuesByStringId))
             : 1;
         if (idx <= 1) return firstVal;
-        const rootArena = ((arena as any).parentDae as DAEBuilder | undefined) ?? arena;
+        const rootArena = arena.parentDae ?? arena;
         const lastOuts = (getArenaRuntimeState(arena).lastFunctionOutputs ??
           getArenaRuntimeState(rootArena).lastFunctionOutputs) as number[] | undefined;
         if (Array.isArray(lastOuts) && idx - 1 < lastOuts.length) {
@@ -1714,14 +1729,12 @@ export function evaluateArenaRuntime(
           return getArenaRuntimeState(arena).isInitialPhase ? 1 : 0;
         case "terminal": {
           if (getArenaRuntimeState(arena).isTerminalPhase) return 1;
+          const internable = arena as DAEBuilder & { intern?: (s: string) => number };
           const termId =
-            typeof (arena as any).intern === "function"
-              ? (arena as any).intern("$terminal")
+            typeof internable.intern === "function"
+              ? internable.intern("$terminal")
               : arena.interner.intern("$terminal");
-          const termVal =
-            typeof (valuesByStringId as any).get === "function"
-              ? (valuesByStringId as any).get(termId)
-              : valuesByStringId[termId];
+          const termVal = readNumericLookup(valuesByStringId, termId);
           return termVal === 1 ? 1 : 0;
         }
         case "delay": {
@@ -1842,10 +1855,7 @@ export function evaluateArenaRuntime(
         case "activeState":
         case "ticksInState":
         case "timeInState": {
-          const readVar = (id: number): number | undefined =>
-            typeof (valuesByStringId as any).get === "function"
-              ? (valuesByStringId as any).get(id)
-              : valuesByStringId[id];
+          const readVar = (id: number): number | undefined => readNumericLookup(valuesByStringId, id);
           if (argCount >= 1 && firstArgId >= 0) {
             const argName = arena.interner.resolve(arena.getExprData1(firstArgId)) ?? "";
             const key1 = arena.interner.intern(`$${funcName}(${argName})`);
@@ -2123,7 +2133,7 @@ export function evaluateArenaRuntime(
         if (typeof cRes === "boolean") return cRes ? 1 : 0;
       }
 
-      const rootArena = (arena as any).parentDae as DAEBuilder | undefined;
+      const rootArena = arena.parentDae;
       const fnArena =
         arena.functions?.get(funcNameId) ??
         arena.getFunction?.(funcNameId) ??
@@ -2138,8 +2148,8 @@ export function evaluateArenaRuntime(
         rootArena?.getFunction?.(funcName) ??
         rootArena?.getFunction?.(shortName);
       if (fnArena) {
-        if (!(fnArena as any).parentDae) {
-          (fnArena as any).parentDae = rootArena ?? arena;
+        if (!fnArena.parentDae) {
+          fnArena.parentDae = rootArena ?? arena;
         }
         const argIds = collectArgIds(arena, exprId, firstArgId, argCount);
         const argVals = argIds.map((id) => evaluateArenaRuntime(arena, id, valuesByStringId, preValuesByStringId));
@@ -2167,8 +2177,8 @@ export function evaluateArenaRuntime(
             rootArena?.getFunction?.(calledClean) ??
             rootArena?.getFunction?.(calledShort);
           if (subArena) {
-            if (!(subArena as any).parentDae) {
-              (subArena as any).parentDae = rootArena ?? arena;
+            if (!subArena.parentDae) {
+              subArena.parentDae = rootArena ?? arena;
             }
             return executeArenaFunction(subArena, calledArgs, parentLookup);
           }
@@ -2705,7 +2715,7 @@ export function evalRawSubscriptIndex(
     if (vName && parameters.has(vName)) {
       const pVal = parameters.get(vName);
       if (Array.isArray(pVal)) {
-        let cur: any = pVal;
+        let cur: unknown = pVal;
         let d = 1;
         while (d < dNum && Array.isArray(cur) && cur.length > 0 && Array.isArray(cur[0])) {
           cur = cur[0];
@@ -2738,32 +2748,33 @@ export function evalRawSubscriptIndex(
     }
   }
 
-  const effectiveDb = db ?? (dae as any)?.db;
+  const effectiveDb = db ?? dae?.db;
   if (effectiveDb && trimmed.includes(".")) {
     const parts = trimmed.split(".");
     const litName = parts.pop()!;
     const typeName = parts.length > 0 ? parts.pop()! : null;
-    const candidateSyms = typeName
+    const dbWithIndex = effectiveDb as QueryDB & { index?: { symbols?: Map<number, SymbolEntry> } };
+    const candidateSyms: SymbolEntry[] = typeName
       ? effectiveDb.byName(typeName)
-      : effectiveDb.index?.symbols
-        ? Array.from(effectiveDb.index.symbols.values()).filter((s: any) => (s as any).kind === "Class")
+      : dbWithIndex.index?.symbols
+        ? Array.from(dbWithIndex.index.symbols.values()).filter((s) => s.kind === "Class")
         : [];
-    for (const s of candidateSyms as any[]) {
+    for (const s of candidateSyms) {
       // 1. Check indexed metadata literals
-      const metaLits = (s.metadata as any)?.literals;
+      const metaLits = (s.metadata as Record<string, unknown> | undefined)?.["literals"];
       if (Array.isArray(metaLits)) {
         const idx = metaLits.indexOf(litName);
         if (idx >= 0) return idx + 1;
       }
 
       // 2. CST-native enumeration literals extraction
-      const cst = effectiveDb.cstNode ? effectiveDb.cstNode(s.id) : null;
+      const cst = (effectiveDb.cstNode ? effectiveDb.cstNode(s.id) : null) as CstNodeLike | null;
       if (cst) {
         const lits: string[] = [];
-        const collectEnumLits = (node: any) => {
+        const collectEnumLits = (node: CstNodeLike | null | undefined) => {
           if (!node) return;
           if (node.type === "enumeration_literal" || node.type === "EnumerationLiteral") {
-            const idNode = (node.children || []).find((c: any) => c.type === "identifier" || c.type === "IDENT");
+            const idNode = (node.children || []).find((c) => c.type === "identifier" || c.type === "IDENT");
             const name = idNode?.text?.trim() ?? node.text?.trim()?.split(/\s+/)[0];
             if (name) lits.push(name);
             return;
@@ -2780,7 +2791,7 @@ export function evalRawSubscriptIndex(
       }
 
       // 3. Fallback text parsing only if CST inspection did not find literals
-      const cstText = (cst as any)?.text ?? "";
+      const cstText = cst?.text ?? "";
       const match = /enumeration\s*\(([^)]+)\)/.exec(cstText);
       if (match && match[1]) {
         const lits = match[1].split(",").map((x: string) => x.trim().split(/\s+/)[0]);
@@ -2857,7 +2868,7 @@ function tryEvaluateArenaExpressionWasm(
 ): number | null {
   if (typeof process !== "undefined" && process.env?.["MSX_WASM_EVAL"] === "ts") return null;
   if (exprId < 0 || exprId >= dae.exprCount || dae.ptr === 0) return null;
-  const exp = dae.exports as any;
+  const exp = dae.exports;
   if (
     !exp ||
     typeof exp.dae_evalExpr !== "function" ||
@@ -3150,7 +3161,7 @@ export function evaluateArenaExpression(
         if (vName && parameters.has(vName)) {
           const pVal = parameters.get(vName);
           if (Array.isArray(pVal)) {
-            let cur: any = pVal;
+            let cur: unknown = pVal;
             let d = 1;
             while (d < dNum && Array.isArray(cur) && cur.length > 0 && Array.isArray(cur[0])) {
               cur = cur[0];
@@ -3236,7 +3247,7 @@ export function evaluateArenaExpression(
             }
           }
           const ctorArena = customType
-            ? lookupRecordConstructorArena(dae, customType, callerDae ?? (dae as any).parentDae)
+            ? lookupRecordConstructorArena(dae, customType, callerDae ?? dae.parentDae)
             : undefined;
           if (ctorArena) {
             let fIdx = 0;
@@ -3257,7 +3268,7 @@ export function evaluateArenaExpression(
       let targetDae = dae;
       let vIdx = targetDae.getVarIdxByName(effectiveName);
       if (vIdx < 0 && !targetDae.hasArrayElements(effectiveName)) {
-        const cDae = callerDae ?? (dae as any).parentDae;
+        const cDae = callerDae ?? dae.parentDae;
         if (cDae) {
           if (instancePrefix) {
             const prefixed = `${instancePrefix}.${name}`;
@@ -3280,7 +3291,7 @@ export function evaluateArenaExpression(
       // 2f. Reassemble scalarized array elements (`x[1]`, `x[2]`, ...) into a (potentially reshaped N-D) array.
       if (vIdx < 0 && targetDae.hasArrayElements(effectiveName)) {
         const elements = targetDae.getArrayElementIndices(effectiveName);
-        const result: any[] = [];
+        const result: (ArenaValue | null)[] = [];
         for (const idx of elements) {
           const variability = targetDae.getVarVariability(idx);
           if (variability === Variability.Constant || (!onlyConstants && variability === Variability.Parameter)) {
@@ -3325,7 +3336,12 @@ export function evaluateArenaExpression(
             const dims = dimMatch[1].split(",").map(Number);
             const total = dims.reduce((acc, d) => acc * d, 1);
             if (dims.length > 1 && total === result.length) {
-              const reshape = (flat: any[], shape: number[], offset: { idx: number }): any[] => {
+              type ReshapedElem = ArenaValue | null | ReshapedElem[];
+              const reshape = (
+                flat: (ArenaValue | null)[],
+                shape: number[],
+                offset: { idx: number },
+              ): ReshapedElem[] => {
                 const len = shape[0]!;
                 if (shape.length === 1) {
                   const slice = flat.slice(offset.idx, offset.idx + len);
@@ -3333,17 +3349,17 @@ export function evaluateArenaExpression(
                   return slice;
                 }
                 const rest = shape.slice(1);
-                const outArr: any[] = [];
+                const outArr: ReshapedElem[] = [];
                 for (let k = 0; k < len; k++) {
                   outArr.push(reshape(flat, rest, offset));
                 }
                 return outArr;
               };
-              return reshape(result, dims, { idx: 0 });
+              return reshape(result, dims, { idx: 0 }) as ArenaValue;
             }
           }
         }
-        return result;
+        return result as ArenaValue;
       }
 
       // 2g. Evaluate scalar constant/parameter variable binding (guarded by `visitedVars` against cycles).
@@ -3392,7 +3408,7 @@ export function evaluateArenaExpression(
                   return tabularValue as ArenaValue;
                 }
               }
-              const mod = db.query<any | null>("effectiveModification", resolved.id);
+              const mod = db.query<{ bindingExpression?: unknown } | null>("effectiveModification", resolved.id);
               if (mod && mod.bindingExpression) {
                 const variability = resolved.metadata?.["variability"];
                 if (variability === "constant" || (!onlyConstants && variability === "parameter")) {
@@ -3482,15 +3498,11 @@ export function evaluateArenaExpression(
                 }
                 return sum;
               }
-              if (
-                a.length > 0 &&
-                b.length > 0 &&
-                Array.isArray(a[0]) &&
-                Array.isArray(b[0]) &&
-                (a[0] as any[]).length === b.length
-              ) {
-                const cols = (b[0] as any[]).length;
-                return a.map((row: any) =>
+              const a0 = a[0];
+              const b0 = b[0];
+              if (a.length > 0 && b.length > 0 && Array.isArray(a0) && Array.isArray(b0) && a0.length === b.length) {
+                const cols = b0.length;
+                return a.map((row) =>
                   Array.from({ length: cols }, (_, j) =>
                     (row as number[]).reduce((sum, val, k) => sum + val * ((b[k] as number[])[j] ?? 0), 0),
                   ),
@@ -3498,21 +3510,16 @@ export function evaluateArenaExpression(
               }
               if (
                 a.length > 0 &&
-                Array.isArray(a[0]) &&
+                Array.isArray(a0) &&
                 b.every((v) => typeof v === "number") &&
-                (a[0] as any[]).length === b.length
+                a0.length === b.length
               ) {
-                return a.map((row: any) =>
+                return a.map((row) =>
                   (row as number[]).reduce((sum, val, k) => sum + val * (b[k] as number), 0),
                 ) as ArenaValue;
               }
-              if (
-                a.every((v) => typeof v === "number") &&
-                b.length > 0 &&
-                Array.isArray(b[0]) &&
-                a.length === b.length
-              ) {
-                const cols = (b[0] as any[]).length;
+              if (a.every((v) => typeof v === "number") && b.length > 0 && Array.isArray(b0) && a.length === b.length) {
+                const cols = b0.length;
                 return Array.from({ length: cols }, (_, j) =>
                   (a as number[]).reduce((sum, val, k) => sum + val * ((b[k] as number[])[j] ?? 0), 0),
                 ) as ArenaValue;
@@ -3696,7 +3703,7 @@ export function evaluateArenaExpression(
               const pVal = parameters.get(varName);
               if (Array.isArray(pVal)) {
                 const valShape: number[] = [];
-                let cur: any = pVal;
+                let cur: unknown = pVal;
                 while (Array.isArray(cur)) {
                   valShape.push(cur.length);
                   cur = cur[0];
@@ -3705,8 +3712,7 @@ export function evaluateArenaExpression(
               }
             }
             if (!shape) {
-              const namedShape =
-                (dae as any).getNamedArrayShape?.(varName) ?? (dae as any).namedArrayShapes?.get(varName);
+              const namedShape = dae.getNamedArrayShape(varName) ?? dae.namedArrayShapes.get(varName);
               if (namedShape && namedShape.length > 0) {
                 shape = namedShape;
               } else {
@@ -3865,10 +3871,10 @@ export function evaluateArenaExpression(
       if (
         funcName === "homotopy" &&
         args.length >= 2 &&
-        typeof (dae as any)?.homotopyLambda === "number" &&
-        (dae as any).homotopyLambda < 1.0
+        typeof dae?.homotopyLambda === "number" &&
+        dae.homotopyLambda < 1.0
       ) {
-        const lambda = Math.max(0, Math.min(1, (dae as any).homotopyLambda));
+        const lambda = Math.max(0, Math.min(1, dae.homotopyLambda));
         const actualVal = typeof args[0] === "number" ? args[0] : 0;
         const simplifiedVal = typeof args[1] === "number" ? args[1] : 0;
         return lambda * actualVal + (1.0 - lambda) * simplifiedVal;
@@ -3915,7 +3921,7 @@ export function evaluateArenaExpression(
 
       const cleanName = funcName.replace(/^\.+/, "");
       const shortName = cleanName.includes(".") ? cleanName.slice(cleanName.lastIndexOf(".") + 1) : cleanName;
-      const rootDae = callerDae ?? ((dae as any).parentDae as DAEBuilder | undefined);
+      const rootDae = callerDae ?? dae.parentDae;
       const fnArena =
         dae.functions?.get(funcNameId) ??
         dae.getFunction?.(funcNameId) ??
@@ -3928,8 +3934,8 @@ export function evaluateArenaExpression(
         rootDae?.getFunction?.(cleanName) ??
         rootDae?.getFunction?.(shortName);
       if (fnArena && !fnArena.externalDecl && args.every((a) => typeof a === "number" || typeof a === "boolean")) {
-        if (!(fnArena as any).parentDae) {
-          (fnArena as any).parentDae = rootDae ?? dae;
+        if (!fnArena.parentDae) {
+          fnArena.parentDae = rootDae ?? dae;
         }
         const numArgs = args.map((a) => (typeof a === "boolean" ? (a ? 1 : 0) : (a as number)));
         const res = executeArenaFunction(fnArena, numArgs);

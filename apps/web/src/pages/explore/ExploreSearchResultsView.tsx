@@ -176,12 +176,14 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                             color: "white",
                             fontWeight: "bold",
                             backgroundSize: "cover",
-                            backgroundImage: safeCssImageUrl(u.avatar || (u as any).avatar_url),
+                            backgroundImage: safeCssImageUrl(
+                              u.avatar || (u as PersonData & { avatar_url?: string | undefined }).avatar_url,
+                            ),
                             flexShrink: 0,
                           }}
                         >
                           {!u.avatar &&
-                            !(u as { avatar_url?: string }).avatar_url &&
+                            !(u as PersonData & { avatar_url?: string | undefined }).avatar_url &&
                             (u.username || "U").charAt(0).toUpperCase()}
                         </Box>
                         <Box flex={1}>
@@ -194,12 +196,14 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                               color: "var(--color-text-heading)",
                             }}
                           >
-                            {(u as any).display_name || u.name || u.username}
+                            {(u as PersonData & { display_name?: string | undefined }).display_name ||
+                              u.name ||
+                              u.username}
                           </Heading>
                           <Text color="var(--color-text-muted)" style={{ fontSize: "14px" }}>
                             @{u.username}
                           </Text>
-                          {(u as any).bio && (
+                          {(u as PersonData & { bio?: string | undefined }).bio && (
                             <Text
                               as="p"
                               style={{
@@ -209,14 +213,16 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
                                 lineHeight: 1.3,
                               }}
                             >
-                              {(u as any).bio}
+                              {(u as PersonData & { bio?: string | undefined }).bio}
                             </Text>
                           )}
                         </Box>
                       </Link>
                       <FollowButton
                         username={u.username || ""}
-                        initialIsFollowing={(u as any).isFollowing || false}
+                        initialIsFollowing={
+                          (u as PersonData & { isFollowing?: boolean | undefined }).isFollowing || false
+                        }
                         size="small"
                       />
                     </Box>
@@ -251,13 +257,16 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
               ) : (
                 <>
                   {packages.map((pkg) => {
-                    const anyPkg = pkg as any;
-                    const latestVer = anyPkg.latestVersion || pkg.version || "1.0.0";
+                    const pkgExt = pkg as PackageData & {
+                      latestVersion?: string | undefined;
+                      domains?: string[] | undefined;
+                    };
+                    const latestVer = pkgExt.latestVersion || pkg.version || "1.0.0";
                     const targetUrl = latestVer ? `/packages/${pkg.name}/${latestVer}` : `/packages/${pkg.name}`;
                     const { scope, baseName } = splitScopedPackageName(pkg.name);
                     const domains = inferPackageDomains({
                       name: pkg.name,
-                      domains: anyPkg.domains,
+                      domains: pkgExt.domains,
                       description: pkg.description,
                     });
 
@@ -354,14 +363,20 @@ export const ExploreSearchResultsView: React.FC<ExploreSearchResultsViewProps> =
               ) : (
                 <>
                   {repos.map((r) => {
+                    const repoExt = r as RepoData & {
+                      default_branch?: string | undefined;
+                      star_count?: number | undefined;
+                      stars_count?: number | undefined;
+                      stargazers_count?: number | undefined;
+                    };
                     const provider = r.provider || "github";
-                    const branch = (r as any).default_branch || "main";
+                    const branch = repoExt.default_branch || "main";
                     const repoKey = `${r.namespace}/${r.project}`;
                     const repoUrl = `/repos/${provider}/${r.namespace}/${r.project}`;
                     const starCount =
-                      (r as any).star_count ??
-                      (r as any).stars_count ??
-                      (r as any).stargazers_count ??
+                      repoExt.star_count ??
+                      repoExt.stars_count ??
+                      repoExt.stargazers_count ??
                       getRepoFallbackStars(repoKey);
                     const domainTags = inferRepoDomainTags({
                       id: Number(r.id) || 0,

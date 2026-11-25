@@ -82,12 +82,24 @@ interface ActionNotice {
   variant: "success" | "danger" | "default";
 }
 
+interface TwinTelemetryInjectResponse {
+  telemetry?: TelemetryPoint[] | undefined;
+  t?: number | undefined;
+  meas?: number | undefined;
+  y_meas?: number | undefined;
+  twin?: number | undefined;
+  y_twin?: number | undefined;
+  baseline?: number | undefined;
+  y_nominal?: number | undefined;
+  [key: string]: unknown;
+}
+
 async function injectTwinTelemetry(
   twinId: number,
   timestamp: number,
   channels: { name: string; value: number }[],
-): Promise<any> {
-  const { data } = await api.post(`/twins/${twinId}/telemetry`, { timestamp, channels });
+): Promise<TwinTelemetryInjectResponse> {
+  const { data } = await api.post<TwinTelemetryInjectResponse>(`/twins/${twinId}/telemetry`, { timestamp, channels });
   return data;
 }
 

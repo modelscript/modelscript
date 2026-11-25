@@ -2,7 +2,7 @@
 
 /**
  * @fileoverview Shared headless property inspector state, schema filtering, and optimistic
- * action application helpers used by both the DOM reconciler (VS Code) and React inspector (Morsel).
+ * action application helpers used by both the DOM reconciler (VS Code) and React inspector (Ansatz).
  */
 
 import { evaluatePropertyPredicate } from "../property-evaluator.js";

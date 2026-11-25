@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// Assembles a static build of the ModelScript IDE for deployment to GitHub Pages.
+// Assembles a static build of the Ansatz Studio for deployment to GitHub Pages.
 // The output directory (dist/static/) can be served by any static file server.
 
 import { createHash } from "crypto";

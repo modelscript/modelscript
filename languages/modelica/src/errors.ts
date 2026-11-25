@@ -52,7 +52,7 @@ export interface ErrorCodeDef {
   /** Default diagnostic severity (`"error" | "warning" | "info" | "notification"`). */
   severity: DiagnosticSeverity;
   /** Template function that produces the human-readable message matching OpenModelica's format. */
-  message: (...args: any[]) => string;
+  message: (...args: never[]) => string;
 }
 
 /**

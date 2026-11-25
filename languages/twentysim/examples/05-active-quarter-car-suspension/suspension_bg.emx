@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document version="5.1">
+  <Model name="ActiveQuarterCarSuspension">
+    <Submodels>
+      <Submodel name="v_road" type="Sf" x="40" y="200">
+        <Parameters>
+          <Parameter name="flow" value="0.15" unit="m/s"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j0_tire" type="0" x="150" y="200"/>
+      <Submodel name="C_tire" type="C" x="150" y="80">
+        <Parameters>
+          <Parameter name="c" value="5.0e-6" unit="m/N"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j1_unsprung" type="1" x="280" y="200"/>
+      <Submodel name="M_wheel" type="I" x="280" y="80">
+        <Parameters>
+          <Parameter name="i" value="42.0" unit="kg"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j0_susp" type="0" x="410" y="200"/>
+      <Submodel name="C_susp" type="C" x="410" y="80">
+        <Parameters>
+          <Parameter name="c" value="3.5e-5" unit="m/N"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="R_susp" type="R" x="410" y="320">
+        <Parameters>
+          <Parameter name="r" value="2400.0" unit="N*s/m"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j1_sprung" type="1" x="550" y="200"/>
+      <Submodel name="M_chassis" type="I" x="550" y="80">
+        <Parameters>
+          <Parameter name="i" value="360.0" unit="kg"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="R_skyhook" type="R" x="550" y="320">
+        <Parameters>
+          <Parameter name="r" value="1800.0" unit="N*s/m"/>
+        </Parameters>
+      </Submodel>
+    </Submodels>
+    <Connections>
+      <Connection id="b1" type="bond" from="v_road.p" to="j0_tire.p"/>
+      <Connection id="b2" type="bond" from="j0_tire.p" to="C_tire.p"/>
+      <Connection id="b3" type="bond" from="j0_tire.p" to="j1_unsprung.p"/>
+      <Connection id="b4" type="bond" from="j1_unsprung.p" to="M_wheel.p"/>
+      <Connection id="b5" type="bond" from="j1_unsprung.p" to="j0_susp.p"/>
+      <Connection id="b6" type="bond" from="j0_susp.p" to="C_susp.p"/>
+      <Connection id="b7" type="bond" from="j0_susp.p" to="R_susp.p"/>
+      <Connection id="b8" type="bond" from="j0_susp.p" to="j1_sprung.p"/>
+      <Connection id="b9" type="bond" from="j1_sprung.p" to="M_chassis.p"/>
+      <Connection id="b10" type="bond" from="j1_sprung.p" to="R_skyhook.p"/>
+    </Connections>
+    <Experiment startTime="0" finishTime="4.0" stepSize="0.002" method="RungeKutta4"/>
+  </Model>
+</Document>

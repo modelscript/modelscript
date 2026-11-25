@@ -26,7 +26,7 @@ export const jcampDxLanguage = language({
         shortTitle: "JCAMP-DX",
         selector: ["*.jdx", "*.dx", "*.jcamp"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/JcampDxPanel.tsx",
         artifactViewTypes: ["jcamp-dx", "jdx", "jcamp"],
       },

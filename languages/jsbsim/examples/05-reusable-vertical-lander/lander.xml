@@ -1,0 +1,97 @@
+<?xml version="1.0"?>
+<fdm_config name="VTVL_ReusableBooster" version="2.0" release="PRODUCTION">
+  <fileheader>
+    <author>Ansatz Spaceflight Team</author>
+    <description>Reusable Vertical-Landing Methalox First-Stage Booster FDM</description>
+  </fileheader>
+  <metrics>
+    <wingarea unit="FT2"> 115.0 </wingarea>
+    <wingspan unit="FT"> 12.1 </wingspan>
+    <chord unit="FT"> 12.1 </chord>
+    <location name="AERORP" unit="IN">
+      <x> 420.0 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+  </metrics>
+  <mass_balance>
+    <emptywt unit="LBS"> 56000.0 </emptywt>
+    <location name="CG" unit="IN">
+      <x> 510.0 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+    <ixx unit="SLUG*FT2"> 42000.0 </ixx>
+    <iyy unit="SLUG*FT2"> 1850000.0 </iyy>
+    <izz unit="SLUG*FT2"> 1850000.0 </izz>
+    <ixz unit="SLUG*FT2"> 0.0 </ixz>
+  </mass_balance>
+  <ground_reactions>
+    <contact type="BOGEY" name="LEG_1">
+      <location unit="IN"> <x> 980.0 </x> <y> 160.0 </y> <z> 0.0 </z> </location>
+      <static_friction> 0.9 </static_friction>
+      <dynamic_friction> 0.7 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 45000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 18000.0 </damping_coeff>
+    </contact>
+    <contact type="BOGEY" name="LEG_2">
+      <location unit="IN"> <x> 980.0 </x> <y> -160.0 </y> <z> 0.0 </z> </location>
+      <static_friction> 0.9 </static_friction>
+      <dynamic_friction> 0.7 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 45000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 18000.0 </damping_coeff>
+    </contact>
+    <contact type="BOGEY" name="LEG_3">
+      <location unit="IN"> <x> 980.0 </x> <y> 0.0 </y> <z> 160.0 </z> </location>
+      <static_friction> 0.9 </static_friction>
+      <dynamic_friction> 0.7 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 45000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 18000.0 </damping_coeff>
+    </contact>
+    <contact type="BOGEY" name="LEG_4">
+      <location unit="IN"> <x> 980.0 </x> <y> 0.0 </y> <z> -160.0 </z> </location>
+      <static_friction> 0.9 </static_friction>
+      <dynamic_friction> 0.7 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 45000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 18000.0 </damping_coeff>
+    </contact>
+  </ground_reactions>
+  <propulsion>
+    <engine file="methalox">
+      <location unit="IN"> <x> 920.0 </x> <y> 0.0 </y> <z> 0.0 </z> </location>
+      <thruster file="nozzle">
+        <location unit="IN"> <x> 960.0 </x> <y> 0.0 </y> <z> 0.0 </z> </location>
+      </thruster>
+    </engine>
+  </propulsion>
+  <aerodynamics>
+    <axis name="DRAG">
+      <function name="aero/coefficient/CD_axial">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 0.85 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="LIFT">
+      <function name="aero/coefficient/CN_gridfins">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 1.95 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/coefficient/Cm_gridfins">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/cbarw-ft</property>
+          <value> -0.45 </value>
+        </product>
+      </function>
+    </axis>
+  </aerodynamics>
+</fdm_config>

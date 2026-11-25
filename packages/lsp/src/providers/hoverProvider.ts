@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { getSymbolDomain, LanguageDomainId } from "@modelscript/runtime";
-import { Connection, Hover, TextDocuments } from "vscode-languageserver";
+import { Connection, Hover, Range, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { resolveFeatureFlags, type LspContext } from "../lsp-context.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import type { ValidationService } from "../services/validation-service.js";
 import {
   extractCrossDomainLineHints,
   extractQualifiedTokenAtOffset,
@@ -14,6 +15,123 @@ import {
   uriBasename,
 } from "../utils/lexical-utils.js";
 import { getAlmExternalHover } from "./almHover.js";
+
+interface HoverSymbolLike {
+  id: number;
+  name?: string | undefined;
+  kind?: string | undefined;
+  ruleName?: string | undefined;
+  resourceId?: string | undefined;
+  documentUri?: string | undefined;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+interface HoverParityReport {
+  compatible?: boolean | undefined;
+  mUnit?: string | undefined;
+  sType?: string | undefined;
+  reason?: string | undefined;
+}
+
+interface HoverQueryEngineLike {
+  crossDomainBinding?(id: number): number[];
+  resolveEntry(id: number): HoverSymbolLike | null | undefined;
+  resolvePolyglotSymbol?(name: string): number | null | undefined;
+  physicalQuantityParity?(a: number, b: number): HoverParityReport | null | undefined;
+}
+
+interface HoverThreadElemLike {
+  uri?: string | undefined;
+  name?: string | undefined;
+  domain?: string | undefined;
+  properties?: Record<string, unknown> | undefined;
+}
+
+interface HoverIntervalLike {
+  isTop?(): boolean;
+  isBottom?(): boolean;
+  join?(other: HoverIntervalLike): HoverIntervalLike;
+  toString(): string;
+}
+
+interface HoverProofStateLike {
+  intervals?: Map<string, HoverIntervalLike> | undefined;
+}
+
+interface HoverProofResultLike {
+  summary?:
+    | {
+        blockEntryStates?: Map<number, HoverProofStateLike> | undefined;
+        blockExitStates?: Map<number, HoverProofStateLike> | undefined;
+      }
+    | undefined;
+  cfg?:
+    | {
+        blocks?: Map<number, { instructions: Array<{ startOffset?: number; endOffset?: number }> }> | undefined;
+      }
+    | undefined;
+}
+
+interface HoverDaeResultLike {
+  variableBounds?: Map<string, HoverIntervalLike> | undefined;
+}
+
+interface HoverTaxonomyNodeLike {
+  iri?: string | undefined;
+  name?: string | undefined;
+  id?: string | undefined;
+  superClasses?: Iterable<string> | undefined;
+  subClasses?: Iterable<string> | undefined;
+}
+
+interface HoverBridgeLike {
+  hover(offset: number, text?: string): { contents?: string | undefined; range?: Range | undefined } | null | undefined;
+  findEntryAtOffset?(offset: number): HoverSymbolLike | null | undefined;
+  findScopeAtOffset?(offset: number): HoverSymbolLike | null | undefined;
+  engine?: HoverQueryEngineLike | undefined;
+  getQueryEngine?(): HoverQueryEngineLike | null | undefined;
+}
+
+interface HoverTreeEntryLike {
+  tree?: { rootNode?: { id?: number; ptr?: number }; rootPtr?: number } | null | undefined;
+  rootNode?: { id?: number; ptr?: number } | undefined;
+  rootPtr?: number | undefined;
+}
+
+export interface HoverValidationServiceLike {
+  documentLSPBridges: ReadonlyMap<string, HoverBridgeLike>;
+  documentManager?: { documentTrees?: ReadonlyMap<string, HoverTreeEntryLike> } | undefined;
+  context?: { settings?: LspContext["settings"] } | undefined;
+  workspaceManager?:
+    | {
+        unifiedWorkspace?: {
+          getIndex?(): { symbols?: Map<number, HoverSymbolLike> } | undefined;
+          syncTggCorrespondences?(idx: unknown): void;
+          tggCorrespondenceIndexer?: {
+            getSlotsForSymbol?(id: number): number[];
+            hypergraph?: {
+              getRecord?(
+                slot: number,
+              ): { isRemoved?: boolean; domainNodes: Record<string, unknown> } | null | undefined;
+            };
+          };
+        };
+        getQueryEngine?(langId: string): HoverQueryEngineLike | null | undefined;
+        getThreadsForUri?(uri: string): Array<{ slot: number }> | undefined;
+        findAlignedElementsBySlot?(slot: number): HoverThreadElemLike[];
+      }
+    | undefined;
+  reasonerService?:
+    | {
+        reasoner?: {
+          getTaxonomy?(): Map<string, HoverTaxonomyNodeLike> | HoverTaxonomyNodeLike[] | null | undefined;
+        };
+      }
+    | undefined;
+  modelicaProofResultsByUri?: ReadonlyMap<string, ReadonlyMap<string, HoverProofResultLike>> | undefined;
+  daeVerificationResultsByUri?: ReadonlyMap<string, ReadonlyMap<string, HoverDaeResultLike>> | undefined;
+  modelicaDaeVerificationResultsByUri?: ReadonlyMap<string, ReadonlyMap<string, HoverDaeResultLike>> | undefined;
+}
 
 function getDomainName(domainId: number, resourceId?: string): string {
   switch (domainId) {
@@ -92,8 +210,8 @@ function enhanceWithDigitalThreadTwin(
   text: string,
   offset: number,
   documentUri: string,
-  bridge: any,
-  validationService: any,
+  bridge: HoverBridgeLike | undefined,
+  validationService: HoverValidationServiceLike | undefined,
 ): string {
   if (hoverContent.includes("### 🔗 Polyglot Digital Thread Twin")) {
     return hoverContent;
@@ -108,28 +226,31 @@ function enhanceWithDigitalThreadTwin(
   const lineHints = extractCrossDomainLineHints(lineText);
 
   const uw = validationService?.workspaceManager?.unifiedWorkspace;
-  const qe =
+  const pluginWithQe = globalLanguageRegistry.getAllPlugins().find((p) => p.queryEngine);
+  const qe: HoverQueryEngineLike | null | undefined =
     bridge?.engine ??
     bridge?.getQueryEngine?.() ??
     validationService?.workspaceManager?.getQueryEngine?.("modelica") ??
     validationService?.workspaceManager?.getQueryEngine?.("sysml2") ??
-    globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
+    (pluginWithQe?.queryEngine as HoverQueryEngineLike | undefined);
 
-  let counterpartEntry: any = null;
+  let counterpartEntry: HoverSymbolLike | null = null;
   let counterpartDomain = "";
-  let parityReport: any = null;
+  let parityReport: HoverParityReport | null = null;
 
   // 1. Check crossDomainBinding via Salsa
   if (refEntry?.id !== undefined && typeof qe?.crossDomainBinding === "function") {
     try {
       const boundIds = qe.crossDomainBinding(refEntry.id);
-      if (boundIds.length > 0) {
-        counterpartEntry = qe.resolveEntry(boundIds[0]);
+      if (boundIds.length > 0 && boundIds[0] !== undefined) {
+        counterpartEntry = qe.resolveEntry(boundIds[0]) ?? null;
         if (counterpartEntry) {
           counterpartDomain = getDomainName(getSymbolDomain(counterpartEntry.id), counterpartEntry.resourceId);
         }
       }
-    } catch {}
+    } catch {
+      // Salsa crossDomainBinding unavailable; continue to TGG and metadata fallbacks below.
+    }
   }
 
   // 1b. Check TggCorrespondenceIndexer + DigitalThreadHypergraph directly (zero-@twin correspondences)
@@ -153,33 +274,40 @@ function enhanceWithDigitalThreadTwin(
         }
         if (counterpartEntry) break;
       }
-    } catch {}
+    } catch {
+      // TGG correspondence lookup unavailable; continue to explicit twin metadata fallback below.
+    }
   }
 
   // 2. Fallback: Check explicit twin metadata / legacy lineHints via Salsa resolvePolyglotSymbol
   const twinCand =
-    refEntry?.metadata?.twin || refEntry?.metadata?.counterpart || refEntry?.metadata?.implements || lineHints.twin;
+    refEntry?.metadata?.["twin"] ||
+    refEntry?.metadata?.["counterpart"] ||
+    refEntry?.metadata?.["implements"] ||
+    lineHints.twin;
 
   if (!counterpartEntry && twinCand && typeof qe?.resolvePolyglotSymbol === "function") {
     try {
       const symId = qe.resolvePolyglotSymbol(String(twinCand));
       if (symId !== null && symId !== undefined) {
-        counterpartEntry = qe.resolveEntry(symId);
+        counterpartEntry = qe.resolveEntry(symId) ?? null;
         if (counterpartEntry) {
           counterpartDomain = getDomainName(getSymbolDomain(counterpartEntry.id), counterpartEntry.resourceId);
         }
       }
-    } catch {}
+    } catch {
+      // Polyglot symbol resolution unavailable; fall back to digital thread records below.
+    }
   }
 
   // 3. Check workspace digital thread records
-  let threadElem: any = null;
+  let threadElem: HoverThreadElemLike | null = null;
   if (!counterpartEntry && validationService?.workspaceManager?.getThreadsForUri) {
     try {
       const threads = validationService.workspaceManager.getThreadsForUri(documentUri);
       if (threads && threads.length > 0) {
         for (const t of threads) {
-          const aligned = validationService.workspaceManager.findAlignedElementsBySlot(t.slot);
+          const aligned = validationService.workspaceManager.findAlignedElementsBySlot?.(t.slot) ?? [];
           for (const elem of aligned) {
             if (elem.uri && elem.uri !== documentUri) {
               threadElem = elem;
@@ -190,7 +318,9 @@ function enhanceWithDigitalThreadTwin(
           if (threadElem) break;
         }
       }
-    } catch {}
+    } catch {
+      // Digital thread lookup unavailable; omit thread counterpart info from hover.
+    }
   }
 
   // 4. Physical quantity parity check
@@ -200,15 +330,21 @@ function enhanceWithDigitalThreadTwin(
     typeof qe?.physicalQuantityParity === "function"
   ) {
     try {
-      parityReport = qe.physicalQuantityParity(refEntry.id, counterpartEntry.id);
-    } catch {}
+      parityReport = qe.physicalQuantityParity(refEntry.id, counterpartEntry.id) ?? null;
+    } catch {
+      // Parity check is optional enrichment; render hover without parity section on failure.
+    }
   }
 
   // If we have counterpart info or CAD annotation or thread element, construct twin section
   const cadCallPart = lineHints.cadCallPart;
   if (counterpartEntry || threadElem || cadCallPart) {
     const cName = counterpartEntry?.name || threadElem?.name || cadCallPart || String(twinCand);
-    const cKind = counterpartEntry?.ruleName || counterpartEntry?.kind || threadElem?.properties?.kind || "definition";
+    const cKind =
+      counterpartEntry?.ruleName ||
+      counterpartEntry?.kind ||
+      String(threadElem?.properties?.["kind"] ?? "") ||
+      "definition";
     const cUri = counterpartEntry?.resourceId || threadElem?.uri;
     const cDomain = counterpartDomain || (cadCallPart ? "STEP CAD" : "Polyglot");
 
@@ -233,11 +369,11 @@ function enhanceWithDigitalThreadTwin(
       } else if (parityReport.reason) {
         lines.push(`- **Physical Quantity Parity:** ⚠ Incompatible (${parityReport.reason})`);
       }
-    } else if (counterpartEntry?.metadata?.unit || refEntry?.metadata?.unit) {
-      const u = counterpartEntry?.metadata?.unit || refEntry?.metadata?.unit;
-      lines.push(`- **Physical Quantity:** \`${u}\` ✓ [Consistent]`);
-    } else if (threadElem?.properties?.mass) {
-      lines.push(`- **Physical Quantity:** \`mass: ${threadElem.properties.mass}\` ✓ [Consistent]`);
+    } else if (counterpartEntry?.metadata?.["unit"] || refEntry?.metadata?.["unit"]) {
+      const u = counterpartEntry?.metadata?.["unit"] || refEntry?.metadata?.["unit"];
+      lines.push(`- **Physical Quantity:** \`${String(u)}\` ✓ [Consistent]`);
+    } else if (threadElem?.properties?.["mass"]) {
+      lines.push(`- **Physical Quantity:** \`mass: ${String(threadElem.properties["mass"])}\` ✓ [Consistent]`);
     }
 
     const cadPartName = cadCallPart || (cDomain === "STEP CAD" ? cName : null);
@@ -314,9 +450,10 @@ function enhanceWithCadLink(
 export function registerHoverProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  validationService: any,
+  rawValidationService: ValidationService | HoverValidationServiceLike,
   context?: LspContext,
 ) {
+  const validationService = rawValidationService as unknown as HoverValidationServiceLike;
   const documentLSPBridges = validationService.documentLSPBridges;
   connection.onHover((params): Hover | null => {
     const document = documents.get(params.textDocument.uri);
@@ -430,15 +567,15 @@ export function registerHoverProvider(
     // ── Standard polyglot hover (Modelica/SysML/OWL2 — requires bridge) ──
     const bridge = documentLSPBridges.get(params.textDocument.uri);
     let hoverContent = "";
-    let hoverRange: any = undefined;
+    let hoverRange: Range | undefined = undefined;
 
     if (!bridge) {
       const plugin = pluginForHover;
       if (plugin && plugin.facade?.getHover) {
         try {
-          const treeEntry =
-            context?.documentManager?.documentTrees?.get(params.textDocument.uri) ??
-            validationService?.documentManager?.documentTrees?.get(params.textDocument.uri);
+          const treeEntry = (context?.documentManager?.documentTrees?.get(params.textDocument.uri) ??
+            validationService?.documentManager?.documentTrees?.get(params.textDocument.uri)) as
+            HoverTreeEntryLike | undefined;
           const tree = treeEntry?.tree ?? treeEntry;
           const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? tree?.rootPtr ?? 0;
           plugin.facade.loadSource?.(text);
@@ -454,7 +591,9 @@ export function registerHoverProvider(
               end: document.positionAt(word.end),
             };
           }
-        } catch {}
+        } catch {
+          // Facade hover lookup failed; fall back to cross-language hover resolution below.
+        }
       }
     } else {
       const hoverDef = bridge.hover(offset, text);
@@ -466,12 +605,13 @@ export function registerHoverProvider(
       // Check if cursor is over a cross-language reference, e.g. Propulsion::Motor or SysML2::Avionics::IMU
       const { token: fullToken, start: tokStart, end: tokEnd } = extractQualifiedTokenAtOffset(text, offset);
 
-      const qe =
-        (bridge as any)?.engine ??
-        (bridge as any)?.getQueryEngine?.() ??
+      const pluginWithQe = globalLanguageRegistry.getAllPlugins().find((p) => p.queryEngine);
+      const qe: HoverQueryEngineLike | null | undefined =
+        bridge?.engine ??
+        bridge?.getQueryEngine?.() ??
         validationService?.workspaceManager?.getQueryEngine?.("modelica") ??
         validationService?.workspaceManager?.getQueryEngine?.("sysml2") ??
-        globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
+        (pluginWithQe?.queryEngine as HoverQueryEngineLike | undefined);
 
       const isCrossLangRef =
         fullToken.includes("::") || fullToken.includes("//") || (fullToken.includes(".") && !fullToken.startsWith("."));
@@ -502,15 +642,19 @@ export function registerHoverProvider(
     // Enhance hover with reasoner inferences & BFO/IOF classification across all languages
     if (validationService?.reasonerService?.reasoner && token) {
       const rawTaxonomy = validationService.reasonerService.reasoner.getTaxonomy?.();
-      const taxonomyMap: Map<string, any> | null =
+      const taxonomyMap: Map<string, HoverTaxonomyNodeLike> | null =
         rawTaxonomy instanceof Map
           ? rawTaxonomy
           : Array.isArray(rawTaxonomy)
-            ? new Map(rawTaxonomy.map((n: any) => [n.iri ?? n.name ?? n.id, n]))
+            ? new Map(
+                rawTaxonomy
+                  .map((n: HoverTaxonomyNodeLike) => [n.iri ?? n.name ?? n.id ?? "", n] as const)
+                  .filter(([k]) => k.length > 0),
+              )
             : null;
 
       if (taxonomyMap) {
-        const docLang = (document as any).languageId;
+        const docLang = document.languageId;
         const langId = plugin?.id || docLang || "polyglot";
 
         const candidateIris: string[] = [`${langId}:${token}`, token];
@@ -580,15 +724,15 @@ export function registerHoverProvider(
 
         if (token) {
           for (const [fnName, proof] of proofMap.entries()) {
-            const entryStates = proof.summary?.blockEntryStates as Map<number, any> | undefined;
-            const exitStates = proof.summary?.blockExitStates as Map<number, any> | undefined;
+            const entryStates = proof.summary?.blockEntryStates;
+            const exitStates = proof.summary?.blockExitStates;
 
-            let matchedIval: any = undefined;
+            let matchedIval: HoverIntervalLike | undefined = undefined;
 
             // 1. Try finding a basic block spanning the hovered cursor offset
             if (proof.cfg?.blocks) {
               for (const [bId, block] of proof.cfg.blocks) {
-                const inBlock = block.instructions.some((inst: any) => {
+                const inBlock = block.instructions.some((inst: { startOffset?: number; endOffset?: number }) => {
                   const startOff = inst.startOffset;
                   const endOff = inst.endOffset;
                   return startOff !== undefined && endOff !== undefined && offset >= startOff && offset <= endOff;
@@ -684,7 +828,7 @@ export function registerHoverProvider(
         kind: "markdown" as const,
         value: hoverContent.trim(),
       },
-      range: hoverRange,
+      ...(hoverRange ? { range: hoverRange } : {}),
     };
   });
 }

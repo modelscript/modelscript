@@ -1,0 +1,17 @@
+// Standard IEEE 1364 / Verilog-AMS Electrical Discipline Header
+nature Current;
+  units      = "A";
+  access     = I;
+  abstol     = 1e-12;
+endnature
+
+nature Voltage;
+  units      = "V";
+  access     = V;
+  abstol     = 1e-6;
+endnature
+
+discipline electrical;
+  potential  Voltage;
+  flow       Current;
+enddiscipline

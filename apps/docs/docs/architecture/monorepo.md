@@ -18,7 +18,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 │ Layer 4: Enterprise Edition (ee/)                                     │
 │   • Air-gapped Ed25519 licensing, ITAR / NERC CIP, FDA 21 CFR Part 11  │
 ├────────────────────────────────────────────────────────────────────────┤
-│ Layer 3: The Ansatz Platform (apps/web, apps/api, packages/embed…)     │
+│ Layer 3: The Ansatz Network (apps/web, apps/api, packages/embed…)     │
 │   • ansatz.social, package registry, ActivityPub, Cloud HPC, billing   │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Layer 2: Developer Tooling & Surfaces (apps/cli, ide, docs, pkgs/…)    │
@@ -40,7 +40,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 - **Directories:** `apps/cli`, `apps/ide`, `apps/docs`, `packages/{ide,editor,examples}`.
 - **Rule:** User-facing toolchains, embeddable editor components, reference workspaces, and documentation. Imports from Layer 1 to expose commands (`msx`), IDE extensions, and the reference manual.
 
-### Layer 3: The Ansatz Platform
+### Layer 3: The Ansatz Network
 
 - **Directories:** `apps/web`, `apps/api`, `packages/embed`, `packages/react`, `packages/design-tokens`.
 - **Rule:** The flagship web platform (`ansatz.social`), polyglot package registry, ActivityPub federation, Slurm HPC cluster execution, and enterprise team governance.

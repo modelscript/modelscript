@@ -1,0 +1,35 @@
+-- RFC 1157 SNMPv1 Message & PDU Subset
+RFC1157-SNMP { iso(1) org(3) dod(6) internet(1) mgmt(2) }
+DEFINITIONS IMPLICIT TAGS ::= BEGIN
+
+EXPORTS Message, PDUs;
+IMPORTS ObjectName, ObjectSyntax FROM RFC1155-SMI;
+
+Message ::= SEQUENCE {
+  version    INTEGER { version-1(0) },
+  community  OCTET STRING (SIZE (1..64)),
+  data       PDUs
+}
+
+PDUs ::= CHOICE {
+  get-request      [0] GetRequest-PDU,
+  get-next-request [1] GetNextRequest-PDU,
+  get-response     [2] GetResponse-PDU
+}
+
+GetRequest-PDU ::= SEQUENCE {
+  request-id         INTEGER (-2147483648..2147483647),
+  error-status       ENUMERATED { noError(0), tooBig(1), noSuchName(2), badValue(3), readOnly(4) },
+  error-index        INTEGER (0..255) DEFAULT 0,
+  variable-bindings  SEQUENCE (SIZE (0..32)) OF VarBind
+}
+
+GetNextRequest-PDU ::= GetRequest-PDU
+GetResponse-PDU ::= GetRequest-PDU
+
+VarBind ::= SEQUENCE {
+  name   ObjectName,
+  value  ObjectSyntax
+}
+
+END

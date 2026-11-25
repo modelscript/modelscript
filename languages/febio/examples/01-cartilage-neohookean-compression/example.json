@@ -1,0 +1,12 @@
+{
+  "id": "febio-01-cartilage-neohookean-compression",
+  "lang": "febio",
+  "subFormats": ["feb"],
+  "difficulty": 1,
+  "title": "Uniaxial Compression of Neo-Hookean Cartilage Cube",
+  "description": "Single-element hex8 FEBio 4.0 biomechanical model of articular cartilage modeled as a compressible Neo-Hookean solid under unconfined uniaxial compression.",
+  "category": "Soft-Tissue Biomechanics & FEA",
+  "tags": ["febio", "neo-hookean", "cartilage", "hex8"],
+  "activeFile": "cartilage_cube.feb",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,17 @@
+model SirEpidemicVaccination()
+  compartment population = 1.0;
+  species S in population = 990.0, I in population = 10.0, R in population = 0.0;
+  const beta = 0.00035, gamma = 0.12, vax_frac = 0.35;
+  var N_tot = 1000.0;
+
+  J_inf: S => I; beta * S * I;
+  J_rec: I => R; gamma * I;
+
+  N_tot := S + I + R;
+
+  E_vax: at (time >= 20.0): S = S * (1.0 - vax_frac), R = R + S * vax_frac;
+
+  S is "Susceptible Individuals";
+  I is "Infected Individuals";
+  R is "Recovered or Vaccinated Individuals";
+end

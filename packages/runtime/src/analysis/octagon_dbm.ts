@@ -16,10 +16,15 @@
  *   - SysML2 state machine verifier (guard mutual exclusion)
  */
 
-import { addUp, nextUp, WasmScratchPool } from "@modelscript/solve";
+import { addUp, nextUp, WasmScratchPool, type WasmMemoryHost } from "@modelscript/solve";
+
+export interface OctagonWasmExports extends WasmMemoryHost {
+  octagon_close_i32?: (ptr: number, dim: number) => void;
+  octagon_close_f64?: (ptr: number, dim: number) => void;
+}
 
 const _octagonScratchPools = new WeakMap<object, WasmScratchPool>();
-function getOctagonPool(wasm: any): WasmScratchPool {
+function getOctagonPool(wasm: OctagonWasmExports): WasmScratchPool {
   let pool = _octagonScratchPools.get(wasm);
   if (!pool) {
     pool = new WasmScratchPool(wasm, 65536);
@@ -125,14 +130,14 @@ export class OctagonDBM {
    * Computes transitive closure using in-WASM acceleration if provided,
    * falling back to the optimized in-engine Floyd-Warshall closure.
    */
-  closeWithWasm(wasmExports: Record<string, any>): void {
-    if (typeof wasmExports["octagon_close_i32"] === "function" && typeof wasmExports["__new"] === "function") {
+  closeWithWasm(wasmExports: OctagonWasmExports): void {
+    if (typeof wasmExports.octagon_close_i32 === "function" && typeof wasmExports.__new === "function") {
       const dim = this.dim;
       const scope = getOctagonPool(wasmExports).scope();
       try {
         const slice = scope.allocI32(dim * dim);
         slice.view().set(this.matrix);
-        wasmExports["octagon_close_i32"](slice.ptr, dim);
+        wasmExports.octagon_close_i32(slice.ptr, dim);
         this.matrix.set(slice.view());
       } finally {
         scope.dispose();
@@ -370,7 +375,7 @@ export const OCTAGON_INF_F64 = 1e30;
  */
 export class OctagonDBMF64 {
   public readonly dim: number;
-  private matrix: Float64Array;
+  public matrix: Float64Array;
 
   constructor(public readonly numVars: number) {
     this.dim = numVars * 2;
@@ -447,14 +452,14 @@ export class OctagonDBMF64 {
     }
   }
 
-  closeWithWasm(wasmExports: Record<string, any>): void {
-    if (typeof wasmExports["octagon_close_f64"] === "function" && typeof wasmExports["__new"] === "function") {
+  closeWithWasm(wasmExports: OctagonWasmExports): void {
+    if (typeof wasmExports.octagon_close_f64 === "function" && typeof wasmExports.__new === "function") {
       const dim = this.dim;
       const scope = getOctagonPool(wasmExports).scope();
       try {
         const slice = scope.allocF64(dim * dim);
         slice.view().set(this.matrix);
-        wasmExports["octagon_close_f64"](slice.ptr, dim);
+        wasmExports.octagon_close_f64(slice.ptr, dim);
         this.matrix.set(slice.view());
       } finally {
         scope.dispose();
@@ -569,14 +574,13 @@ export class OctagonDBMF64 {
   isLeq(other: OctagonDBMF64 | OctagonDBM): boolean {
     if (this.hasNegativeCycle()) return true;
     if (other.hasNegativeCycle()) return false;
-    const otherMat = (other as any).matrix;
-    const otherDim = (other as any).dim;
+    const otherMat = other.matrix;
+    const otherDim = other.dim;
     const dim = Math.max(this.dim, otherDim);
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
         const valA = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : i === j ? 0 : OCTAGON_INF_F64;
-        const valB =
-          i < otherDim && j < otherDim ? (otherMat as any)[i * otherDim + j]! : i === j ? 0 : OCTAGON_INF_F64;
+        const valB = i < otherDim && j < otherDim ? otherMat[i * otherDim + j]! : i === j ? 0 : OCTAGON_INF_F64;
         if (valA > valB) {
           return false;
         }
@@ -589,10 +593,10 @@ export class OctagonDBMF64 {
     if (this.hasNegativeCycle()) {
       if (other instanceof OctagonDBMF64) return other.clone();
       const res = new OctagonDBMF64(other.numVars);
-      const otherMat = (other as any).matrix;
+      const otherMat = other.matrix;
       for (let i = 0; i < other.dim; i++) {
         for (let j = 0; j < other.dim; j++) {
-          res.matrix[i * res.dim + j] = (otherMat as any)[i * other.dim + j]!;
+          res.matrix[i * res.dim + j] = otherMat[i * other.dim + j]!;
         }
       }
       return res;
@@ -602,13 +606,13 @@ export class OctagonDBMF64 {
     const n = Math.max(this.numVars, other.numVars);
     const res = new OctagonDBMF64(n);
     const dim = res.dim;
-    const otherMat = (other as any).matrix;
-    const otherDim = (other as any).dim;
+    const otherMat = other.matrix;
+    const otherDim = other.dim;
 
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
         const valA = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF_F64;
-        const valB = i < otherDim && j < otherDim ? (otherMat as any)[i * otherDim + j]! : OCTAGON_INF_F64;
+        const valB = i < otherDim && j < otherDim ? otherMat[i * otherDim + j]! : OCTAGON_INF_F64;
         res.matrix[i * dim + j] = Math.max(valA, valB);
       }
     }
@@ -620,10 +624,10 @@ export class OctagonDBMF64 {
     if (other.hasNegativeCycle()) {
       if (other instanceof OctagonDBMF64) return other.clone();
       const res = new OctagonDBMF64(other.numVars);
-      const otherMat = (other as any).matrix;
+      const otherMat = other.matrix;
       for (let i = 0; i < other.dim; i++) {
         for (let j = 0; j < other.dim; j++) {
-          res.matrix[i * res.dim + j] = (otherMat as any)[i * other.dim + j]!;
+          res.matrix[i * res.dim + j] = otherMat[i * other.dim + j]!;
         }
       }
       return res;
@@ -632,13 +636,13 @@ export class OctagonDBMF64 {
     const n = Math.max(this.numVars, other.numVars);
     const res = new OctagonDBMF64(n);
     const dim = res.dim;
-    const otherMat = (other as any).matrix;
-    const otherDim = (other as any).dim;
+    const otherMat = other.matrix;
+    const otherDim = other.dim;
 
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
         const valA = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF_F64;
-        const valB = i < otherDim && j < otherDim ? (otherMat as any)[i * otherDim + j]! : OCTAGON_INF_F64;
+        const valB = i < otherDim && j < otherDim ? otherMat[i * otherDim + j]! : OCTAGON_INF_F64;
         res.matrix[i * dim + j] = Math.min(valA, valB);
       }
     }
@@ -650,10 +654,10 @@ export class OctagonDBMF64 {
     if (this.hasNegativeCycle()) {
       if (other instanceof OctagonDBMF64) return other.clone();
       const res = new OctagonDBMF64(other.numVars);
-      const otherMat = (other as any).matrix;
+      const otherMat = other.matrix;
       for (let i = 0; i < other.dim; i++) {
         for (let j = 0; j < other.dim; j++) {
-          res.matrix[i * res.dim + j] = (otherMat as any)[i * other.dim + j]!;
+          res.matrix[i * res.dim + j] = otherMat[i * other.dim + j]!;
         }
       }
       return res;
@@ -663,13 +667,13 @@ export class OctagonDBMF64 {
     const n = Math.max(this.numVars, other.numVars);
     const res = new OctagonDBMF64(n);
     const dim = res.dim;
-    const otherMat = (other as any).matrix;
-    const otherDim = (other as any).dim;
+    const otherMat = other.matrix;
+    const otherDim = other.dim;
 
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
         const aVal = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF_F64;
-        const bVal = i < otherDim && j < otherDim ? (otherMat as any)[i * otherDim + j]! : OCTAGON_INF_F64;
+        const bVal = i < otherDim && j < otherDim ? otherMat[i * otherDim + j]! : OCTAGON_INF_F64;
 
         if (bVal <= aVal) {
           res.matrix[i * dim + j] = aVal;
@@ -699,13 +703,13 @@ export class OctagonDBMF64 {
     const n = Math.max(this.numVars, other.numVars);
     const res = new OctagonDBMF64(n);
     const dim = res.dim;
-    const otherMat = (other as any).matrix;
-    const otherDim = (other as any).dim;
+    const otherMat = other.matrix;
+    const otherDim = other.dim;
 
     for (let i = 0; i < dim; i++) {
       for (let j = 0; j < dim; j++) {
         const aVal = i < this.dim && j < this.dim ? this.matrix[i * this.dim + j]! : OCTAGON_INF_F64;
-        const bVal = i < otherDim && j < otherDim ? (otherMat as any)[i * otherDim + j]! : OCTAGON_INF_F64;
+        const bVal = i < otherDim && j < otherDim ? otherMat[i * otherDim + j]! : OCTAGON_INF_F64;
         res.matrix[i * dim + j] = aVal === OCTAGON_INF_F64 ? bVal : aVal;
       }
     }

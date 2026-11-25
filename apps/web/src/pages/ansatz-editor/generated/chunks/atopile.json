@@ -1,0 +1,101 @@
+[
+  {
+    "id": "atopile-01-precision-voltage-divider",
+    "lang": "atopile",
+    "subFormats": ["ato"],
+    "difficulty": 1,
+    "title": "10k/10k Precision Voltage Divider",
+    "description": "Code-as-hardware precision 1% resistive voltage divider with worst-case tolerance assertions, companion Resistor generic module, and ato.yaml build configuration.",
+    "category": "ECAD & Hardware Description",
+    "tags": ["atopile", "voltage-divider", "tolerance", "ecad", "multi-file"],
+    "activeFile": "main.ato",
+    "fileNames": ["main.ato", "ato.yaml", "generics/resistors.ato"],
+    "fileCount": 3,
+    "isDefaultStarter": true,
+    "code": "from \"generics/resistors.ato\" import Resistor\n\nmodule VoltageDivider:\n    signal v_in\n    signal v_out\n    signal gnd\n\n    r_top = new Resistor\n    r_bot = new Resistor\n    r_top.resistance = 10kohm +/- 1%\n    r_bot.resistance = 10kohm +/- 1%\n\n    v_in ~> r_top ~> v_out\n    v_out ~> r_bot ~> gnd\n\n    assert r_top.resistance within 9.8kohm to 10.2kohm\n    assert r_bot.resistance within 9.8kohm to 10.2kohm\n",
+    "files": {
+      "main.ato": "from \"generics/resistors.ato\" import Resistor\n\nmodule VoltageDivider:\n    signal v_in\n    signal v_out\n    signal gnd\n\n    r_top = new Resistor\n    r_bot = new Resistor\n    r_top.resistance = 10kohm +/- 1%\n    r_bot.resistance = 10kohm +/- 1%\n\n    v_in ~> r_top ~> v_out\n    v_out ~> r_bot ~> gnd\n\n    assert r_top.resistance within 9.8kohm to 10.2kohm\n    assert r_bot.resistance within 9.8kohm to 10.2kohm\n",
+      "ato.yaml": "ato-version: ^0.2.0\nbuilds:\n  default:\n    entry: main.ato:VoltageDivider\n",
+      "generics/resistors.ato": "component Resistor:\n    signal p1\n    signal p2\n    resistance = 10kohm +/- 1%\n"
+    }
+  },
+  {
+    "id": "atopile-02-rc-antialiasing-filter",
+    "lang": "atopile",
+    "subFormats": ["ato"],
+    "difficulty": 2,
+    "title": "RC Low-Pass Anti-Aliasing Filter",
+    "description": "First-order analog anti-aliasing RC low-pass filter (fc = 15.9 kHz) for a 12-bit ADC front-end importing standard resistor and capacitor generic components.",
+    "category": "ECAD & Hardware Description",
+    "tags": ["atopile", "rc-filter", "analog", "adc", "multi-file"],
+    "activeFile": "filter.ato",
+    "fileNames": ["filter.ato", "generics/capacitors.ato", "generics/resistors.ato"],
+    "fileCount": 3,
+    "code": "from \"generics/resistors.ato\" import Resistor\nfrom \"generics/capacitors.ato\" import Capacitor\n\nmodule AntiAliasingFilter:\n    signal sig_in\n    signal adc_in\n    signal gnd\n\n    r_series = new Resistor\n    c_shunt = new Capacitor\n\n    r_series.resistance = 1kohm +/- 1%\n    c_shunt.capacitance = 10nF +/- 5%\n\n    sig_in ~> r_series ~> adc_in\n    adc_in ~> c_shunt ~> gnd\n\n    assert r_series.resistance within 980ohm to 1020ohm\n    assert c_shunt.capacitance within 9nF to 11nF\n",
+    "files": {
+      "filter.ato": "from \"generics/resistors.ato\" import Resistor\nfrom \"generics/capacitors.ato\" import Capacitor\n\nmodule AntiAliasingFilter:\n    signal sig_in\n    signal adc_in\n    signal gnd\n\n    r_series = new Resistor\n    c_shunt = new Capacitor\n\n    r_series.resistance = 1kohm +/- 1%\n    c_shunt.capacitance = 10nF +/- 5%\n\n    sig_in ~> r_series ~> adc_in\n    adc_in ~> c_shunt ~> gnd\n\n    assert r_series.resistance within 980ohm to 1020ohm\n    assert c_shunt.capacitance within 9nF to 11nF\n",
+      "generics/capacitors.ato": "component Capacitor:\n    signal p1\n    signal p2\n    capacitance = 100nF +/- 10%\n",
+      "generics/resistors.ato": "component Resistor:\n    signal p1\n    signal p2\n    resistance = 1kohm +/- 1%\n"
+    }
+  },
+  {
+    "id": "atopile-03-ldo-3v3-power-rail",
+    "lang": "atopile",
+    "subFormats": ["ato"],
+    "difficulty": 3,
+    "title": "3.3V LDO Linear Regulator Power Rail",
+    "description": "5V-to-3.3V low-dropout linear voltage regulator stage with input/output bulk decoupling capacitors, feedback divider resistors, and enable pull-up.",
+    "category": "ECAD & Hardware Description",
+    "tags": ["atopile", "ldo", "power-rail", "regulator", "multi-file"],
+    "activeFile": "ldo_3v3.ato",
+    "fileNames": ["ldo_3v3.ato", "generics/capacitors.ato", "generics/regulators.ato", "generics/resistors.ato"],
+    "fileCount": 4,
+    "code": "from \"generics/resistors.ato\" import Resistor\nfrom \"generics/capacitors.ato\" import Capacitor\nfrom \"generics/regulators.ato\" import LDORegulator\n\nmodule PowerRail3V3:\n    signal v_5v\n    signal v_3v3\n    signal v_fb\n    signal gnd\n\n    u_ldo = new LDORegulator\n    c_in = new Capacitor\n    c_out = new Capacitor\n    r_fb_top = new Resistor\n    r_fb_bot = new Resistor\n\n    c_in.capacitance = 10uF +/- 10%\n    c_out.capacitance = 22uF +/- 10%\n    r_fb_top.resistance = 31.6kohm +/- 1%\n    r_fb_bot.resistance = 10kohm +/- 1%\n\n    v_5v ~ u_ldo.v_in\n    v_3v3 ~ u_ldo.v_out\n    v_fb ~ u_ldo.fb\n    gnd ~ u_ldo.gnd\n\n    v_5v ~> c_in ~> gnd\n    v_3v3 ~> c_out ~> gnd\n    v_3v3 ~> r_fb_top ~> v_fb\n    v_fb ~> r_fb_bot ~> gnd\n\n    assert r_fb_top.resistance within 31kohm to 32.2kohm\n    assert r_fb_bot.resistance within 9.8kohm to 10.2kohm\n",
+    "files": {
+      "ldo_3v3.ato": "from \"generics/resistors.ato\" import Resistor\nfrom \"generics/capacitors.ato\" import Capacitor\nfrom \"generics/regulators.ato\" import LDORegulator\n\nmodule PowerRail3V3:\n    signal v_5v\n    signal v_3v3\n    signal v_fb\n    signal gnd\n\n    u_ldo = new LDORegulator\n    c_in = new Capacitor\n    c_out = new Capacitor\n    r_fb_top = new Resistor\n    r_fb_bot = new Resistor\n\n    c_in.capacitance = 10uF +/- 10%\n    c_out.capacitance = 22uF +/- 10%\n    r_fb_top.resistance = 31.6kohm +/- 1%\n    r_fb_bot.resistance = 10kohm +/- 1%\n\n    v_5v ~ u_ldo.v_in\n    v_3v3 ~ u_ldo.v_out\n    v_fb ~ u_ldo.fb\n    gnd ~ u_ldo.gnd\n\n    v_5v ~> c_in ~> gnd\n    v_3v3 ~> c_out ~> gnd\n    v_3v3 ~> r_fb_top ~> v_fb\n    v_fb ~> r_fb_bot ~> gnd\n\n    assert r_fb_top.resistance within 31kohm to 32.2kohm\n    assert r_fb_bot.resistance within 9.8kohm to 10.2kohm\n",
+      "generics/capacitors.ato": "component Capacitor:\n    signal p1\n    signal p2\n    capacitance = 10uF +/- 10%\n",
+      "generics/regulators.ato": "component LDORegulator:\n    signal v_in\n    signal v_out\n    signal fb\n    signal gnd\n",
+      "generics/resistors.ato": "component Resistor:\n    signal p1\n    signal p2\n    resistance = 10kohm +/- 1%\n"
+    }
+  },
+  {
+    "id": "atopile-04-i2c-temp-sensor-breakout",
+    "lang": "atopile",
+    "subFormats": ["ato"],
+    "difficulty": 4,
+    "title": "I2C Temperature Sensor Breakout with Bus Pull-Ups",
+    "description": "Digital I2C temperature sensor breakout module wiring typed I2C and Power interfaces with 4.7 kOhm SDA/SCL pull-up resistors and local decoupling.",
+    "category": "ECAD & Hardware Description",
+    "tags": ["atopile", "i2c", "sensor", "interfaces", "multi-file"],
+    "activeFile": "sensor.ato",
+    "fileNames": ["sensor.ato", "generics/interfaces.ato", "generics/resistors.ato"],
+    "fileCount": 3,
+    "code": "from \"generics/interfaces.ato\" import I2C, Power\nfrom \"generics/resistors.ato\" import Resistor\n\nmodule TempSensorBreakout:\n    power = new Power\n    i2c = new I2C\n\n    r_sda = new Resistor\n    r_scl = new Resistor\n    r_addr = new Resistor\n\n    r_sda.resistance = 4.7kohm +/- 1%\n    r_scl.resistance = 4.7kohm +/- 1%\n    r_addr.resistance = 10kohm +/- 1%\n\n    power.vcc ~> r_sda ~> i2c.sda\n    power.vcc ~> r_scl ~> i2c.scl\n    power.gnd ~> r_addr ~> power.vcc\n\n    assert r_sda.resistance within 4.5kohm to 4.9kohm\n    assert r_scl.resistance within 4.5kohm to 4.9kohm\n",
+    "files": {
+      "sensor.ato": "from \"generics/interfaces.ato\" import I2C, Power\nfrom \"generics/resistors.ato\" import Resistor\n\nmodule TempSensorBreakout:\n    power = new Power\n    i2c = new I2C\n\n    r_sda = new Resistor\n    r_scl = new Resistor\n    r_addr = new Resistor\n\n    r_sda.resistance = 4.7kohm +/- 1%\n    r_scl.resistance = 4.7kohm +/- 1%\n    r_addr.resistance = 10kohm +/- 1%\n\n    power.vcc ~> r_sda ~> i2c.sda\n    power.vcc ~> r_scl ~> i2c.scl\n    power.gnd ~> r_addr ~> power.vcc\n\n    assert r_sda.resistance within 4.5kohm to 4.9kohm\n    assert r_scl.resistance within 4.5kohm to 4.9kohm\n",
+      "generics/interfaces.ato": "interface Power:\n    signal vcc\n    signal gnd\n\ninterface I2C:\n    signal sda\n    signal scl\n",
+      "generics/resistors.ato": "component Resistor:\n    signal p1\n    signal p2\n    resistance = 4.7kohm +/- 1%\n"
+    }
+  },
+  {
+    "id": "atopile-05-usbc-stm32-carrier-board",
+    "lang": "atopile",
+    "subFormats": ["ato"],
+    "difficulty": 5,
+    "title": "USB-C Powered STM32 Telemetry Carrier Board",
+    "description": "Multi-module Atopile hardware project combining a USB-C CC-pull-down front end (usb_c.ato), 3.3V power regulation stage (power.ato), shared passives library, and ato.yaml build manifest.",
+    "category": "ECAD & Hardware Description",
+    "tags": ["atopile", "usb-c", "stm32", "carrier-board", "multi-file"],
+    "activeFile": "carrier.ato",
+    "fileNames": ["carrier.ato", "ato.yaml", "generics/passives.ato", "power.ato", "usb_c.ato"],
+    "fileCount": 5,
+    "code": "from \"usb_c.ato\" import UsbCInput\nfrom \"power.ato\" import PowerStage3V3\nfrom \"generics/passives.ato\" import Resistor, Capacitor\n\nmodule TelemetryCarrierBoard:\n    signal vbus_5v\n    signal vcc_3v3\n    signal gnd\n    signal can_tx\n    signal can_rx\n\n    usb = new UsbCInput\n    pwr = new PowerStage3V3\n    r_term = new Resistor\n    c_dec = new Capacitor\n\n    r_term.resistance = 120ohm +/- 1%\n    c_dec.capacitance = 100nF +/- 10%\n\n    usb.vbus ~ vbus_5v\n    usb.gnd ~ gnd\n    pwr.v_in ~ vbus_5v\n    pwr.v_out ~ vcc_3v3\n    pwr.gnd ~ gnd\n\n    vcc_3v3 ~> c_dec ~> gnd\n    can_tx ~> r_term ~> can_rx\n\n    assert r_term.resistance within 115ohm to 125ohm\n",
+    "files": {
+      "carrier.ato": "from \"usb_c.ato\" import UsbCInput\nfrom \"power.ato\" import PowerStage3V3\nfrom \"generics/passives.ato\" import Resistor, Capacitor\n\nmodule TelemetryCarrierBoard:\n    signal vbus_5v\n    signal vcc_3v3\n    signal gnd\n    signal can_tx\n    signal can_rx\n\n    usb = new UsbCInput\n    pwr = new PowerStage3V3\n    r_term = new Resistor\n    c_dec = new Capacitor\n\n    r_term.resistance = 120ohm +/- 1%\n    c_dec.capacitance = 100nF +/- 10%\n\n    usb.vbus ~ vbus_5v\n    usb.gnd ~ gnd\n    pwr.v_in ~ vbus_5v\n    pwr.v_out ~ vcc_3v3\n    pwr.gnd ~ gnd\n\n    vcc_3v3 ~> c_dec ~> gnd\n    can_tx ~> r_term ~> can_rx\n\n    assert r_term.resistance within 115ohm to 125ohm\n",
+      "ato.yaml": "ato-version: ^0.2.0\nbuilds:\n  default:\n    entry: carrier.ato:TelemetryCarrierBoard\n",
+      "generics/passives.ato": "component Resistor:\n    signal p1\n    signal p2\n    resistance = 10kohm +/- 1%\n\ncomponent Capacitor:\n    signal p1\n    signal p2\n    capacitance = 100nF +/- 10%\n",
+      "power.ato": "from \"generics/passives.ato\" import Capacitor\n\nmodule PowerStage3V3:\n    signal v_in\n    signal v_out\n    signal gnd\n\n    c_bulk_in = new Capacitor\n    c_bulk_out = new Capacitor\n    c_bulk_in.capacitance = 10uF +/- 10%\n    c_bulk_out.capacitance = 22uF +/- 10%\n\n    v_in ~> c_bulk_in ~> gnd\n    v_out ~> c_bulk_out ~> gnd\n",
+      "usb_c.ato": "from \"generics/passives.ato\" import Resistor\n\nmodule UsbCInput:\n    signal vbus\n    signal cc1\n    signal cc2\n    signal gnd\n\n    r_cc1 = new Resistor\n    r_cc2 = new Resistor\n    r_cc1.resistance = 5.1kohm +/- 1%\n    r_cc2.resistance = 5.1kohm +/- 1%\n\n    cc1 ~> r_cc1 ~> gnd\n    cc2 ~> r_cc2 ~> gnd\n"
+    }
+  }
+]

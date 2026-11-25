@@ -111,9 +111,9 @@ export const SimaPanel: React.FC<LanguagePanelProps> = ({
                 Export SVG
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "sima", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "sima", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

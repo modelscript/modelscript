@@ -1,0 +1,11 @@
+{
+  "id": "nmodl-04-ltype-calcium-ghk",
+  "lang": "nmodl",
+  "subFormats": ["nmodl"],
+  "difficulty": 4,
+  "title": "L-Type Calcium Channel with Goldman-Hodgkin-Katz Flux",
+  "description": "High-voltage-activated L-type calcium channel combining activation and calcium-dependent inactivation gating states with nonlinear GHK permeation driving force.",
+  "category": "Computational Neuroscience",
+  "tags": ["nmodl", "calcium", "ghk", "biophysics"],
+  "activeFile": "cal_ghk.mod"
+}

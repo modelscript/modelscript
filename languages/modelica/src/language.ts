@@ -16,14 +16,35 @@
  * - Triple Graph Grammar (TGG) bidirectional synchronization rules between Modelica, SysML v2, OWL2, and CSV
  */
 
-import type { CodeGraph, u16, u32 } from "@modelscript/dsl";
+import type { CodeGraph, LanguageRequestContext, u16, u32 } from "@modelscript/dsl";
 import { choice, domain, field, language, optional, prec, repeat, semanticToken, seq, token } from "@modelscript/dsl";
+import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { getDottedVariableType, getVariableTypeInClass } from "./lints/helpers.js";
 import { allModelicaLints } from "./lints/index.js";
 import { modelicaPolyglotConfig } from "./tgg/modelica-rules.js";
 import { modelicaWriteback } from "./writeback.js";
 
 export { allModelicaLints, modelicaWriteback };
+
+interface ModelicaLspRequestContext extends LanguageRequestContext {
+  parserService?: { sharedContext?: unknown } | undefined;
+  workspaceManager?:
+    | {
+        unifiedWorkspace?:
+          | {
+              getIndex?: () => {
+                symbols: Map<
+                  number,
+                  SymbolEntry & { classPrefix?: string | undefined; qualifiedName?: string | undefined }
+                >;
+              } | null;
+            }
+          | undefined;
+        resolveModelicaClassInstance?: (uri: string, className: string) => { symbolId: number } | null | undefined;
+        globalModelicaQueryEngine?: { toQueryDB: () => QueryDB } | undefined;
+      }
+    | undefined;
+}
 
 /**
  * Operator precedence levels for the flattened Modelica expression grammar (per MLS §3.2).
@@ -76,7 +97,7 @@ export const modelicaLanguage = language({
         shortTitle: "Modelica",
         selector: ["*.mo"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/ModelicaPanel.tsx",
         artifactViewTypes: ["modelica", "mo"],
       },
@@ -137,10 +158,10 @@ export const modelicaLanguage = language({
         tooltip: "Re-run automatic schematic layout on the current diagram",
         icon: "flowchart",
         views: ["diagram"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "primary",
         order: 10,
-        command: "morsel:autoLayout",
+        command: "ansatz:autoLayout",
       },
       {
         id: "addIconRect",
@@ -151,11 +172,11 @@ export const modelicaLanguage = language({
         iconSvg:
           '<rect x="2.25" y="3.5" width="11.5" height="9" rx="1.4" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.35"/>',
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "primary",
         order: 11,
         shortcut: "R",
-        command: "morsel:addIconPrimitive:rect",
+        command: "ansatz:addIconPrimitive:rect",
       },
       {
         id: "addIconEllipse",
@@ -166,11 +187,11 @@ export const modelicaLanguage = language({
         iconSvg:
           '<ellipse cx="8" cy="8" rx="5.75" ry="4.75" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.35"/>',
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "primary",
         order: 12,
         shortcut: "O",
-        command: "morsel:addIconPrimitive:ellipse",
+        command: "ansatz:addIconPrimitive:ellipse",
       },
       {
         id: "addIconLine",
@@ -181,11 +202,11 @@ export const modelicaLanguage = language({
         iconSvg:
           '<line x1="3" y1="13" x2="13" y2="3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><circle cx="3" cy="13" r="1.4" fill="currentColor"/><circle cx="13" cy="3" r="1.4" fill="currentColor"/>',
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "primary",
         order: 13,
         shortcut: "L",
-        command: "morsel:addIconPrimitive:line",
+        command: "ansatz:addIconPrimitive:line",
       },
       {
         id: "addIconPolygon",
@@ -196,11 +217,11 @@ export const modelicaLanguage = language({
         iconSvg:
           '<polygon points="8,2.4 13.5,12.6 2.5,12.6" fill="currentColor" fill-opacity="0.14" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/><circle cx="8" cy="2.4" r="1.15" fill="currentColor"/><circle cx="13.5" cy="12.6" r="1.15" fill="currentColor"/><circle cx="2.5" cy="12.6" r="1.15" fill="currentColor"/>',
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "primary",
         order: 14,
         shortcut: "P",
-        command: "morsel:addIconPrimitive:polygon",
+        command: "ansatz:addIconPrimitive:polygon",
       },
       {
         id: "addIconText",
@@ -211,11 +232,11 @@ export const modelicaLanguage = language({
         iconSvg:
           '<path d="M3.2 4V3h9.6v1M8 3v10M5.8 13h4.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>',
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "primary",
         order: 15,
         shortcut: "T",
-        command: "morsel:addIconPrimitive:text",
+        command: "ansatz:addIconPrimitive:text",
       },
       {
         id: "deleteIconPrimitive",
@@ -226,10 +247,10 @@ export const modelicaLanguage = language({
         iconSvg:
           '<path d="M3.5 4.5h9M6 4.5V3h4v1.5M5 4.5v8h6v-8" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>',
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "overflow",
         order: 16,
-        command: "morsel:deleteIconPrimitive",
+        command: "ansatz:deleteIconPrimitive",
       },
       {
         id: "bringIconForward",
@@ -238,10 +259,10 @@ export const modelicaLanguage = language({
         tooltip: "Move the selected icon shape forward in draw order",
         icon: "layers",
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "overflow",
         order: 17,
-        command: "morsel:reorderIconPrimitive:forward",
+        command: "ansatz:reorderIconPrimitive:forward",
       },
       {
         id: "sendIconBackward",
@@ -250,10 +271,10 @@ export const modelicaLanguage = language({
         tooltip: "Move the selected icon shape backward in draw order",
         icon: "layers",
         views: ["icon"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "overflow",
         order: 18,
-        command: "morsel:reorderIconPrimitive:backward",
+        command: "ansatz:reorderIconPrimitive:backward",
       },
       {
         id: "flatten",
@@ -262,11 +283,11 @@ export const modelicaLanguage = language({
         tooltip: "Flatten the active Modelica class into its DAE equations",
         icon: "stack",
         views: ["code", "inspector"],
-        targets: ["morsel", "vscode"],
+        targets: ["ansatz", "vscode"],
         placement: "primary",
         order: 20,
         actionId: "flatten",
-        command: "morsel:flatten",
+        command: "ansatz:flatten",
       },
       {
         id: "runLints",
@@ -274,10 +295,10 @@ export const modelicaLanguage = language({
         tooltip: "Run on-demand formal verification and CST compiler lints",
         icon: "shield-check",
         views: ["*"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "overflow",
         order: 30,
-        command: "morsel:runLints",
+        command: "ansatz:runLints",
       },
       {
         id: "exportFmu",
@@ -286,7 +307,7 @@ export const modelicaLanguage = language({
         tooltip: "Export FMU (FMI 2.0 / 3.0)",
         icon: "export",
         views: ["diagram", "code"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "overflow",
         order: 25,
         actionId: "export_fmu",
@@ -298,7 +319,7 @@ export const modelicaLanguage = language({
         tooltip: "Analyze BLT Structure",
         icon: "layers",
         views: ["inspector", "code"],
-        targets: ["morsel"],
+        targets: ["ansatz"],
         placement: "overflow",
         order: 26,
         actionId: "analyze_blt",
@@ -745,7 +766,10 @@ export const modelicaLanguage = language({
     outline: ["component_declaration", "short_class_specifier", "long_class_specifier", "der_class_specifier"],
     handlers: {
       // Extracts 3D CAD / multibody visual shapes from a Modelica class
-      "modelscript/getCadComponents": async (ctx: any, params: { uri: string; className?: string }) => {
+      "modelscript/getCadComponents": async (
+        ctx: ModelicaLspRequestContext,
+        params: { uri: string; className?: string },
+      ) => {
         const sharedContext = ctx.parserService?.sharedContext;
         if (!sharedContext) return [];
 
@@ -789,9 +813,12 @@ export const modelicaLanguage = language({
         return extractModelicaCadComponents(sharedContext, targetClassName, targetSymbolId, params.uri);
       },
       // Compiles a Modelica shape/multibody assembly into ISO 10303 STEP format
-      "modelscript/exportShapeToStep": async (ctx: any, params: { uri: string; className: string }) => {
-        const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance(params.uri, params.className);
-        if (!classInstance) {
+      "modelscript/exportShapeToStep": async (
+        ctx: ModelicaLspRequestContext,
+        params: { uri: string; className: string },
+      ) => {
+        const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance?.(params.uri, params.className);
+        if (!classInstance || !ctx.workspaceManager?.globalModelicaQueryEngine) {
           throw new Error(`Could not resolve Modelica class ${params.className}`);
         }
         const queryDB = ctx.workspaceManager.globalModelicaQueryEngine.toQueryDB();
@@ -803,9 +830,12 @@ export const modelicaLanguage = language({
         return { step: stepContent, name: assembly.name };
       },
       // Flattens a declarative ModelScript.Studies simulation study class
-      "modelscript/flattenStudy": async (ctx: any, params: { uri: string; className: string }) => {
-        const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance(params.uri, params.className);
-        if (!classInstance) {
+      "modelscript/flattenStudy": async (
+        ctx: ModelicaLspRequestContext,
+        params: { uri: string; className: string },
+      ) => {
+        const classInstance = ctx.workspaceManager?.resolveModelicaClassInstance?.(params.uri, params.className);
+        if (!classInstance || !ctx.workspaceManager?.globalModelicaQueryEngine) {
           throw new Error(`Could not resolve Modelica class ${params.className}`);
         }
         const queryDB = ctx.workspaceManager.globalModelicaQueryEngine.toQueryDB();
@@ -1656,17 +1686,17 @@ export const modelicaLanguage = language({
    */
   queries: {
     /** Resolves the primitive type mask of a component identifier declared or inherited in `classNode`. */
-    resolveComponentTypeInClass: (db: CodeGraph, classNode: u32, identNode: u32, $: any): u16 => {
+    resolveComponentTypeInClass: (db: CodeGraph, classNode: u32, identNode: u32, $: Record<string, u16>): u16 => {
       return getVariableTypeInClass(db, classNode, identNode, $);
     },
 
     /** Resolves the primitive type mask of a dotted component reference starting from `enclosingClass`. */
-    resolveDottedType: (db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: any): u16 => {
+    resolveDottedType: (db: CodeGraph, enclosingClass: u32, compRefNode: u32, $: Record<string, u16>): u16 => {
       return getDottedVariableType(db, enclosingClass, compRefNode, $);
     },
 
     /** Walks up the CST ancestor chain from `node` to find the nearest enclosing `class_definition` node. */
-    resolveEnclosingClass: (db: CodeGraph, node: u32, $: any): u32 => {
+    resolveEnclosingClass: (db: CodeGraph, node: u32, $: { class_definition: u16 }): u32 => {
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.class_definition) {
           return anc;

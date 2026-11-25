@@ -1,0 +1,12 @@
+{
+  "id": "melcor-01-containment-steam-blowdown",
+  "lang": "melcor",
+  "subFormats": ["melcor2"],
+  "difficulty": 1,
+  "title": "Single Containment Control Volume Steam Blowdown",
+  "description": "Single-volume pressurized containment thermal-hydraulic response with a concrete containment wall heat structure and ambient heat sink.",
+  "category": "Nuclear Severe Accident Analysis",
+  "tags": ["melcor", "containment", "blowdown", "cvh"],
+  "activeFile": "containment_blowdown.mel",
+  "isDefaultStarter": true
+}

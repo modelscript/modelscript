@@ -22,9 +22,9 @@ export interface SimulinkDropBuildOptions {
   y: number;
   instanceName?: string | undefined;
   section?: string | undefined;
-  batchState?: any;
+  batchState?: unknown;
   sanitizeIdentifier: (raw: string, fallback?: string) => string;
-  allocateUniqueIdentifier: (docText: string, baseName: string, batchState?: any) => string;
+  allocateUniqueIdentifier: (docText: string, baseName: string, batchState?: unknown) => string;
 }
 
 const SIMULINK_NATIVE_BLOCK_TYPES = new Set<string>([

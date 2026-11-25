@@ -1,0 +1,11 @@
+{
+  "id": "irig106-04-highrate-vibration-strain",
+  "lang": "irig106",
+  "subFormats": ["tmats-ch9"],
+  "difficulty": 4,
+  "title": "High-Rate Wing Flutter Vibration & Strain Gauge Recorder",
+  "description": "1.024 Mbps flight-test structural dynamics TMATS configuration recording 8 wing-tip accelerometers and root bending strain gauges with polynomial calibration curves.",
+  "category": "Structural Flight Test",
+  "tags": ["irig106", "tmats", "flutter", "vibration", "strain-gauge"],
+  "activeFile": "wing_flutter.tmats"
+}

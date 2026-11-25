@@ -6,7 +6,7 @@ outline: [2, 3]
 
 # SysML v2 Lints & Formal Verification
 
-`@modelscript/sysml2` pairs native WebAssembly GLR parsing with a **3-tier static analysis and formal verification pipeline** spanning 76 diagnostic rules (`S1001`–`S7006`). Routine syntax, metamodel, type, dimensional, and fast mathematical checks run continuously as you type, while heavyweight safety certification engines run on demand from the CLI, Morsel Web IDE, VS Code, or Model Context Protocol (MCP) agents.
+`@modelscript/sysml2` pairs native WebAssembly GLR parsing with a **3-tier static analysis and formal verification pipeline** spanning 76 diagnostic rules (`S1001`–`S7006`). Routine syntax, metamodel, type, dimensional, and fast mathematical checks run continuously as you type, while heavyweight safety certification engines run on demand from the CLI, Ansatz Editor, VS Code, or Model Context Protocol (MCP) agents.
 
 ---
 
@@ -28,7 +28,7 @@ flowchart LR
 | :---------------------------------------------------------- | :---------------------------------------- | :------------- | :----------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Tier 1 — Native In-WASM `CompilerLint`s**                 | Live in LSP & on-demand                   | `< 1 ms`       | `S1003`–`S1005`, `S4014`, `S4016`, `S4020` | AssemblyScript rules compiled directly into `sysml2/dist/parser.wasm` scanning the zero-copy `CodeGraph` CST arena                                                                                                                    |
 | **Tier 2 — Incremental Salsa SOTA & Fast Formal Reasoners** | Live in LSP & `msx lint`                  | `< 10 ms`      | `S2xxx`–`S5xxx`, `S6001`–`S6042`           | Memoized Salsa `QueryEngine`, `RealSimplexSolver`, `CraigInterpolator`, `DpllTSolver`, Petri-net CFA, Pantelides structural index check, 3D AABB clash detector, and TGG correspondence validator                                     |
-| **Tier 3 — On-Demand Deep Certification Engines**           | `msx lint --formal`, Morsel, VS Code, MCP | `10–500 ms`    | `S7001`–`S7006`                            | `PdrEngine` (`IC3Engine`), `SafetyTheoryOracle` (ISO 26262 MOCUS/ASIL), `UqTheoryOracle` (analytical CDF), `ToleranceStackOracle` (GD&T), `RelationalVerifier` (2-safety/Lipschitz), `HybridFlowpipeSolver` & `SosBarrierSynthesizer` |
+| **Tier 3 — On-Demand Deep Certification Engines**           | `msx lint --formal`, Ansatz, VS Code, MCP | `10–500 ms`    | `S7001`–`S7006`                            | `PdrEngine` (`IC3Engine`), `SafetyTheoryOracle` (ISO 26262 MOCUS/ASIL), `UqTheoryOracle` (analytical CDF), `ToleranceStackOracle` (GD&T), `RelationalVerifier` (2-safety/Lipschitz), `HybridFlowpipeSolver` & `SosBarrierSynthesizer` |
 
 ---
 
@@ -52,9 +52,9 @@ msx lint ./architecture/PumpSpec.sysml ./physics/DriftedPump.mo
 msx lint --formal ./architecture --format sarif --out reports/sysml-formal.sarif
 ```
 
-### 2. Morsel Web IDE
+### 2. Ansatz Editor
 
-In the Morsel Web IDE toolbar for `.sysml` and `.kerml` models, use the split **Verify Formal** button and mode selector dropdown:
+In the Ansatz Editor toolbar for `.sysml` and `.kerml` models, use the split **Verify Formal** button and mode selector dropdown:
 
 - **Live SOTA & Reasoner Lints (`S1xxx`–`S6xxx`):** Runs automatically on keystroke debounce via the browser WebWorker LSP.
 - **Verify Formal (`S7001`–`S7006`):** Triggers `modelscript/runFormalLints` (`includeFormal: true`), streaming counterexample traces, Minimal Cut Sets, and flowpipe breach witnesses directly into the editor gutter and Problems drawer.

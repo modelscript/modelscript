@@ -1,0 +1,50 @@
+% Avionics Cockpit Display Mode Manager with Master Caution Alarm Submodule
+module AlarmHandler:
+input FAULT_IN, ACK_BTN, FAULT_CLEARED;
+output MASTER_WARN, AUDIO_TONE;
+
+loop
+  await FAULT_IN;
+  abort
+    [
+      sustain MASTER_WARN
+    ||
+      abort
+        sustain AUDIO_TONE
+      when ACK_BTN
+    ]
+  when FAULT_CLEARED;
+  pause
+end
+end module
+
+module CockpitDisplayManager:
+input MODE_NAV, MODE_ENG, FAULT_ENG, MASTER_ACK, FAULT_OK, POWER_RST;
+output SHOW_NAV, SHOW_ENG, WARN_LAMP, CHIME_OUT;
+relation MODE_NAV # MODE_ENG;
+
+loop
+  abort
+    [
+      loop
+        abort
+          sustain SHOW_NAV
+        when MODE_ENG;
+        abort
+          sustain SHOW_ENG
+        when MODE_NAV;
+        pause
+      end
+    ||
+      run AlarmHandler [
+        signal FAULT_ENG / FAULT_IN,
+               MASTER_ACK / ACK_BTN,
+               FAULT_OK / FAULT_CLEARED,
+               WARN_LAMP / MASTER_WARN,
+               CHIME_OUT / AUDIO_TONE
+      ]
+    ]
+  when POWER_RST;
+  pause
+end
+end module

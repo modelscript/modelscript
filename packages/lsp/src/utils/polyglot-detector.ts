@@ -3,7 +3,7 @@
 /**
  * Pure, dependency-free dialect detection and realistic fault-injection
  * helpers shared across the ModelScript docs sandbox, VitePress build, and
- * Morsel Web IDE.
+ * Ansatz Editor.
  */
 
 export interface DetectedLanguageMatch {

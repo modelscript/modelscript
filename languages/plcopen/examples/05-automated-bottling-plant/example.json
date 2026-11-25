@@ -1,0 +1,12 @@
+{
+  "id": "plcopen-05-automated-bottling-plant",
+  "lang": "plcopen",
+  "subFormats": ["st"],
+  "difficulty": 5,
+  "title": "Automated Bottling Plant Multi-POU Project",
+  "description": "Multi-file IEC 61131-3 bottling line automation project organizing main sequencing logic, reusable PID filler pressure controller, plant alarm manager, and hardware I/O mapping across four POU files.",
+  "category": "Factory Automation",
+  "tags": ["plcopen", "bottling-plant", "multi-pou", "pid", "multi-file"],
+  "activeFile": "plant_main.st",
+  "fileOrder": ["plant_main.st", "pid_lib.st", "alarm_mgr.st", "io_map.st"]
+}

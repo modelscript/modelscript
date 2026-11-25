@@ -1,0 +1,25 @@
+$PROBLEM Theophylline One-Compartment Oral First-Order Absorption PK
+$INPUT ID TIME AMT DV CMT EVID
+$DATA theophylline.csv IGNORE=@
+$SUBROUTINES ADVAN2 TRANS2
+$PK
+  KA = THETA(1) * EXP(ETA(1))
+  CL = THETA(2) * EXP(ETA(2))
+  V  = THETA(3) * EXP(ETA(3))
+  S2 = V
+$ERROR
+  IPRED = F
+  Y = IPRED + EPS(1)
+$THETA
+  (0, 1.5, 10.0)   ; KA (1/h)
+  (0, 2.8, 25.0)   ; CL (L/h)
+  (0, 32.0, 150.0) ; V (L)
+$OMEGA
+  0.09 ; IIV_KA
+  0.04 ; IIV_CL
+  0.04 ; IIV_V
+$SIGMA
+  0.25 ; RUV_ADD
+$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT
+$DOSE
+  TIME=0 AMT=320 RATE=0 CMT=1 EVID=1 II=0 ADDL=0

@@ -13,7 +13,7 @@ ModelScript is built on a **data-oriented, WebAssembly-first compiler architectu
 
 ```mermaid
 flowchart TB
-    subgraph Languages["Polyglot Source Languages (169 Documented Formats — 96 Beta, 72 Alpha, 1 Pre-Alpha)"]
+    subgraph Languages["Polyglot Source Languages (169 Documented Formats — 119 Beta, 47 Alpha, 3 Pre-Alpha)"]
         direction TB
         MO[".mo (Modelica 3.x) / .mod (AMPL)"]
         SYS[".sysml / .kerml / .reqif / .oscal.json"]
@@ -101,7 +101,7 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 105 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
 | `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
 | `@modelscript/sdk`           | `packages/sdk`           | TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels                                                                               |
-| `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and playground environments                                                       |
+| `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and ansatz environments                                                           |
 | `@modelscript/ide-client`    | `packages/ide`           | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                                                       |
 | `@modelscript/react`         | `packages/react`         | ModelScript & Ansatz React SDK and widgets — engineering UI primitives, WebAssembly solver hooks, and IDE bridges                                                                                       |
 | `@modelscript/embed`         | `packages/embed`         | ModelScript & Ansatz embed client SDK — iframe bridge, Web Component custom elements, and permalink codec                                                                                               |
@@ -110,6 +110,6 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `modelscript` (`msx`)        | `apps/cli`               | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.)                          |
 | `@modelscript/api`           | `apps/api`               | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                                                     |
 | `@modelscript/docs`          | `apps/docs`              | Unified `modelscript.org` website and VitePress documentation portal                                                                                                                                    |
-| `@modelscript/ide`           | `apps/ide`               | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                                                                                                                   |
+| `@modelscript/ide`           | `apps/ide`               | Ansatz Studio (VS Code Web) with GitHub/GitLab repository integration                                                                                                                                   |
 | `@modelscript/web`           | `apps/web`               | Ansatz Web application (Ansatz browser editor, Studio, Package Registry, and social modeling platform)                                                                                                  |
 | `@modelscript/ee`            | `ee`                     | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                                              |

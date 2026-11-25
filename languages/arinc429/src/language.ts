@@ -26,7 +26,7 @@ export const arinc429Language = language({
         shortTitle: "ARINC 429",
         selector: ["*.a429", "*.arinc429", "*.429"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/Arinc429Panel.tsx",
         artifactViewTypes: ["arinc429", "a429"],
       },

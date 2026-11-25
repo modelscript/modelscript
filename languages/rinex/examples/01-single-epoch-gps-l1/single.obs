@@ -1,0 +1,13 @@
+     2.11           OBSERVATION DATA    G (GPS)             RINEX VERSION / TYPE
+MS-RINEX            MODELSCRIPT         20240501 000000 UTC PGM / RUN BY / DATE
+WTZR                                                        MARKER NAME
+  4075580.4890   931853.8610  4801568.1760                  APPROX POSITION XYZ
+        0.0710        0.0000        0.0000                  ANTENNA: DELTA H/E/N
+     2    C1    S1                                          # / TYPES OF OBSERV
+  2024     5     1     0     0    0.0000000     GPS         TIME OF FIRST OBS
+                                                            END OF HEADER
+ 24  5  1  0  0  0.0000000  0  4G01G05G12G24
+  21456789.123 7        45.250
+  22891234.567 8        47.500
+  23123456.789 6        42.100
+  20567890.321 9        49.800

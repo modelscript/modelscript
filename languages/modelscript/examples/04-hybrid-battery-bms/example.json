@@ -1,0 +1,11 @@
+{
+  "id": "modelscript-04-hybrid-battery-bms",
+  "lang": "modelscript",
+  "subFormats": ["msx"],
+  "difficulty": 4,
+  "title": "Hybrid State-Machine Battery Management System",
+  "description": "Lithium-ion pack BMS combining discrete operating mode supervision (idle, charge, discharge, thermal derate, fault) with coulomb counting and thermal dynamics.",
+  "category": "Energy Storage",
+  "tags": ["modelscript", "bms", "battery", "state-machine", "thermal"],
+  "activeFile": "battery_bms.msx"
+}

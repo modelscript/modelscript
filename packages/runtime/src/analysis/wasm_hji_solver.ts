@@ -13,6 +13,39 @@
 
 import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 
+interface HjiWasmExports {
+  memory: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
+  hji_weno5Derivatives?: (
+    vPtr: number,
+    len: number,
+    idx: number,
+    stride: number,
+    dx: number,
+    numPts: number,
+    outPtr: number,
+  ) => void;
+  hji_weno5SweepAll?: (
+    vPtr: number,
+    totalPts: number,
+    dims: number,
+    stridesPtr: number,
+    dxPtr: number,
+    countsPtr: number,
+    dMinusAllPtr: number,
+    dPlusAllPtr: number,
+  ) => void;
+  hji_tvdRk3Combine?: (
+    vPtr: number,
+    v0Ptr: number,
+    ePtr: number,
+    outPtr: number,
+    totalPts: number,
+    stage: number,
+  ) => void;
+}
+
 export interface HjiProblem {
   /** 1D or 2D grid bounds [xMin, xMax] for each axis */
   bounds: [number, number][];
@@ -76,7 +109,7 @@ export class HjiLevelSetSolver {
     dx: number,
     numPts: number,
   ): { derivMinus: number; derivPlus: number } {
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as HjiWasmExports | null;
     if (
       w &&
       typeof w.hji_weno5Derivatives === "function" &&
@@ -165,16 +198,17 @@ export class HjiLevelSetSolver {
     const uCandidates = [controlBounds[0], controlBounds[1]];
     const wCandidates = [disturbanceBounds[0], disturbanceBounds[1]];
 
-    const w = getDefaultWasmExports();
-    const useWasm = Boolean(
+    const w = getDefaultWasmExports() as HjiWasmExports | null;
+    const wasmKernel: Required<HjiWasmExports> | null =
       w &&
       typeof w.hji_weno5SweepAll === "function" &&
       typeof w.hji_tvdRk3Combine === "function" &&
       typeof w.alloc === "function" &&
       typeof w.free === "function" &&
       totalPts > 0 &&
-      dims > 0,
-    );
+      dims > 0
+        ? (w as Required<HjiWasmExports>)
+        : null;
 
     // Pre-allocate persistent WASM linear-memory scratch buffers for the entire solve
     let vPtr = 0;
@@ -187,21 +221,21 @@ export class HjiLevelSetSolver {
     let dMinusAllPtr = 0;
     let dPlusAllPtr = 0;
 
-    if (useWasm) {
-      vPtr = w.alloc(totalPts * 8);
-      v0Ptr = w.alloc(totalPts * 8);
-      ePtr = w.alloc(totalPts * 8);
-      outPtr = w.alloc(totalPts * 8);
-      stridesPtr = w.alloc(dims * 4);
-      dxPtr = w.alloc(dims * 8);
-      countsPtr = w.alloc(dims * 4);
-      dMinusAllPtr = w.alloc(totalPts * dims * 8);
-      dPlusAllPtr = w.alloc(totalPts * dims * 8);
+    if (wasmKernel) {
+      vPtr = wasmKernel.alloc(totalPts * 8);
+      v0Ptr = wasmKernel.alloc(totalPts * 8);
+      ePtr = wasmKernel.alloc(totalPts * 8);
+      outPtr = wasmKernel.alloc(totalPts * 8);
+      stridesPtr = wasmKernel.alloc(dims * 4);
+      dxPtr = wasmKernel.alloc(dims * 8);
+      countsPtr = wasmKernel.alloc(dims * 4);
+      dMinusAllPtr = wasmKernel.alloc(totalPts * dims * 8);
+      dPlusAllPtr = wasmKernel.alloc(totalPts * dims * 8);
 
-      new Float64Array(w.memory.buffer, v0Ptr, totalPts).set(V0);
-      new Int32Array(w.memory.buffer, stridesPtr, dims).set(strides);
-      new Float64Array(w.memory.buffer, dxPtr, dims).set(dx);
-      new Int32Array(w.memory.buffer, countsPtr, dims).set(gridCounts);
+      new Float64Array(wasmKernel.memory.buffer, v0Ptr, totalPts).set(V0);
+      new Int32Array(wasmKernel.memory.buffer, stridesPtr, dims).set(strides);
+      new Float64Array(wasmKernel.memory.buffer, dxPtr, dims).set(dx);
+      new Int32Array(wasmKernel.memory.buffer, countsPtr, dims).set(gridCounts);
     }
 
     try {
@@ -214,11 +248,11 @@ export class HjiLevelSetSolver {
 
         let dMinusGrid: Float64Array | null = null;
         let dPlusGrid: Float64Array | null = null;
-        if (useWasm) {
-          new Float64Array(w.memory.buffer, vPtr, totalPts).set(stageV);
-          w.hji_weno5SweepAll(vPtr, totalPts, dims, stridesPtr, dxPtr, countsPtr, dMinusAllPtr, dPlusAllPtr);
-          dMinusGrid = new Float64Array(w.memory.buffer, dMinusAllPtr, totalPts * dims);
-          dPlusGrid = new Float64Array(w.memory.buffer, dPlusAllPtr, totalPts * dims);
+        if (wasmKernel) {
+          new Float64Array(wasmKernel.memory.buffer, vPtr, totalPts).set(stageV);
+          wasmKernel.hji_weno5SweepAll(vPtr, totalPts, dims, stridesPtr, dxPtr, countsPtr, dMinusAllPtr, dPlusAllPtr);
+          dMinusGrid = new Float64Array(wasmKernel.memory.buffer, dMinusAllPtr, totalPts * dims);
+          dPlusGrid = new Float64Array(wasmKernel.memory.buffer, dPlusAllPtr, totalPts * dims);
         }
 
         for (let idx = 0; idx < totalPts; idx++) {
@@ -277,12 +311,12 @@ export class HjiLevelSetSolver {
       };
 
       const combineStage = (baseV: Float64Array, eulerV: Float64Array, stage: 1 | 2 | 3): Float64Array<ArrayBuffer> => {
-        if (useWasm) {
-          new Float64Array(w.memory.buffer, vPtr, totalPts).set(baseV);
-          new Float64Array(w.memory.buffer, ePtr, totalPts).set(eulerV);
-          w.hji_tvdRk3Combine(vPtr, v0Ptr, ePtr, outPtr, totalPts, stage);
+        if (wasmKernel) {
+          new Float64Array(wasmKernel.memory.buffer, vPtr, totalPts).set(baseV);
+          new Float64Array(wasmKernel.memory.buffer, ePtr, totalPts).set(eulerV);
+          wasmKernel.hji_tvdRk3Combine(vPtr, v0Ptr, ePtr, outPtr, totalPts, stage);
           const out = new Float64Array(totalPts);
-          out.set(new Float64Array(w.memory.buffer, outPtr, totalPts));
+          out.set(new Float64Array(wasmKernel.memory.buffer, outPtr, totalPts));
           return out;
         }
         const res = new Float64Array(totalPts);
@@ -315,16 +349,16 @@ export class HjiLevelSetSolver {
         t += currentDt;
       }
     } finally {
-      if (useWasm) {
-        w.free(vPtr);
-        w.free(v0Ptr);
-        w.free(ePtr);
-        w.free(outPtr);
-        w.free(stridesPtr);
-        w.free(dxPtr);
-        w.free(countsPtr);
-        w.free(dMinusAllPtr);
-        w.free(dPlusAllPtr);
+      if (wasmKernel) {
+        wasmKernel.free(vPtr);
+        wasmKernel.free(v0Ptr);
+        wasmKernel.free(ePtr);
+        wasmKernel.free(outPtr);
+        wasmKernel.free(stridesPtr);
+        wasmKernel.free(dxPtr);
+        wasmKernel.free(countsPtr);
+        wasmKernel.free(dMinusAllPtr);
+        wasmKernel.free(dPlusAllPtr);
       }
     }
 

@@ -1,0 +1,11 @@
+{
+  "id": "twentysim-03-dc-motor-gyrator",
+  "lang": "twentysim",
+  "subFormats": ["emx"],
+  "difficulty": 3,
+  "title": "DC Motor Electromechanical Gyrator Transducer",
+  "description": "Permanent-magnet DC motor coupling an electrical armature RL circuit to a mechanical rotor inertia and viscous load via a power-conserving electromechanical gyrator (GY).",
+  "category": "Mechatronics & Transducers",
+  "tags": ["twentysim", "dc-motor", "gyrator", "mechatronics"],
+  "activeFile": "dc_motor_gy.emx"
+}

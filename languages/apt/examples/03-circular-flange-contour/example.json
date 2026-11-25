@@ -1,0 +1,11 @@
+{
+  "id": "apt-03-circular-flange-contour",
+  "lang": "apt",
+  "subFormats": ["apt"],
+  "difficulty": 3,
+  "title": "Circular Flange Contour with Tangent Corner Arcs",
+  "description": "External profiling of a pump mounting flange with tangent circular corner fillets using APT LINE, CIRCLE, PLANE, GORGT, GOFWD, and GOLFT continuous-path motion commands.",
+  "category": "CAD/CAM & CNC",
+  "tags": ["apt", "contour", "flange", "tangent-arcs"],
+  "activeFile": "flange_contour.apt"
+}

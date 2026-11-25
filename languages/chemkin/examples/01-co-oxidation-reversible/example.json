@@ -1,0 +1,12 @@
+{
+  "id": "chemkin-01-co-oxidation-reversible",
+  "lang": "chemkin",
+  "subFormats": ["inp", "dat"],
+  "difficulty": 1,
+  "title": "Reversible Carbon Monoxide Oxidation Mechanism",
+  "description": "Minimal element-balanced CHEMKIN gas-phase kinetics deck for reversible CO oxidation (2 CO + O2 <=> 2 CO2) with complete NASA-7 thermodynamic polynomials and companion therm.dat.",
+  "category": "Combustion & Chemical Kinetics",
+  "tags": ["chemkin", "combustion", "co-oxidation", "multi-file"],
+  "activeFile": "chem.inp",
+  "isDefaultStarter": true
+}

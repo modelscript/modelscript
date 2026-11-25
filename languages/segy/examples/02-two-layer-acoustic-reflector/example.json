@@ -1,0 +1,11 @@
+{
+  "id": "segy-02-two-layer-acoustic-reflector",
+  "lang": "segy",
+  "subFormats": ["sgy"],
+  "difficulty": 2,
+  "title": "Horizontal Two-Layer Acoustic Reflector 2D Section",
+  "description": "SEG-Y Rev 1.0 textual reel header for a 5-trace flat-horizon acoustic reflection survey imaging a sandstone-over-limestone interface (Vp1=2200 m/s, Vp2=3800 m/s) at 1100 m depth.",
+  "category": "Seismic & Subsurface Geophysics",
+  "tags": ["segy", "acoustic-reflector", "2d-seismic", "stratigraphy"],
+  "activeFile": "two_layer.sgy"
+}

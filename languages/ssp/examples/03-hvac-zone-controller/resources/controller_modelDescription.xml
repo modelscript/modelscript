@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="HvacController" guid="{33333333-3333-3333-3333-333333333301}">
+  <CoSimulation modelIdentifier="HvacController" />
+  <ModelVariables>
+    <ScalarVariable name="T_ref" valueReference="0" causality="input"><Real start="295.15" /></ScalarVariable>
+    <ScalarVariable name="T_meas" valueReference="1" causality="input"><Real start="291.15" /></ScalarVariable>
+    <ScalarVariable name="Q_cmd" valueReference="2" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

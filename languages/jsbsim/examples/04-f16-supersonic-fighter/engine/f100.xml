@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<turbine_engine name="f100">
+  <milthrust> 17800.0 </milthrust>
+  <maxthrust> 29100.0 </maxthrust>
+  <bypassratio> 0.36 </bypassratio>
+  <tsfc> 0.76 </tsfc>
+  <atsfc> 1.94 </atsfc>
+  <idlen1> 30.0 </idlen1>
+  <idlen2> 60.0 </idlen2>
+  <maxn1> 100.0 </maxn1>
+  <maxn2> 100.0 </maxn2>
+  <augmented> 1 </augmented>
+</turbine_engine>

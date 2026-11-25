@@ -1,0 +1,73 @@
+[
+  {
+    "id": "srec-01-m6800-s19-minimal",
+    "lang": "srec",
+    "subFormats": ["s19"],
+    "difficulty": 1,
+    "title": "Motorola 6800 16-Bit Minimal Firmware (S19)",
+    "description": "Clean Motorola S19 firmware image with S0 ASCII header, 16-bit S1 code record at 0x0100, S5 record count, S9 entry point, and exact 1's-complement checksums.",
+    "category": "Embedded Firmware",
+    "tags": ["srec", "s19", "m6800", "checksum", "firmware"],
+    "activeFile": "m6800_boot.srec",
+    "fileNames": ["m6800_boot.srec"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "S00D00004D363830305F424F4F5444\nS10F01008E01FF8655B78000437E010588\nS5030001FB\nS9030100FB\n"
+  },
+  {
+    "id": "srec-02-hc11-sensor-calibration",
+    "lang": "srec",
+    "subFormats": ["s19"],
+    "difficulty": 2,
+    "title": "MC68HC11 EEPROM Sensor Calibration Table (S19)",
+    "description": "Motorola 68HC11 internal EEPROM image at 0xB600 storing a 14-point 16-bit thermistor linearization lookup table with S5 record count verification.",
+    "category": "Sensor Calibration",
+    "tags": ["srec", "s19", "hc11", "eeprom", "calibration"],
+    "activeFile": "hc11_cal.srec",
+    "fileNames": ["hc11_cal.srec"],
+    "fileCount": 1,
+    "code": "S00B0000484331315F43414CD8\nS113B600006400C8012C019001F4025802BC03201C\nS111B610038403E8044C04B005140578A55A1D\nS5030002FA\nS903B60046\n"
+  },
+  {
+    "id": "srec-03-m68000-24bit-s28",
+    "lang": "srec",
+    "subFormats": ["s28"],
+    "difficulty": 3,
+    "title": "Motorola 68000 24-Bit Flash Image (S28)",
+    "description": "24-bit addressed Motorola S28 image for an M68000 system mapped at 0x008000 containing initial SSP/PC vectors, runtime loop, S5 count, and S8 start address.",
+    "category": "Embedded Systems",
+    "tags": ["srec", "s28", "m68000", "24-bit", "flash"],
+    "activeFile": "m68k_rom.srec",
+    "fileNames": ["m68k_rom.srec"],
+    "fileCount": 1,
+    "code": "S00B00004D36384B5F524F4DA1\nS21400800000010000000080104E714E714E714E71DE\nS2140080107000207C000200005240308060FA4E75EE\nS5030002FA\nS8040080106B\n"
+  },
+  {
+    "id": "srec-04-powerpc-ecu-32bit-s37",
+    "lang": "srec",
+    "subFormats": ["s37"],
+    "difficulty": 4,
+    "title": "PowerPC Automotive ECU 32-Bit High-Boot Firmware (S37)",
+    "description": "32-bit Motorola S37 firmware targeting an automotive MPC55xx PowerPC ECU boot vector at high unsigned flash address 0xFFF00100 with S7 execution start.",
+    "category": "Automotive ECU Firmware",
+    "tags": ["srec", "s37", "powerpc", "ecu", "32-bit"],
+    "activeFile": "ppc_ecu.srec",
+    "fileNames": ["ppc_ecu.srec"],
+    "fileCount": 1,
+    "code": "S00D00005050435F4543555F5632EC\nS315FFF001003C204001602100003C6000046063000079\nS315FFF001107C0802A690010004480000084E800020EB\nS30DFFF00120386000014BFFFFFC04\nS5030003F9\nS705FFF001000A\n"
+  },
+  {
+    "id": "srec-05-ecu-multibank-boot-cal",
+    "lang": "srec",
+    "subFormats": ["s37"],
+    "difficulty": 5,
+    "title": "Multi-Bank Automotive ECU Bootloader, App & Calibration S37 Image",
+    "description": "Three-region 32-bit Motorola S37 flash image uniting a bootloader (0x00000000), engine control application (0x00000400), fuel-map calibration table (0x00000800), S5 count, and S7 entry.",
+    "category": "Automotive ECU Firmware",
+    "tags": ["srec", "s37", "bootloader", "calibration", "multi-bank"],
+    "activeFile": "ecu_multibank.srec",
+    "fileNames": ["ecu_multibank.srec"],
+    "fileCount": 1,
+    "code": "S00F00004543555F46554C4C5F494D4745\nS31500000000005A0000000000103C20400060218000E3\nS315000000103C800000608404007C8903A64E80042096\nS315000004009421FFE07C0802A69001002438600000D9\nS31500000410800100247C0803A6382100204E8000209D\nS3150000080001200145017801B001F20238028402D0CC\nS3150000081043414C5F56342E3200000000DEADBEEF81\nS5030006F6\nS70500000010EA\n"
+  }
+]

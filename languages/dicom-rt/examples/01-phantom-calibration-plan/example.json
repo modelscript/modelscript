@@ -1,0 +1,12 @@
+{
+  "id": "dicom-rt-01-phantom-calibration-plan",
+  "lang": "dicom-rt",
+  "subFormats": ["rtplan", "dcm.json"],
+  "difficulty": 1,
+  "title": "Single-Beam Water Phantom Calibration Plan",
+  "description": "AAPM TG-51 6 MV 10x10 cm single-beam photon calibration plan on a water phantom with PTV target ROI, verified MLC aperture, and companion PS3.18 RTSTRUCT JSON.",
+  "category": "Radiation Oncology & Dosimetry",
+  "tags": ["dicom-rt", "calibration", "tg-51", "rtstruct", "multi-file"],
+  "activeFile": "rtplan.rtplan",
+  "isDefaultStarter": true
+}

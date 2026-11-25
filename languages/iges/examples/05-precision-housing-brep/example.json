@@ -1,0 +1,11 @@
+{
+  "id": "iges-05-precision-housing-brep",
+  "lang": "iges",
+  "subFormats": ["iges-5.3", "brep", "nurbs"],
+  "difficulty": 5,
+  "title": "3D Precision Housing Transformed NURBS and B-Rep",
+  "description": "Advanced IGES 5.3 mechanical housing combining Entity 124 rigid transformation matrix, rational NURBS fillet arc (126), NURBS face (128), composite loop (102), and B-Rep solid (186).",
+  "category": "3D Solid Modeling",
+  "tags": ["iges", "brep", "entity-186", "entity-124", "nurbs"],
+  "activeFile": "precision_housing.igs"
+}

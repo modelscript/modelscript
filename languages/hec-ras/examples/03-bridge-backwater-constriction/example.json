@@ -1,0 +1,11 @@
+{
+  "id": "hec-ras-03-bridge-backwater-constriction",
+  "lang": "hec-ras",
+  "subFormats": ["prj", "g01", "f01"],
+  "difficulty": 3,
+  "title": "Bridge Pier & Culvert Backwater Constriction",
+  "description": "River crossing model evaluating upstream backwater rise caused by contracted highway bridge abutments and an inline spillway structure across three cross-sections.",
+  "category": "Hydraulic Structures",
+  "tags": ["hec-ras", "bridge", "backwater", "inline-structure", "multi-file"],
+  "activeFile": "bridge.g01"
+}

@@ -1,0 +1,439 @@
+[
+  {
+    "name": "C1",
+    "kind": "Component",
+    "namePath": "RINEX.C1",
+    "exports": [
+      "FREQ_HZ",
+      "WAVELENGTH_M",
+      "SIGMA_M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L1 C/A Code Pseudorange",
+      "category": "Observation Type",
+      "domain": "aerospace",
+      "description": "L1 C/A-code pseudorange observable in meters (1575.42 MHz).",
+      "provenance": "Gurtner et al. (1989) RINEX v2.11",
+      "aliases": [
+        "C1C",
+        "CA_PSEUDORANGE"
+      ],
+      "parameters": [
+        {
+          "key": "FREQ_HZ",
+          "type": "real",
+          "defaultValue": 1575420000,
+          "unit": "Hz",
+          "description": "GPS L1 carrier frequency"
+        },
+        {
+          "key": "WAVELENGTH_M",
+          "type": "real",
+          "defaultValue": 0.19029367279836487,
+          "unit": "m",
+          "description": "GPS L1 carrier wavelength"
+        },
+        {
+          "key": "SIGMA_M",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "m",
+          "description": "Nominal C/A code noise standard deviation"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "P1",
+    "kind": "Component",
+    "namePath": "RINEX.P1",
+    "exports": [
+      "FREQ_HZ",
+      "WAVELENGTH_M",
+      "SIGMA_M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L1 P(Y) Code Pseudorange",
+      "category": "Observation Type",
+      "domain": "aerospace",
+      "description": "L1 P(Y)-code precision pseudorange observable in meters (1575.42 MHz).",
+      "provenance": "Gurtner et al. (1989) RINEX v2.11",
+      "aliases": [
+        "P1W",
+        "L1_P_CODE"
+      ],
+      "parameters": [
+        {
+          "key": "FREQ_HZ",
+          "type": "real",
+          "defaultValue": 1575420000,
+          "unit": "Hz",
+          "description": "GPS L1 carrier frequency"
+        },
+        {
+          "key": "WAVELENGTH_M",
+          "type": "real",
+          "defaultValue": 0.19029367279836487,
+          "unit": "m",
+          "description": "GPS L1 carrier wavelength"
+        },
+        {
+          "key": "SIGMA_M",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m",
+          "description": "Nominal P(Y) code noise standard deviation"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "P2",
+    "kind": "Component",
+    "namePath": "RINEX.P2",
+    "exports": [
+      "FREQ_HZ",
+      "WAVELENGTH_M",
+      "SIGMA_M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L2 P(Y) Code Pseudorange",
+      "category": "Observation Type",
+      "domain": "aerospace",
+      "description": "L2 P(Y)-code precision pseudorange observable in meters (1227.60 MHz).",
+      "provenance": "Gurtner et al. (1989) RINEX v2.11",
+      "aliases": [
+        "P2W",
+        "L2_P_CODE"
+      ],
+      "parameters": [
+        {
+          "key": "FREQ_HZ",
+          "type": "real",
+          "defaultValue": 1227600000,
+          "unit": "Hz",
+          "description": "GPS L2 carrier frequency"
+        },
+        {
+          "key": "WAVELENGTH_M",
+          "type": "real",
+          "defaultValue": 0.24421021342456825,
+          "unit": "m",
+          "description": "GPS L2 carrier wavelength"
+        },
+        {
+          "key": "SIGMA_M",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m",
+          "description": "Nominal L2 P(Y) code noise standard deviation"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "L1",
+    "kind": "Component",
+    "namePath": "RINEX.L1",
+    "exports": [
+      "FREQ_HZ",
+      "WAVELENGTH_M",
+      "SIGMA_CYCLES"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L1 Carrier Phase",
+      "category": "Observation Type",
+      "domain": "aerospace",
+      "description": "L1 carrier phase observable in full cycles (1575.42 MHz).",
+      "provenance": "Gurtner et al. (1989) RINEX v2.11",
+      "aliases": [
+        "L1C",
+        "CARRIER_L1"
+      ],
+      "parameters": [
+        {
+          "key": "FREQ_HZ",
+          "type": "real",
+          "defaultValue": 1575420000,
+          "unit": "Hz",
+          "description": "GPS L1 carrier frequency"
+        },
+        {
+          "key": "WAVELENGTH_M",
+          "type": "real",
+          "defaultValue": 0.19029367279836487,
+          "unit": "m",
+          "description": "GPS L1 carrier wavelength"
+        },
+        {
+          "key": "SIGMA_CYCLES",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "cycles",
+          "description": "Nominal carrier-phase noise"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "L2",
+    "kind": "Component",
+    "namePath": "RINEX.L2",
+    "exports": [
+      "FREQ_HZ",
+      "WAVELENGTH_M",
+      "SIGMA_CYCLES"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L2 Carrier Phase",
+      "category": "Observation Type",
+      "domain": "aerospace",
+      "description": "L2 carrier phase observable in full cycles (1227.60 MHz).",
+      "provenance": "Gurtner et al. (1989) RINEX v2.11",
+      "aliases": [
+        "L2W",
+        "CARRIER_L2"
+      ],
+      "parameters": [
+        {
+          "key": "FREQ_HZ",
+          "type": "real",
+          "defaultValue": 1227600000,
+          "unit": "Hz",
+          "description": "GPS L2 carrier frequency"
+        },
+        {
+          "key": "WAVELENGTH_M",
+          "type": "real",
+          "defaultValue": 0.24421021342456825,
+          "unit": "m",
+          "description": "GPS L2 carrier wavelength"
+        },
+        {
+          "key": "SIGMA_CYCLES",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "cycles",
+          "description": "Nominal L2 carrier-phase noise"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "D1",
+    "kind": "Component",
+    "namePath": "RINEX.D1",
+    "exports": [
+      "FREQ_HZ",
+      "SIGMA_HZ"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L1 Doppler Frequency",
+      "category": "Observation Type",
+      "domain": "aerospace",
+      "description": "L1 Doppler shift observable in Hz (positive for approaching satellite).",
+      "provenance": "Gurtner et al. (1989) RINEX v2.11",
+      "aliases": [
+        "D1C",
+        "DOPPLER_L1"
+      ],
+      "parameters": [
+        {
+          "key": "FREQ_HZ",
+          "type": "real",
+          "defaultValue": 1575420000,
+          "unit": "Hz",
+          "description": "GPS L1 carrier frequency"
+        },
+        {
+          "key": "SIGMA_HZ",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "Hz",
+          "description": "Nominal Doppler noise"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "S1",
+    "kind": "Component",
+    "namePath": "RINEX.S1",
+    "exports": [
+      "MIN_DBHZ",
+      "NOMINAL_DBHZ"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "L1 Signal-to-Noise Ratio",
+      "category": "Observation Type",
+      "domain": "aerospace",
+      "description": "L1 carrier-to-noise density ratio C/N0 in dB-Hz.",
+      "provenance": "Gurtner et al. (1989) RINEX v2.11",
+      "aliases": [
+        "S1C",
+        "SNR_L1"
+      ],
+      "parameters": [
+        {
+          "key": "MIN_DBHZ",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "dB-Hz",
+          "description": "Minimum tracking threshold"
+        },
+        {
+          "key": "NOMINAL_DBHZ",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "dB-Hz",
+          "description": "Nominal open-sky C/N0"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "WGS84_MU",
+    "kind": "Constant",
+    "namePath": "RINEX.WGS84_MU",
+    "exports": [
+      "VALUE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "WGS-84 Gravitational Parameter",
+      "category": "WGS-84 Constant",
+      "domain": "aerospace",
+      "description": "WGS-84 Earth universal gravitational parameter mu = 3.986005e14 m^3/s^2.",
+      "provenance": "ICD-GPS-200 Table 20-IV",
+      "aliases": [
+        "MU",
+        "GM_EARTH"
+      ],
+      "parameters": [
+        {
+          "key": "VALUE",
+          "type": "real",
+          "defaultValue": 398600500000000,
+          "unit": "m^3/s^2",
+          "description": "Earth gravitational parameter mu"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "WGS84_OMEGA_E_DOT",
+    "kind": "Constant",
+    "namePath": "RINEX.WGS84_OMEGA_E_DOT",
+    "exports": [
+      "VALUE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "WGS-84 Earth Rotation Rate",
+      "category": "WGS-84 Constant",
+      "domain": "aerospace",
+      "description": "WGS-84 Earth rotation rate Omega_e_dot = 7.2921151467e-5 rad/s.",
+      "provenance": "ICD-GPS-200 Table 20-IV",
+      "aliases": [
+        "OMEGA_E_DOT",
+        "EARTH_ROTATION_RATE"
+      ],
+      "parameters": [
+        {
+          "key": "VALUE",
+          "type": "real",
+          "defaultValue": 0.000072921151467,
+          "unit": "rad/s",
+          "description": "Earth angular rotation rate"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "SPEED_OF_LIGHT",
+    "kind": "Constant",
+    "namePath": "RINEX.SPEED_OF_LIGHT",
+    "exports": [
+      "VALUE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Speed of Light",
+      "category": "WGS-84 Constant",
+      "domain": "aerospace",
+      "description": "Exact speed of light in vacuum c = 299792458.0 m/s.",
+      "provenance": "ICD-GPS-200 / SI 1983",
+      "aliases": [
+        "C",
+        "C_VACUUM"
+      ],
+      "parameters": [
+        {
+          "key": "VALUE",
+          "type": "real",
+          "defaultValue": 299792458,
+          "unit": "m/s",
+          "description": "Speed of light in vacuum"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "GPS_F_REL",
+    "kind": "Constant",
+    "namePath": "RINEX.GPS_F_REL",
+    "exports": [
+      "VALUE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GPS Relativistic Clock Constant",
+      "category": "WGS-84 Constant",
+      "domain": "aerospace",
+      "description": "GPS relativistic clock correction constant F = -2*sqrt(mu)/c^2 = -4.442807633e-10 s/m^(1/2).",
+      "provenance": "ICD-GPS-200 Section 20.3.3.3.3.1",
+      "aliases": [
+        "F_REL",
+        "RELATIVISTIC_CONST"
+      ],
+      "parameters": [
+        {
+          "key": "VALUE",
+          "type": "real",
+          "defaultValue": -4.442807633e-10,
+          "unit": "s/m^(1/2)",
+          "description": "Relativistic clock correction constant F"
+        }
+      ],
+      "wasmKernel": "rinexModelEval",
+      "archetypeId": 23
+    }
+  }
+]

@@ -223,11 +223,11 @@ Inverted Element & Shell Section Checks
     assert.ok(solveRes.maxDisplacementM > 0);
   });
 
-  test("parses Morsel defaultCode and Nastran executive/bulk cards via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
+  test("parses Ansatz defaultCode and Nastran executive/bulk cards via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
     const { getFeaWasmParser } = await import("../src/wasm-loader.js");
     const parser = getFeaWasmParser();
 
-    const morselDefaultCode = `*HEADING
+    const ansatzDefaultCode = `*HEADING
 Cantilever Beam Linear Static Analysis
 *NODE
 1, 0.0, 0.0, 0.0
@@ -239,7 +239,7 @@ Cantilever Beam Linear Static Analysis
 *STATIC
 *END STEP
 `;
-    const inpTree = parser.parse(morselDefaultCode);
+    const inpTree = parser.parse(ansatzDefaultCode);
     assert.ok(inpTree?.rootNode);
     assert.equal(inpTree.rootNode.hasError, false);
 

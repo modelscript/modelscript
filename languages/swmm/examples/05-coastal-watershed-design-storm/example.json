@@ -1,0 +1,11 @@
+{
+  "id": "swmm-05-coastal-watershed-design-storm",
+  "lang": "swmm",
+  "subFormats": ["swmm", "dat"],
+  "difficulty": 5,
+  "title": "Coastal Watershed Dynamic Wave Routing with 100-Year Design Storm",
+  "description": "Multi-subcatchment coastal watershed with dynamic wave routing, detention storage, dual relief trunk conduits, tidal-influenced outfall, and companion 100-year hyetograph DAT file.",
+  "category": "Urban Stormwater Hydraulics",
+  "tags": ["swmm", "dynamic-wave", "design-storm", "multi-file", "coastal"],
+  "activeFile": "watershed.swmm"
+}

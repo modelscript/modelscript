@@ -1,0 +1,40 @@
+{
+  "chargingStationId": "Freight_MCS_Hub_04",
+  "evseId": 2,
+  "connectorId": 1,
+  "transactionId": "TX-PNC-4008",
+  "iso15118CertificateHash": "sha256:9f86d081884c7d659a2feaa0c55ad015",
+  "chargingProfile": {
+    "chargingProfileId": 404,
+    "stackLevel": 3,
+    "chargingProfilePurpose": "TxDefaultProfile",
+    "chargingProfileKind": "Relative",
+    "chargingSchedule": {
+      "chargingScheduleId": 704,
+      "chargingRateUnit": "kW",
+      "duration": 5400,
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 350.0,
+          "numberPhases": 3
+        },
+        {
+          "startPeriod": 1200,
+          "limit": 280.0,
+          "numberPhases": 3
+        },
+        {
+          "startPeriod": 2700,
+          "limit": 180.0,
+          "numberPhases": 3
+        },
+        {
+          "startPeriod": 4200,
+          "limit": 95.0,
+          "numberPhases": 3
+        }
+      ]
+    }
+  }
+}

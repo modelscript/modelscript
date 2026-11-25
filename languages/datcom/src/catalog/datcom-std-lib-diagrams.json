@@ -1,0 +1,283 @@
+[
+  {
+    "namePath": "DATCOM.NACA_0012",
+    "aliases": [
+      "0012",
+      "NACA0012",
+      "NACA-W-4-0012"
+    ],
+    "label": "NACA 0012 Symmetric Airfoil",
+    "category": "NACA Airfoils",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">NACA</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">NACA_0012</text></svg>",
+    "ports": [
+      {
+        "name": "alpha_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "cl_cd_cm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DATCOM.NACA_2412",
+    "aliases": [
+      "2412",
+      "NACA2412",
+      "NACA-W-4-2412"
+    ],
+    "label": "NACA 2412 Cambered Airfoil",
+    "category": "NACA Airfoils",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">NACA</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">NACA_2412</text></svg>",
+    "ports": [
+      {
+        "name": "alpha_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "cl_cd_cm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DATCOM.NACA_4412",
+    "aliases": [
+      "4412",
+      "NACA4412",
+      "NACA-W-4-4412"
+    ],
+    "label": "NACA 4412 High-Camber Airfoil",
+    "category": "NACA Airfoils",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">NACA</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">NACA_4412</text></svg>",
+    "ports": [
+      {
+        "name": "alpha_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "cl_cd_cm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DATCOM.NACA_23012",
+    "aliases": [
+      "23012",
+      "NACA23012",
+      "NACA-W-5-23012"
+    ],
+    "label": "NACA 23012 Reflex-Mean 5-Digit Airfoil",
+    "category": "NACA Airfoils",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">NACA</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NACA_23012</text></svg>",
+    "ports": [
+      {
+        "name": "alpha_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "cl_cd_cm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DATCOM.NACA_64A010",
+    "aliases": [
+      "64A010",
+      "NACA64A010",
+      "NACA-W-6-64A010"
+    ],
+    "label": "NACA 64A010 Laminar High-Speed Airfoil",
+    "category": "NACA Airfoils",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">NACA</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NACA_64A010</text></svg>",
+    "ports": [
+      {
+        "name": "alpha_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "cl_cd_cm_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DATCOM.CESSNA_172",
+    "aliases": [
+      "C172",
+      "SKYHAWK"
+    ],
+    "label": "Cessna-172 Class Light Trainer",
+    "category": "Aircraft Configurations",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">ACFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CESSNA_172</text></svg>",
+    "ports": [
+      {
+        "name": "fltcon_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "controls_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "aero_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "modes_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "DATCOM.CITATION_JET",
+    "aliases": [
+      "CITATION",
+      "C550",
+      "BIZJET"
+    ],
+    "label": "Citation-Class Business Jet",
+    "category": "Aircraft Configurations",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">ACFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">CITATION_JET</text></svg>",
+    "ports": [
+      {
+        "name": "fltcon_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "controls_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "aero_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "modes_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "DATCOM.SUPERSONIC_DELTA",
+    "aliases": [
+      "DELTA",
+      "F106",
+      "SUPERSONIC"
+    ],
+    "label": "Supersonic Delta Fighter",
+    "category": "Aircraft Configurations",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">ACFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">SUPERSONIC_D</text></svg>",
+    "ports": [
+      {
+        "name": "fltcon_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "controls_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "aero_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 18
+      },
+      {
+        "name": "modes_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 34
+      }
+    ]
+  }
+]

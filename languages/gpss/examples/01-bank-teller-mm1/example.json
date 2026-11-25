@@ -1,0 +1,12 @@
+{
+  "id": "gpss-01-bank-teller-mm1",
+  "lang": "gpss",
+  "subFormats": ["gps"],
+  "difficulty": 1,
+  "title": "Single-Server M/M/1 Bank Teller Queue",
+  "description": "Classic single-server bank teller queueing system using GPSS GENERATE, QUEUE/DEPART, SEIZE/RELEASE, ADVANCE, and TERMINATE blocks.",
+  "category": "Queueing Systems",
+  "tags": ["gpss", "mm1", "queue", "banking"],
+  "activeFile": "bank_teller.gps",
+  "isDefaultStarter": true
+}

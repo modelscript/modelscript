@@ -1,0 +1,87 @@
+[
+  {
+    "id": "gridlabd-01-single-house-hvac",
+    "lang": "gridlabd",
+    "subFormats": ["glm"],
+    "difficulty": 1,
+    "title": "Single-House Thermal Envelope & HVAC Powerflow Model",
+    "description": "GridLAB-D residential feeder node supplying a single-family thermal house model with thermostatic HVAC cooling setpoint, clock block, and Newton-Raphson powerflow.",
+    "category": "Distribution Power Systems",
+    "tags": ["gridlabd", "glm", "hvac", "residential", "powerflow"],
+    "activeFile": "house_hvac.glm",
+    "fileNames": ["house_hvac.glm"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "// Single-House Thermal & HVAC Powerflow Model\nclock {\n  timezone PST+8PDT;\n  starttime '2026-07-15 00:00:00';\n  stoptime '2026-07-16 00:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nmodule residential;\n\nobject node {\n  name sub_swing;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 7200 V;\n}\n\nobject triplex_meter {\n  name house_meter;\n  phases AS;\n  nominal_voltage 120 V;\n}\n\nobject overhead_line {\n  name service_drop;\n  phases AN;\n  from sub_swing;\n  to house_meter;\n  length 120 ft;\n}\n\nobject house {\n  name residence_1;\n  parent house_meter;\n  floor_area 2100;\n  cooling_setpoint 74.0;\n  heating_setpoint 68.0;\n  air_temperature 72.5;\n}\n"
+  },
+  {
+    "id": "gridlabd-02-ieee4-transformer-feeder",
+    "lang": "gridlabd",
+    "subFormats": ["glm"],
+    "difficulty": 2,
+    "title": "IEEE 4-Node Distribution Transformer Test Feeder",
+    "description": "Classic IEEE 4-node radial distribution benchmark with a 12.47/4.16 kV 6 MVA Wye-Wye step-down transformer, 336 kcmil ACSR overhead lines, and unbalanced three-phase spot load.",
+    "category": "Distribution Power Systems",
+    "tags": ["gridlabd", "ieee-4", "transformer", "powerflow", "distribution"],
+    "activeFile": "ieee4_feeder.glm",
+    "fileNames": ["ieee4_feeder.glm"],
+    "fileCount": 1,
+    "code": "// IEEE 4-Node Distribution Transformer Test Feeder\nclock {\n  timezone EST+5EDT;\n  starttime '2026-01-01 00:00:00';\n  stoptime '2026-01-01 06:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nobject overhead_line_conductor:100 {\n  name cond_336;\n  resistance 0.306;\n}\n\nobject line_configuration:300 {\n  name lc_300;\n  conductor_A cond_336;\n  z11 0.4576+1.0780j;\n}\n\nobject transformer_configuration:400 {\n  name xfmr_cfg_400;\n  connect_type WYE_WYE;\n  power_rating 6000 kVA;\n  primary_voltage 12470 V;\n  secondary_voltage 4160 V;\n  resistance 0.01;\n  reactance 0.06;\n}\n\nobject node {\n  name node_1;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 7200 V;\n}\n\nobject node {\n  name node_2;\n  phases ABCN;\n  nominal_voltage 7200 V;\n}\n\nobject node {\n  name node_3;\n  phases ABCN;\n  nominal_voltage 2400 V;\n}\n\nobject load {\n  name node_4;\n  phases ABCN;\n  nominal_voltage 2400 V;\n  constant_power_A 1800+871.78j kVA;\n  constant_power_B 1800+871.78j kVA;\n  constant_power_C 1800+871.78j kVA;\n}\n\nobject overhead_line {\n  name line_1_2;\n  phases ABCN;\n  from node_1;\n  to node_2;\n  length 2000 ft;\n  configuration lc_300;\n}\n\nobject transformer {\n  name xfmr_2_3;\n  phases ABCN;\n  from node_2;\n  to node_3;\n  configuration xfmr_cfg_400;\n}\n\nobject overhead_line {\n  name line_3_4;\n  phases ABCN;\n  from node_3;\n  to node_4;\n  length 2500 ft;\n  configuration lc_300;\n}\n"
+  },
+  {
+    "id": "gridlabd-03-solar-pv-smart-inverter",
+    "lang": "gridlabd",
+    "subFormats": ["glm", "player"],
+    "difficulty": 3,
+    "title": "Solar PV & Smart Inverter Volt-VAR Distribution Feeder",
+    "description": "GridLAB-D feeder integrating a 250 kW four-quadrant smart solar inverter with companion diurnal solar irradiance player profile.",
+    "category": "Distribution Power Systems",
+    "tags": ["gridlabd", "solar-pv", "smart-inverter", "player", "multi-file"],
+    "activeFile": "feeder_pv.glm",
+    "fileNames": ["feeder_pv.glm", "solar_irradiance.player"],
+    "fileCount": 2,
+    "code": "// Solar PV + Smart Inverter Distribution Feeder\nclock {\n  timezone MST+7MDT;\n  starttime '2026-06-21 06:00:00';\n  stoptime '2026-06-21 20:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nmodule generators;\n\nschedule pv_irradiance_shape {\n  * 6-8 * * * 0.35;\n  * 9-15 * * * 0.95;\n  * 16-19 * * * 0.40;\n}\n\nobject node {\n  name sub_bus;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 7200 V;\n}\n\nobject load {\n  name commercial_bus;\n  phases ABCN;\n  nominal_voltage 7200 V;\n  constant_power_A 150+45j kVA;\n  constant_power_B 150+45j kVA;\n  constant_power_C 150+45j kVA;\n\n  object inverter {\n    name smart_inv_1;\n    rated_power 250 kW;\n    power_factor 0.95;\n\n    object solar {\n      name pv_array_1;\n      area 1400;\n      efficiency 0.21;\n    }\n  }\n}\n\nobject overhead_line {\n  name feeder_trunk;\n  phases ABCN;\n  from sub_bus;\n  to commercial_bus;\n  length 3200 ft;\n}\n",
+    "files": {
+      "feeder_pv.glm": "// Solar PV + Smart Inverter Distribution Feeder\nclock {\n  timezone MST+7MDT;\n  starttime '2026-06-21 06:00:00';\n  stoptime '2026-06-21 20:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nmodule generators;\n\nschedule pv_irradiance_shape {\n  * 6-8 * * * 0.35;\n  * 9-15 * * * 0.95;\n  * 16-19 * * * 0.40;\n}\n\nobject node {\n  name sub_bus;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 7200 V;\n}\n\nobject load {\n  name commercial_bus;\n  phases ABCN;\n  nominal_voltage 7200 V;\n  constant_power_A 150+45j kVA;\n  constant_power_B 150+45j kVA;\n  constant_power_C 150+45j kVA;\n\n  object inverter {\n    name smart_inv_1;\n    rated_power 250 kW;\n    power_factor 0.95;\n\n    object solar {\n      name pv_array_1;\n      area 1400;\n      efficiency 0.21;\n    }\n  }\n}\n\nobject overhead_line {\n  name feeder_trunk;\n  phases ABCN;\n  from sub_bus;\n  to commercial_bus;\n  length 3200 ft;\n}\n",
+      "solar_irradiance.player": "2026-06-21 06:00:00,85.0\n2026-06-21 08:00:00,410.0\n2026-06-21 10:00:00,790.0\n2026-06-21 12:00:00,985.0\n2026-06-21 14:00:00,910.0\n2026-06-21 16:00:00,620.0\n2026-06-21 18:00:00,240.0\n2026-06-21 20:00:00,0.0\n"
+    }
+  },
+  {
+    "id": "gridlabd-04-transactive-thermostat-market",
+    "lang": "gridlabd",
+    "subFormats": ["glm", "player", "csv"],
+    "difficulty": 4,
+    "title": "Transactive Double-Auction Smart Thermostat Neighborhood",
+    "description": "Multi-house GridLAB-D neighborhood coupled to a 5-minute clearing electricity market with companion clearing-price player and ambient temperature weather CSV.",
+    "category": "Distribution Power Systems",
+    "tags": ["gridlabd", "transactive-energy", "market", "thermostat", "multi-file"],
+    "activeFile": "market.glm",
+    "fileNames": ["market.glm", "prices.player", "weather.csv"],
+    "fileCount": 3,
+    "code": "// Transactive Double-Auction Smart Thermostat Neighborhood\nclock {\n  timezone CST+6CDT;\n  starttime '2026-08-05 12:00:00';\n  stoptime '2026-08-05 20:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nmodule residential;\nmodule market;\n\nobject node {\n  name feeder_head;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 7200 V;\n}\n\nobject node {\n  name neighborhood_bus;\n  phases ABCN;\n  nominal_voltage 7200 V;\n}\n\nobject overhead_line {\n  name main_line;\n  phases ABCN;\n  from feeder_head;\n  to neighborhood_bus;\n  length 2800 ft;\n}\n\nobject house {\n  name home_alpha;\n  parent neighborhood_bus;\n  floor_area 2200;\n  cooling_setpoint 73.0;\n  air_temperature 73.2;\n}\n\nobject house {\n  name home_beta;\n  parent neighborhood_bus;\n  floor_area 1850;\n  cooling_setpoint 75.0;\n  air_temperature 74.8;\n}\n\nobject house {\n  name home_gamma;\n  parent neighborhood_bus;\n  floor_area 2600;\n  cooling_setpoint 72.0;\n  air_temperature 72.5;\n}\n",
+    "files": {
+      "market.glm": "// Transactive Double-Auction Smart Thermostat Neighborhood\nclock {\n  timezone CST+6CDT;\n  starttime '2026-08-05 12:00:00';\n  stoptime '2026-08-05 20:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nmodule residential;\nmodule market;\n\nobject node {\n  name feeder_head;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 7200 V;\n}\n\nobject node {\n  name neighborhood_bus;\n  phases ABCN;\n  nominal_voltage 7200 V;\n}\n\nobject overhead_line {\n  name main_line;\n  phases ABCN;\n  from feeder_head;\n  to neighborhood_bus;\n  length 2800 ft;\n}\n\nobject house {\n  name home_alpha;\n  parent neighborhood_bus;\n  floor_area 2200;\n  cooling_setpoint 73.0;\n  air_temperature 73.2;\n}\n\nobject house {\n  name home_beta;\n  parent neighborhood_bus;\n  floor_area 1850;\n  cooling_setpoint 75.0;\n  air_temperature 74.8;\n}\n\nobject house {\n  name home_gamma;\n  parent neighborhood_bus;\n  floor_area 2600;\n  cooling_setpoint 72.0;\n  air_temperature 72.5;\n}\n",
+      "prices.player": "2026-08-05 12:00:00,0.085\n2026-08-05 14:00:00,0.145\n2026-08-05 16:00:00,0.280\n2026-08-05 17:00:00,0.340\n2026-08-05 18:00:00,0.260\n2026-08-05 20:00:00,0.110\n",
+      "weather.csv": "timestamp,temp_f,humidity_pct,solar_w_m2\n2026-08-05 12:00:00,92.0,42,880\n2026-08-05 14:00:00,97.5,36,920\n2026-08-05 16:00:00,101.0,32,740\n2026-08-05 18:00:00,96.0,35,380\n2026-08-05 20:00:00,88.0,45,20\n"
+    }
+  },
+  {
+    "id": "gridlabd-05-ieee13-ev-bess-peak-shaving",
+    "lang": "gridlabd",
+    "subFormats": ["glm", "player"],
+    "difficulty": 5,
+    "title": "13-Node Feeder with EV Fast Chargers & BESS Peak Shaving",
+    "description": "Multi-file GridLAB-D distribution feeder combining substation transformer, multi-branch topology, commercial EV fast-charging hub, and battery energy storage peak shaving with companion player schedules.",
+    "category": "Distribution Power Systems",
+    "tags": ["gridlabd", "ev-charging", "bess", "peak-shaving", "multi-file"],
+    "activeFile": "ieee13_ev.glm",
+    "fileNames": ["ieee13_ev.glm", "ev_demand.player", "solar.player"],
+    "fileCount": 3,
+    "code": "// 13-Node Distribution Feeder with EV Chargers & BESS Peak Shaving\nclock {\n  timezone EST+5EDT;\n  starttime '2026-09-10 00:00:00';\n  stoptime '2026-09-11 00:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nmodule generators;\n\nobject transformer_configuration:600 {\n  name sub_xfmr_cfg;\n  connect_type WYE_WYE;\n  power_rating 5000 kVA;\n  primary_voltage 115000 V;\n  secondary_voltage 4160 V;\n  resistance 0.011;\n  reactance 0.08;\n}\n\nobject node {\n  name bus_650;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 66395 V;\n}\n\nobject node {\n  name bus_632;\n  phases ABCN;\n  nominal_voltage 2401 V;\n}\n\nobject load {\n  name bus_671_ev_hub;\n  phases ABCN;\n  nominal_voltage 2401 V;\n  constant_power_A 385+220j kVA;\n  constant_power_B 385+220j kVA;\n  constant_power_C 385+220j kVA;\n\n  object inverter {\n    name bess_inv_671;\n    rated_power 500 kW;\n\n    object battery {\n      name bess_pack_671;\n      battery_capacity 2000 kWh;\n      state_of_charge 0.85;\n    }\n  }\n}\n\nobject load {\n  name bus_680_pv_park;\n  phases ABCN;\n  nominal_voltage 2401 V;\n  constant_power_A 210+95j kVA;\n  constant_power_B 210+95j kVA;\n  constant_power_C 210+95j kVA;\n\n  object inverter {\n    name pv_inv_680;\n    rated_power 400 kW;\n\n    object solar {\n      name pv_680;\n      area 2200;\n      efficiency 0.21;\n    }\n  }\n}\n\nobject transformer {\n  name sub_xfmr;\n  phases ABCN;\n  from bus_650;\n  to bus_632;\n  configuration sub_xfmr_cfg;\n}\n\nobject overhead_line {\n  name line_632_671;\n  phases ABCN;\n  from bus_632;\n  to bus_671_ev_hub;\n  length 2000 ft;\n}\n\nobject overhead_line {\n  name line_671_680;\n  phases ABCN;\n  from bus_671_ev_hub;\n  to bus_680_pv_park;\n  length 1000 ft;\n}\n",
+    "files": {
+      "ieee13_ev.glm": "// 13-Node Distribution Feeder with EV Chargers & BESS Peak Shaving\nclock {\n  timezone EST+5EDT;\n  starttime '2026-09-10 00:00:00';\n  stoptime '2026-09-11 00:00:00';\n}\n\nmodule powerflow {\n  solver_method NR;\n}\n\nmodule generators;\n\nobject transformer_configuration:600 {\n  name sub_xfmr_cfg;\n  connect_type WYE_WYE;\n  power_rating 5000 kVA;\n  primary_voltage 115000 V;\n  secondary_voltage 4160 V;\n  resistance 0.011;\n  reactance 0.08;\n}\n\nobject node {\n  name bus_650;\n  phases ABCN;\n  bustype SWING;\n  nominal_voltage 66395 V;\n}\n\nobject node {\n  name bus_632;\n  phases ABCN;\n  nominal_voltage 2401 V;\n}\n\nobject load {\n  name bus_671_ev_hub;\n  phases ABCN;\n  nominal_voltage 2401 V;\n  constant_power_A 385+220j kVA;\n  constant_power_B 385+220j kVA;\n  constant_power_C 385+220j kVA;\n\n  object inverter {\n    name bess_inv_671;\n    rated_power 500 kW;\n\n    object battery {\n      name bess_pack_671;\n      battery_capacity 2000 kWh;\n      state_of_charge 0.85;\n    }\n  }\n}\n\nobject load {\n  name bus_680_pv_park;\n  phases ABCN;\n  nominal_voltage 2401 V;\n  constant_power_A 210+95j kVA;\n  constant_power_B 210+95j kVA;\n  constant_power_C 210+95j kVA;\n\n  object inverter {\n    name pv_inv_680;\n    rated_power 400 kW;\n\n    object solar {\n      name pv_680;\n      area 2200;\n      efficiency 0.21;\n    }\n  }\n}\n\nobject transformer {\n  name sub_xfmr;\n  phases ABCN;\n  from bus_650;\n  to bus_632;\n  configuration sub_xfmr_cfg;\n}\n\nobject overhead_line {\n  name line_632_671;\n  phases ABCN;\n  from bus_632;\n  to bus_671_ev_hub;\n  length 2000 ft;\n}\n\nobject overhead_line {\n  name line_671_680;\n  phases ABCN;\n  from bus_671_ev_hub;\n  to bus_680_pv_park;\n  length 1000 ft;\n}\n",
+      "ev_demand.player": "2026-09-10 00:00:00,45.0\n2026-09-10 06:00:00,120.0\n2026-09-10 12:00:00,280.0\n2026-09-10 17:00:00,480.0\n2026-09-10 19:00:00,520.0\n2026-09-10 22:00:00,180.0\n",
+      "solar.player": "2026-09-10 00:00:00,0.0\n2026-09-10 08:00:00,185.0\n2026-09-10 12:00:00,380.0\n2026-09-10 15:00:00,310.0\n2026-09-10 18:00:00,65.0\n2026-09-10 21:00:00,0.0\n"
+    }
+  }
+]

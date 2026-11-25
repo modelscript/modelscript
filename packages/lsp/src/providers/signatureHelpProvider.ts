@@ -1,17 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Connection, ParameterInformation, SignatureInformation } from "vscode-languageserver";
+import type { SymbolEntry } from "@modelscript/runtime";
+import { Connection, ParameterInformation, SignatureInformation, TextDocuments } from "vscode-languageserver";
+import { TextDocument } from "vscode-languageserver-textdocument";
+import type { LSPBridge } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import type { SyntaxNode } from "../utils/cst-facade.js";
+import type { SyntaxNode, Tree } from "../utils/cst-facade.js";
+import type { LineIndex } from "../utils/line-index.js";
+
+interface SignatureHelpBridgeLike {
+  definitionRaw(offset: number): SymbolEntry | null | undefined;
+  engine: {
+    query(queryName: string, id: number): SymbolEntry[] | null | undefined;
+  };
+}
 
 export function registerSignatureHelpProvider(
   connection: Connection,
-  documents: any,
-  documentLSPBridges: any,
-  getDocumentTree: any,
+  documents: TextDocuments<TextDocument>,
+  documentLSPBridges: Map<string, LSPBridge>,
+  getDocumentTree: (uri: string) => Tree | null | undefined,
   isParserReady: () => boolean,
-  getParser: () => any,
-  getLineIndexForDoc: any,
+  getParser: () => unknown,
+  getLineIndexForDoc: (uri: string) => { lineIndex: LineIndex; tokens: SyntaxNode[] } | null | undefined,
 ) {
   connection.onSignatureHelp(async (params) => {
     const document = documents.get(params.textDocument.uri);
@@ -66,33 +77,35 @@ export function registerSignatureHelpProvider(
 
       const bridge = documentLSPBridges.get(params.textDocument.uri);
       if (!bridge) return null;
+      const typedBridge = bridge as unknown as SignatureHelpBridgeLike;
 
       // Use polyglot to resolve the function reference
-      const funcTarget = (bridge as any).definitionRaw(refNode.startIndex);
+      const funcTarget = typedBridge.definitionRaw(refNode.startIndex);
       if (!funcTarget || funcTarget.kind !== "Class") return null;
 
       // Quick check if it's a function or record (from metadata classKind)
-      const classKind = funcTarget.metadata?.classKind;
+      const classKind = funcTarget.metadata?.["classKind"];
       if (classKind !== "function" && classKind !== "record") {
         return null;
       }
 
       // Collect all elements, filter to input parameters
-      let allElements: any[] = [];
+      let allElements: SymbolEntry[] = [];
       try {
-        allElements = (bridge as any).engine.query("allElements", funcTarget.id) || [];
+        allElements = typedBridge.engine.query("allElements", funcTarget.id) || [];
       } catch {
         // fallback
       }
 
-      const inputParams = allElements.filter((c) => c.kind === "Component" && c.metadata?.causality === "input");
+      const inputParams = allElements.filter((c) => c.kind === "Component" && c.metadata?.["causality"] === "input");
 
       // Collect parameter information
       const paramInfos: ParameterInformation[] = [];
       for (const param of inputParams) {
-        const typeName = param.metadata?.typeSpecifier ?? "?";
+        const typeName = String(param.metadata?.["typeSpecifier"] ?? "?");
         const label = `${typeName} ${param.name}`;
-        paramInfos.push(ParameterInformation.create(label, param.metadata?.description ?? undefined));
+        const desc = typeof param.metadata?.["description"] === "string" ? param.metadata["description"] : undefined;
+        paramInfos.push(ParameterInformation.create(label, desc));
       }
 
       // Determine which parameter is active based on comma count before cursor
@@ -116,10 +129,11 @@ export function registerSignatureHelpProvider(
 
       const sigLabel = `${refNode.text}(${paramInfos.map((p) => p.label).join(", ")})`;
 
+      const funcDesc =
+        typeof funcTarget.metadata?.["description"] === "string" ? funcTarget.metadata["description"] : undefined;
+
       return {
-        signatures: [
-          SignatureInformation.create(sigLabel, funcTarget.metadata?.description ?? undefined, ...paramInfos),
-        ],
+        signatures: [SignatureInformation.create(sigLabel, funcDesc, ...paramInfos)],
         activeSignature: 0,
         activeParameter,
       };

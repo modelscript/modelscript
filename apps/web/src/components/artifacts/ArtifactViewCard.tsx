@@ -97,7 +97,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     artifactId !== null && artifactId !== undefined && String(artifactId).trim() !== "" && String(artifactId) !== "0"
       ? String(artifactId)
       : null;
-  const [artifact, setArtifact] = useState<any>(initialArtifactView || null);
+  const normalizedInitialArtifactView = (initialArtifactView ?? null) as import("./card").ArtifactCardRecord | null;
+  const [artifact, setArtifact] = useState<import("./card").ArtifactCardRecord | null>(normalizedInitialArtifactView);
   const [loading, setLoading] = useState(Boolean(!initialArtifactView && validArtifactId));
   const [isLoaded] = useState(true);
   const [internalFullScreen, setInternalFullScreen] = useState(false);
@@ -126,11 +127,11 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     }
   }, [isFullScreen]);
 
-  const viewConfig: any = useMemo(
+  const viewConfig: import("./card").ArtifactViewConfig = useMemo(
     () => ({
       ...(artifact?.title ? { title: artifact.title } : {}),
       ...(artifact?.thumbnail_url ? { thumbnail_url: artifact.thumbnail_url } : {}),
-      ...safeJsonParse(artifact?.view_config, {}),
+      ...safeJsonParse<Record<string, unknown>>(artifact?.view_config, {}),
       artifactId,
     }),
     [artifact, artifactId],
@@ -204,7 +205,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
             artifactId,
             viewType: artifact?.view_type,
             viewConfig,
-            title: artifact?.title || artifact?.name,
+            title: artifact?.title || artifact?.name || undefined,
           }),
         );
       } else if (e.key === "c" || e.key === "C") {
@@ -239,25 +240,25 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
   }, [isFullScreen]);
 
   useEffect(() => {
-    if (initialArtifactView) {
-      setArtifact(initialArtifactView);
-      cacheArtifact(initialArtifactView);
+    if (normalizedInitialArtifactView) {
+      setArtifact(normalizedInitialArtifactView);
+      cacheArtifact(normalizedInitialArtifactView);
       setLoading(false);
     }
-  }, [initialArtifactView]);
+  }, [normalizedInitialArtifactView]);
 
   useEffect(() => {
     let cancelled = false;
     if (!validArtifactId) {
-      if (initialArtifactView) {
-        setArtifact(initialArtifactView);
-        cacheArtifact(initialArtifactView);
+      if (normalizedInitialArtifactView) {
+        setArtifact(normalizedInitialArtifactView);
+        cacheArtifact(normalizedInitialArtifactView);
       }
       setLoading(false);
       return;
     }
-    if (initialArtifactView) {
-      const initialIdStr = String(initialArtifactView.id || "").trim();
+    if (normalizedInitialArtifactView) {
+      const initialIdStr = String(normalizedInitialArtifactView.id || "").trim();
       const validIdStr = String(validArtifactId).trim();
       let isSnowflakeClose = false;
       if (/^\d{16,}$/.test(initialIdStr) && /^\d{16,}$/.test(validIdStr)) {
@@ -272,9 +273,9 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       const isMatch = !validArtifactId || initialIdStr === validIdStr || isSnowflakeClose;
 
       if (isMatch) {
-        setArtifact(initialArtifactView);
+        setArtifact(normalizedInitialArtifactView);
         setLoading(false);
-        cacheArtifact(initialArtifactView);
+        cacheArtifact(normalizedInitialArtifactView);
         return;
       }
     }
@@ -284,7 +285,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         return;
       }
       try {
-        const data = await getArtifactView(validArtifactId);
+        const data = (await getArtifactView(validArtifactId)) as import("./card").ArtifactCardRecord | undefined;
         if (cancelled) return;
         const resolved = data?.artifactView ?? data?.artifact_view ?? data;
         if (resolved && (resolved.view_type || resolved.view_config || resolved.title)) {
@@ -294,7 +295,7 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
       } catch (err) {
         if (cancelled) return;
         console.warn("[ArtifactViewCard] Network fetch failed, reading from offline cache:", err);
-        const cached = await getCachedArtifact(validArtifactId);
+        const cached = (await getCachedArtifact(validArtifactId)) as import("./card").ArtifactCardRecord | null;
         if (!cancelled && cached) {
           setArtifact(cached);
         }
@@ -306,17 +307,20 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [validArtifactId, initialArtifactView]);
+  }, [validArtifactId, normalizedInitialArtifactView]);
 
   const resolvedForkedFromId = useMemo<number | string | null>(() => {
     if (forkedFromId) return forkedFromId;
     if (viewConfig.forkedFromArtifactId) return viewConfig.forkedFromArtifactId;
     if (viewConfig.forked_from_artifact_id) return viewConfig.forked_from_artifact_id;
     if (viewConfig.upstreamArtifactId) return viewConfig.upstreamArtifactId;
-    const meta = artifact?.metadata ? safeJsonParse(artifact.metadata, artifact.metadata) : {};
-    if (meta?.forkedFromArtifactId) return meta.forkedFromArtifactId;
-    if (meta?.forked_from_artifact_id) return meta.forked_from_artifact_id;
-    if (meta?.forked_from_post_id) return meta.forked_from_post_id;
+    const meta: Record<string, unknown> = artifact?.metadata
+      ? typeof artifact.metadata === "string"
+        ? safeJsonParse<Record<string, unknown>>(artifact.metadata, {})
+        : artifact.metadata
+      : {};
+    const metaForkId = meta.forkedFromArtifactId ?? meta.forked_from_artifact_id ?? meta.forked_from_post_id;
+    if (typeof metaForkId === "string" || typeof metaForkId === "number") return metaForkId;
     if (artifact?.forked_from_id) return artifact.forked_from_id;
     if (artifact?.post?.forked_from_post_id) return artifact.post.forked_from_post_id;
     return null;
@@ -344,18 +348,20 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
 
     async function loadDiffCount() {
       try {
-        let parentArt: any = await getCachedArtifact(resolvedForkedFromId!);
+        let parentArt = (await getCachedArtifact(resolvedForkedFromId!)) as
+          import("./card").ArtifactCardRecord | null | undefined;
         if (!parentArt) {
-          const res = await getArtifactView(resolvedForkedFromId!);
+          const res = (await getArtifactView(resolvedForkedFromId!)) as
+            import("./card").ArtifactCardRecord | null | undefined;
           parentArt = res?.artifactView;
         }
         if (!active || !parentArt) return;
 
-        const parentCfg =
+        const parentCfg: Record<string, unknown> =
           typeof parentArt.view_config === "string"
-            ? safeJsonParse(parentArt.view_config, {})
+            ? safeJsonParse<Record<string, unknown>>(parentArt.view_config, {})
             : parentArt.view_config || {};
-        const parentCode = parentCfg.code || "";
+        const parentCode = typeof parentCfg.code === "string" ? parentCfg.code : "";
         const currentCode = viewConfig.code || "";
 
         if (parentCode && currentCode) {
@@ -512,8 +518,8 @@ export const ArtifactViewCard: React.FC<ArtifactViewCardProps> = ({
         "modelica",
         "modelica-code",
         "modelica-diagram",
-        "morsel",
-        "polyglot-morsel",
+        "ansatz",
+        "polyglot-ansatz",
         "modelscript",
         "msx",
         "simulation",

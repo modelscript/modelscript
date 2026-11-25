@@ -31,15 +31,36 @@ import {
 } from "recharts";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
+import { getErrorMessage } from "../../util/error";
 import Box from "../Box";
 import Spinner from "../Spinner";
 import IndexedCanvasPlot from "./IndexedCanvasPlot";
-import VegaViewer from "./VegaViewer";
+import VegaViewer, { type VegaViewConfig } from "./VegaViewer";
 
 const SIM_COLORS = ["#06b6d4", "#a855f7", "#10b981", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899", "#8b5cf6"];
 
+export interface SimulationPlotViewConfig {
+  model?: string | undefined;
+  title?: string | undefined;
+  lasText?: string | undefined;
+  lasUrl?: string | undefined;
+  csvUrl?: string | undefined;
+  url?: string | undefined;
+  format?: string | undefined;
+  data?: Record<string, number>[] | undefined;
+  viewMode?: ChartViewMode | undefined;
+  indexKey?: string | undefined;
+  indexLabel?: string | undefined;
+  indexUnit?: string | undefined;
+  inverted?: boolean | undefined;
+  nullValue?: number | undefined;
+  spec?: VegaViewConfig["spec"];
+  overrides?: Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
 interface SimulationPlotViewerProps {
-  viewConfig: any;
+  viewConfig?: SimulationPlotViewConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 
@@ -235,21 +256,22 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
             setData(datasetToRows(ds));
             setViewMode(viewConfig?.viewMode ?? "multitrack");
           } else {
-            const parsed = Papa.parse<Record<string, string>>(text, {
+            const parsed = Papa.parse<Record<string, number>>(text, {
               header: true,
               skipEmptyLines: true,
               dynamicTyping: true,
             });
             if (active && parsed.data && parsed.data.length > 0) {
-              setData(parsed.data as any[]);
+              setData(parsed.data);
             } else if (active) {
               setData([]);
             }
             if (viewConfig?.viewMode) setViewMode(viewConfig.viewMode);
           }
-        } catch (err: any) {
-          if (!active || abortController.signal.aborted || err?.name === "AbortError") return;
-          setError(err.message || "Failed to load plot data");
+        } catch (err: unknown) {
+          const isAbort = err instanceof Error && err.name === "AbortError";
+          if (!active || abortController.signal.aborted || isAbort) return;
+          setError(getErrorMessage(err, "Failed to load plot data"));
         } finally {
           if (active && !abortController.signal.aborted) setLoading(false);
         }
@@ -272,7 +294,7 @@ const SimulationPlotViewer: React.FC<SimulationPlotViewerProps> = ({ viewConfig,
 
   useEffect(() => {
     if (!loading && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [loading, data]);
 

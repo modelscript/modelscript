@@ -26,7 +26,7 @@ export const jedecLanguage = language({
         shortTitle: "JEDEC",
         selector: ["*.jed", "*.jedec"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/JedecPanel.tsx",
         artifactViewTypes: ["jedec", "jed"],
       },

@@ -2,10 +2,16 @@
 
 import { Line } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
+import { useXR } from "@react-three/xr";
 import type React from "react";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { getCachedHeroPbrTextures } from "../cad-viewer/HeroCadMaterials.js";
+import {
+  getCachedHeroPbrTextures,
+  HERO_BRUSHED_NORMAL_SCALE,
+  resolveHeroSurfaceParams,
+  type HeroSurfaceFinish,
+} from "../cad-viewer/HeroCadMaterials.js";
 import { createCaeFieldGradientTexture, type CaeFieldOverlayMode } from "./procedural-pbr.js";
 import { clampNumber, type RotundaCaeOverlay, type RotundaRenderStyle } from "./types.js";
 
@@ -23,9 +29,14 @@ export interface ShowcaseAssemblyProps {
 }
 
 export interface ShowcasePartMaterialProps {
-  baseColor: string;
+  finish?: HeroSurfaceFinish | undefined;
+  baseColor?: string | undefined;
   metalness?: number | undefined;
   roughness?: number | undefined;
+  clearcoat?: number | undefined;
+  clearcoatRoughness?: number | undefined;
+  anisotropy?: number | undefined;
+  envMapIntensity?: number | undefined;
   emissive?: string | undefined;
   emissiveIntensity?: number | undefined;
   stressFactor?: number | undefined;
@@ -83,14 +94,19 @@ function sampleGradientHex(stops: ReadonlyArray<[number, number, number]>, tRaw:
 }
 
 /**
- * Shared PBR/CAE/Hologram material helper matching HeroModelAsset's exact
+ * Shared photoreal PBR/CAE/Hologram material helper matching HeroModelAsset's exact
  * renderStyle, caeOverlay, isGhost, ghostOpacity, clippingPlanes, stressFactor,
  * and thermalFactor behavior.
  */
 export function ShowcasePartMaterial({
+  finish,
   baseColor,
-  metalness = 0.72,
-  roughness = 0.28,
+  metalness,
+  roughness,
+  clearcoat,
+  clearcoatRoughness,
+  anisotropy,
+  envMapIntensity,
   emissive = "#000000",
   emissiveIntensity = 0,
   stressFactor = 0.45,
@@ -104,34 +120,71 @@ export function ShowcasePartMaterial({
 }: ShowcasePartMaterialProps): React.ReactElement {
   const { gl } = useThree();
   const pbrMaps = useMemo(() => getCachedHeroPbrTextures(gl), [gl]);
-  const matRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const physMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const isInXr = useXR((s) => s.session != null);
+  const stdMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const effectivePlanes = isGhost ? EMPTY_PLANES : clippingPlanes;
   const hasClipping = effectivePlanes.length > 0;
   const activeContourMap: THREE.DataTexture | null =
     !isGhost && renderStyle === "shaded" && (caeOverlay === "fea-stress" || caeOverlay === "thermal")
       ? getSharedShowcaseCaeMap(caeOverlay)
       : null;
-  const prevStateRef = useRef<{ hasClipping: boolean; hasMap: boolean }>({
+
+  const surface = resolveHeroSurfaceParams({
+    finish,
+    baseColor,
+    metalness,
+    roughness,
+    clearcoat,
+    clearcoatRoughness,
+    anisotropy,
+    envMapIntensity,
+  });
+
+  const isShadedPbr = !isGhost && renderStyle === "shaded";
+  const isCaeContour = caeOverlay === "fea-stress" || caeOverlay === "thermal";
+  const useBrushedMaps = isShadedPbr && !isCaeContour && surface.mapMode === "brushed";
+  const activeNormalMap = useBrushedMaps ? pbrMaps.normal : null;
+  const activeRoughnessMap = useBrushedMaps ? pbrMaps.roughness : null;
+
+  const prevStateRef = useRef<{
+    hasClipping: boolean;
+    hasMap: boolean;
+    hasNormalMap: boolean;
+    hasRoughnessMap: boolean;
+  }>({
     hasClipping,
     hasMap: activeContourMap !== null,
+    hasNormalMap: activeNormalMap !== null,
+    hasRoughnessMap: activeRoughnessMap !== null,
   });
 
   useEffect(() => {
-    const mat = matRef.current;
+    const mat = physMatRef.current ?? stdMatRef.current;
     if (!mat) return;
     mat.clippingPlanes = effectivePlanes;
     mat.map = activeContourMap;
+    mat.normalMap = activeNormalMap;
+    mat.roughnessMap = activeRoughnessMap;
     const hasMap = activeContourMap !== null;
-    if (prevStateRef.current.hasClipping !== hasClipping || prevStateRef.current.hasMap !== hasMap) {
-      prevStateRef.current = { hasClipping, hasMap };
+    const hasNormalMap = activeNormalMap !== null;
+    const hasRoughnessMap = activeRoughnessMap !== null;
+    const prev = prevStateRef.current;
+    if (
+      prev.hasClipping !== hasClipping ||
+      prev.hasMap !== hasMap ||
+      prev.hasNormalMap !== hasNormalMap ||
+      prev.hasRoughnessMap !== hasRoughnessMap
+    ) {
+      prevStateRef.current = { hasClipping, hasMap, hasNormalMap, hasRoughnessMap };
       mat.needsUpdate = true;
     }
-  }, [effectivePlanes, hasClipping, activeContourMap]);
+  }, [effectivePlanes, hasClipping, activeContourMap, activeNormalMap, activeRoughnessMap]);
 
   if (isGhost) {
     return (
       <meshStandardMaterial
-        ref={matRef}
+        ref={stdMatRef}
         color="#38bdf8"
         emissive="#1d4ed8"
         emissiveIntensity={0.55}
@@ -146,19 +199,29 @@ export function ShowcasePartMaterial({
     );
   }
 
-  let resolvedColor = baseColor;
+  let resolvedColor = surface.color;
   let resolvedEmissive = emissive;
   let resolvedEmissiveIntensity = emissiveIntensity;
-  let resolvedMetalness = metalness;
-  let resolvedRoughness = roughness;
+  let resolvedMetalness = surface.metalness;
+  let resolvedRoughness = surface.roughness;
+  let resolvedClearcoat = surface.clearcoat;
+  let resolvedClearcoatRoughness = surface.clearcoatRoughness;
+  let resolvedAnisotropy = surface.anisotropy;
+  let resolvedIridescence = surface.iridescence;
+  let resolvedEnvMapIntensity = surface.envMapIntensity;
 
   if (caeOverlay === "fea-stress") {
     const dynamicStress = clampNumber(stressFactor + 0.05 * Math.sin(simulationTime * 1.8 + stressFactor * 4.2), 0, 1);
     resolvedColor = activeContourMap ? "#ffffff" : sampleGradientHex(TURBO_STOPS, dynamicStress);
     resolvedEmissive = activeContourMap ? "#000000" : resolvedColor;
     resolvedEmissiveIntensity = activeContourMap ? 0 : 0.16 + dynamicStress * 0.24;
-    resolvedMetalness = 0.16;
+    resolvedMetalness = 0.14;
     resolvedRoughness = 0.44;
+    resolvedClearcoat = 0;
+    resolvedClearcoatRoughness = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
+    resolvedEnvMapIntensity = 0.85;
   } else if (caeOverlay === "thermal") {
     const dynamicThermal = clampNumber(
       thermalFactor + 0.06 * Math.sin(simulationTime * 1.6 + thermalFactor * 3.1),
@@ -168,8 +231,13 @@ export function ShowcasePartMaterial({
     resolvedColor = activeContourMap ? "#ffffff" : sampleGradientHex(THERMAL_STOPS, dynamicThermal);
     resolvedEmissive = activeContourMap ? "#000000" : resolvedColor;
     resolvedEmissiveIntensity = activeContourMap ? 0 : 0.24 + dynamicThermal * 0.4;
-    resolvedMetalness = 0.14;
+    resolvedMetalness = 0.12;
     resolvedRoughness = 0.46;
+    resolvedClearcoat = 0;
+    resolvedClearcoatRoughness = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
+    resolvedEnvMapIntensity = 0.85;
   } else if (caeOverlay === "cfd-flow") {
     resolvedEmissive = "#0284c7";
     resolvedEmissiveIntensity = Math.max(emissiveIntensity, 0.08);
@@ -179,7 +247,7 @@ export function ShowcasePartMaterial({
     const wireColor = caeOverlay === "none" ? "#22d3ee" : resolvedColor;
     return (
       <meshStandardMaterial
-        ref={matRef}
+        ref={stdMatRef}
         color={wireColor}
         emissive={caeOverlay === "none" ? "#06b6d4" : resolvedColor}
         emissiveIntensity={0.78}
@@ -198,7 +266,7 @@ export function ShowcasePartMaterial({
     const xrayColor = caeOverlay === "none" ? "#38bdf8" : resolvedColor;
     return (
       <meshStandardMaterial
-        ref={matRef}
+        ref={stdMatRef}
         color={xrayColor}
         emissive={caeOverlay === "none" ? "#0ea5e9" : resolvedColor}
         emissiveIntensity={0.42}
@@ -214,20 +282,44 @@ export function ShowcasePartMaterial({
     );
   }
 
-  const useBrushedAlloy = caeOverlay === "none" && resolvedMetalness >= 0.45;
+  if (isInXr) {
+    return (
+      <meshStandardMaterial
+        ref={physMatRef}
+        color={resolvedColor}
+        {...(activeContourMap ? { map: activeContourMap } : {})}
+        emissive={resolvedEmissive}
+        emissiveIntensity={resolvedEmissiveIntensity}
+        metalness={resolvedMetalness}
+        roughness={resolvedRoughness}
+        {...(activeNormalMap ? { normalMap: activeNormalMap, normalScale: HERO_BRUSHED_NORMAL_SCALE } : {})}
+        {...(activeRoughnessMap ? { roughnessMap: activeRoughnessMap } : {})}
+        envMapIntensity={resolvedEnvMapIntensity}
+        side={hasClipping ? THREE.DoubleSide : THREE.FrontSide}
+        clippingPlanes={effectivePlanes}
+        clipShadows={true}
+      />
+    );
+  }
+
   return (
-    <meshStandardMaterial
-      ref={matRef}
+    <meshPhysicalMaterial
+      ref={physMatRef}
       color={resolvedColor}
-      map={activeContourMap}
+      {...(activeContourMap ? { map: activeContourMap } : {})}
       emissive={resolvedEmissive}
       emissiveIntensity={resolvedEmissiveIntensity}
       metalness={resolvedMetalness}
       roughness={resolvedRoughness}
-      normalMap={useBrushedAlloy ? pbrMaps.normal : null}
-      normalScale={useBrushedAlloy ? new THREE.Vector2(0.03, 0.015) : undefined}
-      roughnessMap={useBrushedAlloy ? pbrMaps.roughness : null}
-      envMapIntensity={resolvedMetalness >= 0.5 ? 1.35 : 0.95}
+      clearcoat={resolvedClearcoat}
+      clearcoatRoughness={resolvedClearcoatRoughness}
+      anisotropy={resolvedAnisotropy}
+      anisotropyRotation={surface.anisotropyRotation}
+      iridescence={resolvedIridescence}
+      iridescenceIOR={surface.iridescenceIOR}
+      {...(activeNormalMap ? { normalMap: activeNormalMap, normalScale: HERO_BRUSHED_NORMAL_SCALE } : {})}
+      {...(activeRoughnessMap ? { roughnessMap: activeRoughnessMap } : {})}
+      envMapIntensity={resolvedEnvMapIntensity}
       side={hasClipping ? THREE.DoubleSide : THREE.FrontSide}
       clippingPlanes={effectivePlanes}
       clipShadows={true}
@@ -402,14 +494,7 @@ export function HexacopterDroneAssembly({
         return (
           <group key={`skid-${side}`} position={[skidX, 0, 0]}>
             <mesh geometry={skidGeom} castShadow receiveShadow>
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#1e293b"
-                metalness={0.45}
-                roughness={0.34}
-                stressFactor={0.44}
-                thermalFactor={0.18}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="carbon-fiber" stressFactor={0.44} thermalFactor={0.18} />
             </mesh>
             {/* Front & rear slanted carbon landing struts */}
             {[-0.075, 0.075].map((zOff, idx) => (
@@ -422,9 +507,8 @@ export function HexacopterDroneAssembly({
                 <cylinderGeometry args={[0.007, 0.008, 0.235, 10]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#334155"
-                  metalness={0.5}
-                  roughness={0.34}
+                  finish="carbon-fiber"
+                  baseColor="#4a5360"
                   stressFactor={0.56}
                   thermalFactor={0.2}
                 />
@@ -433,14 +517,7 @@ export function HexacopterDroneAssembly({
             {/* Horizontal stabilizer cross-brace bar */}
             <mesh position={[-side * 0.036, 0.16, 0]} rotation={[Math.PI / 2, 0, 0]}>
               <cylinderGeometry args={[0.005, 0.005, 0.155, 8]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#475569"
-                metalness={0.62}
-                roughness={0.3}
-                stressFactor={0.42}
-                thermalFactor={0.2}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="anodized-aluminum" stressFactor={0.42} thermalFactor={0.2} />
             </mesh>
           </group>
         );
@@ -453,9 +530,9 @@ export function HexacopterDroneAssembly({
           <boxGeometry args={[0.106, 0.052, 0.156]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#1e293b"
-            metalness={0.26}
-            roughness={0.46}
+            finish="rubber"
+            baseColor="#464d57"
+            roughness={0.78}
             stressFactor={0.34}
             thermalFactor={0.88}
           />
@@ -465,11 +542,8 @@ export function HexacopterDroneAssembly({
           <boxGeometry args={[0.108, 0.016, 0.12]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#f59e0b"
-            emissive="#b45309"
-            emissiveIntensity={0.18}
-            metalness={0.2}
-            roughness={0.4}
+            finish="painted"
+            baseColor="#e89a25"
             stressFactor={0.3}
             thermalFactor={0.84}
           />
@@ -480,9 +554,9 @@ export function HexacopterDroneAssembly({
             <boxGeometry args={[0.112, 0.057, 0.018]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#0f172a"
-              metalness={0.15}
-              roughness={0.72}
+              finish="rubber"
+              baseColor="#383e47"
+              roughness={0.88}
               stressFactor={0.5}
               thermalFactor={0.65}
             />
@@ -493,9 +567,8 @@ export function HexacopterDroneAssembly({
           <boxGeometry args={[0.028, 0.018, 0.024]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#eab308"
-            metalness={0.32}
-            roughness={0.32}
+            finish="painted"
+            baseColor="#e3b22c"
             stressFactor={0.28}
             thermalFactor={0.78}
           />
@@ -507,14 +580,7 @@ export function HexacopterDroneAssembly({
         {/* Lower octagonal carbon-fiber plate */}
         <mesh castShadow receiveShadow>
           <cylinderGeometry args={[0.138, 0.144, 0.012, 8]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#1e2430"
-            metalness={0.42}
-            roughness={0.35}
-            stressFactor={0.72}
-            thermalFactor={0.58}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="carbon-fiber" stressFactor={0.72} thermalFactor={0.58} />
         </mesh>
 
         {/* 8 anodized standoff posts around perimeter */}
@@ -523,9 +589,8 @@ export function HexacopterDroneAssembly({
             <cylinderGeometry args={[0.006, 0.006, 0.036, 8]} />
             <ShowcasePartMaterial
               {...sharedMat}
+              finish="anodized-aluminum"
               baseColor={accentColor}
-              metalness={0.82}
-              roughness={0.22}
               stressFactor={0.58}
               thermalFactor={0.48}
             />
@@ -536,23 +601,16 @@ export function HexacopterDroneAssembly({
         <group position={[0, pcbOffsetY, 0]}>
           <mesh castShadow>
             <boxGeometry args={[0.112, 0.008, 0.112]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#065f46"
-              metalness={0.28}
-              roughness={0.48}
-              stressFactor={0.24}
-              thermalFactor={0.84}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="pcb" stressFactor={0.24} thermalFactor={0.84} />
           </mesh>
           {/* Central IMU / Flight Processor IC */}
           <mesh position={[0, 0.008, 0]}>
             <boxGeometry args={[0.036, 0.009, 0.036]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#0f172a"
-              metalness={0.4}
-              roughness={0.32}
+              finish="rubber"
+              baseColor="#3d434c"
+              roughness={0.78}
               stressFactor={0.2}
               thermalFactor={0.96}
             />
@@ -560,25 +618,11 @@ export function HexacopterDroneAssembly({
           {/* Silver RF telemetry shield can + gold ESC bus pads */}
           <mesh position={[-0.032, 0.007, -0.028]}>
             <boxGeometry args={[0.028, 0.008, 0.024]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.88}
-              roughness={0.2}
-              stressFactor={0.18}
-              thermalFactor={0.86}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.18} thermalFactor={0.86} />
           </mesh>
           <mesh position={[0.034, 0.006, 0.026]}>
             <boxGeometry args={[0.024, 0.006, 0.032]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#eab308"
-              metalness={0.9}
-              roughness={0.2}
-              stressFactor={0.2}
-              thermalFactor={0.8}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="gold" stressFactor={0.2} thermalFactor={0.8} />
           </mesh>
           {/* 4 Glowing Green/Cyan Status LEDs */}
           {!isGhost &&
@@ -612,9 +656,8 @@ export function HexacopterDroneAssembly({
           <cylinderGeometry args={[0.132, 0.138, 0.011, 8]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#273142"
-            metalness={0.44}
-            roughness={0.34}
+            finish="carbon-fiber"
+            baseColor="#4b5462"
             stressFactor={0.68}
             thermalFactor={0.56}
           />
@@ -640,9 +683,7 @@ export function HexacopterDroneAssembly({
                 <boxGeometry args={[0.028, 0.026, 0.032]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#475569"
-                  metalness={0.82}
-                  roughness={0.26}
+                  finish="anodized-aluminum"
                   stressFactor={0.94}
                   thermalFactor={0.52}
                 />
@@ -650,14 +691,7 @@ export function HexacopterDroneAssembly({
               {/* Tubular carbon-fiber radial boom */}
               <mesh position={[0.212, 0, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
                 <cylinderGeometry args={[0.01, 0.012, 0.162, 12]} />
-                <ShowcasePartMaterial
-                  {...sharedMat}
-                  baseColor="#1e293b"
-                  metalness={0.45}
-                  roughness={0.34}
-                  stressFactor={0.84}
-                  thermalFactor={0.46}
-                />
+                <ShowcasePartMaterial {...sharedMat} finish="carbon-fiber" stressFactor={0.84} thermalFactor={0.46} />
               </mesh>
 
               {/* Brushless Motor Pod & ESC Mount at tip (r = 0.292) */}
@@ -665,14 +699,7 @@ export function HexacopterDroneAssembly({
                 {/* Motor mount base plate */}
                 <mesh position={[0, -0.012, 0]} castShadow>
                   <cylinderGeometry args={[0.027, 0.024, 0.012, 16]} />
-                  <ShowcasePartMaterial
-                    {...sharedMat}
-                    baseColor="#334155"
-                    metalness={0.84}
-                    roughness={0.24}
-                    stressFactor={0.78}
-                    thermalFactor={0.72}
-                  />
+                  <ShowcasePartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.78} thermalFactor={0.72} />
                 </mesh>
                 {/* Underside navigation beacon LED */}
                 {!isGhost && (
@@ -691,28 +718,12 @@ export function HexacopterDroneAssembly({
                 {/* Copper stator winding core ring */}
                 <mesh position={[0, 0.006, 0]}>
                   <cylinderGeometry args={[0.021, 0.021, 0.018, 16]} />
-                  <ShowcasePartMaterial
-                    {...sharedMat}
-                    baseColor="#d97706"
-                    emissive="#92400e"
-                    emissiveIntensity={0.22}
-                    metalness={0.86}
-                    roughness={0.24}
-                    stressFactor={0.68}
-                    thermalFactor={0.94}
-                  />
+                  <ShowcasePartMaterial {...sharedMat} finish="copper" stressFactor={0.68} thermalFactor={0.94} />
                 </mesh>
                 {/* Brushless outrunner bell housing */}
                 <mesh position={[0, 0.012, 0]} castShadow>
                   <cylinderGeometry args={[0.025, 0.026, 0.022, 18]} />
-                  <ShowcasePartMaterial
-                    {...sharedMat}
-                    baseColor="#0f172a"
-                    metalness={0.82}
-                    roughness={0.22}
-                    stressFactor={0.72}
-                    thermalFactor={0.9}
-                  />
+                  <ShowcasePartMaterial {...sharedMat} finish="dark-anodized" stressFactor={0.72} thermalFactor={0.9} />
                 </mesh>
 
                 {/* Spinning Rotor Hub & Dual Pitched Blades (CW/CCW alternating) */}
@@ -722,9 +733,7 @@ export function HexacopterDroneAssembly({
                     <coneGeometry args={[0.011, 0.018, 12]} />
                     <ShowcasePartMaterial
                       {...sharedMat}
-                      baseColor="#cbd5e1"
-                      metalness={0.9}
-                      roughness={0.18}
+                      finish="brushed-aluminum"
                       stressFactor={0.42}
                       thermalFactor={0.46}
                     />
@@ -740,9 +749,7 @@ export function HexacopterDroneAssembly({
                         <boxGeometry args={[0.088, 0.0035, 0.017]} />
                         <ShowcasePartMaterial
                           {...sharedMat}
-                          baseColor="#1e293b"
-                          metalness={0.38}
-                          roughness={0.32}
+                          finish="carbon-fiber"
                           stressFactor={0.76}
                           thermalFactor={0.34}
                         />
@@ -752,11 +759,10 @@ export function HexacopterDroneAssembly({
                         <boxGeometry args={[0.014, 0.004, 0.016]} />
                         <ShowcasePartMaterial
                           {...sharedMat}
-                          baseColor={dir > 0 ? "#38bdf8" : "#f97316"}
-                          emissive={dir > 0 ? "#0284c7" : "#ea580c"}
-                          emissiveIntensity={0.45}
-                          metalness={0.3}
-                          roughness={0.3}
+                          finish="painted"
+                          baseColor={dir > 0 ? "#2ca9e6" : "#eb6b21"}
+                          emissive={dir > 0 ? "#0284c7" : "#c2410c"}
+                          emissiveIntensity={0.22}
                           stressFactor={0.62}
                           thermalFactor={0.32}
                         />
@@ -790,25 +796,16 @@ export function HexacopterDroneAssembly({
         {/* Sculpted low-profile canopy dome */}
         <mesh scale={[1.0, 0.56, 1.12]} castShadow receiveShadow>
           <sphereGeometry args={[0.122, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.52]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.36}
-            roughness={0.24}
-            stressFactor={0.22}
-            thermalFactor={0.4}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="ceramic-white" stressFactor={0.22} thermalFactor={0.4} />
         </mesh>
         {/* Front optical sensor visor inlay */}
         <mesh position={[0, 0.026, 0.114]} rotation={[0.32, 0, 0]}>
           <boxGeometry args={[0.072, 0.018, 0.022]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#0f172a"
-            emissive="#0284c7"
-            emissiveIntensity={0.42}
-            metalness={0.78}
-            roughness={0.14}
+            finish="glass-lens"
+            emissive="#0c4a6e"
+            emissiveIntensity={0.24}
             stressFactor={0.18}
             thermalFactor={0.45}
           />
@@ -816,35 +813,20 @@ export function HexacopterDroneAssembly({
         {/* Elevated RTK-GPS / LiDAR mast & puck */}
         <mesh position={[0, 0.072, -0.015]} castShadow>
           <cylinderGeometry args={[0.008, 0.01, 0.036, 12]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#475569"
-            metalness={0.76}
-            roughness={0.28}
-            stressFactor={0.28}
-            thermalFactor={0.32}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.28} thermalFactor={0.32} />
         </mesh>
         <mesh position={[0, 0.094, -0.015]} castShadow>
           <cylinderGeometry args={[0.036, 0.038, 0.016, 20]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#1e293b"
-            metalness={0.62}
-            roughness={0.26}
-            stressFactor={0.2}
-            thermalFactor={0.38}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="dark-anodized" stressFactor={0.2} thermalFactor={0.38} />
         </mesh>
         <mesh position={[0, 0.094, -0.015]} rotation={[Math.PI / 2, 0, 0]}>
           <torusGeometry args={[0.038, 0.0035, 8, 24]} />
           <ShowcasePartMaterial
             {...sharedMat}
+            finish="painted"
             baseColor={accentColor}
             emissive={accentColor}
-            emissiveIntensity={0.75}
-            metalness={0.4}
-            roughness={0.2}
+            emissiveIntensity={0.55}
             stressFactor={0.18}
             thermalFactor={0.36}
           />
@@ -856,49 +838,27 @@ export function HexacopterDroneAssembly({
         {/* Isolation damper mount */}
         <mesh position={[0, 0.022, -0.01]}>
           <boxGeometry args={[0.052, 0.014, 0.044]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#334155"
-            metalness={0.74}
-            roughness={0.3}
-            stressFactor={0.4}
-            thermalFactor={0.35}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="rubber" stressFactor={0.4} thermalFactor={0.35} />
         </mesh>
         {/* Yaw yoke + Pitch-stabilizing optical payload */}
         <group rotation={[0, gimbalYaw, 0]}>
           <mesh position={[0, 0.004, 0]}>
             <boxGeometry args={[0.068, 0.012, 0.018]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#64748b"
-              metalness={0.82}
-              roughness={0.24}
-              stressFactor={0.38}
-              thermalFactor={0.42}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.38} thermalFactor={0.42} />
           </mesh>
           <group position={[0, -0.016, 0.006]} rotation={[gimbalPitch, 0, 0]}>
             {/* Camera housing */}
             <mesh castShadow>
               <boxGeometry args={[0.052, 0.04, 0.046]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#1e293b"
-                metalness={0.76}
-                roughness={0.26}
-                stressFactor={0.26}
-                thermalFactor={0.56}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="dark-anodized" stressFactor={0.26} thermalFactor={0.56} />
             </mesh>
             {/* Optical lens barrel */}
             <mesh position={[0, 0, 0.028]} rotation={[Math.PI / 2, 0, 0]} castShadow>
               <cylinderGeometry args={[0.016, 0.018, 0.022, 18]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#0f172a"
-                metalness={0.88}
-                roughness={0.16}
+                finish="satin-steel"
+                baseColor="#6f7884"
                 stressFactor={0.2}
                 thermalFactor={0.48}
               />
@@ -908,11 +868,10 @@ export function HexacopterDroneAssembly({
               <cylinderGeometry args={[0.013, 0.013, 0.003, 18]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#0284c7"
-                emissive="#38bdf8"
-                emissiveIntensity={0.65}
-                metalness={0.92}
-                roughness={0.08}
+                finish="glass-lens"
+                baseColor="#17385c"
+                emissive="#0ea5e9"
+                emissiveIntensity={0.22}
                 stressFactor={0.15}
                 thermalFactor={0.42}
               />
@@ -1031,8 +990,18 @@ function buildTurbineBladeGeometry(): THREE.BufferGeometry {
     indices.push(tipCenterIdx, lastRingStart + i, lastRingStart + next);
   }
 
+  const uvs: number[] = [];
+  for (let s = 0; s <= stations; s++) {
+    const v = s / stations;
+    for (let i = 0; i < ringSegs; i++) {
+      uvs.push(i / ringSegs, v);
+    }
+  }
+  uvs.push(0.5, 1);
+
   const geom = new THREE.BufferGeometry();
   geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geom.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geom.setIndex(indices);
   geom.computeVertexNormals();
   return geom;
@@ -1116,9 +1085,8 @@ export function WindTurbineAssembly({
           <cylinderGeometry args={[0.132, 0.144, 0.036, 32]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.82}
-            roughness={0.28}
+            finish="anodized-aluminum"
+            baseColor="#9aa3ae"
             stressFactor={0.78}
             thermalFactor={0.2}
           />
@@ -1126,14 +1094,7 @@ export function WindTurbineAssembly({
         {TURBINE_BASE_BOLT_ANGLES.map((angle, idx) => (
           <mesh key={`base-bolt-${idx}`} position={[Math.cos(angle) * 0.114, 0.042, Math.sin(angle) * 0.114]}>
             <cylinderGeometry args={[0.008, 0.008, 0.018, 6]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.9}
-              roughness={0.18}
-              stressFactor={0.74}
-              thermalFactor={0.18}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.74} thermalFactor={0.18} />
           </mesh>
         ))}
 
@@ -1142,9 +1103,8 @@ export function WindTurbineAssembly({
           <cylinderGeometry args={[0.042, 0.076, 0.4, 28]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.44}
-            roughness={0.34}
+            finish="ceramic-grey"
+            baseColor="#e5e9ef"
             stressFactor={0.64}
             thermalFactor={0.24}
           />
@@ -1153,37 +1113,22 @@ export function WindTurbineAssembly({
         {/* Service access door detail near base */}
         <mesh position={[0, 0.095, 0.068]} rotation={[-0.08, 0, 0]}>
           <boxGeometry args={[0.034, 0.072, 0.012]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#334155"
-            metalness={0.72}
-            roughness={0.34}
-            stressFactor={0.62}
-            thermalFactor={0.22}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="dark-anodized" stressFactor={0.62} thermalFactor={0.22} />
         </mesh>
 
         {/* Yaw slewing ring collar & bearing race */}
         <mesh position={[0, 0.436, 0]} castShadow>
           <cylinderGeometry args={[0.056, 0.052, 0.028, 28]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#334155"
-            metalness={0.86}
-            roughness={0.24}
-            stressFactor={0.82}
-            thermalFactor={0.48}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.82} thermalFactor={0.48} />
         </mesh>
         <mesh position={[0, 0.444, 0]} rotation={[Math.PI / 2, 0, 0]}>
           <torusGeometry args={[0.056, 0.006, 8, 28]} />
           <ShowcasePartMaterial
             {...sharedMat}
+            finish="painted"
             baseColor={accentColor}
             emissive={accentColor}
-            emissiveIntensity={0.4}
-            metalness={0.6}
-            roughness={0.24}
+            emissiveIntensity={0.32}
             stressFactor={0.76}
             thermalFactor={0.46}
           />
@@ -1193,23 +1138,15 @@ export function WindTurbineAssembly({
       {/* 2. Nacelle Upper Fiberglass Clam-Shell + Rear Anemometer Mast (lifts on explode) */}
       <group position={[0, upperShellY, -0.032]}>
         <mesh geometry={clamShellGeom} castShadow receiveShadow>
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#f1f5f9"
-            metalness={0.24}
-            roughness={0.28}
-            stressFactor={0.32}
-            thermalFactor={0.42}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="ceramic-white" stressFactor={0.32} thermalFactor={0.42} />
         </mesh>
         {/* Sculpted upper rear fiberglass tail dome closing the clam-shell cleanly */}
         <mesh position={[0, 0, -0.132]} scale={[1.0, 0.94, 0.56]} castShadow>
           <sphereGeometry args={[0.076, 20, 12, Math.PI, Math.PI, 0, Math.PI / 2]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.26}
-            roughness={0.3}
+            finish="ceramic-white"
+            baseColor="#e8edf3"
             stressFactor={0.28}
             thermalFactor={0.44}
           />
@@ -1220,11 +1157,10 @@ export function WindTurbineAssembly({
             <boxGeometry args={[0.006, 0.014, 0.24]} />
             <ShowcasePartMaterial
               {...sharedMat}
+              finish="painted"
               baseColor={accentColor}
               emissive={accentColor}
-              emissiveIntensity={0.38}
-              metalness={0.35}
-              roughness={0.24}
+              emissiveIntensity={0.25}
               stressFactor={0.26}
               thermalFactor={0.36}
             />
@@ -1235,26 +1171,12 @@ export function WindTurbineAssembly({
         <group position={[0, 0.078, -0.108]}>
           <mesh position={[0, 0.036, 0]} castShadow>
             <cylinderGeometry args={[0.005, 0.007, 0.072, 10]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#94a3b8"
-              metalness={0.86}
-              roughness={0.22}
-              stressFactor={0.3}
-              thermalFactor={0.24}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.3} thermalFactor={0.24} />
           </mesh>
           {/* Crossbar */}
           <mesh position={[0, 0.062, 0]} rotation={[0, 0, Math.PI / 2]}>
             <cylinderGeometry args={[0.0035, 0.0035, 0.064, 8]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.86}
-              roughness={0.2}
-              stressFactor={0.24}
-              thermalFactor={0.22}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.24} thermalFactor={0.22} />
           </mesh>
           {/* Spinning 3-cup anemometer on left tip */}
           <group position={[-0.032, 0.072, 0]} rotation={[0, anemometerSpin, 0]}>
@@ -1263,11 +1185,10 @@ export function WindTurbineAssembly({
                 <sphereGeometry args={[0.006, 8, 8]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#38bdf8"
+                  finish="painted"
+                  baseColor="#2ca9e6"
                   emissive="#0284c7"
-                  emissiveIntensity={0.6}
-                  metalness={0.5}
-                  roughness={0.22}
+                  emissiveIntensity={0.35}
                   stressFactor={0.22}
                   thermalFactor={0.26}
                 />
@@ -1294,25 +1215,11 @@ export function WindTurbineAssembly({
       {/* 3. Nacelle Lower Fiberglass Clam-Shell (separates downward on explode) */}
       <group position={[0, lowerShellY, -0.032]} rotation={[0, 0, Math.PI]}>
         <mesh geometry={clamShellGeom} castShadow receiveShadow>
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#cbd5e1"
-            metalness={0.32}
-            roughness={0.32}
-            stressFactor={0.52}
-            thermalFactor={0.44}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="ceramic-grey" stressFactor={0.52} thermalFactor={0.44} />
         </mesh>
         <mesh position={[0, 0, -0.132]} scale={[1.0, 0.94, 0.56]} castShadow>
           <sphereGeometry args={[0.076, 20, 12, Math.PI, Math.PI, 0, Math.PI / 2]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#cbd5e1"
-            metalness={0.32}
-            roughness={0.32}
-            stressFactor={0.48}
-            thermalFactor={0.44}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="ceramic-grey" stressFactor={0.48} thermalFactor={0.44} />
         </mesh>
       </group>
 
@@ -1321,35 +1228,20 @@ export function WindTurbineAssembly({
         {/* Structural bedplate frame rail */}
         <mesh position={[0, -0.04, -0.032]} castShadow>
           <boxGeometry args={[0.078, 0.018, 0.22]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#334155"
-            metalness={0.84}
-            roughness={0.3}
-            stressFactor={0.84}
-            thermalFactor={0.52}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="dark-anodized" stressFactor={0.84} thermalFactor={0.52} />
         </mesh>
 
         {/* Main Low-Speed Shaft + Pillow-Block Bearing */}
         <mesh position={[0, 0, 0.068]} rotation={[Math.PI / 2, 0, rotorAngle]} castShadow>
           <cylinderGeometry args={[0.018, 0.018, 0.115, 16]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#94a3b8"
-            metalness={0.9}
-            roughness={0.18}
-            stressFactor={0.92}
-            thermalFactor={0.62}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.92} thermalFactor={0.62} />
         </mesh>
         <mesh position={[0, 0, 0.065]} rotation={[Math.PI / 2, 0, 0]} castShadow>
           <cylinderGeometry args={[0.036, 0.036, 0.03, 20]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.84}
-            roughness={0.26}
+            finish="satin-steel"
+            baseColor="#9aa3ae"
             stressFactor={0.88}
             thermalFactor={0.68}
           />
@@ -1360,22 +1252,14 @@ export function WindTurbineAssembly({
           {/* Open-ribbed planetary ring gear housing */}
           <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
             <torusGeometry args={[0.052, 0.01, 10, 24]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#475569"
-              metalness={0.84}
-              roughness={0.26}
-              stressFactor={0.94}
-              thermalFactor={0.82}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.94} thermalFactor={0.82} />
           </mesh>
           <mesh position={[0, 0, -0.022]} rotation={[Math.PI / 2, 0, 0]} castShadow>
             <cylinderGeometry args={[0.054, 0.054, 0.024, 24]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#334155"
-              metalness={0.84}
-              roughness={0.28}
+              finish="anodized-aluminum"
+              baseColor="#8d96a2"
               stressFactor={0.92}
               thermalFactor={0.86}
             />
@@ -1390,27 +1274,13 @@ export function WindTurbineAssembly({
                 castShadow
               >
                 <cylinderGeometry args={[0.017, 0.017, 0.024, 12]} />
-                <ShowcasePartMaterial
-                  {...sharedMat}
-                  baseColor="#d97706"
-                  metalness={0.88}
-                  roughness={0.2}
-                  stressFactor={0.96}
-                  thermalFactor={0.9}
-                />
+                <ShowcasePartMaterial {...sharedMat} finish="brass" stressFactor={0.96} thermalFactor={0.9} />
               </mesh>
             ))}
             {/* Central high-speed sun pinion */}
             <mesh rotation={[Math.PI / 2, highSpeedSpin, 0]} castShadow>
               <cylinderGeometry args={[0.014, 0.014, 0.038, 12]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.92}
-                roughness={0.16}
-                stressFactor={0.94}
-                thermalFactor={0.88}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.94} thermalFactor={0.88} />
             </mesh>
           </group>
         </group>
@@ -1420,44 +1290,19 @@ export function WindTurbineAssembly({
           {/* High-speed coupling shaft */}
           <mesh position={[0, 0, 0.044]} rotation={[Math.PI / 2, 0, highSpeedSpin]}>
             <cylinderGeometry args={[0.01, 0.01, 0.052, 12]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.9}
-              roughness={0.18}
-              stressFactor={0.78}
-              thermalFactor={0.82}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.78} thermalFactor={0.82} />
           </mesh>
           {/* Spinning copper-wound generator rotor */}
           <group rotation={[0, 0, highSpeedSpin]}>
             <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
               <cylinderGeometry args={[0.036, 0.036, 0.072, 20]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#d97706"
-                emissive="#92400e"
-                emissiveIntensity={0.26}
-                metalness={0.88}
-                roughness={0.22}
-                stressFactor={0.74}
-                thermalFactor={0.98}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="copper" stressFactor={0.74} thermalFactor={0.98} />
             </mesh>
             {/* 6 copper armature slot bars so high-speed rotation reads vividly */}
             {DRONE_ARM_ANGLES.map((a, idx) => (
               <mesh key={`coil-bar-${idx}`} position={[Math.cos(a) * 0.037, Math.sin(a) * 0.037, 0]}>
                 <boxGeometry args={[0.008, 0.008, 0.068]} />
-                <ShowcasePartMaterial
-                  {...sharedMat}
-                  baseColor="#f59e0b"
-                  emissive="#b45309"
-                  emissiveIntensity={0.3}
-                  metalness={0.9}
-                  roughness={0.2}
-                  stressFactor={0.7}
-                  thermalFactor={0.98}
-                />
+                <ShowcasePartMaterial {...sharedMat} finish="brass" stressFactor={0.7} thermalFactor={0.98} />
               </mesh>
             ))}
           </group>
@@ -1465,14 +1310,7 @@ export function WindTurbineAssembly({
           {[-0.028, 0, 0.028].map((zRing, idx) => (
             <mesh key={`stator-ring-${idx}`} position={[0, 0, zRing]} castShadow>
               <torusGeometry args={[0.048, 0.006, 8, 24]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#475569"
-                metalness={0.82}
-                roughness={0.28}
-                stressFactor={0.56}
-                thermalFactor={0.86}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.56} thermalFactor={0.86} />
             </mesh>
           ))}
         </group>
@@ -1481,25 +1319,17 @@ export function WindTurbineAssembly({
         <group position={[0, 0, hubZ]} rotation={[0, 0, rotorAngle]}>
           {/* Ogive fiberglass spinner nose cone */}
           <mesh geometry={spinnerGeom} rotation={[Math.PI / 2, 0, 0]} castShadow receiveShadow>
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#f8fafc"
-              metalness={0.26}
-              roughness={0.24}
-              stressFactor={0.48}
-              thermalFactor={0.3}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="ceramic-white" stressFactor={0.48} thermalFactor={0.3} />
           </mesh>
           {/* Spinner collar accent ring */}
           <mesh position={[0, 0, 0.008]}>
             <torusGeometry args={[0.056, 0.005, 8, 28]} />
             <ShowcasePartMaterial
               {...sharedMat}
+              finish="painted"
               baseColor={accentColor}
               emissive={accentColor}
-              emissiveIntensity={0.45}
-              metalness={0.45}
-              roughness={0.24}
+              emissiveIntensity={0.3}
               stressFactor={0.52}
               thermalFactor={0.34}
             />
@@ -1516,9 +1346,7 @@ export function WindTurbineAssembly({
                     <cylinderGeometry args={[0.016, 0.017, 0.018, 14]} />
                     <ShowcasePartMaterial
                       {...sharedMat}
-                      baseColor="#475569"
-                      metalness={0.84}
-                      roughness={0.24}
+                      finish="satin-steel"
                       stressFactor={0.95}
                       thermalFactor={0.42}
                     />
@@ -1527,9 +1355,7 @@ export function WindTurbineAssembly({
                   <mesh geometry={bladeGeom} castShadow receiveShadow>
                     <ShowcasePartMaterial
                       {...sharedMat}
-                      baseColor="#f1f5f9"
-                      metalness={0.22}
-                      roughness={0.24}
+                      finish="ceramic-white"
                       stressFactor={0.84}
                       thermalFactor={0.3}
                     />
@@ -1539,11 +1365,8 @@ export function WindTurbineAssembly({
                     <boxGeometry args={[0.019, 0.038, 0.006]} />
                     <ShowcasePartMaterial
                       {...sharedMat}
-                      baseColor="#ef4444"
-                      emissive="#dc2626"
-                      emissiveIntensity={0.32}
-                      metalness={0.22}
-                      roughness={0.28}
+                      finish="painted"
+                      baseColor="#e04231"
                       stressFactor={0.62}
                       thermalFactor={0.28}
                     />
@@ -1601,9 +1424,7 @@ function SolarPanelCard({ sharedMat, thermalFactor, stressFactor }: SolarPanelCa
         <boxGeometry args={[0.096, 0.158, 0.007]} />
         <ShowcasePartMaterial
           {...sharedMat}
-          baseColor="#cbd5e1"
-          metalness={0.84}
-          roughness={0.24}
+          finish="brushed-aluminum"
           stressFactor={stressFactor}
           thermalFactor={thermalFactor * 0.7}
         />
@@ -1613,11 +1434,7 @@ function SolarPanelCard({ sharedMat, thermalFactor, stressFactor }: SolarPanelCa
         <boxGeometry args={[0.086, 0.146, 0.0086]} />
         <ShowcasePartMaterial
           {...sharedMat}
-          baseColor="#0f2354"
-          emissive="#1d4ed8"
-          emissiveIntensity={0.2}
-          metalness={0.56}
-          roughness={0.16}
+          finish="solar-cell"
           stressFactor={stressFactor * 0.85}
           thermalFactor={thermalFactor}
         />
@@ -1628,9 +1445,7 @@ function SolarPanelCard({ sharedMat, thermalFactor, stressFactor }: SolarPanelCa
           <boxGeometry args={[0.086, 0.003, 0.0096]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.92}
-            roughness={0.16}
+            finish="polished-steel"
             stressFactor={0.3}
             thermalFactor={thermalFactor * 0.85}
           />
@@ -1642,9 +1457,7 @@ function SolarPanelCard({ sharedMat, thermalFactor, stressFactor }: SolarPanelCa
           <boxGeometry args={[0.0028, 0.146, 0.0096]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#e2e8f0"
-            metalness={0.92}
-            roughness={0.16}
+            finish="polished-steel"
             stressFactor={0.3}
             thermalFactor={thermalFactor * 0.85}
           />
@@ -1741,11 +1554,9 @@ export function OrbitalSatelliteAssembly({
         <torusGeometry args={[0.16, 0.007, 8, 36]} />
         <ShowcasePartMaterial
           {...sharedMat}
-          baseColor="#334155"
+          finish="anodized-aluminum"
           emissive={accentColor}
-          emissiveIntensity={0.24}
-          metalness={0.82}
-          roughness={0.28}
+          emissiveIntensity={0.2}
           stressFactor={0.18}
           thermalFactor={0.14}
         />
@@ -1755,38 +1566,17 @@ export function OrbitalSatelliteAssembly({
         {/* 1. Octagonal Spacecraft Bus End Bulkheads & Corner Longerons */}
         <mesh position={[0, 0.112, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.114, 0.118, 0.016, 8]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#eab308"
-            metalness={0.86}
-            roughness={0.28}
-            stressFactor={0.46}
-            thermalFactor={0.62}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="gold" stressFactor={0.46} thermalFactor={0.62} />
         </mesh>
         <mesh position={[0, -0.112, 0]} castShadow receiveShadow>
           <cylinderGeometry args={[0.118, 0.114, 0.016, 8]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#d97706"
-            metalness={0.86}
-            roughness={0.3}
-            stressFactor={0.5}
-            thermalFactor={0.58}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="brass" stressFactor={0.5} thermalFactor={0.58} />
         </mesh>
         {/* 4 structural corner posts framing the internal avionics/reaction-wheel bay */}
         {[0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2].map((a, idx) => (
           <mesh key={`longeron-${idx}`} position={[Math.cos(a) * 0.098, 0, Math.sin(a) * 0.098]}>
             <boxGeometry args={[0.014, 0.212, 0.014]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#94a3b8"
-              metalness={0.88}
-              roughness={0.22}
-              stressFactor={0.66}
-              thermalFactor={0.48}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.66} thermalFactor={0.48} />
           </mesh>
         ))}
 
@@ -1804,11 +1594,8 @@ export function OrbitalSatelliteAssembly({
                 <boxGeometry args={[0.096, 0.205, 0.012]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#e5a928"
-                  emissive="#92400e"
-                  emissiveIntensity={0.14}
-                  metalness={0.88}
-                  roughness={0.28}
+                  finish="gold"
+                  roughness={0.32}
                   stressFactor={0.36}
                   thermalFactor={0.74}
                 />
@@ -1818,9 +1605,9 @@ export function OrbitalSatelliteAssembly({
                 <boxGeometry args={[0.068, 0.088, 0.004]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#e2e8f0"
-                  metalness={0.92}
-                  roughness={0.14}
+                  finish="polished-steel"
+                  baseColor="#dfe4ea"
+                  roughness={0.18}
                   stressFactor={0.28}
                   thermalFactor={0.82}
                 />
@@ -1831,9 +1618,8 @@ export function OrbitalSatelliteAssembly({
                   <boxGeometry args={[0.084, 0.01, 0.004]} />
                   <ShowcasePartMaterial
                     {...sharedMat}
-                    baseColor="#b45309"
-                    metalness={0.84}
-                    roughness={0.32}
+                    finish="copper"
+                    baseColor="#d69c6c"
                     stressFactor={0.32}
                     thermalFactor={0.68}
                   />
@@ -1850,9 +1636,8 @@ export function OrbitalSatelliteAssembly({
             <sphereGeometry args={[0.048, 20, 16]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.88}
-              roughness={0.2}
+              finish="satin-steel"
+              baseColor="#c4cad2"
               stressFactor={0.88}
               thermalFactor={0.56}
             />
@@ -1862,9 +1647,8 @@ export function OrbitalSatelliteAssembly({
             <torusGeometry args={[0.049, 0.003, 8, 24]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#64748b"
-              metalness={0.9}
-              roughness={0.18}
+              finish="anodized-aluminum"
+              baseColor="#8c95a2"
               stressFactor={0.82}
               thermalFactor={0.52}
             />
@@ -1877,23 +1661,15 @@ export function OrbitalSatelliteAssembly({
               <torusGeometry args={[0.026, 0.006, 8, 20]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#38bdf8"
-                metalness={0.86}
-                roughness={0.2}
+                finish="anodized-aluminum"
+                baseColor="#68b8e8"
                 stressFactor={0.76}
                 thermalFactor={0.74}
               />
             </mesh>
             <mesh>
               <boxGeometry args={[0.048, 0.005, 0.006]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.9}
-                roughness={0.18}
-                stressFactor={0.7}
-                thermalFactor={0.72}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.7} thermalFactor={0.72} />
             </mesh>
           </group>
 
@@ -1903,23 +1679,15 @@ export function OrbitalSatelliteAssembly({
               <torusGeometry args={[0.026, 0.006, 8, 20]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#22c55e"
-                metalness={0.86}
-                roughness={0.2}
+                finish="anodized-aluminum"
+                baseColor="#5ec492"
                 stressFactor={0.76}
                 thermalFactor={0.74}
               />
             </mesh>
             <mesh>
               <boxGeometry args={[0.048, 0.005, 0.006]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.9}
-                roughness={0.18}
-                stressFactor={0.7}
-                thermalFactor={0.72}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.7} thermalFactor={0.72} />
             </mesh>
           </group>
 
@@ -1927,25 +1695,11 @@ export function OrbitalSatelliteAssembly({
           <group position={[0.044, -0.046, 0.012]} rotation={[Math.PI / 2, 0, rwSpinZ]}>
             <mesh rotation={[Math.PI / 2, 0, 0]}>
               <torusGeometry args={[0.026, 0.006, 8, 20]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#f59e0b"
-                metalness={0.86}
-                roughness={0.2}
-                stressFactor={0.76}
-                thermalFactor={0.76}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="brass" stressFactor={0.76} thermalFactor={0.76} />
             </mesh>
             <mesh>
               <boxGeometry args={[0.048, 0.005, 0.006]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.9}
-                roughness={0.18}
-                stressFactor={0.7}
-                thermalFactor={0.72}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.7} thermalFactor={0.72} />
             </mesh>
           </group>
 
@@ -1954,25 +1708,11 @@ export function OrbitalSatelliteAssembly({
             <group key={`avionics-card-${idx}`} position={[0, yCard - 0.008, 0.055]}>
               <mesh>
                 <boxGeometry args={[0.072, 0.008, 0.046]} />
-                <ShowcasePartMaterial
-                  {...sharedMat}
-                  baseColor="#065f46"
-                  metalness={0.35}
-                  roughness={0.44}
-                  stressFactor={0.28}
-                  thermalFactor={0.9}
-                />
+                <ShowcasePartMaterial {...sharedMat} finish="pcb" stressFactor={0.28} thermalFactor={0.9} />
               </mesh>
               <mesh position={[0, 0.005, 0.018]}>
                 <boxGeometry args={[0.052, 0.004, 0.008]} />
-                <ShowcasePartMaterial
-                  {...sharedMat}
-                  baseColor="#eab308"
-                  metalness={0.92}
-                  roughness={0.18}
-                  stressFactor={0.22}
-                  thermalFactor={0.86}
-                />
+                <ShowcasePartMaterial {...sharedMat} finish="gold" stressFactor={0.22} thermalFactor={0.86} />
               </mesh>
             </group>
           ))}
@@ -1988,14 +1728,7 @@ export function OrbitalSatelliteAssembly({
             {/* Root deployment yoke boom */}
             <mesh position={[-side * 0.016, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
               <cylinderGeometry args={[0.007, 0.008, 0.036, 10]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#94a3b8"
-                metalness={0.86}
-                roughness={0.24}
-                stressFactor={0.84}
-                thermalFactor={0.46}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="satin-steel" stressFactor={0.84} thermalFactor={0.46} />
             </mesh>
             {/* Hinge 1 -> Panel 1 */}
             <group rotation={[0, side * wingFoldRoot, 0]}>
@@ -2003,9 +1736,7 @@ export function OrbitalSatelliteAssembly({
                 <cylinderGeometry args={[0.006, 0.006, 0.036, 8]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#cbd5e1"
-                  metalness={0.88}
-                  roughness={0.2}
+                  finish="brushed-aluminum"
                   stressFactor={0.78}
                   thermalFactor={0.44}
                 />
@@ -2020,9 +1751,7 @@ export function OrbitalSatelliteAssembly({
                   <cylinderGeometry args={[0.0055, 0.0055, 0.032, 8]} />
                   <ShowcasePartMaterial
                     {...sharedMat}
-                    baseColor="#cbd5e1"
-                    metalness={0.88}
-                    roughness={0.2}
+                    finish="brushed-aluminum"
                     stressFactor={0.62}
                     thermalFactor={0.42}
                   />
@@ -2037,9 +1766,7 @@ export function OrbitalSatelliteAssembly({
                     <cylinderGeometry args={[0.005, 0.005, 0.028, 8]} />
                     <ShowcasePartMaterial
                       {...sharedMat}
-                      baseColor="#cbd5e1"
-                      metalness={0.88}
-                      roughness={0.2}
+                      finish="brushed-aluminum"
                       stressFactor={0.44}
                       thermalFactor={0.4}
                     />
@@ -2060,23 +1787,15 @@ export function OrbitalSatelliteAssembly({
             <cylinderGeometry args={[0.022, 0.028, 0.026, 16]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#475569"
-              metalness={0.82}
-              roughness={0.26}
+              finish="satin-steel"
+              baseColor="#8f98a4"
               stressFactor={0.58}
               thermalFactor={0.46}
             />
           </mesh>
           {/* Parabolic dish reflector */}
           <mesh geometry={dishGeom} castShadow receiveShadow>
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#e2e8f0"
-              metalness={0.62}
-              roughness={0.22}
-              stressFactor={0.38}
-              thermalFactor={0.48}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="ceramic-white" stressFactor={0.38} thermalFactor={0.48} />
           </mesh>
           {/* Feed horn tripod struts converging cleanly at focal feed horn */}
           {SAT_TRIPOD_ANGLES.map((a, idx) => (
@@ -2085,9 +1804,7 @@ export function OrbitalSatelliteAssembly({
                 <cylinderGeometry args={[0.0028, 0.0028, 0.104, 8]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#94a3b8"
-                  metalness={0.88}
-                  roughness={0.22}
+                  finish="brushed-aluminum"
                   stressFactor={0.42}
                   thermalFactor={0.44}
                 />
@@ -2097,16 +1814,7 @@ export function OrbitalSatelliteAssembly({
           {/* Central Gold/Copper RF Feed Horn at Focal Point */}
           <mesh position={[0, 0.088, 0]} castShadow>
             <cylinderGeometry args={[0.014, 0.01, 0.024, 16]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#f59e0b"
-              emissive="#b45309"
-              emissiveIntensity={0.25}
-              metalness={0.9}
-              roughness={0.18}
-              stressFactor={0.34}
-              thermalFactor={0.72}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="gold" stressFactor={0.34} thermalFactor={0.72} />
           </mesh>
         </group>
 
@@ -2116,9 +1824,8 @@ export function OrbitalSatelliteAssembly({
             <cylinderGeometry args={[0.022, 0.012, 0.052, 16]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#0f172a"
-              metalness={0.62}
-              roughness={0.34}
+              finish="dark-anodized"
+              baseColor="#535c69"
               stressFactor={0.24}
               thermalFactor={0.36}
             />
@@ -2127,11 +1834,10 @@ export function OrbitalSatelliteAssembly({
             <torusGeometry args={[0.022, 0.0025, 8, 20]} />
             <ShowcasePartMaterial
               {...sharedMat}
+              finish="painted"
               baseColor={accentColor}
               emissive={accentColor}
-              emissiveIntensity={0.6}
-              metalness={0.6}
-              roughness={0.2}
+              emissiveIntensity={0.45}
               stressFactor={0.2}
               thermalFactor={0.34}
             />
@@ -2145,9 +1851,8 @@ export function OrbitalSatelliteAssembly({
             <cylinderGeometry args={[0.042, 0.036, 0.044, 22]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#334155"
-              metalness={0.86}
-              roughness={0.24}
+              finish="satin-steel"
+              baseColor="#8d96a2"
               stressFactor={0.8}
               thermalFactor={0.98}
             />
@@ -2157,11 +1862,9 @@ export function OrbitalSatelliteAssembly({
             <torusGeometry args={[0.026, 0.007, 10, 24]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#e2e8f0"
+              finish="ceramic-white"
               emissive="#38bdf8"
-              emissiveIntensity={0.55 + plumePulse * 0.4}
-              metalness={0.3}
-              roughness={0.25}
+              emissiveIntensity={0.45 + plumePulse * 0.35}
               stressFactor={0.84}
               thermalFactor={0.98}
             />
@@ -2169,14 +1872,7 @@ export function OrbitalSatelliteAssembly({
           {/* Exterior cathode neutralizer emitter */}
           <mesh position={[0.036, 0.024, -0.024]} rotation={[Math.PI / 2, 0, -0.3]}>
             <cylinderGeometry args={[0.005, 0.006, 0.028, 10]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.9}
-              roughness={0.18}
-              stressFactor={0.52}
-              thermalFactor={0.92}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.52} thermalFactor={0.92} />
           </mesh>
 
           {/* Pulsing Cyan/Violet Ion Plasma Plume */}
@@ -2378,9 +2074,8 @@ export function EvBatteryPackAssembly({
             <cylinderGeometry args={[0.024, 0.028, 0.024, 14]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#0f172a"
-              metalness={0.2}
-              roughness={0.78}
+              finish="rubber"
+              roughness={0.86}
               stressFactor={0.42}
               thermalFactor={0.14}
             />
@@ -2390,14 +2085,7 @@ export function EvBatteryPackAssembly({
         {/* Cast-aluminum lower structural floor pan */}
         <mesh castShadow receiveShadow>
           <boxGeometry args={[0.51, 0.022, 0.63]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#64748b"
-            metalness={0.82}
-            roughness={0.3}
-            stressFactor={0.62}
-            thermalFactor={0.22}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="cast-aluminum" stressFactor={0.62} thermalFactor={0.22} />
         </mesh>
 
         {/* Left & Right extruded aluminum side crash rails with external ribs */}
@@ -2405,14 +2093,7 @@ export function EvBatteryPackAssembly({
           <group key={`rail-${side}`} position={[side * 0.246, 0.056, 0]}>
             <mesh castShadow receiveShadow>
               <boxGeometry args={[0.044, 0.112, 0.65]} />
-              <ShowcasePartMaterial
-                {...sharedMat}
-                baseColor="#94a3b8"
-                metalness={0.84}
-                roughness={0.26}
-                stressFactor={0.84}
-                thermalFactor={0.2}
-              />
+              <ShowcasePartMaterial {...sharedMat} finish="anodized-aluminum" stressFactor={0.84} thermalFactor={0.2} />
             </mesh>
             {/* External crash-absorption stiffening ribs */}
             {[-0.22, -0.075, 0.075, 0.22].map((zRib, rIdx) => (
@@ -2420,9 +2101,7 @@ export function EvBatteryPackAssembly({
                 <boxGeometry args={[0.012, 0.092, 0.022]} />
                 <ShowcasePartMaterial
                   {...sharedMat}
-                  baseColor="#cbd5e1"
-                  metalness={0.86}
-                  roughness={0.24}
+                  finish="brushed-aluminum"
                   stressFactor={0.88}
                   thermalFactor={0.18}
                 />
@@ -2437,9 +2116,8 @@ export function EvBatteryPackAssembly({
             <boxGeometry args={[0.534, 0.112, 0.036]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#64748b"
-              metalness={0.84}
-              roughness={0.28}
+              finish="cast-aluminum"
+              baseColor="#b8bec6"
               stressFactor={0.74}
               thermalFactor={0.22}
             />
@@ -2451,9 +2129,8 @@ export function EvBatteryPackAssembly({
           <boxGeometry args={[0.016, 0.078, 0.49]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#475569"
-            metalness={0.82}
-            roughness={0.3}
+            finish="satin-steel"
+            baseColor="#9aa3ae"
             stressFactor={0.78}
             thermalFactor={0.44}
           />
@@ -2463,14 +2140,7 @@ export function EvBatteryPackAssembly({
         {FLANGE_BOLT_POSITIONS.map(([bx, bz], idx) => (
           <mesh key={`flange-bolt-${idx}`} position={[bx, 0.118, bz]}>
             <cylinderGeometry args={[0.008, 0.008, 0.014, 6]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#e2e8f0"
-              metalness={0.92}
-              roughness={0.18}
-              stressFactor={0.6}
-              thermalFactor={0.18}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.6} thermalFactor={0.18} />
           </mesh>
         ))}
       </group>
@@ -2480,24 +2150,16 @@ export function EvBatteryPackAssembly({
         {/* Aluminum thermal transfer cold plate */}
         <mesh castShadow receiveShadow>
           <boxGeometry args={[0.425, 0.012, 0.48]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#94a3b8"
-            metalness={0.86}
-            roughness={0.22}
-            stressFactor={0.42}
-            thermalFactor={0.4}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.42} thermalFactor={0.4} />
         </mesh>
         {/* Cold inlet serpentine cooling loop (cyan) */}
         <mesh geometry={coldLoopGeom}>
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#06b6d4"
+            finish="painted"
+            baseColor="#0ea5c6"
             emissive="#0891b2"
-            emissiveIntensity={0.38}
-            metalness={0.55}
-            roughness={0.22}
+            emissiveIntensity={0.24}
             stressFactor={0.34}
             thermalFactor={0.12}
           />
@@ -2506,11 +2168,10 @@ export function EvBatteryPackAssembly({
         <mesh geometry={warmLoopGeom}>
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#f43f5e"
-            emissive="#e11d48"
-            emissiveIntensity={0.38}
-            metalness={0.55}
-            roughness={0.22}
+            finish="painted"
+            baseColor="#e54865"
+            emissive="#be123c"
+            emissiveIntensity={0.24}
             stressFactor={0.34}
             thermalFactor={0.78}
           />
@@ -2522,25 +2183,17 @@ export function EvBatteryPackAssembly({
             <cylinderGeometry args={[0.012, 0.012, 0.1, 14]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#06b6d4"
+              finish="painted"
+              baseColor="#0ea5c6"
               emissive="#0891b2"
-              emissiveIntensity={0.45}
-              metalness={0.52}
-              roughness={0.22}
+              emissiveIntensity={0.28}
               stressFactor={0.36}
               thermalFactor={0.1}
             />
           </mesh>
           <mesh position={[0, 0, -0.048]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.017, 0.017, 0.018, 12]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.9}
-              roughness={0.18}
-              stressFactor={0.42}
-              thermalFactor={0.14}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.42} thermalFactor={0.14} />
           </mesh>
           {!isGhost && (
             <mesh position={[0, 0, -0.042 + flowPhase * 0.084]}>
@@ -2561,25 +2214,17 @@ export function EvBatteryPackAssembly({
             <cylinderGeometry args={[0.012, 0.012, 0.1, 14]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#f43f5e"
-              emissive="#e11d48"
-              emissiveIntensity={0.45}
-              metalness={0.52}
-              roughness={0.22}
+              finish="painted"
+              baseColor="#e54865"
+              emissive="#be123c"
+              emissiveIntensity={0.28}
               stressFactor={0.36}
               thermalFactor={0.82}
             />
           </mesh>
           <mesh position={[0, 0, -0.048]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.017, 0.017, 0.018, 12]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#cbd5e1"
-              metalness={0.9}
-              roughness={0.18}
-              stressFactor={0.42}
-              thermalFactor={0.72}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="polished-steel" stressFactor={0.42} thermalFactor={0.72} />
           </mesh>
           {!isGhost && (
             <mesh position={[0, 0, 0.042 - flowPhase * 0.084]}>
@@ -2611,9 +2256,8 @@ export function EvBatteryPackAssembly({
               <boxGeometry args={[0.184, 0.068, 0.132]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#334155"
-                metalness={0.76}
-                roughness={0.28}
+                finish="anodized-aluminum"
+                baseColor="#9ca4b0"
                 stressFactor={mod.stressFactor}
                 thermalFactor={mod.thermalFactor}
               />
@@ -2627,9 +2271,8 @@ export function EvBatteryPackAssembly({
                   <boxGeometry args={[0.168, 0.008, 0.023]} />
                   <ShowcasePartMaterial
                     {...sharedMat}
-                    baseColor="#1e3a5f"
-                    metalness={0.58}
-                    roughness={0.26}
+                    finish="anodized-aluminum"
+                    baseColor="#4a7eb0"
                     stressFactor={mod.stressFactor * 0.9}
                     thermalFactor={cellThermal}
                   />
@@ -2641,9 +2284,7 @@ export function EvBatteryPackAssembly({
               <boxGeometry args={[0.018, 0.012, 0.088]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#cbd5e1"
-                metalness={0.92}
-                roughness={0.16}
+                finish="brushed-aluminum"
                 stressFactor={0.44}
                 thermalFactor={clampNumber(mod.thermalFactor * 0.92, 0, 1)}
               />
@@ -2652,23 +2293,20 @@ export function EvBatteryPackAssembly({
               <boxGeometry args={[0.018, 0.012, 0.088]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#d97706"
-                metalness={0.9}
-                roughness={0.18}
+                finish="copper"
                 stressFactor={0.44}
                 thermalFactor={clampNumber(mod.thermalFactor * 0.98, 0, 1)}
               />
             </mesh>
-            {/* Glowing orange high-voltage copper busbar bridge */}
+            {/* High-voltage orange insulated copper busbar bridge */}
             <mesh position={[0, 0.046, 0]}>
               <boxGeometry args={[0.12, 0.007, 0.018]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#f97316"
-                emissive="#ea580c"
-                emissiveIntensity={0.48 + hvPulse * 0.34}
-                metalness={0.82}
-                roughness={0.2}
+                finish="painted"
+                baseColor="#ee6b1c"
+                emissive="#c2410c"
+                emissiveIntensity={0.28 + hvPulse * 0.22}
                 stressFactor={0.38}
                 thermalFactor={clampNumber(mod.thermalFactor + 0.03, 0, 1)}
               />
@@ -2684,11 +2322,10 @@ export function EvBatteryPackAssembly({
             <boxGeometry args={[0.012, 0.008, 0.48]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#f97316"
-              emissive="#ea580c"
-              emissiveIntensity={0.55 + hvPulse * 0.35}
-              metalness={0.78}
-              roughness={0.22}
+              finish="painted"
+              baseColor="#ee6b1c"
+              emissive="#c2410c"
+              emissiveIntensity={0.32 + hvPulse * 0.24}
               stressFactor={0.35}
               thermalFactor={0.86}
             />
@@ -2701,27 +2338,13 @@ export function EvBatteryPackAssembly({
         {/* BMS controller enclosure */}
         <mesh position={[-0.042, 0, 0]} castShadow>
           <boxGeometry args={[0.205, 0.048, 0.068]} />
-          <ShowcasePartMaterial
-            {...sharedMat}
-            baseColor="#1e293b"
-            metalness={0.72}
-            roughness={0.28}
-            stressFactor={0.36}
-            thermalFactor={0.76}
-          />
+          <ShowcasePartMaterial {...sharedMat} finish="dark-anodized" stressFactor={0.36} thermalFactor={0.76} />
         </mesh>
         {/* BMS heatsink fins */}
         {[-0.095, -0.06, -0.025, 0.01].map((xFin, idx) => (
           <mesh key={`bms-fin-${idx}`} position={[xFin, 0.026, 0]}>
             <boxGeometry args={[0.01, 0.008, 0.062]} />
-            <ShowcasePartMaterial
-              {...sharedMat}
-              baseColor="#64748b"
-              metalness={0.86}
-              roughness={0.24}
-              stressFactor={0.32}
-              thermalFactor={0.72}
-            />
+            <ShowcasePartMaterial {...sharedMat} finish="brushed-aluminum" stressFactor={0.32} thermalFactor={0.72} />
           </mesh>
         ))}
         {/* BMS telemetry status LED */}
@@ -2745,11 +2368,10 @@ export function EvBatteryPackAssembly({
             <boxGeometry args={[0.082, 0.044, 0.064]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#f97316"
-              emissive="#ea580c"
-              emissiveIntensity={0.44 + hvPulse * 0.25}
-              metalness={0.42}
-              roughness={0.28}
+              finish="painted"
+              baseColor="#ee6b1c"
+              emissive="#c2410c"
+              emissiveIntensity={0.22 + hvPulse * 0.16}
               stressFactor={0.4}
               thermalFactor={0.82}
             />
@@ -2759,11 +2381,10 @@ export function EvBatteryPackAssembly({
             <cylinderGeometry args={[0.014, 0.014, 0.056, 14]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#fb923c"
-              emissive="#ea580c"
-              emissiveIntensity={0.5}
-              metalness={0.52}
-              roughness={0.24}
+              finish="painted"
+              baseColor="#f27d2e"
+              emissive="#c2410c"
+              emissiveIntensity={0.26}
               stressFactor={0.36}
               thermalFactor={0.84}
             />
@@ -2774,11 +2395,10 @@ export function EvBatteryPackAssembly({
               <cylinderGeometry args={[0.01, 0.01, 0.026, 12]} />
               <ShowcasePartMaterial
                 {...sharedMat}
-                baseColor="#f97316"
-                emissive="#c2410c"
-                emissiveIntensity={0.38}
-                metalness={0.48}
-                roughness={0.26}
+                finish="painted"
+                baseColor="#ee6b1c"
+                emissive="#9a3412"
+                emissiveIntensity={0.2}
                 stressFactor={0.34}
                 thermalFactor={0.78}
               />
@@ -2793,9 +2413,8 @@ export function EvBatteryPackAssembly({
           <boxGeometry args={[0.532, 0.016, 0.652]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#1e293b"
-            metalness={0.34}
-            roughness={0.38}
+            finish="carbon-fiber"
+            baseColor="#49525f"
             stressFactor={0.38}
             thermalFactor={0.34}
           />
@@ -2806,9 +2425,8 @@ export function EvBatteryPackAssembly({
             <boxGeometry args={[0.46, 0.008, 0.026]} />
             <ShowcasePartMaterial
               {...sharedMat}
-              baseColor="#334155"
-              metalness={0.42}
-              roughness={0.34}
+              finish="anodized-aluminum"
+              baseColor="#7e8794"
               stressFactor={0.42}
               thermalFactor={0.36}
             />
@@ -2819,11 +2437,10 @@ export function EvBatteryPackAssembly({
           <boxGeometry args={[0.38, 0.006, 0.022]} />
           <ShowcasePartMaterial
             {...sharedMat}
-            baseColor="#f97316"
-            emissive="#ea580c"
-            emissiveIntensity={0.4}
-            metalness={0.3}
-            roughness={0.32}
+            finish="painted"
+            baseColor="#ee6b1c"
+            emissive="#c2410c"
+            emissiveIntensity={0.22}
             stressFactor={0.28}
             thermalFactor={0.38}
           />
@@ -2832,11 +2449,10 @@ export function EvBatteryPackAssembly({
           <boxGeometry args={[0.52, 0.005, 0.64]} />
           <ShowcasePartMaterial
             {...sharedMat}
+            finish="painted"
             baseColor={accentColor}
             emissive={accentColor}
-            emissiveIntensity={0.32}
-            metalness={0.35}
-            roughness={0.35}
+            emissiveIntensity={0.24}
             stressFactor={0.26}
             thermalFactor={0.28}
           />

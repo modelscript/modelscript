@@ -1,0 +1,79 @@
+{
+  "system-security-plan": {
+    "uuid": "55555555-5555-4555-8555-555555555504",
+    "metadata": {
+      "title": "Digital Twin Cloud Platform System Security Plan",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "import-profile": {
+      "href": "./profile.oscal.json"
+    },
+    "system-implementation": {
+      "components": [
+        {
+          "uuid": "55555555-5555-4555-8555-555555555510",
+          "type": "software",
+          "title": "IdentityBrokerService",
+          "description": "OIDC and SAML identity provider enforcing MFA and RBAC."
+        },
+        {
+          "uuid": "55555555-5555-4555-8555-555555555511",
+          "type": "software",
+          "title": "MeshIngressProxy",
+          "description": "FIPS 140-3 validated TLS 1.3 ingress gateway and audit collector."
+        }
+      ]
+    },
+    "control-implementation": {
+      "description": "Full baseline control implementation across platform services.",
+      "implemented-requirements": [
+        {
+          "uuid": "55555555-5555-4555-8555-555555555520",
+          "control-id": "ac-3",
+          "by-components": [
+            {
+              "component-uuid": "55555555-5555-4555-8555-555555555510",
+              "uuid": "55555555-5555-4555-8555-555555555521",
+              "description": "Fine-grained tenant RBAC enforced on every API call."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-5555-4555-8555-555555555522",
+          "control-id": "au-2",
+          "by-components": [
+            {
+              "component-uuid": "55555555-5555-4555-8555-555555555511",
+              "uuid": "55555555-5555-4555-8555-555555555523",
+              "description": "Structured JSON audit logs streamed to immutable WORM storage."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-5555-4555-8555-555555555524",
+          "control-id": "sc-7",
+          "by-components": [
+            {
+              "component-uuid": "55555555-5555-4555-8555-555555555511",
+              "uuid": "55555555-5555-4555-8555-555555555525",
+              "description": "Zero-trust VPC network policies restrict east-west and north-south traffic."
+            }
+          ]
+        },
+        {
+          "uuid": "55555555-5555-4555-8555-555555555526",
+          "control-id": "sc-8",
+          "by-components": [
+            {
+              "component-uuid": "55555555-5555-4555-8555-555555555511",
+              "uuid": "55555555-5555-4555-8555-555555555527",
+              "description": "TLS 1.3 with FIPS 140-3 cipher suites required on all external and internal links."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

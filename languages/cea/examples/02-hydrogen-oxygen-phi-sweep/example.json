@@ -1,0 +1,11 @@
+{
+  "id": "cea-02-hydrogen-oxygen-phi-sweep",
+  "lang": "cea",
+  "subFormats": ["cea2", "hp-sweep"],
+  "difficulty": 2,
+  "title": "Hydrogen-Oxygen Combustion Equivalence-Ratio Sweep",
+  "description": "Parametric equivalence-ratio sweep (phi = 0.5 to 2.0) of gaseous H2/O2 combustion at 10 bar evaluating dissociation of OH, H, and O radicals.",
+  "category": "Combustion & Chemical Equilibrium",
+  "tags": ["cea", "hydrogen", "equivalence-ratio", "dissociation"],
+  "activeFile": "h2_o2_sweep.cea"
+}

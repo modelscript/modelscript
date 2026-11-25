@@ -1,0 +1,40 @@
+[TITLE]
+Reservoir-Pump-Tank Elevation Loop
+
+[JUNCTIONS]
+;ID              Elev         Demand       Pattern
+ J1              10           0            ;
+ J2              45           25           ;
+ J3              40           30           ;
+
+[RESERVOIRS]
+;ID              Head         Pattern
+ R1              15           ;
+
+[TANKS]
+;ID              Elev         InitLvl      MinLvl       MaxLvl       Diam         MinVol       VolCurve
+ T1              65           12           4            20           15.0         0            ;
+
+[PIPES]
+;ID              Node1        Node2        Length       Diam         Roughness    MinorLoss    Status
+ P1              J1           J2           1200         300          120          0            OPEN
+ P2              J2           J3           850          250          120          0            OPEN
+ P3              J2           T1           400          300          120          0            OPEN
+
+[PUMPS]
+;ID              Node1        Node2        Parameters
+ PMP1            R1           J1           HEAD PumpCurve1
+
+[CURVES]
+;ID              X-Value      Y-Value
+ PumpCurve1      0            95
+ PumpCurve1      40           82
+ PumpCurve1      80           58
+
+[OPTIONS]
+ Units                LPS
+ Headloss             H-W
+ Accuracy             0.001
+ Trials               40
+
+[END]

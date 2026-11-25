@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<nozzle name="nozzle">
+  <pe unit="PSF"> 2116.2 </pe>
+  <expr> 16.0 </expr>
+  <nzl_eff> 0.96 </nzl_eff>
+  <diam unit="FT"> 4.2 </diam>
+</nozzle>

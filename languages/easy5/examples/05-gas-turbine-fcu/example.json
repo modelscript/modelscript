@@ -1,0 +1,12 @@
+{
+  "id": "easy5-05-gas-turbine-fcu",
+  "lang": "easy5",
+  "subFormats": ["ez5", "ezd"],
+  "difficulty": 5,
+  "title": "Gas Turbine Fuel Control Unit with Schedule Table",
+  "description": "Aero-engine gas turbine FADEC Fuel Control Unit (FCU) coupling N2 spool speed regulation, acceleration fuel-limit clamping, combustor thermal lag, rotor inertia integration, and a companion acceleration schedule table.",
+  "category": "Propulsion Control",
+  "tags": ["easy5", "gas-turbine", "fadec", "fuel-control", "multi-file"],
+  "activeFile": "fcu_control.ez5",
+  "fileOrder": ["fcu_control.ez5", "fuel_schedule.ezd"]
+}

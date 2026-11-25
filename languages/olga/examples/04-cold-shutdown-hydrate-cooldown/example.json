@@ -1,0 +1,11 @@
+{
+  "id": "olga-04-cold-shutdown-hydrate-cooldown",
+  "lang": "olga",
+  "subFormats": ["opi"],
+  "difficulty": 4,
+  "title": "Cold Shutdown & Hydrate Cooldown Thermal Profile",
+  "description": "Insulated pipe-in-pipe subsea oil-gas tieback with multi-layer thermal coating, wax cloud-point monitoring, and controlled low-rate turndown to evaluate hydrate cooldown margin.",
+  "category": "Multiphase Flow Assurance",
+  "tags": ["olga", "hydrate-cooldown", "thermal-insulation", "wax"],
+  "activeFile": "hydrate_cooldown.opi"
+}

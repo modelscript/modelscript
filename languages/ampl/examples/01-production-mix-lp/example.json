@@ -1,0 +1,12 @@
+{
+  "id": "ampl-01-production-mix-lp",
+  "lang": "ampl",
+  "subFormats": ["mod", "dat"],
+  "difficulty": 1,
+  "title": "Steel Mill Production Mix LP",
+  "description": "Classic AMPL linear program maximizing weekly steel mill profit across product lines subject to rolling-mill capacity and market demand bounds.",
+  "category": "Linear Programming",
+  "tags": ["ampl", "lp", "production-planning", "manufacturing", "multi-file"],
+  "activeFile": "prod.mod",
+  "isDefaultStarter": true
+}

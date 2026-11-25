@@ -56,7 +56,9 @@ export function seedPolyglotInbox(
         recipientIds.add(u.id);
       }
     }
-  } catch {}
+  } catch {
+    // Skip inbox seeding if users table is unavailable
+  }
 
   if (recipientIds.size === 0) {
     return { notificationsSeeded: 0, bookmarksSeeded: 0, outboxJobsSeeded: 0 };
@@ -80,7 +82,9 @@ export function seedPolyglotInbox(
          LIMIT 12`,
       )
       .all() as { id: string | number; author_id: number; title?: string | null }[];
-  } catch {}
+  } catch {
+    // Fall back to empty showcase post list during seeding
+  }
 
   let replyPosts: { id: string | number; author_id: number; reply_to_id: string | number }[] = [];
   try {
@@ -93,7 +97,9 @@ export function seedPolyglotInbox(
          LIMIT 8`,
       )
       .all() as { id: string | number; author_id: number; reply_to_id: string | number }[];
-  } catch {}
+  } catch {
+    // Fall back to empty reply post list during seeding
+  }
 
   const primaryPostId = showcasePosts[0]?.id ?? null;
   const secondaryPostId = showcasePosts[1]?.id ?? primaryPostId;
@@ -195,7 +201,9 @@ export function seedPolyglotInbox(
         try {
           const ts = minutesAgoSqliteTimestamp(jSpec.minutesAgo);
           db.db.prepare(`UPDATE jobs SET started_at = ?, completed_at = ? WHERE id = ?`).run(ts, ts, jobId);
-        } catch {}
+        } catch {
+          // Timestamp backfill for seeded job is best-effort
+        }
         outboxJobsSeeded++;
       }
     }
@@ -210,8 +218,7 @@ export function seedPolyglotInbox(
     const existingBookmarkCount =
       (
         db.db.prepare(`SELECT COUNT(*) as count FROM bookmarks WHERE user_id = ?`).get(targetUserId) as
-          | { count: number }
-          | undefined
+          { count: number } | undefined
       )?.count ?? 0;
     if (existingBookmarkCount < 3 || options?.force) {
       for (const [idx, post] of showcasePosts.slice(0, 5).entries()) {

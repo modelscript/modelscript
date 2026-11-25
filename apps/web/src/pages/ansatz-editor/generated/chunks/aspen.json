@@ -1,0 +1,77 @@
+[
+  {
+    "id": "aspen-01-water-ethanol-flash",
+    "lang": "aspen",
+    "subFormats": ["in"],
+    "difficulty": 1,
+    "title": "Adiabatic Water-Ethanol Flash Drum",
+    "description": "Single-stage vapor-liquid flash separation of an ethanol-water feed stream using the NRTL activity coefficient model and a FLASH2 vessel.",
+    "category": "Chemical Process Simulation",
+    "tags": ["aspen", "flash2", "vle", "nrtl"],
+    "activeFile": "ethanol_flash.in",
+    "fileNames": ["ethanol_flash.in"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "TITLE 'ADIABATIC WATER-ETHANOL FLASH SEPARATION'\nIN-UNITS MET\nDEF-STREAMS CONV ALL\n\nCOMPONENTS\n    ETHANOL C2H6O\n    WATER   H2O\n\nFLOWSHEET\n    BLOCK FLASH1 IN=FEED OUT=VAPOR LIQUID\n\nPROPERTIES NRTL\n\nSTREAM FEED\n    SUBSTREAM MIXED TEMP=85.0 PRES=1.5 MOLE-FLOW=100.0\n    MOLE-FRAC ETHANOL 0.40 / WATER 0.60\n\nBLOCK FLASH1 FLASH2\n    PARAM TEMP=82.0 PRES=1.013\n"
+  },
+  {
+    "id": "aspen-02-shell-tube-heat-exchanger",
+    "lang": "aspen",
+    "subFormats": ["in"],
+    "difficulty": 2,
+    "title": "Shell-and-Tube Heat Exchanger Network",
+    "description": "Counter-current shell-and-tube heat exchanger recovering sensible heat from a hot toluene reactor effluent to preheat a cold benzene-toluene feed prior to flash separation.",
+    "category": "Chemical Process Simulation",
+    "tags": ["aspen", "heatx", "heat-recovery", "peng-robinson"],
+    "activeFile": "heat_exchanger.in",
+    "fileNames": ["heat_exchanger.in"],
+    "fileCount": 1,
+    "code": "TITLE 'SHELL-AND-TUBE HEAT EXCHANGER RECOVERY NETWORK'\nIN-UNITS MET\nDEF-STREAMS CONV ALL\n\nCOMPONENTS\n    BENZENE C6H6\n    TOLUENE C7H8\n\nFLOWSHEET\n    BLOCK HX1 IN=HOTIN COLDIN OUT=HOTOUT COLDOUT\n    BLOCK PUMP1 IN=COLDOUT OUT=PREHEAT\n\nPROPERTIES PENG-ROB\n\nSTREAM HOTIN\n    SUBSTREAM MIXED TEMP=165.0 PRES=4.0 MOLE-FLOW=120.0\n    MOLE-FRAC BENZENE 0.15 / TOLUENE 0.85\n\nSTREAM COLDIN\n    SUBSTREAM MIXED TEMP=30.0 PRES=2.5 MOLE-FLOW=150.0\n    MOLE-FRAC BENZENE 0.50 / TOLUENE 0.50\n\nBLOCK HX1 HEATX\n    PARAM T-HOT=85.0 PRES-HOT=3.8 PRES-COLD=2.3\n\nBLOCK PUMP1 PUMP\n    PARAM PRES=5.0\n"
+  },
+  {
+    "id": "aspen-03-ammonia-synthesis-loop",
+    "lang": "aspen",
+    "subFormats": ["in"],
+    "difficulty": 3,
+    "title": "Ammonia Synthesis Loop with Recycle & Purge",
+    "description": "High-pressure Haber-Bosch ammonia synthesis flowsheet combining fresh syngas makeup, stoichiometric catalytic converter, cryogenic product flash, and purge splitter with tear-stream convergence.",
+    "category": "Chemical Process Simulation",
+    "tags": ["aspen", "rstoic", "recycle-loop", "ammonia"],
+    "activeFile": "ammonia_loop.in",
+    "fileNames": ["ammonia_loop.in"],
+    "fileCount": 1,
+    "code": "TITLE 'HABER-BOSCH AMMONIA SYNTHESIS LOOP WITH RECYCLE AND PURGE'\nIN-UNITS MET\nDEF-STREAMS CONV ALL\n\nCOMPONENTS\n    NITROGEN N2\n    HYDROGEN H2\n    AMMONIA  NH3\n    ARGON    Ar\n\nFLOWSHEET\n    BLOCK MIX1 IN=SYNGAS RECYCLE OUT=RXFEED\n    BLOCK RX1 IN=RXFEED OUT=RXEFF\n    BLOCK COOL1 IN=RXEFF OUT=CHILLED\n    BLOCK SEP1 IN=CHILLED OUT=VAPREC LIQNH3\n    BLOCK SPLIT1 IN=VAPREC OUT=RECYCLE PURGE\n\nPROPERTIES RK-SOAVE\n\nSTREAM SYNGAS\n    SUBSTREAM MIXED TEMP=45.0 PRES=150.0 MOLE-FLOW=400.0\n    MOLE-FRAC NITROGEN 0.245 / HYDROGEN 0.735 / AMMONIA 0.000 / ARGON 0.020\n\nBLOCK MIX1 MIXER\n    PARAM TEAR=1\n\nBLOCK RX1 RSTOIC\n    PARAM TEMP=450.0 PRES=148.0\n\nBLOCK COOL1 HEATER\n    PARAM TEMP=-15.0 PRES=145.0\n\nBLOCK SEP1 FLASH2\n    PARAM TEMP=-15.0 PRES=145.0\n\nBLOCK SPLIT1 FSPLIT\n    PARAM FRAC=0.92\n"
+  },
+  {
+    "id": "aspen-04-benzene-toluene-distillation",
+    "lang": "aspen",
+    "subFormats": ["in"],
+    "difficulty": 4,
+    "title": "Benzene-Toluene Distillation Column",
+    "description": "20-stage rigorous RADFRAC distillation column separating an equimolar benzene-toluene feed with feed preheater, reflux ratio specification, and bottoms product pump.",
+    "category": "Chemical Process Simulation",
+    "tags": ["aspen", "radfrac", "distillation", "benzene-toluene"],
+    "activeFile": "btx_column.in",
+    "fileNames": ["btx_column.in"],
+    "fileCount": 1,
+    "code": "TITLE 'BENZENE-TOLUENE RIGOROUS DISTILLATION COLUMN'\nIN-UNITS MET\nDEF-STREAMS CONV ALL\n\nCOMPONENTS\n    BENZENE C6H6\n    TOLUENE C7H8\n\nFLOWSHEET\n    BLOCK PREHEAT IN=RAWFEED OUT=COLFEED\n    BLOCK COL1 IN=COLFEED OUT=DISTIL BOTTOMS\n    BLOCK BPUMP IN=BOTTOMS OUT=TOLPROD\n\nPROPERTIES PENG-ROB\n\nSTREAM RAWFEED\n    SUBSTREAM MIXED TEMP=35.0 PRES=2.0 MOLE-FLOW=250.0\n    MOLE-FRAC BENZENE 0.50 / TOLUENE 0.50\n\nBLOCK PREHEAT HEATER\n    PARAM TEMP=92.0 PRES=1.5\n\nBLOCK COL1 RADFRAC\n    PARAM NSTAGE=20\n    FEED COLFEED 10\n    PRODUCTS DISTIL 1 L / BOTTOMS 20 L\n    COL-SPECS RR=2.2\n\nBLOCK BPUMP PUMP\n    PARAM PRES=4.5\n"
+  },
+  {
+    "id": "aspen-05-ngl-cryogenic-fractionation",
+    "lang": "aspen",
+    "subFormats": ["in", "csv"],
+    "difficulty": 5,
+    "title": "Natural Gas Liquids Cryogenic Fractionation Train",
+    "description": "Multi-column cryogenic NGL recovery train featuring inlet chilling, cold separator, demethanizer and deethanizer RADFRAC columns, and companion feed gas assay CSV.",
+    "category": "Chemical Process Simulation",
+    "tags": ["aspen", "ngl", "cryogenic", "multi-file", "radfrac"],
+    "activeFile": "ngl_plant.in",
+    "fileNames": ["ngl_plant.in", "feed_assay.csv"],
+    "fileCount": 2,
+    "code": "TITLE 'NGL CRYOGENIC FRACTIONATION TRAIN'\nIN-UNITS MET\nDEF-STREAMS CONV ALL\n\nCOMPONENTS\n    METHANE  CH4\n    ETHANE   C2H6\n    PROPANE  C3H8\n    BUTANE   C4H10\n    PENTANE  C5H12\n    NITROGEN N2\n\nFLOWSHEET\n    BLOCK CHILLER IN=RAWGAS OUT=COLDGAS\n    BLOCK COLDSEP IN=COLDGAS OUT=RESGAS COLDLIQ\n    BLOCK DEMETH IN=COLDLIQ OUT=OVHD1 BTM1\n    BLOCK DEETH IN=BTM1 OUT=ETHANEPROD LPGPROD\n\nPROPERTIES PENG-ROB\n\nSTREAM RAWGAS\n    SUBSTREAM MIXED TEMP=25.0 PRES=55.0 MOLE-FLOW=1000.0\n    MOLE-FRAC METHANE 0.78 / ETHANE 0.11 / PROPANE 0.06 / BUTANE 0.03 / PENTANE 0.01 / NITROGEN 0.01\n\nBLOCK CHILLER HEATER\n    PARAM TEMP=-45.0 PRES=54.0\n\nBLOCK COLDSEP FLASH2\n    PARAM TEMP=-45.0 PRES=54.0\n\nBLOCK DEMETH RADFRAC\n    PARAM NSTAGE=16\n    FEED COLDLIQ 6\n    PRODUCTS OVHD1 1 V / BTM1 16 L\n    COL-SPECS RR=1.8\n\nBLOCK DEETH RADFRAC\n    PARAM NSTAGE=24\n    FEED BTM1 12\n    PRODUCTS ETHANEPROD 1 V / LPGPROD 24 L\n    COL-SPECS RR=2.4\n",
+    "files": {
+      "ngl_plant.in": "TITLE 'NGL CRYOGENIC FRACTIONATION TRAIN'\nIN-UNITS MET\nDEF-STREAMS CONV ALL\n\nCOMPONENTS\n    METHANE  CH4\n    ETHANE   C2H6\n    PROPANE  C3H8\n    BUTANE   C4H10\n    PENTANE  C5H12\n    NITROGEN N2\n\nFLOWSHEET\n    BLOCK CHILLER IN=RAWGAS OUT=COLDGAS\n    BLOCK COLDSEP IN=COLDGAS OUT=RESGAS COLDLIQ\n    BLOCK DEMETH IN=COLDLIQ OUT=OVHD1 BTM1\n    BLOCK DEETH IN=BTM1 OUT=ETHANEPROD LPGPROD\n\nPROPERTIES PENG-ROB\n\nSTREAM RAWGAS\n    SUBSTREAM MIXED TEMP=25.0 PRES=55.0 MOLE-FLOW=1000.0\n    MOLE-FRAC METHANE 0.78 / ETHANE 0.11 / PROPANE 0.06 / BUTANE 0.03 / PENTANE 0.01 / NITROGEN 0.01\n\nBLOCK CHILLER HEATER\n    PARAM TEMP=-45.0 PRES=54.0\n\nBLOCK COLDSEP FLASH2\n    PARAM TEMP=-45.0 PRES=54.0\n\nBLOCK DEMETH RADFRAC\n    PARAM NSTAGE=16\n    FEED COLDLIQ 6\n    PRODUCTS OVHD1 1 V / BTM1 16 L\n    COL-SPECS RR=1.8\n\nBLOCK DEETH RADFRAC\n    PARAM NSTAGE=24\n    FEED BTM1 12\n    PRODUCTS ETHANEPROD 1 V / LPGPROD 24 L\n    COL-SPECS RR=2.4\n",
+      "feed_assay.csv": "component,formula,mole_fraction,normal_boiling_point_C,critical_temp_K,critical_pres_bar\nMETHANE,CH4,0.780, -161.5,190.6,46.0\nETHANE,C2H6,0.110,-88.6,305.3,48.7\nPROPANE,C3H8,0.060,-42.1,369.8,42.5\nBUTANE,C4H10,0.030,-0.5,425.1,37.8\nPENTANE,C5H12,0.010,36.1,469.7,33.7\nNITROGEN,N2,0.010,-195.8,126.2,33.9\n"
+    }
+  }
+]

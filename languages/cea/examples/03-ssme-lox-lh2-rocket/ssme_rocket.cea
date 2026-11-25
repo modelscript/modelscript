@@ -1,0 +1,8 @@
+# SSME-Class Cryogenic LOX/LH2 Rocket Engine Nozzle Equilibrium
+problem case=SSME_LOX_LH2 rocket equilibrium
+  p,bar=200.0 o/f=6.0 supar=77.5
+reactants
+  fuel=H2(L) wt%=100 t(k)=20.27
+  oxid=O2(L) wt%=100 t(k)=90.17
+output siunits short trace=1e-5
+end

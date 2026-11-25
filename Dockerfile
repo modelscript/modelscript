@@ -280,6 +280,8 @@ COPY --from=build-api --chown=node:node /app/scripts scripts
 COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
+COPY --chown=node:node apps/web/public/avatars apps/api/public/avatars
+COPY --chown=node:node apps/web/public/banners apps/api/public/banners
 COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
 COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
 COPY --from=build-ide --chown=node:node /app/apps/ide/github-fs apps/ide/github-fs
@@ -312,6 +314,8 @@ COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/ee ee
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
+COPY --chown=node:node apps/web/public/avatars apps/api/public/avatars
+COPY --chown=node:node apps/web/public/banners apps/api/public/banners
 COPY --from=build-ide --chown=node:node /app/apps/ide/dist apps/ide/dist
 COPY --from=build-ide --chown=node:node /app/apps/ide/vscode-web apps/ide/vscode-web
 COPY --from=build-ide --chown=node:node /app/apps/ide/github-fs apps/ide/github-fs
@@ -344,7 +348,7 @@ COPY apps/web apps/web
 RUN npx nx run-many -t build --projects=@modelscript/web,@modelscript/docs
 
 
-FROM alpine:latest AS build-web-true
+FROM alpine:3.21 AS build-web-true
 WORKDIR /app
 COPY apps/web/dist apps/web/dist
 COPY apps/docs/docs/.vitepress/dist apps/docs/docs/.vitepress/dist
@@ -382,7 +386,7 @@ FROM build-cli-${PREBUILT} AS build-cli
 # ---- Community Edition CLI (physically excludes proprietary /app/ee) ----
 FROM node:24-alpine AS cli-ce
 WORKDIR /app
-COPY --from=deps /app/package.json /app/package-lock.json ./
+COPY --from=deps /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build-cli /app/packages packages
 COPY --from=build-cli /app/languages languages
@@ -390,12 +394,13 @@ COPY --from=build-cli /app/apps/cli apps/cli
 RUN rm -rf /app/ee /app/node_modules/@modelscript/ee
 ENV NODE_ENV=production \
     MSX_EDITION=ce
+USER node
 ENTRYPOINT ["node", "apps/cli/dist/main.js"]
 
 # ---- Enterprise Edition CLI (bundles /app/ee with Ed25519 license enforcement) ----
 FROM node:24-alpine AS cli-ee
 WORKDIR /app
-COPY --from=deps /app/package.json /app/package-lock.json ./
+COPY --from=deps /app/package.json /app/pnpm-lock.yaml ./
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build-cli /app/packages packages
 COPY --from=build-cli /app/languages languages
@@ -404,6 +409,7 @@ COPY --from=build-cli /app/apps/cli apps/cli
 ENV NODE_ENV=production \
     MSX_EDITION=ee \
     MSX_LICENSE_ENFORCE=true
+USER node
 ENTRYPOINT ["node", "apps/cli/dist/main.js"]
 
 FROM cli-ee AS cli
@@ -429,6 +435,8 @@ COPY --from=build-api --chown=node:node /app/packages packages
 COPY --from=build-api --chown=node:node /app/languages languages
 COPY --from=build-api --chown=node:node /app/ee ee
 COPY --from=build-api --chown=node:node /app/apps/api apps/api
+COPY --chown=node:node apps/web/public/avatars apps/api/public/avatars
+COPY --chown=node:node apps/web/public/banners apps/api/public/banners
 
 # Copy pre-compiled Web SPA assets, Unified Docs SSG, and IDE workbench
 COPY --from=build-web --chown=node:node /app/apps/web/dist apps/web/dist

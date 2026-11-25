@@ -1,0 +1,11 @@
+{
+  "id": "grib-03-500hpa-height-and-wind",
+  "lang": "grib",
+  "subFormats": ["grib1"],
+  "difficulty": 3,
+  "title": "500 hPa Geopotential Height & Geostrophic Wind Vectors",
+  "description": "Multi-message GRIB1 upper-air synoptic analysis bundling 500 hPa geopotential height (HGT), zonal wind (UGRD), and meridional wind (VGRD) on a shared 3x3 grid.",
+  "category": "Synoptic Meteorology",
+  "tags": ["grib", "500hpa", "geopotential", "wind-vectors", "multi-message"],
+  "activeFile": "upper_air_500hpa.grb"
+}

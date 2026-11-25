@@ -55,6 +55,7 @@ import {
   STANDARD_UNITS,
   type StlFormula,
   StlMonitor,
+  type SymbolEntry,
   type TrajectoryTrace,
   type TransitionSystem,
   Variability,
@@ -3199,11 +3200,11 @@ export async function verifyModelicaFormal(
   const classesVerified: string[] = [];
 
   const targetFilter = options.classNames ? new Set(options.classNames) : null;
-  const candidateEntries: Array<{ name: string; entry: any }> = [];
+  const candidateEntries: Array<{ name: string; entry: SymbolEntry }> = [];
   const seenNames = new Set<string>();
 
   const db = context.queryEngine.toQueryDB();
-  const resolveFqn = (sym: any): string => {
+  const resolveFqn = (sym: SymbolEntry): string => {
     const parts = [sym.name];
     let pId = sym.parentId;
     while (pId != null) {

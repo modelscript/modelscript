@@ -1,0 +1,12 @@
+{
+  "id": "antimony-04-modular-metabolic-pathway",
+  "lang": "antimony",
+  "subFormats": ["antimony"],
+  "difficulty": 4,
+  "title": "Modular Metabolic Pathway with Imported Enzyme Module",
+  "description": "Multi-file biochemical pathway composing a reusable enzymatic kinetics submodel imported from an external Antimony library file.",
+  "category": "Systems Biology",
+  "tags": ["antimony", "modular", "metabolic-pathway", "multi-file"],
+  "activeFile": "pathway.ant",
+  "fileOrder": ["pathway.ant", "enzymes.ant"]
+}

@@ -84,7 +84,7 @@ const GENERATED_LANGUAGE_FLAGS: Record<string, FeatureFlagDefinition> = Object.f
       {
         key,
         name: `Language: ${spec.name} (${spec.ext})`,
-        description: `Enable or hide ${spec.name} (${spec.ext}) across playground, composer, IDE, and study template dialect pickers.`,
+        description: `Enable or hide ${spec.name} (${spec.ext}) across ansatz, composer, IDE, and study template dialect pickers.`,
         defaultValue: spec.defaultValue,
         category: "languages",
         maturity: spec.maturity,
@@ -103,8 +103,8 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
     category: "core",
     maturity: "production",
   },
-  morsel_playground: {
-    key: "morsel_playground",
+  ansatz_editor: {
+    key: "ansatz_editor",
     name: "Ansatz",
     description: "Fast interactive modeling editor with real-time trajectory visualization.",
     defaultValue: true,
@@ -458,8 +458,8 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
     maturity: "beta",
     allowedRoles: ["admin", "beta_tester"],
   },
-  morsel_ai: {
-    key: "morsel_ai",
+  ansatz_ai: {
+    key: "ansatz_ai",
     name: "Ansatz AI Assistant",
     description:
       "Enable hybrid AI copilot in Ansatz (local WebGPU/Prompt API, local Ollama/vLLM, Ansatz cloud models, and 3rd-party BYOK providers with MCP tool calling).",
@@ -513,7 +513,7 @@ export const FEATURE_FLAGS: Record<string, FeatureFlagDefinition> = {
     key: "lang_modelscript_msx",
     name: "Language: ModelScript (.msx) [Alias]",
     description:
-      "Expose the experimental native ModelScript (.msx) language in playground, composer, and IDE language pickers.",
+      "Expose the experimental native ModelScript (.msx) language in ansatz, composer, and IDE language pickers.",
     defaultValue: false,
     category: "languages",
     maturity: "alpha",

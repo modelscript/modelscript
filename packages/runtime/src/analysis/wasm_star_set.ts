@@ -16,6 +16,44 @@
 import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 import { Interval } from "./wasm_interval.js";
 
+interface StarSetWasmExports {
+  memory: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
+  star_linearMap?: (
+    mPtr: number,
+    outDim: number,
+    inDim: number,
+    cPtr: number,
+    bPtr: number,
+    numBasis: number,
+    outCPtr: number,
+    outBPtr: number,
+  ) => void;
+  star_intersectHalfspace?: (
+    hPtr: number,
+    gamma: number,
+    dim: number,
+    cPtr: number,
+    bPtr: number,
+    m: number,
+    outRowPtr: number,
+  ) => number;
+  star_toIntervals?: (
+    n: number,
+    m: number,
+    p: number,
+    cPtr: number,
+    bPtr: number,
+    cMatPtr: number,
+    dPtr: number,
+    aLoPtr: number,
+    aHiPtr: number,
+    outLoPtr: number,
+    outHiPtr: number,
+  ) => void;
+}
+
 export class StarSet {
   /**
    * @param center Center vector c \in R^n
@@ -92,7 +130,7 @@ export class StarSet {
     const inDim = this.dim;
     const numBasis = this.numBasisVectors;
 
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as StarSetWasmExports | null;
     if (
       w &&
       typeof w.star_linearMap === "function" &&
@@ -187,7 +225,7 @@ export class StarSet {
     const m = this.numBasisVectors;
     const dim = this.dim;
 
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as StarSetWasmExports | null;
     if (
       w &&
       typeof w.star_intersectHalfspace === "function" &&
@@ -253,7 +291,7 @@ export class StarSet {
     const m = this.numBasisVectors;
     const p = this.C.length;
 
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as StarSetWasmExports | null;
     if (
       w &&
       typeof w.star_toIntervals === "function" &&

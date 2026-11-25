@@ -1,0 +1,12 @@
+{
+  "id": "antimony-01-michaelis-menten",
+  "lang": "antimony",
+  "subFormats": ["antimony"],
+  "difficulty": 1,
+  "title": "Michaelis-Menten Enzyme Kinetics",
+  "description": "Single-compartment enzymatic substrate-to-product conversion governed by a saturating Michaelis-Menten rate law with explicitly declared kinetic parameters.",
+  "category": "Systems Biology",
+  "tags": ["antimony", "enzyme-kinetics", "michaelis-menten", "biochemistry"],
+  "activeFile": "michaelis_menten.ant",
+  "isDefaultStarter": true
+}

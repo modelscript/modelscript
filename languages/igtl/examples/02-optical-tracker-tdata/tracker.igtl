@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenIGTLinkStream version="3.0">
+  <IgtlMessage Type="TRANSFORM" DeviceName="StylusTipToStylus" Matrix="1 0 0 0.0  0 1 0 0.0  0 0 1 150.0  0 0 0 1" Error="0.38" Timestamp="1732480100.000"/>
+  <IgtlMessage Type="TDATA" DeviceName="StylusToTracker" Matrix="0.866025 -0.500000 0 12.4  0.500000 0.866025 0 -24.8  0 0 1 580.0  0 0 0 1" Error="0.21" Timestamp="1732480100.016"/>
+  <IgtlMessage Type="TDATA" DeviceName="TrackerToReference" Matrix="1 0 0 -10.0  0 1 0 15.0  0 0 1 -540.0  0 0 0 1" Error="0.19" Timestamp="1732480100.016"/>
+  <IgtlMessage Type="TRANSFORM" DeviceName="ReferenceToPatientRAS" Matrix="0 1 0 5.0  -1 0 0 12.0  0 0 1 -18.0  0 0 0 1" Error="0.65" Timestamp="1732480100.016"/>
+</OpenIGTLinkStream>

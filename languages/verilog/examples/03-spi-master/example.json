@@ -1,0 +1,11 @@
+{
+  "id": "verilog-03-spi-master",
+  "lang": "verilog",
+  "subFormats": ["v"],
+  "difficulty": 3,
+  "title": "SPI Master Serial Controller FSM",
+  "description": "Mode-0 Serial Peripheral Interface (SPI) master controller finite state machine generating SCLK, chip-select CS_N, and full-duplex MOSI/MISO 8-bit shift transfers.",
+  "category": "Serial Communications",
+  "tags": ["verilog", "spi", "fsm", "serial"],
+  "activeFile": "spi_master.v"
+}

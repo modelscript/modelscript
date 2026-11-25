@@ -1,0 +1,12 @@
+{
+  "id": "urdf-05-modular-xacro-quadruped",
+  "lang": "urdf",
+  "subFormats": ["xacro", "stl"],
+  "difficulty": 5,
+  "title": "Modular Xacro Quadruped Robot with STL Meshes",
+  "description": "Multi-file Xacro quadruped robot assembly combining a torso chassis with companion STL mesh assets, an included leg macro library, and articulated hip-thigh-shin leg chains.",
+  "category": "Legged Robotics",
+  "tags": ["quadruped", "xacro", "stl-mesh", "multi-file"],
+  "activeFile": "quadruped.xacro",
+  "fileOrder": ["quadruped.xacro", "leg_macro.xacro", "chassis.stl", "foot.stl"]
+}

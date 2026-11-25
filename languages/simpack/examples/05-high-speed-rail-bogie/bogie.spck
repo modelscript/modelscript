@@ -1,0 +1,45 @@
+<simpack_model name="HighSpeedRailBogie">
+  <!-- Carbody half-mass, Bogie Frame, and Leading/Trailing Wheelsets -->
+  <body id="carbody" name="CarbodyHalf" mass="16500.0" ixx="32000.0" iyy="850000.0" izz="860000.0" />
+  <body id="bogie_frame" name="BogieFrame" mass="2650.0" ixx="1850.0" iyy="1620.0" izz="3100.0" />
+  <body id="ws_front" name="LeadingWheelset" mass="1480.0" ixx="820.0" iyy="140.0" izz="820.0" />
+  <body id="ws_rear" name="TrailingWheelset" mass="1480.0" ixx="820.0" iyy="140.0" izz="820.0" />
+
+  <!-- Track reference markers -->
+  <marker id="m_track_front" body="$inertial" x="1.25" y="0.0" z="0.0" />
+  <marker id="m_track_rear" body="$inertial" x="-1.25" y="0.0" z="0.0" />
+
+  <!-- Carbody & Bogie Secondary Suspension Markers -->
+  <marker id="m_cb_sec_l" body="carbody" x="0.0" y="1.0" z="-0.85" />
+  <marker id="m_cb_sec_r" body="carbody" x="0.0" y="-1.0" z="-0.85" />
+  <marker id="m_bf_sec_l" body="bogie_frame" x="0.0" y="1.0" z="0.25" />
+  <marker id="m_bf_sec_r" body="bogie_frame" x="0.0" y="-1.0" z="0.25" />
+
+  <!-- Bogie Primary Axlebox Suspension Markers -->
+  <marker id="m_bf_fl" body="bogie_frame" x="1.25" y="1.0" z="-0.15" />
+  <marker id="m_bf_fr" body="bogie_frame" x="1.25" y="-1.0" z="-0.15" />
+  <marker id="m_bf_rl" body="bogie_frame" x="-1.25" y="1.0" z="-0.15" />
+  <marker id="m_bf_rr" body="bogie_frame" x="-1.25" y="-1.0" z="-0.15" />
+
+  <!-- Wheelset Markers -->
+  <marker id="m_wsf_l" body="ws_front" x="0.0" y="1.0" z="0.0" />
+  <marker id="m_wsf_r" body="ws_front" x="0.0" y="-1.0" z="0.0" />
+  <marker id="m_wsf_cp" body="ws_front" x="0.0" y="0.0" z="-0.46" />
+  <marker id="m_wsr_l" body="ws_rear" x="0.0" y="1.0" z="0.0" />
+  <marker id="m_wsr_r" body="ws_rear" x="0.0" y="-1.0" z="0.0" />
+  <marker id="m_wsr_cp" body="ws_rear" x="0.0" y="0.0" z="-0.46" />
+
+  <!-- Secondary Air Springs & Yaw Damping -->
+  <spring id="sec_air_l" from="m_bf_sec_l" to="m_cb_sec_l" kx="160000" ky="160000" kz="420000" cx="25000" cy="35000" cz="40000" />
+  <spring id="sec_air_r" from="m_bf_sec_r" to="m_cb_sec_r" kx="160000" ky="160000" kz="420000" cx="25000" cy="35000" cz="40000" />
+
+  <!-- Primary Axlebox Coil Springs -->
+  <spring id="prim_fl" from="m_wsf_l" to="m_bf_fl" kx="9.5e6" ky="4.2e6" kz="1.15e6" cx="12000" cy="10000" cz="18000" />
+  <spring id="prim_fr" from="m_wsf_r" to="m_bf_fr" kx="9.5e6" ky="4.2e6" kz="1.15e6" cx="12000" cy="10000" cz="18000" />
+  <spring id="prim_rl" from="m_wsr_l" to="m_bf_rl" kx="9.5e6" ky="4.2e6" kz="1.15e6" cx="12000" cy="10000" cz="18000" />
+  <spring id="prim_rr" from="m_wsr_r" to="m_bf_rr" kx="9.5e6" ky="4.2e6" kz="1.15e6" cx="12000" cy="10000" cz="18000" />
+
+  <!-- Track Elastic Foundation Support -->
+  <spring id="track_front" from="m_track_front" to="m_wsf_cp" kx="1.0e5" ky="1.8e7" kz="8.5e7" cx="2000" cy="35000" cz="65000" />
+  <spring id="track_rear" from="m_track_rear" to="m_wsr_cp" kx="1.0e5" ky="1.8e7" kz="8.5e7" cx="2000" cy="35000" cz="65000" />
+</simpack_model>

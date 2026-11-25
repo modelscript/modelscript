@@ -1,0 +1,51 @@
+SIMPLE  =                    T / Conforms to FITS 4.0 standard
+BITPIX  =                    8 / Metadata-only primary HDU
+NAXIS   =                    0 / No primary image payload
+EXTEND  =                    T / Multi-Extension FITS (MEF) file
+OBJECT  = 'ABELL-2744'         / Galaxy cluster lensing field
+TELESCOP= 'VLT-UT4 '           / Very Large Telescope Unit 4
+INSTRUME= 'HAWKI   '           / Near-infrared wide-field imager
+FILTER  = 'Ks      '           / Near-IR 2.15 micron filter
+EXPTIME =               1800.0 / Combined stack exposure [s]
+DATE-OBS= '2026-03-14T04:30:00' / UTC observation start
+END
+XTENSION= 'IMAGE   '           / Calibrated science flux image
+BITPIX  =                  -32 / IEEE 32-bit float
+NAXIS   =                    2 / 2D science array
+NAXIS1  =                 1024 / X dimension [pixels]
+NAXIS2  =                 1024 / Y dimension [pixels]
+PCOUNT  =                    0 / No random group parameters
+GCOUNT  =                    1 / Single data group
+EXTNAME = 'SCI     '           / Science flux extension
+EXTVER  =                    1 / Extension version
+BUNIT   = 'MJy/sr  '           / Surface brightness unit
+CTYPE1  = 'RA---TAN'           / Gnomonic Right Ascension
+CTYPE2  = 'DEC--TAN'           / Gnomonic Declination
+CRPIX1  =                512.5 / X reference pixel
+CRPIX2  =                512.5 / Y reference pixel
+CRVAL1  =               3.5862 / Reference RA [deg]
+CRVAL2  =             -30.4002 / Reference Dec [deg]
+CD1_1   =         -0.000029444 / Plate scale X [deg/pix]
+CD2_2   =          0.000029444 / Plate scale Y [deg/pix]
+END
+XTENSION= 'IMAGE   '           / Pixel variance map
+BITPIX  =                  -32 / IEEE 32-bit float
+NAXIS   =                    2 / 2D variance array
+NAXIS1  =                 1024 / X dimension [pixels]
+NAXIS2  =                 1024 / Y dimension [pixels]
+PCOUNT  =                    0 / No random group parameters
+GCOUNT  =                    1 / Single data group
+EXTNAME = 'VAR     '           / Variance extension
+EXTVER  =                    1 / Extension version
+BUNIT   = '(MJy/sr)^2'         / Variance unit
+END
+XTENSION= 'IMAGE   '           / Data quality bitmask
+BITPIX  =                   16 / 16-bit integer bitmask
+NAXIS   =                    2 / 2D quality mask
+NAXIS1  =                 1024 / X dimension [pixels]
+NAXIS2  =                 1024 / Y dimension [pixels]
+PCOUNT  =                    0 / No random group parameters
+GCOUNT  =                    1 / Single data group
+EXTNAME = 'DQ      '           / Data quality extension
+EXTVER  =                    1 / Extension version
+END

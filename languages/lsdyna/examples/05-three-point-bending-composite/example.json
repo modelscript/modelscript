@@ -1,0 +1,11 @@
+{
+  "id": "lsdyna-05-three-point-bending-composite",
+  "lang": "lsdyna",
+  "subFormats": ["k"],
+  "difficulty": 5,
+  "title": "Three-Point Bending Composite Beam with Rigid Impactor",
+  "description": "Multi-part explicit three-point bending assembly combining a deformable composite beam, rigid cylindrical striker, roller support SPCs, load curve, and modular include files for mesh, impactor, and material properties.",
+  "category": "Explicit FEA & Impact",
+  "tags": ["lsdyna", "three-point-bending", "composite", "multi-file"],
+  "activeFile": "bend_main.k"
+}

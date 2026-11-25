@@ -1,0 +1,73 @@
+[
+  {
+    "id": "mps-01-production-mix-lp",
+    "lang": "mps",
+    "subFormats": ["mps", "lp"],
+    "difficulty": 1,
+    "title": "Two-Product Manufacturing Production Mix LP",
+    "description": "Classic two-variable linear program in standard MPS format maximizing manufacturing margin subject to machining and assembly hour capacities.",
+    "category": "Linear Programming",
+    "tags": ["mps", "lp", "production-mix"],
+    "activeFile": "production_mix.mps",
+    "fileNames": ["production_mix.mps"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "* Two-Product Manufacturing Mix LP (Maximize 40 X1 + 30 X2)\nNAME          PRODMIX\nOBJSENSE\n  MAX\nROWS\n N  PROFIT\n L  MACHINE\n L  ASSEMBLY\nCOLUMNS\n    X1        PROFIT    40.0         MACHINE   2.0\n    X1        ASSEMBLY  1.0\n    X2        PROFIT    30.0         MACHINE   1.0\n    X2        ASSEMBLY  1.0\nRHS\n    RHS1      MACHINE   100.0        ASSEMBLY  80.0\nBOUNDS\n UP BND1      X1        45.0\n UP BND1      X2        70.0\nENDATA\n"
+  },
+  {
+    "id": "mps-02-alloy-blending-bounds-lp",
+    "lang": "mps",
+    "subFormats": ["mps", "lp", "bounds"],
+    "difficulty": 2,
+    "title": "Four-Alloy Furnace Blending Problem with Bounds",
+    "description": "Minimum-cost metallurgical alloy blending LP mixing four scrap grades to meet exact 100-ton batch mass, minimum chromium, and maximum carbon limits.",
+    "category": "Process Optimization",
+    "tags": ["mps", "lp", "blending", "bounds"],
+    "activeFile": "alloy_blend.mps",
+    "fileNames": ["alloy_blend.mps"],
+    "fileCount": 1,
+    "code": "* Four-Alloy Furnace Blending Minimum-Cost LP\nNAME          ALLOYBLD\nOBJSENSE\n  MIN\nROWS\n N  COST\n E  BATCH\n G  CHROMIUM\n L  CARBON\nCOLUMNS\n    SCRAP1    COST      120.0        BATCH     1.0\n    SCRAP1    CHROMIUM  0.18         CARBON    0.04\n    SCRAP2    COST      155.0        BATCH     1.0\n    SCRAP2    CHROMIUM  0.24         CARBON    0.02\n    SCRAP3    COST      95.0         BATCH     1.0\n    SCRAP3    CHROMIUM  0.10         CARBON    0.05\n    PURECR    COST      380.0        BATCH     1.0\n    PURECR    CHROMIUM  0.90         CARBON    0.005\nRHS\n    RHS1      BATCH     100.0        CHROMIUM  20.0\n    RHS1      CARBON    3.0\nBOUNDS\n LO BND1      SCRAP1    10.0\n UP BND1      SCRAP1    60.0\n UP BND1      SCRAP2    50.0\n UP BND1      SCRAP3    45.0\n UP BND1      PURECR    25.0\nENDATA\n"
+  },
+  {
+    "id": "mps-03-network-mincost-flow",
+    "lang": "mps",
+    "subFormats": ["mps", "lp", "network-flow"],
+    "difficulty": 3,
+    "title": "Minimum-Cost Network Flow Routing LP",
+    "description": "Four-node directed logistics network with node flow conservation equalities and arc capacity upper bounds minimizing total routing cost.",
+    "category": "Network Optimization",
+    "tags": ["mps", "lp", "network-flow", "routing"],
+    "activeFile": "mincost_flow.mps",
+    "fileNames": ["mincost_flow.mps"],
+    "fileCount": 1,
+    "code": "* Minimum-Cost Network Flow (Source S -> Hubs A,B -> Sink T)\nNAME          NETFLOW\nOBJSENSE\n  MIN\nROWS\n N  TOTCOST\n E  NODE_S\n E  NODE_A\n E  NODE_B\n E  NODE_T\nCOLUMNS\n    ARC_SA    TOTCOST   4.0          NODE_S    1.0\n    ARC_SA    NODE_A    -1.0\n    ARC_SB    TOTCOST   6.0          NODE_S    1.0\n    ARC_SB    NODE_B    -1.0\n    ARC_AB    TOTCOST   2.0          NODE_A    1.0\n    ARC_AB    NODE_B    -1.0\n    ARC_AT    TOTCOST   7.0          NODE_A    1.0\n    ARC_AT    NODE_T    -1.0\n    ARC_BT    TOTCOST   3.0          NODE_B    1.0\n    ARC_BT    NODE_T    -1.0\nRHS\n    RHS1      NODE_S    50.0         NODE_A    0.0\n    RHS1      NODE_B    0.0          NODE_T    -50.0\nBOUNDS\n UP BND1      ARC_SA    35.0\n UP BND1      ARC_SB    30.0\n UP BND1      ARC_AB    20.0\n UP BND1      ARC_AT    25.0\n UP BND1      ARC_BT    40.0\nENDATA\n"
+  },
+  {
+    "id": "mps-04-binary-knapsack-mip",
+    "lang": "mps",
+    "subFormats": ["mps", "milp"],
+    "difficulty": 4,
+    "title": "Spacecraft Payload Selection Binary Knapsack MIP",
+    "description": "0-1 binary knapsack mixed-integer program using INTORG/INTEND markers to select scientific instruments maximizing mission science value within mass and power budgets.",
+    "category": "Combinatorial Optimization",
+    "tags": ["mps", "mip", "knapsack", "binary", "intorg"],
+    "activeFile": "payload_knapsack.mps",
+    "fileNames": ["payload_knapsack.mps"],
+    "fileCount": 1,
+    "code": "* Spacecraft Payload Selection 0-1 Binary Knapsack MIP\nNAME          KNAPSACK\nOBJSENSE\n  MAX\nROWS\n N  VALUE\n L  MASS_KG\n L  POWER_W\nCOLUMNS\n    MARK0001  'MARKER'               'INTORG'\n    CAM_HD    VALUE     45.0         MASS_KG   4.5\n    CAM_HD    POWER_W   18.0\n    SPECTRO   VALUE     62.0         MASS_KG   6.0\n    SPECTRO   POWER_W   24.0\n    MAGNETO   VALUE     28.0         MASS_KG   2.0\n    MAGNETO   POWER_W   8.0\n    SAR_RAD   VALUE     85.0         MASS_KG   9.5\n    SAR_RAD   POWER_W   42.0\n    LASERCOM  VALUE     54.0         MASS_KG   5.0\n    LASERCOM  POWER_W   28.0\n    MARK0002  'MARKER'               'INTEND'\nRHS\n    RHS1      MASS_KG   16.0         POWER_W   70.0\nBOUNDS\n BV BND1      CAM_HD\n BV BND1      SPECTRO\n BV BND1      MAGNETO\n BV BND1      SAR_RAD\n BV BND1      LASERCOM\nENDATA\n"
+  },
+  {
+    "id": "mps-05-facility-location-milp",
+    "lang": "mps",
+    "subFormats": ["mps", "milp", "facility-location"],
+    "difficulty": 5,
+    "title": "Warehouse Facility-Location Mixed-Integer Program",
+    "description": "Capacitated warehouse facility location MILP combining binary open/close decisions with continuous customer shipment allocations minimizing fixed plus transport cost.",
+    "category": "Supply Chain Optimization",
+    "tags": ["mps", "milp", "facility-location", "logistics"],
+    "activeFile": "facility_loc.mps",
+    "fileNames": ["facility_loc.mps"],
+    "fileCount": 1,
+    "code": "* Capacitated Warehouse Facility Location MILP (2 Warehouses, 3 Customers)\nNAME          FACLOC\nOBJSENSE\n  MIN\nROWS\n N  TOTCOST\n E  DEM_C1\n E  DEM_C2\n E  DEM_C3\n L  CAP_W1\n L  CAP_W2\nCOLUMNS\n    X_W1C1    TOTCOST   4.0          DEM_C1    1.0\n    X_W1C1    CAP_W1    1.0\n    X_W1C2    TOTCOST   6.0          DEM_C2    1.0\n    X_W1C2    CAP_W1    1.0\n    X_W1C3    TOTCOST   9.0          DEM_C3    1.0\n    X_W1C3    CAP_W1    1.0\n    X_W2C1    TOTCOST   7.0          DEM_C1    1.0\n    X_W2C1    CAP_W2    1.0\n    X_W2C2    TOTCOST   3.5          DEM_C2    1.0\n    X_W2C2    CAP_W2    1.0\n    X_W2C3    TOTCOST   5.0          DEM_C3    1.0\n    X_W2C3    CAP_W2    1.0\n    MARK0001  'MARKER'               'INTORG'\n    OPEN_W1   TOTCOST   250.0        CAP_W1    -120.0\n    OPEN_W2   TOTCOST   310.0        CAP_W2    -140.0\n    MARK0002  'MARKER'               'INTEND'\nRHS\n    RHS1      DEM_C1    40.0         DEM_C2    55.0\n    RHS1      DEM_C3    35.0\nBOUNDS\n BV BND1      OPEN_W1\n BV BND1      OPEN_W2\nENDATA\n"
+  }
+]

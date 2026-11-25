@@ -1,0 +1,8 @@
+Plan Title=Mixed-Flow Steady Confluence Plan
+Short Identifier=MixedFlow01
+Geom File=g01
+Flow File=f01
+Mixed Flow Regime
+Friction Slope Method=1
+Computation Interval=1MIN
+Output Interval=15MIN

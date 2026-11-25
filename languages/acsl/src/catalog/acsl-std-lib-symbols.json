@@ -1,0 +1,550 @@
+[
+  {
+    "name": "INTEG",
+    "kind": "Function",
+    "namePath": "ACSL.INTEG",
+    "exports": [
+      "IC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Continuous Integrator",
+      "category": "Continuous Dynamics",
+      "domain": "controls",
+      "description": "INTEG(x_dot, ic) — Continuous-time state integrator solving dy/dt = x_dot with initial condition y(t0) = ic.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "INTEGRATOR"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial condition y(t0)"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 1,
+      "signature": "INTEG(x_dot, ic)"
+    }
+  },
+  {
+    "name": "LIMINT",
+    "kind": "Function",
+    "namePath": "ACSL.LIMINT",
+    "exports": [
+      "IC",
+      "LO",
+      "HI"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Limited Integrator",
+      "category": "Continuous Dynamics",
+      "domain": "controls",
+      "description": "LIMINT(x_dot, ic, lo, hi) — Continuous integrator clamped to [lo, hi] with anti-windup derivative gating at saturation limits.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "LIMITED_INTEGRATOR"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial condition y(t0)"
+        },
+        {
+          "key": "LO",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower saturation bound"
+        },
+        {
+          "key": "HI",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper saturation bound"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 14,
+      "signature": "LIMINT(x_dot, ic, lo, hi)"
+    }
+  },
+  {
+    "name": "REALPL",
+    "kind": "Function",
+    "namePath": "ACSL.REALPL",
+    "exports": [
+      "TAU",
+      "IC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "First-Order Real Pole",
+      "category": "Transfer Functions",
+      "domain": "controls",
+      "description": "REALPL(tau, u, ic) — First-order lag transfer function 1 / (tau * s + 1), solving tau * dy/dt + y = u.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "FIRST_ORDER_LAG"
+      ],
+      "parameters": [
+        {
+          "key": "TAU",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Time constant tau > 0"
+        },
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial output y(t0)"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 2,
+      "signature": "REALPL(tau, u, ic)"
+    }
+  },
+  {
+    "name": "CMPXPL",
+    "kind": "Function",
+    "namePath": "ACSL.CMPXPL",
+    "exports": [
+      "A",
+      "B",
+      "IC1",
+      "IC2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Second-Order Complex Pole",
+      "category": "Transfer Functions",
+      "domain": "controls",
+      "description": "CMPXPL(a, b, u, ic1, ic2) — Second-order transfer function 1 / (a * s^2 + b * s + 1) with state initial conditions ic1, ic2.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "SECOND_ORDER_POLE"
+      ],
+      "parameters": [
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s^2",
+          "description": "Second-order coefficient a = 1 / wn^2"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 1.414,
+          "unit": "s",
+          "description": "Damping coefficient b = 2 * zeta / wn"
+        },
+        {
+          "key": "IC1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial position y(t0)"
+        },
+        {
+          "key": "IC2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial velocity dy/dt(t0)"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 3,
+      "signature": "CMPXPL(a, b, u, ic1, ic2)"
+    }
+  },
+  {
+    "name": "LEDLAG",
+    "kind": "Function",
+    "namePath": "ACSL.LEDLAG",
+    "exports": [
+      "T1",
+      "T2",
+      "IC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Lead-Lag Compensator",
+      "category": "Transfer Functions",
+      "domain": "controls",
+      "description": "LEDLAG(t1, t2, u, ic) — First-order lead-lag compensator (t1 * s + 1) / (t2 * s + 1).",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "LEAD_LAG"
+      ],
+      "parameters": [
+        {
+          "key": "T1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Lead time constant"
+        },
+        {
+          "key": "T2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Lag time constant (t2 > 0)"
+        },
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 4,
+      "signature": "LEDLAG(t1, t2, u, ic)"
+    }
+  },
+  {
+    "name": "DELAY",
+    "kind": "Function",
+    "namePath": "ACSL.DELAY",
+    "exports": [
+      "TD",
+      "IC",
+      "N"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Transport Delay",
+      "category": "Transfer Functions",
+      "domain": "controls",
+      "description": "DELAY(u, ic, td, n) — Pure time transport delay y(t) = u(t - td) for t >= td, else ic.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "TRANSPORT_DELAY"
+      ],
+      "parameters": [
+        {
+          "key": "TD",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Delay duration td >= 0"
+        },
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial history value for t < td"
+        },
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "",
+          "description": "Ring buffer discretization points"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 5,
+      "signature": "DELAY(u, ic, td, n)"
+    }
+  },
+  {
+    "name": "PULSE",
+    "kind": "Function",
+    "namePath": "ACSL.PULSE",
+    "exports": [
+      "TZ",
+      "P",
+      "W"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Periodic Pulse Generator",
+      "category": "Signal Generators",
+      "domain": "controls",
+      "description": "PULSE(tz, p, w) — Periodic unit pulse starting at tz with period p and pulse width w.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "PULSE_TRAIN"
+      ],
+      "parameters": [
+        {
+          "key": "TZ",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Start time of first pulse"
+        },
+        {
+          "key": "P",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Pulse repetition period"
+        },
+        {
+          "key": "W",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Active pulse width"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 6,
+      "signature": "PULSE(tz, p, w)"
+    }
+  },
+  {
+    "name": "RAMP",
+    "kind": "Function",
+    "namePath": "ACSL.RAMP",
+    "exports": [
+      "T0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Unit Ramp Generator",
+      "category": "Signal Generators",
+      "domain": "controls",
+      "description": "RAMP(t0) — Unit-slope ramp signal max(0, t - t0).",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "UNIT_RAMP"
+      ],
+      "parameters": [
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Ramp start time"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 7,
+      "signature": "RAMP(t0)"
+    }
+  },
+  {
+    "name": "STEP",
+    "kind": "Function",
+    "namePath": "ACSL.STEP",
+    "exports": [
+      "T0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Unit Step Generator",
+      "category": "Signal Generators",
+      "domain": "controls",
+      "description": "STEP(t0) — Heaviside unit step function: 0 for t < t0, 1 for t >= t0.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "UNIT_STEP"
+      ],
+      "parameters": [
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Step transition time"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 8,
+      "signature": "STEP(t0)"
+    }
+  },
+  {
+    "name": "BOUND",
+    "kind": "Function",
+    "namePath": "ACSL.BOUND",
+    "exports": [
+      "LO",
+      "HI"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Amplitude Limiter",
+      "category": "Nonlinear Operators",
+      "domain": "controls",
+      "description": "BOUND(lo, hi, u) — Saturation limiter clamping input u into [lo, hi].",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "SATURATION",
+        "CLAMP"
+      ],
+      "parameters": [
+        {
+          "key": "LO",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower limit"
+        },
+        {
+          "key": "HI",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper limit"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 9,
+      "signature": "BOUND(lo, hi, u)"
+    }
+  },
+  {
+    "name": "DEAD",
+    "kind": "Function",
+    "namePath": "ACSL.DEAD",
+    "exports": [
+      "LO",
+      "HI"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dead-Zone Nonlinearity",
+      "category": "Nonlinear Operators",
+      "domain": "controls",
+      "description": "DEAD(lo, hi, u) — Dead-zone operator returning 0 for lo <= u <= hi, u - hi for u > hi, and u - lo for u < lo.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "DEADZONE"
+      ],
+      "parameters": [
+        {
+          "key": "LO",
+          "type": "real",
+          "defaultValue": -0.1,
+          "unit": "",
+          "description": "Lower deadband threshold"
+        },
+        {
+          "key": "HI",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "",
+          "description": "Upper deadband threshold"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 10,
+      "signature": "DEAD(lo, hi, u)"
+    }
+  },
+  {
+    "name": "QUANT",
+    "kind": "Function",
+    "namePath": "ACSL.QUANT",
+    "exports": [
+      "Q"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Uniform Quantizer",
+      "category": "Nonlinear Operators",
+      "domain": "controls",
+      "description": "QUANT(q, u) — Uniform staircase quantizer rounding u to nearest integer multiple of step size q.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "QUANTIZER"
+      ],
+      "parameters": [
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "",
+          "description": "Quantization step size q > 0"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 11,
+      "signature": "QUANT(q, u)"
+    }
+  },
+  {
+    "name": "SW",
+    "kind": "Function",
+    "namePath": "ACSL.SW",
+    "exports": [
+      "THRESHOLD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Analogue Switch",
+      "category": "Nonlinear Operators",
+      "domain": "controls",
+      "description": "SW(cond, a, b) — Conditional switch returning a when cond is true (> 0), otherwise b.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "RSW",
+        "SWITCH"
+      ],
+      "parameters": [
+        {
+          "key": "THRESHOLD",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Switching threshold"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 12,
+      "signature": "SW(cond, a, b)"
+    }
+  },
+  {
+    "name": "ZHOLD",
+    "kind": "Function",
+    "namePath": "ACSL.ZHOLD",
+    "exports": [
+      "IC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zero-Order Hold",
+      "category": "Discrete & Sampled",
+      "domain": "controls",
+      "description": "ZHOLD(clk, u) — Samples input u when clk is active and holds the sampled value between clock ticks.",
+      "provenance": "ACSL Reference Manual (Mitchell & Gauthier, 1975)",
+      "aliases": [
+        "ZERO_ORDER_HOLD"
+      ],
+      "parameters": [
+        {
+          "key": "IC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial held value"
+        }
+      ],
+      "wasmKernel": "acslModelStep",
+      "archetypeId": 13,
+      "signature": "ZHOLD(clk, u)"
+    }
+  }
+]

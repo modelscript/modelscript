@@ -1,0 +1,11 @@
+{
+  "id": "tough-05-enhanced-geothermal-doublet",
+  "lang": "tough",
+  "subFormats": ["tgh", "mesh", "incon"],
+  "difficulty": 5,
+  "title": "2D Enhanced Geothermal Reservoir Doublet",
+  "description": "Stimulated granite Enhanced Geothermal System (EGS) injector-producer doublet modeling cold water reinjection, thermal breakthrough, and companion MESH and INCON restart files.",
+  "category": "Geothermal Reservoir Engineering",
+  "tags": ["tough", "egs", "geothermal-doublet", "multi-file", "incon"],
+  "activeFile": "geothermal.tgh"
+}

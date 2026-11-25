@@ -1,0 +1,11 @@
+{
+  "id": "rinex-02-static-geodetic-fix",
+  "lang": "rinex",
+  "subFormats": ["rinex-2.11-obs", "rinex-2.11-nav"],
+  "difficulty": 2,
+  "title": "Static Geodetic Benchmark 3D Position Fix",
+  "description": "Paired RINEX v2.11 observation file and 4-satellite GPS broadcast Keplerian ephemeris (brdc.nav) enabling static 3D ECEF benchmark positioning.",
+  "category": "GNSS Geodesy",
+  "tags": ["rinex", "geodesy", "ephemeris", "ecef", "multi-file"],
+  "activeFile": "site.obs"
+}

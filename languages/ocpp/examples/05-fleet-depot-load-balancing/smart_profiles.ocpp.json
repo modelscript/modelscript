@@ -1,0 +1,28 @@
+{
+  "chargingStationId": "Metro_Bus_Depot_East",
+  "evseId": 1,
+  "connectorId": 1,
+  "transactionId": "TX-BUS-501",
+  "chargingProfile": {
+    "chargingProfileId": 501,
+    "stackLevel": 1,
+    "chargingProfilePurpose": "ChargingStationMaxProfile",
+    "chargingSchedule": {
+      "chargingScheduleId": 801,
+      "chargingRateUnit": "kW",
+      "duration": 14400,
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 240.0,
+          "numberPhases": 3
+        },
+        {
+          "startPeriod": 7200,
+          "limit": 360.0,
+          "numberPhases": 3
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "datcom-05-high-lift-flaps-multi-case",
+  "lang": "datcom",
+  "subFormats": ["digital-datcom", "high-lift", "multi-case"],
+  "difficulty": 5,
+  "title": "Wing-Body-Tail High-Lift Flaps and Aileron Control Study",
+  "description": "Multi-case SAVE/NEXT CASE DATCOM study evaluating trailing-edge symmetric plain flaps ($SYMFLP) and differential ailerons ($ASYFLP) across approach and climb.",
+  "category": "Flight Control & High-Lift",
+  "tags": ["datcom", "flaps", "ailerons", "high-lift", "multi-case"],
+  "activeFile": "high_lift_flaps.dcm"
+}

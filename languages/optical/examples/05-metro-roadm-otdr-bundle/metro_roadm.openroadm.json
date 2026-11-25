@@ -1,0 +1,132 @@
+{
+  "network-name": "Metro-ROADM-Assurance-Bundle",
+  "nodes": [
+    {
+      "node-id": "ROADM-A",
+      "name": "Site A Core",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": true
+        }
+      ],
+      "latitude": 37.7749,
+      "longitude": -122.4194
+    },
+    {
+      "node-id": "ROADM-B",
+      "name": "Site B Transit",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        },
+        {
+          "degree-number": 2,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": true
+        }
+      ],
+      "latitude": 37.5485,
+      "longitude": -121.9886
+    },
+    {
+      "node-id": "ROADM-C",
+      "name": "Site C DataCenter",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": true
+        }
+      ],
+      "latitude": 37.3382,
+      "longitude": -121.8863
+    }
+  ],
+  "links": [
+    {
+      "link-id": "SPAN-AB",
+      "source-node": "ROADM-A",
+      "dest-node": "ROADM-B",
+      "length-km": 48,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.21,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-AB",
+          "type": "edfa",
+          "gain-db": 14,
+          "noise-figure-db": 5,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-BAY-WEST"]
+    },
+    {
+      "link-id": "SPAN-BC",
+      "source-node": "ROADM-B",
+      "dest-node": "ROADM-C",
+      "length-km": 32,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.2,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-BC",
+          "type": "edfa",
+          "gain-db": 10,
+          "noise-figure-db": 5,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-BAY-SOUTH"]
+    }
+  ],
+  "channels": [
+    {
+      "service-name": "SVC-400G-SF-SJ",
+      "source-node": "ROADM-A",
+      "dest-node": "ROADM-C",
+      "frequency-thz": 193.5,
+      "baud-rate": 64,
+      "modulation": "PM-16QAM",
+      "launch-power-dbm": 1,
+      "required-osnr-db": 16.5,
+      "path": ["SPAN-AB", "SPAN-BC"]
+    }
+  ]
+}

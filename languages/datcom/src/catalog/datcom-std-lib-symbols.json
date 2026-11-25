@@ -1,0 +1,601 @@
+[
+  {
+    "name": "NACA_0012",
+    "kind": "Class",
+    "namePath": "DATCOM.NACA_0012",
+    "exports": [
+      "TC",
+      "CAMBER",
+      "ALPHA_L0",
+      "CL_ALPHA",
+      "CD0",
+      "CM_AC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NACA 0012 Symmetric Airfoil",
+      "category": "NACA Airfoils",
+      "domain": "aerospace",
+      "description": "Symmetric 12% thickness NACA 4-digit airfoil section (Abbott & von Doenhoff).",
+      "provenance": "NACA TR-824 / USAF Digital DATCOM",
+      "aliases": [
+        "0012",
+        "NACA0012",
+        "NACA-W-4-0012"
+      ],
+      "parameters": [
+        {
+          "key": "TC",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "1",
+          "description": "Maximum thickness-to-chord ratio"
+        },
+        {
+          "key": "CAMBER",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Maximum camber-to-chord ratio"
+        },
+        {
+          "key": "ALPHA_L0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Zero-lift angle of attack"
+        },
+        {
+          "key": "CL_ALPHA",
+          "type": "real",
+          "defaultValue": 6.283185,
+          "unit": "1/rad",
+          "description": "2D section lift-curve slope"
+        },
+        {
+          "key": "CD0",
+          "type": "real",
+          "defaultValue": 0.0056,
+          "unit": "1",
+          "description": "Minimum section profile drag coefficient"
+        },
+        {
+          "key": "CM_AC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Quarter-chord pitching moment coefficient"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "NACA_2412",
+    "kind": "Class",
+    "namePath": "DATCOM.NACA_2412",
+    "exports": [
+      "TC",
+      "CAMBER",
+      "ALPHA_L0",
+      "CL_ALPHA",
+      "CD0",
+      "CM_AC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NACA 2412 Cambered Airfoil",
+      "category": "NACA Airfoils",
+      "domain": "aerospace",
+      "description": "2% camber at 40% chord, 12% thickness NACA 4-digit airfoil (Cessna 172 root/tip).",
+      "provenance": "NACA TR-824 / USAF Digital DATCOM",
+      "aliases": [
+        "2412",
+        "NACA2412",
+        "NACA-W-4-2412"
+      ],
+      "parameters": [
+        {
+          "key": "TC",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "1",
+          "description": "Maximum thickness-to-chord ratio"
+        },
+        {
+          "key": "CAMBER",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "1",
+          "description": "Maximum camber-to-chord ratio"
+        },
+        {
+          "key": "ALPHA_L0",
+          "type": "real",
+          "defaultValue": -2.1,
+          "unit": "deg",
+          "description": "Zero-lift angle of attack"
+        },
+        {
+          "key": "CL_ALPHA",
+          "type": "real",
+          "defaultValue": 6.283185,
+          "unit": "1/rad",
+          "description": "2D section lift-curve slope"
+        },
+        {
+          "key": "CD0",
+          "type": "real",
+          "defaultValue": 0.0058,
+          "unit": "1",
+          "description": "Minimum section profile drag coefficient"
+        },
+        {
+          "key": "CM_AC",
+          "type": "real",
+          "defaultValue": -0.05,
+          "unit": "1",
+          "description": "Quarter-chord pitching moment coefficient"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "NACA_4412",
+    "kind": "Class",
+    "namePath": "DATCOM.NACA_4412",
+    "exports": [
+      "TC",
+      "CAMBER",
+      "ALPHA_L0",
+      "CL_ALPHA",
+      "CD0",
+      "CM_AC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NACA 4412 High-Camber Airfoil",
+      "category": "NACA Airfoils",
+      "domain": "aerospace",
+      "description": "4% camber at 40% chord, 12% thickness NACA 4-digit high-lift airfoil.",
+      "provenance": "NACA TR-824 / USAF Digital DATCOM",
+      "aliases": [
+        "4412",
+        "NACA4412",
+        "NACA-W-4-4412"
+      ],
+      "parameters": [
+        {
+          "key": "TC",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "1",
+          "description": "Maximum thickness-to-chord ratio"
+        },
+        {
+          "key": "CAMBER",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "1",
+          "description": "Maximum camber-to-chord ratio"
+        },
+        {
+          "key": "ALPHA_L0",
+          "type": "real",
+          "defaultValue": -4,
+          "unit": "deg",
+          "description": "Zero-lift angle of attack"
+        },
+        {
+          "key": "CL_ALPHA",
+          "type": "real",
+          "defaultValue": 6.283185,
+          "unit": "1/rad",
+          "description": "2D section lift-curve slope"
+        },
+        {
+          "key": "CD0",
+          "type": "real",
+          "defaultValue": 0.0062,
+          "unit": "1",
+          "description": "Minimum section profile drag coefficient"
+        },
+        {
+          "key": "CM_AC",
+          "type": "real",
+          "defaultValue": -0.095,
+          "unit": "1",
+          "description": "Quarter-chord pitching moment coefficient"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "NACA_23012",
+    "kind": "Class",
+    "namePath": "DATCOM.NACA_23012",
+    "exports": [
+      "TC",
+      "CAMBER",
+      "ALPHA_L0",
+      "CL_ALPHA",
+      "CD0",
+      "CM_AC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NACA 23012 Reflex-Mean 5-Digit Airfoil",
+      "category": "NACA Airfoils",
+      "domain": "aerospace",
+      "description": "Low pitching-moment 5-digit airfoil (design CL=0.3, 12% thickness).",
+      "provenance": "NACA TR-824 / USAF Digital DATCOM",
+      "aliases": [
+        "23012",
+        "NACA23012",
+        "NACA-W-5-23012"
+      ],
+      "parameters": [
+        {
+          "key": "TC",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "1",
+          "description": "Maximum thickness-to-chord ratio"
+        },
+        {
+          "key": "CAMBER",
+          "type": "real",
+          "defaultValue": 0.018,
+          "unit": "1",
+          "description": "Maximum camber-to-chord ratio"
+        },
+        {
+          "key": "ALPHA_L0",
+          "type": "real",
+          "defaultValue": -1.2,
+          "unit": "deg",
+          "description": "Zero-lift angle of attack"
+        },
+        {
+          "key": "CL_ALPHA",
+          "type": "real",
+          "defaultValue": 6.283185,
+          "unit": "1/rad",
+          "description": "2D section lift-curve slope"
+        },
+        {
+          "key": "CD0",
+          "type": "real",
+          "defaultValue": 0.0055,
+          "unit": "1",
+          "description": "Minimum section profile drag coefficient"
+        },
+        {
+          "key": "CM_AC",
+          "type": "real",
+          "defaultValue": -0.008,
+          "unit": "1",
+          "description": "Quarter-chord pitching moment coefficient"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "NACA_64A010",
+    "kind": "Class",
+    "namePath": "DATCOM.NACA_64A010",
+    "exports": [
+      "TC",
+      "CAMBER",
+      "ALPHA_L0",
+      "CL_ALPHA",
+      "CD0",
+      "CM_AC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NACA 64A010 Laminar High-Speed Airfoil",
+      "category": "NACA Airfoils",
+      "domain": "aerospace",
+      "description": "Symmetric 10% thickness 6-series laminar airfoil for transonic/supersonic wings.",
+      "provenance": "NACA TR-824 / USAF Digital DATCOM",
+      "aliases": [
+        "64A010",
+        "NACA64A010",
+        "NACA-W-6-64A010"
+      ],
+      "parameters": [
+        {
+          "key": "TC",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1",
+          "description": "Maximum thickness-to-chord ratio"
+        },
+        {
+          "key": "CAMBER",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Maximum camber-to-chord ratio"
+        },
+        {
+          "key": "ALPHA_L0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Zero-lift angle of attack"
+        },
+        {
+          "key": "CL_ALPHA",
+          "type": "real",
+          "defaultValue": 6.283185,
+          "unit": "1/rad",
+          "description": "2D section lift-curve slope"
+        },
+        {
+          "key": "CD0",
+          "type": "real",
+          "defaultValue": 0.0046,
+          "unit": "1",
+          "description": "Minimum section profile drag coefficient"
+        },
+        {
+          "key": "CM_AC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Quarter-chord pitching moment coefficient"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "CESSNA_172",
+    "kind": "Class",
+    "namePath": "DATCOM.CESSNA_172",
+    "exports": [
+      "SREF",
+      "CBARR",
+      "BLREF",
+      "AR",
+      "SWEEP_DEG",
+      "MASS",
+      "MACH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cessna-172 Class Light Trainer",
+      "category": "Aircraft Configurations",
+      "domain": "aerospace",
+      "description": "High-wing general aviation single-engine trainer (AR=7.38, NACA 2412, M=0.18).",
+      "provenance": "USAF Digital DATCOM / Roskam Airplane Flight Dynamics",
+      "aliases": [
+        "C172",
+        "SKYHAWK"
+      ],
+      "parameters": [
+        {
+          "key": "SREF",
+          "type": "real",
+          "defaultValue": 16.17,
+          "unit": "m2",
+          "description": "Reference wing area"
+        },
+        {
+          "key": "CBARR",
+          "type": "real",
+          "defaultValue": 1.49,
+          "unit": "m",
+          "description": "Mean aerodynamic chord"
+        },
+        {
+          "key": "BLREF",
+          "type": "real",
+          "defaultValue": 10.92,
+          "unit": "m",
+          "description": "Reference wing span"
+        },
+        {
+          "key": "AR",
+          "type": "real",
+          "defaultValue": 7.38,
+          "unit": "1",
+          "description": "Wing aspect ratio"
+        },
+        {
+          "key": "SWEEP_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Wing quarter-chord sweep"
+        },
+        {
+          "key": "MASS",
+          "type": "real",
+          "defaultValue": 1043,
+          "unit": "kg",
+          "description": "Gross aircraft mass"
+        },
+        {
+          "key": "MACH",
+          "type": "real",
+          "defaultValue": 0.18,
+          "unit": "1",
+          "description": "Nominal cruise Mach number"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "CITATION_JET",
+    "kind": "Class",
+    "namePath": "DATCOM.CITATION_JET",
+    "exports": [
+      "SREF",
+      "CBARR",
+      "BLREF",
+      "AR",
+      "SWEEP_DEG",
+      "MASS",
+      "MACH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Citation-Class Business Jet",
+      "category": "Aircraft Configurations",
+      "domain": "aerospace",
+      "description": "Medium-sweep subsonic twin-turbofan business jet (AR=8.2, NACA 23012, M=0.65).",
+      "provenance": "USAF Digital DATCOM / Roskam Airplane Flight Dynamics",
+      "aliases": [
+        "CITATION",
+        "C550",
+        "BIZJET"
+      ],
+      "parameters": [
+        {
+          "key": "SREF",
+          "type": "real",
+          "defaultValue": 29.9,
+          "unit": "m2",
+          "description": "Reference wing area"
+        },
+        {
+          "key": "CBARR",
+          "type": "real",
+          "defaultValue": 2.06,
+          "unit": "m",
+          "description": "Mean aerodynamic chord"
+        },
+        {
+          "key": "BLREF",
+          "type": "real",
+          "defaultValue": 15.76,
+          "unit": "m",
+          "description": "Reference wing span"
+        },
+        {
+          "key": "AR",
+          "type": "real",
+          "defaultValue": 8.31,
+          "unit": "1",
+          "description": "Wing aspect ratio"
+        },
+        {
+          "key": "SWEEP_DEG",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "deg",
+          "description": "Wing quarter-chord sweep"
+        },
+        {
+          "key": "MASS",
+          "type": "real",
+          "defaultValue": 5800,
+          "unit": "kg",
+          "description": "Nominal cruise mass"
+        },
+        {
+          "key": "MACH",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "1",
+          "description": "Nominal cruise Mach number"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "SUPERSONIC_DELTA",
+    "kind": "Class",
+    "namePath": "DATCOM.SUPERSONIC_DELTA",
+    "exports": [
+      "SREF",
+      "CBARR",
+      "BLREF",
+      "AR",
+      "SWEEP_DEG",
+      "MASS",
+      "MACH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Supersonic Delta Fighter",
+      "category": "Aircraft Configurations",
+      "domain": "aerospace",
+      "description": "Low-aspect-ratio 55-deg swept supersonic delta interceptor (NACA 64A010, M=1.6).",
+      "provenance": "USAF Digital DATCOM / Etkin Dynamics of Flight",
+      "aliases": [
+        "DELTA",
+        "F106",
+        "SUPERSONIC"
+      ],
+      "parameters": [
+        {
+          "key": "SREF",
+          "type": "real",
+          "defaultValue": 48,
+          "unit": "m2",
+          "description": "Reference wing area"
+        },
+        {
+          "key": "CBARR",
+          "type": "real",
+          "defaultValue": 5.8,
+          "unit": "m",
+          "description": "Mean aerodynamic chord"
+        },
+        {
+          "key": "BLREF",
+          "type": "real",
+          "defaultValue": 11.4,
+          "unit": "m",
+          "description": "Reference wing span"
+        },
+        {
+          "key": "AR",
+          "type": "real",
+          "defaultValue": 2.71,
+          "unit": "1",
+          "description": "Wing aspect ratio"
+        },
+        {
+          "key": "SWEEP_DEG",
+          "type": "real",
+          "defaultValue": 55,
+          "unit": "deg",
+          "description": "Wing leading-edge sweep"
+        },
+        {
+          "key": "MASS",
+          "type": "real",
+          "defaultValue": 12500,
+          "unit": "kg",
+          "description": "Nominal combat mass"
+        },
+        {
+          "key": "MACH",
+          "type": "real",
+          "defaultValue": 1.6,
+          "unit": "1",
+          "description": "Nominal supersonic Mach number"
+        }
+      ],
+      "wasmKernel": "datcomModelEval",
+      "archetypeId": 12
+    }
+  }
+]

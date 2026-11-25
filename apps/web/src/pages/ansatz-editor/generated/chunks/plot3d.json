@@ -1,0 +1,90 @@
+[
+  {
+    "id": "plot3d-01-uniform-2d-grid",
+    "lang": "plot3d",
+    "subFormats": ["xyz"],
+    "difficulty": 1,
+    "title": "2D Uniform Rectangular Structured Grid",
+    "description": "Single-block 4x3 structured Cartesian grid in ASCII PLOT3D format with strictly positive right-handed cell Jacobians for a planar computational fluid dynamics domain.",
+    "category": "Structured CFD & Aerodynamics",
+    "tags": ["plot3d", "structured-grid", "cfd", "2d"],
+    "activeFile": "grid2d.xyz",
+    "fileNames": ["grid2d.xyz"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# 2D Uniform Rectangular Structured Grid (4 x 3 x 2 planar slice)\n1\n4 3 2\n# X coordinates (i varies fastest, then j, then k)\n0.0 1.0 2.0 3.0\n0.0 1.0 2.0 3.0\n0.0 1.0 2.0 3.0\n0.0 1.0 2.0 3.0\n0.0 1.0 2.0 3.0\n0.0 1.0 2.0 3.0\n# Y coordinates\n0.0 0.0 0.0 0.0\n0.5 0.5 0.5 0.5\n1.0 1.0 1.0 1.0\n0.0 0.0 0.0 0.0\n0.5 0.5 0.5 0.5\n1.0 1.0 1.0 1.0\n# Z coordinates\n0.0 0.0 0.0 0.0\n0.0 0.0 0.0 0.0\n0.0 0.0 0.0 0.0\n0.1 0.1 0.1 0.1\n0.1 0.1 0.1 0.1\n0.1 0.1 0.1 0.1\n"
+  },
+  {
+    "id": "plot3d-02-channel-mach03-flow",
+    "lang": "plot3d",
+    "subFormats": ["xyz", "q"],
+    "difficulty": 2,
+    "title": "Subsonic Channel Grid and Uniform Mach 0.3 Flow",
+    "description": "Paired structured channel mesh (channel.xyz) and conservative PLOT3D flow solution (channel.q) at freestream Mach 0.30, Reynolds number 1.0e6, and sea-level standard density.",
+    "category": "Structured CFD & Aerodynamics",
+    "tags": ["plot3d", "channel-flow", "subsonic", "multi-file"],
+    "activeFile": "channel.xyz",
+    "fileNames": ["channel.xyz", "channel.q"],
+    "fileCount": 2,
+    "code": "# Subsonic Channel Structured Grid (4 x 3 x 2)\n1\n4 3 2\n# X coordinates [m]\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n# Y coordinates [m]\n0.0 0.0 0.0 0.0\n0.2 0.2 0.2 0.2\n0.4 0.4 0.4 0.4\n0.0 0.0 0.0 0.0\n0.2 0.2 0.2 0.2\n0.4 0.4 0.4 0.4\n# Z coordinates [m]\n12*0.0\n12*0.1\n",
+    "files": {
+      "channel.xyz": "# Subsonic Channel Structured Grid (4 x 3 x 2)\n1\n4 3 2\n# X coordinates [m]\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n0.0 0.5 1.0 1.5\n# Y coordinates [m]\n0.0 0.0 0.0 0.0\n0.2 0.2 0.2 0.2\n0.4 0.4 0.4 0.4\n0.0 0.0 0.0 0.0\n0.2 0.2 0.2 0.2\n0.4 0.4 0.4 0.4\n# Z coordinates [m]\n12*0.0\n12*0.1\n",
+      "channel.q": "# Subsonic Channel Uniform Mach 0.30 Flow Solution (4 x 3 x 2)\n1\n4 3 2\n0.30 0.0 1.0e6 0.0\n# rho [kg/m^3]\n24*1.225\n# rho*u [kg/(m^2*s)]\n24*125.0\n# rho*v\n24*0.0\n# rho*w\n24*0.0\n# Total energy E [J/m^3] (p = 101325 Pa, gamma = 1.4)\n24*259700.0\n"
+    }
+  },
+  {
+    "id": "plot3d-03-duct-3d-velocity-field",
+    "lang": "plot3d",
+    "subFormats": ["xyz", "q"],
+    "difficulty": 3,
+    "title": "3D Rectangular Duct Grid and Boundary-Layer Velocity Field",
+    "description": "Three-dimensional 3x3x3 rectangular wind-tunnel duct structured mesh paired with a conservative flow solution capturing wall-normal velocity shear from the boundary layer to the core.",
+    "category": "Structured CFD & Aerodynamics",
+    "tags": ["plot3d", "3d-duct", "boundary-layer", "multi-file"],
+    "activeFile": "duct3d.xyz",
+    "fileNames": ["duct3d.xyz", "duct3d.q"],
+    "fileCount": 2,
+    "code": "# 3D Wind-Tunnel Duct Structured Grid (3 x 3 x 3)\n1\n3 3 3\n# X coordinates [m]\n0.0 1.0 2.0  0.0 1.0 2.0  0.0 1.0 2.0\n0.0 1.0 2.0  0.0 1.0 2.0  0.0 1.0 2.0\n0.0 1.0 2.0  0.0 1.0 2.0  0.0 1.0 2.0\n# Y coordinates [m]\n0.0 0.0 0.0  0.5 0.5 0.5  1.0 1.0 1.0\n0.0 0.0 0.0  0.5 0.5 0.5  1.0 1.0 1.0\n0.0 0.0 0.0  0.5 0.5 0.5  1.0 1.0 1.0\n# Z coordinates [m]\n9*0.0\n9*0.5\n9*1.0\n",
+    "files": {
+      "duct3d.xyz": "# 3D Wind-Tunnel Duct Structured Grid (3 x 3 x 3)\n1\n3 3 3\n# X coordinates [m]\n0.0 1.0 2.0  0.0 1.0 2.0  0.0 1.0 2.0\n0.0 1.0 2.0  0.0 1.0 2.0  0.0 1.0 2.0\n0.0 1.0 2.0  0.0 1.0 2.0  0.0 1.0 2.0\n# Y coordinates [m]\n0.0 0.0 0.0  0.5 0.5 0.5  1.0 1.0 1.0\n0.0 0.0 0.0  0.5 0.5 0.5  1.0 1.0 1.0\n0.0 0.0 0.0  0.5 0.5 0.5  1.0 1.0 1.0\n# Z coordinates [m]\n9*0.0\n9*0.5\n9*1.0\n",
+      "duct3d.q": "# 3D Wind-Tunnel Duct Conservative Flow Solution (3 x 3 x 3)\n1\n3 3 3\n0.45 0.0 2.5e6 0.0\n# rho [kg/m^3]\n27*1.225\n# rho*u [kg/(m^2*s)] (higher in core, lower near walls)\n90.0 90.0 90.0  150.0 150.0 150.0  90.0 90.0 90.0\n110.0 110.0 110.0  185.0 185.0 185.0  110.0 110.0 110.0\n90.0 90.0 90.0  150.0 150.0 150.0  90.0 90.0 90.0\n# rho*v\n27*0.0\n# rho*w\n27*0.0\n# Total energy E [J/m^3]\n27*270000.0\n"
+    }
+  },
+  {
+    "id": "plot3d-04-nozzle-two-block-grid",
+    "lang": "plot3d",
+    "subFormats": ["xyz", "q"],
+    "difficulty": 4,
+    "title": "Two-Block Converging Nozzle Multi-Zone Grid and Solution",
+    "description": "Multi-block PLOT3D converging-diverging propulsion nozzle with two matched 3x2x2 structured zones (converging inlet block and diverging diffuser block) and accelerating compressible flow solution.",
+    "category": "Structured CFD & Aerodynamics",
+    "tags": ["plot3d", "multi-block", "nozzle", "multi-file"],
+    "activeFile": "nozzle_2blk.xyz",
+    "fileNames": ["nozzle_2blk.xyz", "nozzle_2blk.q"],
+    "fileCount": 2,
+    "code": "# Two-Block Converging-Diverging Nozzle Grid (2 blocks of 3 x 2 x 2)\n2\n3 2 2\n3 2 2\n# Block 1 (Converging Inlet: x = 0.0 -> 1.0, y_top narrows 0.60 -> 0.40)\n# X1\n0.0 0.5 1.0  0.0 0.5 1.0\n0.0 0.5 1.0  0.0 0.5 1.0\n# Y1\n0.0 0.0 0.0  0.60 0.50 0.40\n0.0 0.0 0.0  0.60 0.50 0.40\n# Z1\n6*0.0\n6*0.2\n# Block 2 (Diverging Diffuser: x = 1.0 -> 2.0, y_top expands 0.40 -> 0.65)\n# X2\n1.0 1.5 2.0  1.0 1.5 2.0\n1.0 1.5 2.0  1.0 1.5 2.0\n# Y2\n0.0 0.0 0.0  0.40 0.52 0.65\n0.0 0.0 0.0  0.40 0.52 0.65\n# Z2\n6*0.0\n6*0.2\n",
+    "files": {
+      "nozzle_2blk.xyz": "# Two-Block Converging-Diverging Nozzle Grid (2 blocks of 3 x 2 x 2)\n2\n3 2 2\n3 2 2\n# Block 1 (Converging Inlet: x = 0.0 -> 1.0, y_top narrows 0.60 -> 0.40)\n# X1\n0.0 0.5 1.0  0.0 0.5 1.0\n0.0 0.5 1.0  0.0 0.5 1.0\n# Y1\n0.0 0.0 0.0  0.60 0.50 0.40\n0.0 0.0 0.0  0.60 0.50 0.40\n# Z1\n6*0.0\n6*0.2\n# Block 2 (Diverging Diffuser: x = 1.0 -> 2.0, y_top expands 0.40 -> 0.65)\n# X2\n1.0 1.5 2.0  1.0 1.5 2.0\n1.0 1.5 2.0  1.0 1.5 2.0\n# Y2\n0.0 0.0 0.0  0.40 0.52 0.65\n0.0 0.0 0.0  0.40 0.52 0.65\n# Z2\n6*0.0\n6*0.2\n",
+      "nozzle_2blk.q": "# Two-Block Converging-Diverging Nozzle Solution\n2\n3 2 2\n3 2 2\n# Block 1 Conditions & Flow Field (Subsonic Acceleration)\n0.60 0.0 3.0e6 0.0\n12*1.20\n180.0 215.0 250.0  180.0 215.0 250.0\n180.0 215.0 250.0  180.0 215.0 250.0\n12*0.0\n12*0.0\n12*285000.0\n# Block 2 Conditions & Flow Field (Throat to Exit)\n0.85 0.0 3.0e6 0.0\n12*0.95\n250.0 275.0 295.0  250.0 275.0 295.0\n250.0 275.0 295.0  250.0 275.0 295.0\n12*0.0\n12*0.0\n12*285000.0\n"
+    }
+  },
+  {
+    "id": "plot3d-05-wing-root-ogrid-transonic",
+    "lang": "plot3d",
+    "subFormats": ["xyz", "q", "nam"],
+    "difficulty": 5,
+    "title": "3D Wing-Root O-Grid with Transonic Flow Solution",
+    "description": "Curvilinear 3D wing-root boundary-layer structured mesh paired with a transonic Mach 0.82 conservative flow solution at 2.0-degree angle of attack and a companion PLOT3D variable metadata file.",
+    "category": "Structured CFD & Aerodynamics",
+    "tags": ["plot3d", "transonic", "wing", "multi-file"],
+    "activeFile": "wing_ogrid.xyz",
+    "fileNames": ["wing_ogrid.xyz", "wing_ogrid.nam", "wing_ogrid.q"],
+    "fileCount": 3,
+    "code": "# 3D Swept Wing-Root Structured Block (4 x 3 x 2, right-handed positive Jacobian)\n1\n4 3 2\n# X coordinates [m] (chordwise with 15-deg spanwise sweep)\n0.00 0.35 0.70 1.00\n0.00 0.35 0.70 1.00\n0.00 0.35 0.70 1.00\n0.15 0.50 0.85 1.15\n0.15 0.50 0.85 1.15\n0.15 0.50 0.85 1.15\n# Y coordinates [m] (airfoil upper surface curvature -> farfield)\n0.00 0.06 0.04 0.00\n0.25 0.28 0.27 0.25\n0.65 0.65 0.65 0.65\n0.00 0.05 0.03 0.00\n0.25 0.27 0.26 0.25\n0.65 0.65 0.65 0.65\n# Z coordinates [m] (spanwise station 0.0 -> 0.6 m)\n12*0.0\n12*0.6\n",
+    "files": {
+      "wing_ogrid.xyz": "# 3D Swept Wing-Root Structured Block (4 x 3 x 2, right-handed positive Jacobian)\n1\n4 3 2\n# X coordinates [m] (chordwise with 15-deg spanwise sweep)\n0.00 0.35 0.70 1.00\n0.00 0.35 0.70 1.00\n0.00 0.35 0.70 1.00\n0.15 0.50 0.85 1.15\n0.15 0.50 0.85 1.15\n0.15 0.50 0.85 1.15\n# Y coordinates [m] (airfoil upper surface curvature -> farfield)\n0.00 0.06 0.04 0.00\n0.25 0.28 0.27 0.25\n0.65 0.65 0.65 0.65\n0.00 0.05 0.03 0.00\n0.25 0.27 0.26 0.25\n0.65 0.65 0.65 0.65\n# Z coordinates [m] (spanwise station 0.0 -> 0.6 m)\n12*0.0\n12*0.6\n",
+      "wing_ogrid.nam": "# PLOT3D Solution Variable Names\nDensity\nX_Momentum\nY_Momentum\nZ_Momentum\nTotal_Energy\n",
+      "wing_ogrid.q": "# 3D Swept Wing-Root Transonic Flow Solution (Mach 0.82, alpha = 2.0 deg)\n1\n4 3 2\n0.82 2.0 6.5e6 0.0\n# rho [kg/m^3]\n24*0.909\n# rho*u [kg/(m^2*s)]\n24*235.0\n# rho*v [kg/(m^2*s)]\n24*8.2\n# rho*w [kg/(m^2*s)]\n24*0.0\n# Total energy E [J/m^3]\n24*245000.0\n"
+    }
+  }
+]

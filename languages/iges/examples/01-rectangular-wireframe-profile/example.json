@@ -1,0 +1,12 @@
+{
+  "id": "iges-01-rectangular-wireframe-profile",
+  "lang": "iges",
+  "subFormats": ["iges-5.3", "wireframe"],
+  "difficulty": 1,
+  "title": "2D Rectangular Wireframe Profile",
+  "description": "Strict 80-column IGES 5.3 file defining a 100 mm x 60 mm rectangular wireframe boundary using four Entity Type 110 Line primitives.",
+  "category": "3D CAD Exchange",
+  "tags": ["iges", "wireframe", "entity-110", "cad-exchange"],
+  "activeFile": "rect_wireframe.igs",
+  "isDefaultStarter": true
+}

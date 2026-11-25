@@ -1,0 +1,104 @@
+<?xml version="1.0"?>
+<robot name="differential_drive_amr">
+  <link name="chassis_link">
+    <inertial>
+      <origin xyz="0 0 0.14" rpy="0 0 0"/>
+      <mass value="28.0"/>
+      <inertia ixx="0.65" ixy="0" ixz="0" iyy="1.15" iyz="0" izz="1.45"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.14" rpy="0 0 0"/>
+      <geometry><box size="0.65 0.45 0.18"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.14" rpy="0 0 0"/>
+      <geometry><box size="0.65 0.45 0.18"/></geometry>
+    </collision>
+  </link>
+
+  <link name="left_wheel">
+    <inertial>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <mass value="2.2"/>
+      <inertia ixx="0.012" ixy="0" ixz="0" iyy="0.012" iyz="0" izz="0.018"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.10" length="0.05"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.10" length="0.05"/></geometry>
+    </collision>
+  </link>
+
+  <link name="right_wheel">
+    <inertial>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <mass value="2.2"/>
+      <inertia ixx="0.012" ixy="0" ixz="0" iyy="0.012" iyz="0" izz="0.018"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.10" length="0.05"/></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5708 0 0"/>
+      <geometry><cylinder radius="0.10" length="0.05"/></geometry>
+    </collision>
+  </link>
+
+  <link name="rear_caster">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.6"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+    </inertial>
+    <visual>
+      <geometry><sphere radius="0.045"/></geometry>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.045"/></geometry>
+    </collision>
+  </link>
+
+  <link name="lidar_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.45"/>
+      <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.0012"/>
+    </inertial>
+    <visual>
+      <geometry><cylinder radius="0.045" length="0.06"/></geometry>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.045" length="0.06"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="chassis_link"/>
+    <child link="left_wheel"/>
+    <origin xyz="0.10 0.25 0.10" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="chassis_link"/>
+    <child link="right_wheel"/>
+    <origin xyz="0.10 -0.25 0.10" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <joint name="rear_caster_joint" type="fixed">
+    <parent link="chassis_link"/>
+    <child link="rear_caster"/>
+    <origin xyz="-0.25 0 0.045" rpy="0 0 0"/>
+  </joint>
+
+  <joint name="lidar_mount_joint" type="fixed">
+    <parent link="chassis_link"/>
+    <child link="lidar_link"/>
+    <origin xyz="0.22 0 0.26" rpy="0 0 0"/>
+  </joint>
+</robot>

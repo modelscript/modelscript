@@ -1,0 +1,25 @@
+-- Automotive Cruise Control Mode Logic with Brake Safety Override
+const
+  MIN_SPEED: real = 30.0;
+  MAX_SPEED: real = 140.0;
+  KP: real = 0.8;
+
+function Clamp(val, lo, hi: real) returns (out_v: real);
+let
+  out_v = if val < lo then lo else if val > hi then hi else val;
+tel
+
+node CruiseControl(on_cmd, off_cmd, brake: bool; speed, target_speed: real)
+returns (engaged: bool; throttle: real);
+var
+  speed_ok: bool;
+  err: real;
+let
+  speed_ok = (speed >= MIN_SPEED) and (speed <= MAX_SPEED);
+  engaged = false -> (if brake or off_cmd or not speed_ok then false
+                      else if on_cmd then true
+                      else pre(engaged));
+  err = target_speed - speed;
+  throttle = if engaged then Clamp(KP * err, 0.0, 100.0) else 0.0;
+  assert speed >= 0.0;
+tel

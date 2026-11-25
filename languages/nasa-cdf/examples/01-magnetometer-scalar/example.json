@@ -1,0 +1,12 @@
+{
+  "id": "nasa-cdf-01-magnetometer-scalar",
+  "lang": "nasa-cdf",
+  "subFormats": ["skt", "istp"],
+  "difficulty": 1,
+  "title": "ISTP Scalar Magnetometer Total Field Skeleton",
+  "description": "Minimal ISTP-compliant NASA CDF skeleton table storing total magnetic field magnitude |B| with monotonic EPOCH timestamps, UNITS, VALIDMIN, VALIDMAX, and FILLVAL.",
+  "category": "Space Physics",
+  "tags": ["nasa-cdf", "istp", "magnetometer", "heliophysics"],
+  "activeFile": "mag_scalar.skt",
+  "isDefaultStarter": true
+}

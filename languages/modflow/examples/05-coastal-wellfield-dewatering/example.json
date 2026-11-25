@@ -1,0 +1,11 @@
+{
+  "id": "modflow-05-coastal-wellfield-dewatering",
+  "lang": "modflow",
+  "subFormats": ["nam", "tdis", "dis", "npf", "sto", "ic", "chd", "wel", "riv", "oc"],
+  "difficulty": 5,
+  "title": "Regional 3-Layer Coastal Wellfield Transient Dewatering",
+  "description": "Full 11-file MODFLOW 6 transient coastal aquifer wellfield model spanning three hydrogeologic layers with ocean constant-head boundary, coastal estuary river, multi-well extraction, and output control.",
+  "category": "Regional Groundwater Modeling",
+  "tags": ["modflow", "mf6", "coastal-aquifer", "transient", "multi-file"],
+  "activeFile": "gwf.dis"
+}

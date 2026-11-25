@@ -1,0 +1,12 @@
+{
+  "id": "tough-01-porous-column-diffusion",
+  "lang": "tough",
+  "subFormats": ["tgh"],
+  "difficulty": 1,
+  "title": "1D Single-Phase Porous Column Pressure Diffusion",
+  "description": "Four-element 1D sandstone porous column simulating single-phase Darcy pressure diffusion driven by a constant-rate boundary fluid injection source.",
+  "category": "Subsurface Flow & Transport",
+  "tags": ["tough", "darcy-flow", "pressure-diffusion", "porous-media"],
+  "activeFile": "column_1d.tgh",
+  "isDefaultStarter": true
+}

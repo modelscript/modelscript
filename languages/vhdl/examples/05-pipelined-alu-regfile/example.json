@@ -1,0 +1,11 @@
+{
+  "id": "vhdl-05-pipelined-alu-regfile",
+  "lang": "vhdl",
+  "subFormats": ["vhd"],
+  "difficulty": 5,
+  "title": "Pipelined 8-Bit ALU and Register File",
+  "description": "Multi-file pipelined 8-bit processor datapath integrating a registered ALU top-level (alu_top.vhd), opcode package (alu_pkg.vhd), dual-port register file (regfile.vhd), and testbench (tb_alu.vhd).",
+  "category": "Processor Datapaths",
+  "tags": ["vhdl", "alu", "regfile", "pipeline", "multi-file"],
+  "activeFile": "alu_top.vhd"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "nasa-cdf-02-fluxgate-rtn-vector",
+  "lang": "nasa-cdf",
+  "subFormats": ["skt", "istp"],
+  "difficulty": 2,
+  "title": "3-Axis Fluxgate Magnetometer RTN Vector Time-Series",
+  "description": "Parker Solar Probe style 3-component RTN magnetic field vector time-series with ISTP metadata, vector VALIDMIN/VALIDMAX bounds, and total field magnitude.",
+  "category": "Space Physics",
+  "tags": ["nasa-cdf", "fluxgate", "rtn", "vector", "magnetometer"],
+  "activeFile": "fgm_rtn_vector.skt"
+}

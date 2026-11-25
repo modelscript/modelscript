@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { parseXmlSync } from "@modelscript/dsl/xml";
+import { parseXmlSync, type XmlElement } from "@modelscript/dsl/xml";
 import { lintPscx } from "./lints/index.js";
 import { registerPscadSource } from "./model/workspace-registry.js";
 import { parsePscx } from "./parser/pscx-parser.js";
@@ -13,9 +13,18 @@ export interface PscadLspDiagnostic {
   source: string;
 }
 
+export interface PscadCodeLens {
+  range: { start: { line: number; character: number }; end: { line: number; character: number } };
+  command: {
+    title: string;
+    command: string;
+    arguments?: unknown[];
+  };
+}
+
 export interface ValidatePscadOptions {
   uri: string;
-  wasmTree?: any;
+  wasmTree?: Parameters<typeof parsePscx>[1] extends { cstTree?: infer T } | undefined ? T : unknown;
   syntaxLines?: Set<number>;
   workspaceDocs?: Array<{ uri: string; text: string }>;
   positionAt: (offset: number) => { line: number; character: number };
@@ -28,7 +37,7 @@ export interface ValidatePscadOptions {
 export function validatePscadDocumentCore(
   text: string,
   opts: ValidatePscadOptions,
-): { project: any; diagnostics: PscadLspDiagnostic[] } {
+): { project: ReturnType<typeof parsePscx>; diagnostics: PscadLspDiagnostic[] } {
   const diagnostics: PscadLspDiagnostic[] = [];
   const syntaxLines = opts.syntaxLines ?? new Set<number>();
 
@@ -39,7 +48,7 @@ export function validatePscadDocumentCore(
   }
   registerPscadSource(opts.uri, text);
 
-  const project = parsePscx(text, { cstTree: opts.wasmTree });
+  const project = parsePscx(text, opts.wasmTree !== undefined ? { cstTree: opts.wasmTree } : undefined);
   const xmlErrors = project.xmlErrors !== undefined ? project.xmlErrors : parseXmlSync(text).errors;
   if (xmlErrors.length > 0) {
     for (const err of xmlErrors) {
@@ -116,7 +125,7 @@ function pscadOffsetToPos(offset: number, lineOffsets: number[]): { line: number
   return { line, character: offset - (lineOffsets[line] ?? 0) };
 }
 
-function getPscadXmlAttr(el: any, ...names: string[]): string | undefined {
+function getPscadXmlAttr(el: XmlElement, ...names: string[]): string | undefined {
   for (const name of names) {
     const lower = name.toLowerCase();
     for (const a of el.attributes ?? []) {
@@ -139,10 +148,10 @@ export function getPscadCodeLenses(
   uri: string,
   ctx: PscadCodeLensContext = {},
 ): {
-  lenses: any[];
+  lenses: PscadCodeLens[];
   appendUniversal: true;
 } {
-  const lenses: any[] = [];
+  const lenses: PscadCodeLens[] = [];
   if (!text) return { lenses, appendUniversal: true };
 
   const showSimulate = ctx.flags?.showSimulate ?? false;
@@ -152,7 +161,7 @@ export function getPscadCodeLenses(
   const xmlDoc = parseXmlSync(text);
   if (xmlDoc.root) {
     const lineOffsets = computePscadLineOffsets(text);
-    const walkPscad = (el: any): void => {
+    const walkPscad = (el: XmlElement): void => {
       const tag = (el.name.includes(":") ? el.name.slice(el.name.indexOf(":") + 1) : el.name).toLowerCase();
       if (tag === "definition" && showDiagram) {
         const defName = getPscadXmlAttr(el, "name");

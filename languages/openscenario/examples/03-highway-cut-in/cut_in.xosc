@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-11-24T12:00:00" description="Highway 3-Lane Cut-In Maneuver" author="Ansatz"/>
+  <ParameterDeclarations>
+    <ParameterDeclaration name="EgoSpeed" parameterType="double" value="30.0"/>
+    <ParameterDeclaration name="ChallengerSpeed" parameterType="double" value="33.5"/>
+  </ParameterDeclarations>
+  <RoadNetwork>
+    <LogicFile filepath="highway_3lane.xodr"/>
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car">
+        <Performance maxSpeed="60.0" maxAcceleration="3.5" maxDeceleration="9.0"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.6" height="1.45"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="CutInCar">
+      <Vehicle name="CutInCar" vehicleCategory="car">
+        <Performance maxSpeed="60.0" maxAcceleration="4.0" maxDeceleration="9.0"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.5" height="1.42"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <Private entityRef="Ego">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-2" s="30.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$EgoSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="CutInCar">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-1" s="65.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$ChallengerSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="CutInStory">
+      <Act name="CutInAct">
+        <ManeuverGroup maximumExecutionCount="1" name="CutInGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="CutInCar"/>
+          </Actors>
+          <Maneuver name="MergeIntoCenterLane">
+            <Event name="LaneChangeEvent" priority="overwrite" maximumExecutionCount="1">
+              <Action name="MergeRight">
+                <PrivateAction>
+                  <LateralAction>
+                    <LaneChangeAction>
+                      <LaneChangeActionDynamics dynamicsShape="sinusoidal" value="2.5" dynamicsDimension="time"/>
+                      <LaneChangeTarget><AbsoluteTargetLane value="-2"/></LaneChangeTarget>
+                    </LaneChangeAction>
+                  </LateralAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="CutInTime" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition><SimulationTimeCondition value="3.0" rule="greaterOrEqual"/></ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+      </Act>
+    </Story>
+  </Storyboard>
+</OpenSCENARIO>

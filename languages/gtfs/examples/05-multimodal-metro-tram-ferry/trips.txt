@@ -1,0 +1,4 @@
+route_id,service_id,trip_id,shape_id
+R_METRO,DAILY,TR_M1_0800,SHP_M1
+R_TRAM,DAILY,TR_F_0815,SHP_F
+R_FERRY,DAILY,TR_BAY_0820,SHP_BAY

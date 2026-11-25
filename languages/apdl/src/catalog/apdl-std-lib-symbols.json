@@ -1,0 +1,451 @@
+[
+  {
+    "name": "LINK180",
+    "kind": "element_type",
+    "namePath": "APDL.Elements.LINK180",
+    "exports": [
+      "EX",
+      "A",
+      "L",
+      "DENS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "LINK180 3D Spar / Truss",
+      "category": "1D Truss / Beam",
+      "domain": "structural",
+      "description": "3D 2-node uniaxial tension-compression spar (truss) element with 3 translational DOFs (UX, UY, UZ) per node and axial stiffness EA/L.",
+      "provenance": "Cleanroom direct-stiffness formulation (Cook, Malkus & Plesha)",
+      "aliases": [
+        "LINK8",
+        "TRUSS",
+        "SPAR"
+      ],
+      "parameters": [
+        {
+          "key": "EX",
+          "type": "real",
+          "defaultValue": 210000000000,
+          "unit": "Pa",
+          "description": "Young's modulus"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "m^2",
+          "description": "Cross-sectional area"
+        },
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Element length"
+        },
+        {
+          "key": "DENS",
+          "type": "real",
+          "defaultValue": 7850,
+          "unit": "kg/m^3",
+          "description": "Mass density"
+        }
+      ],
+      "wasmKernel": "evalElement",
+      "archetypeId": 1,
+      "dofs": [
+        "UX",
+        "UY",
+        "UZ"
+      ],
+      "nodeCount": 2
+    }
+  },
+  {
+    "name": "BEAM188",
+    "kind": "element_type",
+    "namePath": "APDL.Elements.BEAM188",
+    "exports": [
+      "EX",
+      "PRXY",
+      "A",
+      "IZZ",
+      "IYY",
+      "J",
+      "L",
+      "DENS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BEAM188 3D 2-Node Beam",
+      "category": "1D Truss / Beam",
+      "domain": "structural",
+      "description": "3D 2-node Euler-Bernoulli / Timoshenko beam element with 6 DOFs per node (UX, UY, UZ, ROTX, ROTY, ROTZ), supporting axial, torsional, and biaxial bending.",
+      "provenance": "Cleanroom Euler-Bernoulli beam formulation (Przemieniecki / Bathe)",
+      "aliases": [
+        "BEAM3",
+        "BEAM4",
+        "BEAM189",
+        "BEAM"
+      ],
+      "parameters": [
+        {
+          "key": "EX",
+          "type": "real",
+          "defaultValue": 210000000000,
+          "unit": "Pa",
+          "description": "Young's modulus"
+        },
+        {
+          "key": "PRXY",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "-",
+          "description": "Poisson's ratio"
+        },
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "m^2",
+          "description": "Cross-sectional area"
+        },
+        {
+          "key": "IZZ",
+          "type": "real",
+          "defaultValue": 8.3333333333e-8,
+          "unit": "m^4",
+          "description": "Second moment of area about Z"
+        },
+        {
+          "key": "IYY",
+          "type": "real",
+          "defaultValue": 8.3333333333e-8,
+          "unit": "m^4",
+          "description": "Second moment of area about Y"
+        },
+        {
+          "key": "J",
+          "type": "real",
+          "defaultValue": 1.406e-7,
+          "unit": "m^4",
+          "description": "Torsional constant"
+        },
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Element length"
+        },
+        {
+          "key": "DENS",
+          "type": "real",
+          "defaultValue": 7850,
+          "unit": "kg/m^3",
+          "description": "Mass density"
+        }
+      ],
+      "wasmKernel": "evalElement",
+      "archetypeId": 2,
+      "dofs": [
+        "UX",
+        "UY",
+        "UZ",
+        "ROTX",
+        "ROTY",
+        "ROTZ"
+      ],
+      "nodeCount": 2
+    }
+  },
+  {
+    "name": "PLANE182",
+    "kind": "element_type",
+    "namePath": "APDL.Elements.PLANE182",
+    "exports": [
+      "EX",
+      "PRXY",
+      "THICK",
+      "DENS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PLANE182 2D 4-Node Solid",
+      "category": "2D Plane / Shell",
+      "domain": "structural",
+      "description": "2D 4-node isoparametric structural solid element (plane stress, plane strain, or axisymmetric) with 2 DOFs per node (UX, UY).",
+      "provenance": "Cleanroom 2D isoparametric elasticity (Zienkiewicz & Taylor)",
+      "aliases": [
+        "PLANE42",
+        "QUAD4",
+        "PLANE_STRESS"
+      ],
+      "parameters": [
+        {
+          "key": "EX",
+          "type": "real",
+          "defaultValue": 210000000000,
+          "unit": "Pa",
+          "description": "Young's modulus"
+        },
+        {
+          "key": "PRXY",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "-",
+          "description": "Poisson's ratio"
+        },
+        {
+          "key": "THICK",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "m",
+          "description": "Element thickness"
+        },
+        {
+          "key": "DENS",
+          "type": "real",
+          "defaultValue": 7850,
+          "unit": "kg/m^3",
+          "description": "Mass density"
+        }
+      ],
+      "wasmKernel": "evalElement",
+      "archetypeId": 3,
+      "dofs": [
+        "UX",
+        "UY"
+      ],
+      "nodeCount": 4
+    }
+  },
+  {
+    "name": "SHELL181",
+    "kind": "element_type",
+    "namePath": "APDL.Elements.SHELL181",
+    "exports": [
+      "EX",
+      "PRXY",
+      "THICK",
+      "DENS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SHELL181 4-Node Shell",
+      "category": "2D Plane / Shell",
+      "domain": "structural",
+      "description": "4-node Mindlin-Reissner structural shell element with 6 DOFs per node (UX, UY, UZ, ROTX, ROTY, ROTZ) for thin to moderately thick shell structures.",
+      "provenance": "Cleanroom Kirchhoff / Mindlin-Reissner plate & shell mechanics (Hughes)",
+      "aliases": [
+        "SHELL63",
+        "SHELL4",
+        "SHELL"
+      ],
+      "parameters": [
+        {
+          "key": "EX",
+          "type": "real",
+          "defaultValue": 210000000000,
+          "unit": "Pa",
+          "description": "Young's modulus"
+        },
+        {
+          "key": "PRXY",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "-",
+          "description": "Poisson's ratio"
+        },
+        {
+          "key": "THICK",
+          "type": "real",
+          "defaultValue": 0.005,
+          "unit": "m",
+          "description": "Shell thickness"
+        },
+        {
+          "key": "DENS",
+          "type": "real",
+          "defaultValue": 7850,
+          "unit": "kg/m^3",
+          "description": "Mass density"
+        }
+      ],
+      "wasmKernel": "evalElement",
+      "archetypeId": 4,
+      "dofs": [
+        "UX",
+        "UY",
+        "UZ",
+        "ROTX",
+        "ROTY",
+        "ROTZ"
+      ],
+      "nodeCount": 4
+    }
+  },
+  {
+    "name": "SOLID185",
+    "kind": "element_type",
+    "namePath": "APDL.Elements.SOLID185",
+    "exports": [
+      "EX",
+      "PRXY",
+      "DENS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SOLID185 3D 8-Node Solid",
+      "category": "3D Solid",
+      "domain": "structural",
+      "description": "3D 8-node hexahedral structural solid element with 3 translational DOFs per node (UX, UY, UZ) and full 3D isotropic constitutive elasticity.",
+      "provenance": "Cleanroom 3D continuum elasticity (Bathe)",
+      "aliases": [
+        "SOLID45",
+        "HEX8",
+        "BRICK8"
+      ],
+      "parameters": [
+        {
+          "key": "EX",
+          "type": "real",
+          "defaultValue": 210000000000,
+          "unit": "Pa",
+          "description": "Young's modulus"
+        },
+        {
+          "key": "PRXY",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "-",
+          "description": "Poisson's ratio"
+        },
+        {
+          "key": "DENS",
+          "type": "real",
+          "defaultValue": 7850,
+          "unit": "kg/m^3",
+          "description": "Mass density"
+        }
+      ],
+      "wasmKernel": "evalElement",
+      "archetypeId": 5,
+      "dofs": [
+        "UX",
+        "UY",
+        "UZ"
+      ],
+      "nodeCount": 8
+    }
+  },
+  {
+    "name": "MASS21",
+    "kind": "element_type",
+    "namePath": "APDL.Elements.MASS21",
+    "exports": [
+      "MASS",
+      "IXX",
+      "IYY",
+      "IZZ"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MASS21 Structural Mass",
+      "category": "Discrete Mass / Spring",
+      "domain": "structural",
+      "description": "Single-node point mass element with up to 6 DOFs (UX, UY, UZ, ROTX, ROTY, ROTZ), supporting translational mass and rotary inertia.",
+      "provenance": "Cleanroom rigid-body point inertia",
+      "aliases": [
+        "POINT_MASS",
+        "LUMPED_MASS"
+      ],
+      "parameters": [
+        {
+          "key": "MASS",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg",
+          "description": "Translational lumped mass"
+        },
+        {
+          "key": "IXX",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kg*m^2",
+          "description": "Rotary inertia about X"
+        },
+        {
+          "key": "IYY",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kg*m^2",
+          "description": "Rotary inertia about Y"
+        },
+        {
+          "key": "IZZ",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kg*m^2",
+          "description": "Rotary inertia about Z"
+        }
+      ],
+      "wasmKernel": "evalElement",
+      "archetypeId": 6,
+      "dofs": [
+        "UX",
+        "UY",
+        "UZ",
+        "ROTX",
+        "ROTY",
+        "ROTZ"
+      ],
+      "nodeCount": 1
+    }
+  },
+  {
+    "name": "COMBIN14",
+    "kind": "element_type",
+    "namePath": "APDL.Elements.COMBIN14",
+    "exports": [
+      "K",
+      "CV1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "COMBIN14 Spring-Damper",
+      "category": "Discrete Mass / Spring",
+      "domain": "structural",
+      "description": "2-node longitudinal or torsional spring-damper element with stiffness K and viscous damping coefficient C.",
+      "provenance": "Cleanroom Kelvin-Voigt spring-damper mechanics",
+      "aliases": [
+        "SPRING",
+        "SPRING_DAMPER"
+      ],
+      "parameters": [
+        {
+          "key": "K",
+          "type": "real",
+          "defaultValue": 100000,
+          "unit": "N/m",
+          "description": "Spring stiffness"
+        },
+        {
+          "key": "CV1",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*s/m",
+          "description": "Linear viscous damping coefficient"
+        }
+      ],
+      "wasmKernel": "evalElement",
+      "archetypeId": 7,
+      "dofs": [
+        "UX",
+        "UY",
+        "UZ"
+      ],
+      "nodeCount": 2
+    }
+  }
+]

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "landgem-01-municipal-landfill-decay",
+    "lang": "landgem",
+    "subFormats": ["landgem"],
+    "difficulty": 1,
+    "title": "Small Municipal Landfill First-Order Methane Decay",
+    "description": "EPA LandGEM first-order decomposition model for a small municipal solid waste landfill tracking annual methane generation using CAA conventional kinetic parameters.",
+    "category": "Environmental & Biogas Engineering",
+    "tags": ["landgem", "methane", "first-order-decay", "msw"],
+    "activeFile": "municipal_landfill.landgem",
+    "fileNames": ["municipal_landfill.landgem"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# Small Municipal Solid Waste Landfill (CAA Conventional Defaults)\nSITE \"OakRidgeMunicipal\"\n  OPEN 2015\n  CLOSE 2030\n  L0 100.0\n  K 0.04\n  NMOC 600\n  METHANE_PERCENT 50.0\n\nWASTE_ACCEPTANCE\n  2015 45000\n  2016 48000\n  2017 50000\n  2018 52000\n  2019 54000\n  2020 55000\n"
+  },
+  {
+    "id": "landgem-02-conventional-vs-arid-ap42",
+    "lang": "landgem",
+    "subFormats": ["landgem"],
+    "difficulty": 2,
+    "title": "Conventional vs Arid EPA AP-42 Inventory Comparison",
+    "description": "Side-by-side EPA AP-42 landfill gas emission inventory comparing temperate conventional decay (k=0.04/yr) against arid southwest climate decay (k=0.02/yr) under identical waste intake.",
+    "category": "Environmental & Biogas Engineering",
+    "tags": ["landgem", "ap42", "arid-climate", "emissions-inventory"],
+    "activeFile": "ap42_comparison.landgem",
+    "fileNames": ["ap42_comparison.landgem"],
+    "fileCount": 1,
+    "code": "# EPA AP-42 Conventional vs Arid Climate Landfill Comparison\nSITE \"MidwestConventional\"\n  OPEN 2005\n  CLOSE 2030\n  L0 100.0\n  K 0.04\n  NMOC 595\n  METHANE_PERCENT 50.0\n\nWASTE_ACCEPTANCE\n  2005 120000\n  2006 125000\n  2007 130000\n  2008 135000\n  2009 140000\n  2010 145000\n\nSITE \"SouthwestArid\"\n  OPEN 2005\n  CLOSE 2030\n  L0 100.0\n  K 0.02\n  NMOC 595\n  METHANE_PERCENT 50.0\n\nWASTE_ACCEPTANCE\n  2005 120000\n  2006 125000\n  2007 130000\n  2008 135000\n  2009 140000\n  2010 145000\n"
+  },
+  {
+    "id": "landgem-03-lfg-to-energy-digester",
+    "lang": "landgem",
+    "subFormats": ["landgem"],
+    "difficulty": 3,
+    "title": "Landfill Gas-to-Energy Flare & Co-Digestion CHP Sizing",
+    "description": "Integrated landfill gas recovery site paired with a mesophilic anaerobic co-digester to size combined heat and power (CHP) turbine output and evaluate volatile fatty acid stability.",
+    "category": "Biogas & Renewable Energy",
+    "tags": ["landgem", "biogas-chp", "anaerobic-digester", "lfgte"],
+    "activeFile": "lfg_chp_plant.landgem",
+    "fileNames": ["lfg_chp_plant.landgem"],
+    "fileCount": 1,
+    "code": "# Integrated Landfill Gas-to-Energy & Mesophilic Co-Digestion Plant\nSITE \"CedarValleyLFGTE\"\n  OPEN 2008\n  CLOSE 2038\n  L0 110.0\n  K 0.05\n  NMOC 600\n  METHANE_PERCENT 52.0\n\nWASTE_ACCEPTANCE\n  2008 210000\n  2009 225000\n  2010 240000\n  2011 255000\n  2012 260000\n  2013 275000\n  2014 285000\n  2015 300000\n\nDIGESTER \"MesophilicCoDigester\"\n  VOLUME 5500.0\n  TEMPERATURE 37.5\n  HRT 22.0\n  FEED_COD 48.0\n  PH 7.25\n"
+  },
+  {
+    "id": "landgem-04-multi-cell-nmoc-compliance",
+    "lang": "landgem",
+    "subFormats": ["landgem"],
+    "difficulty": 4,
+    "title": "Multi-Cell Phased Closure & NMOC Emissions Compliance",
+    "description": "Two-phase municipal landfill complex with a closed legacy cell and an active bioreactor cell evaluating NSPS NMOC regulatory compliance and thermophilic sludge co-digestion.",
+    "category": "Environmental Compliance",
+    "tags": ["landgem", "nmoc", "bioreactor-cell", "nsps-compliance"],
+    "activeFile": "multi_cell_nmoc.landgem",
+    "fileNames": ["multi_cell_nmoc.landgem"],
+    "fileCount": 1,
+    "code": "# Multi-Cell Phased Landfill Closure & NSPS NMOC Compliance Assessment\nSITE \"LegacyCell_Phase1\"\n  OPEN 1995\n  CLOSE 2015\n  L0 100.0\n  K 0.04\n  NMOC 600\n  METHANE_PERCENT 50.0\n\nWASTE_ACCEPTANCE\n  1995 180000\n  1998 195000\n  2001 210000\n  2004 220000\n  2007 205000\n  2010 190000\n  2013 175000\n\nSITE \"BioreactorCell_Phase2\"\n  OPEN 2016\n  CLOSE 2040\n  L0 115.0\n  K 0.08\n  NMOC 550\n  METHANE_PERCENT 53.0\n\nWASTE_ACCEPTANCE\n  2016 260000\n  2018 280000\n  2020 300000\n  2022 320000\n  2024 335000\n\nDIGESTER \"ThermophilicSludgeDigester\"\n  VOLUME 4200.0\n  TEMPERATURE 55.0\n  HRT 16.0\n  FEED_COD 52.0\n  PH 7.4\n"
+  },
+  {
+    "id": "landgem-05-regional-landfill-50yr-recovery",
+    "lang": "landgem",
+    "subFormats": ["landgem", "csv"],
+    "difficulty": 5,
+    "title": "Regional Sanitary Landfill 50-Year Gas Recovery & Waste Log",
+    "description": "Large regional sanitary landfill and dual-stage anaerobic digestion complex projecting 50-year methane recovery, NMOC emissions, and CHP power alongside an annual waste tonnage CSV log.",
+    "category": "Environmental & Biogas Engineering",
+    "tags": ["landgem", "regional-landfill", "gas-recovery", "multi-file", "chp"],
+    "activeFile": "regional.landgem",
+    "fileNames": ["regional.landgem", "waste_history.csv"],
+    "fileCount": 2,
+    "code": "# Regional Sanitary Landfill 50-Year Gas Recovery & Dual Digester Complex\nSITE \"MetroRegionalSanitary\"\n  OPEN 2000\n  CLOSE 2050\n  L0 105.0\n  K 0.045\n  NMOC 600\n  METHANE_PERCENT 51.0\n\nWASTE_ACCEPTANCE\n  2000 320000\n  2005 380000\n  2010 430000\n  2015 475000\n  2020 510000\n  2025 540000\n  2030 560000\n  2035 550000\n  2040 520000\n  2045 480000\n\nDIGESTER \"PrimaryDigester_A\"\n  VOLUME 6500.0\n  TEMPERATURE 37.0\n  HRT 20.0\n  FEED_COD 50.0\n  PH 7.3\n\nDIGESTER \"SecondaryDigester_B\"\n  VOLUME 4500.0\n  TEMPERATURE 37.0\n  HRT 18.0\n  FEED_COD 42.0\n  PH 7.2\n",
+    "files": {
+      "regional.landgem": "# Regional Sanitary Landfill 50-Year Gas Recovery & Dual Digester Complex\nSITE \"MetroRegionalSanitary\"\n  OPEN 2000\n  CLOSE 2050\n  L0 105.0\n  K 0.045\n  NMOC 600\n  METHANE_PERCENT 51.0\n\nWASTE_ACCEPTANCE\n  2000 320000\n  2005 380000\n  2010 430000\n  2015 475000\n  2020 510000\n  2025 540000\n  2030 560000\n  2035 550000\n  2040 520000\n  2045 480000\n\nDIGESTER \"PrimaryDigester_A\"\n  VOLUME 6500.0\n  TEMPERATURE 37.0\n  HRT 20.0\n  FEED_COD 50.0\n  PH 7.3\n\nDIGESTER \"SecondaryDigester_B\"\n  VOLUME 4500.0\n  TEMPERATURE 37.0\n  HRT 18.0\n  FEED_COD 42.0\n  PH 7.2\n",
+      "waste_history.csv": "year,accepted_waste_Mg,cumulative_waste_Mg,collection_efficiency_pct\n2000,320000,320000,0\n2005,380000,2050000,55\n2010,430000,4080000,72\n2015,475000,6360000,78\n2020,510000,8840000,82\n2025,540000,11480000,85\n2030,560000,14240000,85\n2035,550000,17010000,85\n2040,520000,19680000,82\n2045,480000,22160000,80\n"
+    }
+  }
+]

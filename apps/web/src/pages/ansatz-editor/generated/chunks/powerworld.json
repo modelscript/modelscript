@@ -1,0 +1,77 @@
+[
+  {
+    "id": "powerworld-01-three-bus-power-flow",
+    "lang": "powerworld",
+    "subFormats": ["aux"],
+    "difficulty": 1,
+    "title": "3-Bus Generator-Load AC Power Flow Case",
+    "description": "Minimal 138 kV three-bus PowerWorld AUX network with slack generator, PV generator, constant-power load, and Newton-Raphson power-flow solve script.",
+    "category": "Transmission Power Flow",
+    "tags": ["powerworld", "aux", "power-flow", "3-bus", "138kv"],
+    "activeFile": "case3.aux",
+    "fileNames": ["case3.aux"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "// 3-Bus 138 kV Generator-Load AC Power Flow Case\nDATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])\n{\n  1 \"Slack_138\" 138.0 1.02 0.0 YES\n  2 \"Gen_138\"   138.0 1.01 2.2 NO\n  3 \"Load_138\"  138.0 0.99 -3.4 NO\n}\n\nDATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])\n{\n  1 \"1\" Closed 145.0 20.0 300.0 10.0 1.02\n  2 \"1\" Closed 100.0 12.0 200.0  0.0 1.01\n}\n\nDATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])\n{\n  3 \"1\" Closed 240.0 45.0\n}\n\nDATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])\n{\n  1 2 \"1\" Closed 0.010 0.050 0.020 250.0 NO\n  2 3 \"1\" Closed 0.020 0.080 0.030 250.0 NO\n  1 3 \"1\" Closed 0.015 0.060 0.025 220.0 NO\n}\n\nSCRIPT\n{\n  EnterMode(RUN);\n  SolvePowerFlow(RECTNEWT);\n}\n"
+  },
+  {
+    "id": "powerworld-02-five-bus-glover-overbye",
+    "lang": "powerworld",
+    "subFormats": ["aux"],
+    "difficulty": 2,
+    "title": "5-Bus Glover-Sarma-Overbye Textbook Power Flow Case",
+    "description": "Classic 5-bus 15 kV/345 kV transmission benchmark with two step-up transformers, three EHV transmission lines, and 800 MW system load.",
+    "category": "Transmission Power Flow",
+    "tags": ["powerworld", "aux", "5-bus", "345kv", "transformer"],
+    "activeFile": "glover5.aux",
+    "fileNames": ["glover5.aux"],
+    "fileCount": 1,
+    "code": "// 5-Bus Glover-Sarma-Overbye Textbook Benchmark (15 kV / 345 kV)\nDATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])\n{\n  1 \"GEN1_15\"   15.0  1.00 0.0 YES\n  2 \"LOAD2_345\" 345.0 0.98 -12.4 NO\n  3 \"GEN3_15\"   15.0  1.05 -0.6 NO\n  4 \"SUB4_345\"  345.0 1.02 -2.8 NO\n  5 \"SUB5_345\"  345.0 1.00 -4.5 NO\n}\n\nDATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])\n{\n  1 \"1\" Closed 320.0 60.0 600.0 50.0 1.00\n  3 \"1\" Closed 520.0 80.0 650.0 50.0 1.05\n}\n\nDATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])\n{\n  2 \"1\" Closed 800.0 280.0\n  4 \"1\" Closed  80.0  40.0\n}\n\nDATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])\n{\n  1 5 \"T1\" Closed 0.0015 0.020 0.000 600.0 YES\n  3 4 \"T2\" Closed 0.0008 0.010 0.000 1000.0 YES\n  2 4 \"1\"  Closed 0.0090 0.100 1.720 1200.0 NO\n  2 5 \"1\"  Closed 0.0045 0.050 0.880 1200.0 NO\n  4 5 \"1\"  Closed 0.0023 0.025 0.440 1200.0 NO\n}\n\nSCRIPT\n{\n  EnterMode(RUN);\n  SolvePowerFlow(RECTNEWT);\n}\n"
+  },
+  {
+    "id": "powerworld-03-seven-bus-area-interchange",
+    "lang": "powerworld",
+    "subFormats": ["aux"],
+    "difficulty": 3,
+    "title": "7-Bus Multi-Area Interchange with Tie-Line Transformer",
+    "description": "Seven-bus 138 kV meshed network modeling scheduled interchange across parallel inter-area tie lines and an inter-tie regulating transformer.",
+    "category": "Transmission Power Flow",
+    "tags": ["powerworld", "aux", "7-bus", "interchange", "tie-line"],
+    "activeFile": "area7.aux",
+    "fileNames": ["area7.aux"],
+    "fileCount": 1,
+    "code": "// 7-Bus Multi-Area Interchange Power Flow Case\nDATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])\n{\n  1 \"ONE_138\"   138.0 1.00  0.0 YES\n  2 \"TWO_138\"   138.0 1.00 -2.1 NO\n  3 \"THREE_138\" 138.0 0.99 -4.5 NO\n  4 \"FOUR_138\"  138.0 0.99 -3.8 NO\n  5 \"FIVE_138\"  138.0 0.98 -5.1 NO\n  6 \"SIX_138\"   138.0 1.01 -1.2 NO\n  7 \"SEVEN_138\" 138.0 1.02  1.5 NO\n}\n\nDATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])\n{\n  1 \"1\" Closed 180.0 25.0 400.0 20.0 1.00\n  2 \"1\" Closed 220.0 30.0 350.0 20.0 1.00\n  6 \"1\" Closed 150.0 20.0 300.0 20.0 1.01\n  7 \"1\" Closed 240.0 35.0 350.0 20.0 1.02\n}\n\nDATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])\n{\n  2 \"1\" Closed  40.0 20.0\n  3 \"1\" Closed 110.0 40.0\n  4 \"1\" Closed  80.0 30.0\n  5 \"1\" Closed 130.0 40.0\n  6 \"1\" Closed 200.0 50.0\n  7 \"1\" Closed 200.0 50.0\n}\n\nDATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])\n{\n  1 2 \"1\" Closed 0.020 0.060 0.060 200.0 NO\n  1 3 \"1\" Closed 0.080 0.240 0.050 150.0 NO\n  2 3 \"1\" Closed 0.060 0.180 0.040 150.0 NO\n  2 4 \"1\" Closed 0.060 0.180 0.040 150.0 NO\n  2 5 \"1\" Closed 0.040 0.120 0.030 150.0 NO\n  3 4 \"1\" Closed 0.010 0.030 0.020 180.0 NO\n  4 5 \"1\" Closed 0.080 0.240 0.050 150.0 NO\n  2 6 \"1\" Closed 0.025 0.085 0.040 220.0 YES\n  5 7 \"1\" Closed 0.030 0.095 0.040 220.0 NO\n  6 7 \"1\" Closed 0.015 0.055 0.030 250.0 NO\n}\n\nSCRIPT\n{\n  EnterMode(RUN);\n  SolvePowerFlow(RECTNEWT);\n}\n"
+  },
+  {
+    "id": "powerworld-04-nine-bus-n1-contingency",
+    "lang": "powerworld",
+    "subFormats": ["aux"],
+    "difficulty": 4,
+    "title": "IEEE 9-Bus N-1 Contingency Thermal Limit Screening",
+    "description": "WSCC 9-bus 230 kV transmission system configured with single-line N-1 outage contingencies and automated contingency screening script commands.",
+    "category": "Transmission Power Flow",
+    "tags": ["powerworld", "ieee-9", "contingency", "n-1", "230kv"],
+    "activeFile": "ieee9_ctg.aux",
+    "fileNames": ["ieee9_ctg.aux"],
+    "fileCount": 1,
+    "code": "// WSCC 9-Bus 230 kV N-1 Contingency Thermal Screening Case\nDATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])\n{\n  1 \"GEN1_16KV\" 16.5  1.04  0.0 YES\n  2 \"GEN2_18KV\" 18.0  1.025 9.3 NO\n  3 \"GEN3_13KV\" 13.8  1.025 4.7 NO\n  4 \"BUS4_230\"  230.0 1.026 -2.2 NO\n  5 \"BUS5_230\"  230.0 0.996 -4.0 NO\n  6 \"BUS6_230\"  230.0 1.013 -3.7 NO\n  7 \"BUS7_230\"  230.0 1.026  3.7 NO\n  8 \"BUS8_230\"  230.0 1.016  0.7 NO\n  9 \"BUS9_230\"  230.0 1.032  2.0 NO\n}\n\nDATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])\n{\n  1 \"1\" Closed  71.6 27.0 250.0 10.0 1.040\n  2 \"1\" Closed 163.0  6.7 300.0 10.0 1.025\n  3 \"1\" Closed  85.0 -10.9 270.0 10.0 1.025\n}\n\nDATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])\n{\n  5 \"1\" Closed 125.0 50.0\n  6 \"1\" Closed  90.0 30.0\n  8 \"1\" Closed 100.0 35.0\n}\n\nDATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])\n{\n  1 4 \"T1\" Closed 0.0010 0.0576 0.000 250.0 YES\n  2 7 \"T2\" Closed 0.0010 0.0625 0.000 250.0 YES\n  3 9 \"T3\" Closed 0.0010 0.0586 0.000 250.0 YES\n  4 5 \"1\"  Closed 0.0100 0.0850 0.176 250.0 NO\n  4 6 \"1\"  Closed 0.0170 0.0920 0.158 250.0 NO\n  5 7 \"1\"  Closed 0.0320 0.1610 0.306 250.0 NO\n  6 9 \"1\"  Closed 0.0390 0.1700 0.358 250.0 NO\n  7 8 \"1\"  Closed 0.0085 0.0720 0.149 250.0 NO\n  8 9 \"1\"  Closed 0.0119 0.1008 0.209 250.0 NO\n}\n\nDATA (Contingency, [CTGName, CTGSkip])\n{\n  \"OUT_LN_4_5\" NO\n  \"OUT_LN_5_7\" NO\n  \"OUT_LN_6_9\" NO\n}\n\nSCRIPT\n{\n  EnterMode(RUN);\n  SolvePowerFlow(RECTNEWT);\n  CTGSolveAll();\n}\n"
+  },
+  {
+    "id": "powerworld-05-fourteen-bus-opf-contingency",
+    "lang": "powerworld",
+    "subFormats": ["aux"],
+    "difficulty": 5,
+    "title": "IEEE 14-Bus Optimal Power Flow & Contingency Study",
+    "description": "Multi-file IEEE 14-bus transmission benchmark pairing the base network and OPF dispatch case (case14.aux) with a companion N-1/N-2 contingency list and screening script (contingencies.aux).",
+    "category": "Transmission Power Flow",
+    "tags": ["powerworld", "ieee-14", "opf", "contingency", "multi-file"],
+    "activeFile": "case14.aux",
+    "fileNames": ["case14.aux", "contingencies.aux"],
+    "fileCount": 2,
+    "code": "// IEEE 14-Bus Optimal Power Flow & Contingency Benchmark\nDATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])\n{\n  1  \"BUS1_138\"  138.0 1.060  0.0 YES\n  2  \"BUS2_138\"  138.0 1.045 -5.0 NO\n  3  \"BUS3_138\"  138.0 1.010 -12.7 NO\n  4  \"BUS4_138\"  138.0 1.018 -10.3 NO\n  5  \"BUS5_138\"  138.0 1.020 -8.8 NO\n  6  \"BUS6_69\"   69.0  1.070 -14.2 NO\n  7  \"BUS7_69\"   69.0  1.062 -13.4 NO\n  8  \"BUS8_18\"   18.0  1.090 -13.4 NO\n  9  \"BUS9_69\"   69.0  1.056 -14.9 NO\n  10 \"BUS10_69\"  69.0  1.051 -15.1 NO\n  11 \"BUS11_69\"  69.0  1.057 -14.8 NO\n  12 \"BUS12_69\"  69.0  1.055 -15.1 NO\n  13 \"BUS13_69\"  69.0  1.050 -15.2 NO\n  14 \"BUS14_69\"  69.0  1.036 -16.0 NO\n}\n\nDATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])\n{\n  1 \"1\" Closed 232.4 -16.5 332.4 0.0 1.060\n  2 \"1\" Closed  40.0  43.6 140.0 0.0 1.045\n  3 \"1\" Closed   0.0  25.1 100.0 0.0 1.010\n  6 \"1\" Closed   0.0  12.7 100.0 0.0 1.070\n  8 \"1\" Closed   0.0  17.6 100.0 0.0 1.090\n}\n\nDATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])\n{\n  2  \"1\" Closed 21.7 12.7\n  3  \"1\" Closed 94.2 19.0\n  4  \"1\" Closed 47.8 -3.9\n  5  \"1\" Closed  7.6  1.6\n  6  \"1\" Closed 11.2  7.5\n  9  \"1\" Closed 29.5 16.6\n  10 \"1\" Closed  9.0  5.8\n  11 \"1\" Closed  3.5  1.8\n  12 \"1\" Closed  6.1  1.6\n  13 \"1\" Closed 13.5  5.8\n  14 \"1\" Closed 14.9  5.0\n}\n\nDATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])\n{\n  1  2  \"1\" Closed 0.0194 0.0592 0.0528 200.0 NO\n  1  5  \"1\" Closed 0.0540 0.2230 0.0492 150.0 NO\n  2  3  \"1\" Closed 0.0470 0.1980 0.0438 150.0 NO\n  2  4  \"1\" Closed 0.0581 0.1763 0.0340 150.0 NO\n  2  5  \"1\" Closed 0.0570 0.1739 0.0346 150.0 NO\n  3  4  \"1\" Closed 0.0670 0.1710 0.0128 150.0 NO\n  4  5  \"1\" Closed 0.0134 0.0421 0.0000 150.0 NO\n  4  7  \"T1\" Closed 0.0010 0.2091 0.0000 120.0 YES\n  4  9  \"T2\" Closed 0.0010 0.5562 0.0000 120.0 YES\n  5  6  \"T3\" Closed 0.0010 0.2520 0.0000 120.0 YES\n  6  11 \"1\" Closed 0.0950 0.1989 0.0000 100.0 NO\n  6  12 \"1\" Closed 0.1229 0.2558 0.0000 100.0 NO\n  6  13 \"1\" Closed 0.0662 0.1303 0.0000 100.0 NO\n  7  8  \"T4\" Closed 0.0010 0.1762 0.0000 120.0 YES\n  7  9  \"1\" Closed 0.0010 0.1100 0.0000 120.0 NO\n  9  10 \"1\" Closed 0.0318 0.0845 0.0000 100.0 NO\n  9  14 \"1\" Closed 0.1271 0.2704 0.0000 100.0 NO\n  10 11 \"1\" Closed 0.0821 0.1921 0.0000 100.0 NO\n  12 13 \"1\" Closed 0.2209 0.1999 0.0000 100.0 NO\n  13 14 \"1\" Closed 0.1709 0.3480 0.0000 100.0 NO\n}\n\nSCRIPT\n{\n  EnterMode(RUN);\n  SolvePowerFlow(RECTNEWT);\n  SolvePrimalLP();\n}\n",
+    "files": {
+      "case14.aux": "// IEEE 14-Bus Optimal Power Flow & Contingency Benchmark\nDATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])\n{\n  1  \"BUS1_138\"  138.0 1.060  0.0 YES\n  2  \"BUS2_138\"  138.0 1.045 -5.0 NO\n  3  \"BUS3_138\"  138.0 1.010 -12.7 NO\n  4  \"BUS4_138\"  138.0 1.018 -10.3 NO\n  5  \"BUS5_138\"  138.0 1.020 -8.8 NO\n  6  \"BUS6_69\"   69.0  1.070 -14.2 NO\n  7  \"BUS7_69\"   69.0  1.062 -13.4 NO\n  8  \"BUS8_18\"   18.0  1.090 -13.4 NO\n  9  \"BUS9_69\"   69.0  1.056 -14.9 NO\n  10 \"BUS10_69\"  69.0  1.051 -15.1 NO\n  11 \"BUS11_69\"  69.0  1.057 -14.8 NO\n  12 \"BUS12_69\"  69.0  1.055 -15.1 NO\n  13 \"BUS13_69\"  69.0  1.050 -15.2 NO\n  14 \"BUS14_69\"  69.0  1.036 -16.0 NO\n}\n\nDATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])\n{\n  1 \"1\" Closed 232.4 -16.5 332.4 0.0 1.060\n  2 \"1\" Closed  40.0  43.6 140.0 0.0 1.045\n  3 \"1\" Closed   0.0  25.1 100.0 0.0 1.010\n  6 \"1\" Closed   0.0  12.7 100.0 0.0 1.070\n  8 \"1\" Closed   0.0  17.6 100.0 0.0 1.090\n}\n\nDATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])\n{\n  2  \"1\" Closed 21.7 12.7\n  3  \"1\" Closed 94.2 19.0\n  4  \"1\" Closed 47.8 -3.9\n  5  \"1\" Closed  7.6  1.6\n  6  \"1\" Closed 11.2  7.5\n  9  \"1\" Closed 29.5 16.6\n  10 \"1\" Closed  9.0  5.8\n  11 \"1\" Closed  3.5  1.8\n  12 \"1\" Closed  6.1  1.6\n  13 \"1\" Closed 13.5  5.8\n  14 \"1\" Closed 14.9  5.0\n}\n\nDATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])\n{\n  1  2  \"1\" Closed 0.0194 0.0592 0.0528 200.0 NO\n  1  5  \"1\" Closed 0.0540 0.2230 0.0492 150.0 NO\n  2  3  \"1\" Closed 0.0470 0.1980 0.0438 150.0 NO\n  2  4  \"1\" Closed 0.0581 0.1763 0.0340 150.0 NO\n  2  5  \"1\" Closed 0.0570 0.1739 0.0346 150.0 NO\n  3  4  \"1\" Closed 0.0670 0.1710 0.0128 150.0 NO\n  4  5  \"1\" Closed 0.0134 0.0421 0.0000 150.0 NO\n  4  7  \"T1\" Closed 0.0010 0.2091 0.0000 120.0 YES\n  4  9  \"T2\" Closed 0.0010 0.5562 0.0000 120.0 YES\n  5  6  \"T3\" Closed 0.0010 0.2520 0.0000 120.0 YES\n  6  11 \"1\" Closed 0.0950 0.1989 0.0000 100.0 NO\n  6  12 \"1\" Closed 0.1229 0.2558 0.0000 100.0 NO\n  6  13 \"1\" Closed 0.0662 0.1303 0.0000 100.0 NO\n  7  8  \"T4\" Closed 0.0010 0.1762 0.0000 120.0 YES\n  7  9  \"1\" Closed 0.0010 0.1100 0.0000 120.0 NO\n  9  10 \"1\" Closed 0.0318 0.0845 0.0000 100.0 NO\n  9  14 \"1\" Closed 0.1271 0.2704 0.0000 100.0 NO\n  10 11 \"1\" Closed 0.0821 0.1921 0.0000 100.0 NO\n  12 13 \"1\" Closed 0.2209 0.1999 0.0000 100.0 NO\n  13 14 \"1\" Closed 0.1709 0.3480 0.0000 100.0 NO\n}\n\nSCRIPT\n{\n  EnterMode(RUN);\n  SolvePowerFlow(RECTNEWT);\n  SolvePrimalLP();\n}\n",
+      "contingencies.aux": "// Companion N-1 Contingency Definition Deck for IEEE 14-Bus Case\nDATA (Contingency, [CTGName, CTGSkip])\n{\n  \"CTG_LN_1_2\" NO\n  \"CTG_LN_1_5\" NO\n  \"CTG_LN_2_3\" NO\n  \"CTG_XF_4_7\" NO\n  \"CTG_XF_5_6\" NO\n}\n\nSCRIPT\n{\n  EnterMode(RUN);\n  CTGSolveAll();\n}\n"
+    }
+  }
+]

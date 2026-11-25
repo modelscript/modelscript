@@ -1,0 +1,11 @@
+{
+  "id": "jcamp-dx-03-aspirin-1h-nmr-peaks",
+  "lang": "jcamp-dx",
+  "subFormats": ["jcamp-dx-5.00"],
+  "difficulty": 3,
+  "title": "Aspirin (Acetylsalicylic Acid) 1H-NMR Chemical Shift Table",
+  "description": "JCAMP-DX 5.00 proton NMR peak table for acetylsalicylic acid in CDCl3 resolving the acetyl methyl singlet (2.35 ppm), four aromatic protons (7.1-8.1 ppm), and carboxylic acid proton (11.4 ppm).",
+  "category": "NMR Spectroscopy",
+  "tags": ["jcamp-dx", "nmr", "aspirin", "peak-table", "chemical-shift"],
+  "activeFile": "aspirin_1h_nmr.jdx"
+}

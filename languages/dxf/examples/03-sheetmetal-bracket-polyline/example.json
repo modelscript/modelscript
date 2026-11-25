@@ -1,0 +1,11 @@
+{
+  "id": "dxf-03-sheetmetal-bracket-polyline",
+  "lang": "dxf",
+  "subFormats": ["dxf-ascii", "sheet-metal"],
+  "difficulty": 3,
+  "title": "Laser-Cut Sheet-Metal Bracket with Polylines and Arcs",
+  "description": "Closed LWPOLYLINE outer laser-cut profile with corner bulge fillets, bend-line annotations, and mounting slots for CNC laser fabrication.",
+  "category": "Sheet-Metal Fabrication",
+  "tags": ["dxf", "lwpolyline", "sheet-metal", "laser-cut"],
+  "activeFile": "sheet_bracket.dxf"
+}

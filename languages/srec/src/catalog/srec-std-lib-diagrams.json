@@ -1,0 +1,441 @@
+[
+  {
+    "namePath": "srec.S0",
+    "aliases": [
+      "HEADER",
+      "S0_HEADER"
+    ],
+    "label": "S0 Header Record",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S0</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S1",
+    "aliases": [
+      "DATA16",
+      "S1_DATA"
+    ],
+    "label": "S1 16-bit Data Record",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S1</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S2",
+    "aliases": [
+      "DATA24",
+      "S2_DATA"
+    ],
+    "label": "S2 24-bit Data Record",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S2</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S3",
+    "aliases": [
+      "DATA32",
+      "S3_DATA"
+    ],
+    "label": "S3 32-bit Data Record",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S3</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S4",
+    "aliases": [
+      "RESERVED",
+      "S4_RESERVED"
+    ],
+    "label": "S4 Reserved Record",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S4</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S5",
+    "aliases": [
+      "COUNT16",
+      "S5_COUNT"
+    ],
+    "label": "S5 16-bit Record Count",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S5</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S6",
+    "aliases": [
+      "COUNT24",
+      "S6_COUNT"
+    ],
+    "label": "S6 24-bit Record Count",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S6</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S7",
+    "aliases": [
+      "TERM32",
+      "S7_START"
+    ],
+    "label": "S7 32-bit Start Address",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S7</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S8",
+    "aliases": [
+      "TERM24",
+      "S8_START"
+    ],
+    "label": "S8 24-bit Start Address",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S8</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.S9",
+    "aliases": [
+      "TERM16",
+      "S9_START"
+    ],
+    "label": "S9 16-bit Start Address",
+    "category": "Record Types",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SREC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S9</text></svg>",
+    "ports": [
+      {
+        "name": "addr_in",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bytes_out",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "srec.MC6800",
+    "aliases": [
+      "6800",
+      "M6800",
+      "S19_6800"
+    ],
+    "label": "Motorola 6800 Memory Map",
+    "category": "Motorola Memory Maps",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MMAP</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MC6800</text></svg>",
+    "ports": [
+      {
+        "name": "bus_addr",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "bus_data",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 18
+      },
+      {
+        "name": "reset_vec",
+        "kind": "control",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "srec.MC68000",
+    "aliases": [
+      "68000",
+      "M68K",
+      "S28_68K"
+    ],
+    "label": "Motorola 68000 Memory Map",
+    "category": "Motorola Memory Maps",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MMAP</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MC68000</text></svg>",
+    "ports": [
+      {
+        "name": "bus_addr",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "bus_data",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 18
+      },
+      {
+        "name": "reset_vec",
+        "kind": "control",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "srec.COLDFIRE",
+    "aliases": [
+      "MCF5200",
+      "MCF5400",
+      "S37_COLDFIRE"
+    ],
+    "label": "Motorola ColdFire Memory Map",
+    "category": "Motorola Memory Maps",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MMAP</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">COLDFIRE</text></svg>",
+    "ports": [
+      {
+        "name": "bus_addr",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "bus_data",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 18
+      },
+      {
+        "name": "reset_vec",
+        "kind": "control",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "srec.POWERPC",
+    "aliases": [
+      "MPC555",
+      "MPC860",
+      "PPC",
+      "S37_PPC"
+    ],
+    "label": "Motorola PowerPC Memory Map",
+    "category": "Motorola Memory Maps",
+    "domain": "firmware",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e1065\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MMAP</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">POWERPC</text></svg>",
+    "ports": [
+      {
+        "name": "bus_addr",
+        "kind": "data",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "bus_data",
+        "kind": "data",
+        "side": "right",
+        "dx": 88,
+        "dy": 18
+      },
+      {
+        "name": "reset_vec",
+        "kind": "control",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  }
+]

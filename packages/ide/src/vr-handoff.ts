@@ -18,7 +18,7 @@ export const VR_HANDOFF_BROADCAST_CHANNEL = "modelscript-vr-handoff";
 export const DEFAULT_VR_HANDOFF_TTL_MS = 60_000;
 
 /** Supported Engineering Rotunda environment presets. */
-export const VALID_VR_ENVIRONMENTS = ["warehouse", "office", "outdoors", "dark-lab", "passthrough"] as const;
+export const VALID_VR_ENVIRONMENTS = ["atrium", "warehouse", "office", "outdoors", "dark-lab", "passthrough"] as const;
 
 export type VrRotundaEnvironment = (typeof VALID_VR_ENVIRONMENTS)[number];
 

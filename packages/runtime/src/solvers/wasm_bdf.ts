@@ -120,7 +120,7 @@ export interface WasmBdfExports {
  * Orchestrates native linear memory BDF execution for compiled DAEs.
  */
 export class WasmBdf {
-  constructor(private wasmInstance: any) {}
+  constructor(private wasmInstance: { exports?: Partial<WasmBdfExports> } | null | undefined) {}
 
   /**
    * Instantiates a BDF solver instance in WASM linear memory.

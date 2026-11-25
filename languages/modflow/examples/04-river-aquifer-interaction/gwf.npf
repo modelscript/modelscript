@@ -1,0 +1,7 @@
+# Alluvial Gravel & Sand Aquifer Properties
+BEGIN NPF6
+  K 24.0
+  K33 2.0
+  SS 1.0e-5
+  SY 0.24
+END NPF6

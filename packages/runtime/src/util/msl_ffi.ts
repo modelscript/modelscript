@@ -122,8 +122,17 @@ export function isMslCFunction(funcName: string): boolean {
   );
 }
 
+export type MslCFunctionResult = number | boolean | string | [number, number] | [number, string] | number[][];
+
+function toNumberMatrix(raw: unknown): number[][] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((row: unknown) =>
+    Array.isArray(row) ? row.map((v: unknown) => Number(v ?? 0.0)) : [Number(row ?? 0.0)],
+  );
+}
+
 /** Evaluate an MSL C FFI function with concrete argument values. */
-export function evaluateMslCFunction(funcName: string, args: any[]): any {
+export function evaluateMslCFunction(funcName: string, args: unknown[]): MslCFunctionResult {
   const resolvedName = MSL_C_NAME_MAP[funcName] ?? funcName;
   switch (resolvedName) {
     // ── ModelicaStrings ──
@@ -209,9 +218,9 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const handle = nextHandleId++;
       const tableName = String(args[0] ?? "");
       const fileName = String(args[1] ?? "");
-      const table = Array.isArray(args[2]) ? args[2] : [];
+      const table = toNumberMatrix(args[2]);
       const hasColumnsArg = Array.isArray(args[5]);
-      const columns = hasColumnsArg ? (args[5] as number[]).map(Number) : [];
+      const columns = hasColumnsArg ? (args[5] as unknown[]).map(Number) : [];
       const smoothness = hasColumnsArg ? Number(args[7] ?? 1) : Number(args[5] ?? 1);
       const extrapolation = hasColumnsArg ? Number(args[8] ?? 1) : 1;
       table1DStore.set(handle, { tableName, fileName, table, columns, smoothness, extrapolation });
@@ -241,9 +250,9 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const handle = nextHandleId++;
       const fileName = String(args[0] ?? "");
       const tableName = String(args[1] ?? "");
-      const table = Array.isArray(args[2]) ? args[2] : [];
+      const table = toNumberMatrix(args[2]);
       const startTime = Number(args[5] ?? 0.0);
-      const columns = Array.isArray(args[6]) ? args[6].map(Number) : [];
+      const columns = Array.isArray(args[6]) ? (args[6] as unknown[]).map(Number) : [];
       const smoothness = Number(args[8] ?? 1);
       const extrapolation = Number(args[9] ?? 1);
       const shiftTime = Number(args[10] ?? 0.0);
@@ -323,7 +332,7 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const handle = nextHandleId++;
       const tableName = String(args[0] ?? "");
       const fileName = String(args[1] ?? "");
-      const table = Array.isArray(args[2]) ? args[2] : [];
+      const table = toNumberMatrix(args[2]);
       const smoothness = Number(args[5] ?? 1);
       table2DStore.set(handle, { tableName, fileName, table, smoothness });
       return handle;
@@ -427,15 +436,12 @@ export function evaluateMslCFunction(funcName: string, args: any[]): any {
       const matrixName = String(args[1] ?? "");
       const rawMatrix = args[2];
       if (Array.isArray(rawMatrix)) {
-        const normalized: number[][] = rawMatrix.map((row: any) =>
-          Array.isArray(row) ? row.map((v: any) => Number(v ?? 0.0)) : [Number(row ?? 0.0)],
-        );
-        ioMatrixStore.set(`${fileName}::${matrixName}`, normalized);
+        ioMatrixStore.set(`${fileName}::${matrixName}`, toNumberMatrix(rawMatrix));
       }
       return 0;
     }
 
     default:
-      return null;
+      return null as unknown as MslCFunctionResult;
   }
 }

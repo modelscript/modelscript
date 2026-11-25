@@ -1,0 +1,37 @@
+! Cantilever Steel Beam Static Bending Analysis
+/TITLE, Cantilever Beam Static Deflection (BEAM188)
+/UNITS, SI
+/PREP7
+
+L = 2.0
+W = 0.05
+H = 0.10
+P = 2500.0
+
+ET, 1, BEAM188
+MP, EX, 1, 210e9
+MP, PRXY, 1, 0.30
+MP, DENS, 1, 7850.0
+SECTYPE, 1, BEAM, RECT
+SECDATA, W, H
+
+N, 1, 0.0, 0.0, 0.0
+N, 2, 0.5, 0.0, 0.0
+N, 3, 1.0, 0.0, 0.0
+N, 4, 1.5, 0.0, 0.0
+N, 5, L, 0.0, 0.0
+
+TYPE, 1
+MAT, 1
+E, 1, 2
+E, 2, 3
+E, 3, 4
+E, 4, 5
+FINISH
+
+/SOLU
+ANTYPE, STATIC
+D, 1, ALL, 0.0
+F, 5, FY, -P
+SOLVE
+FINISH

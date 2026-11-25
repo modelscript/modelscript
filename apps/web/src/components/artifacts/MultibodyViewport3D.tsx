@@ -13,6 +13,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef } from "react";
 import styled from "styled-components";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { resolveCssColor, useThemeTokens } from "../../theme-tokens";
 import { registerArtifactRotundaGeometry } from "./RotundaGeometryBridge";
 import SafeOrbitControls from "./SafeOrbitControls";
@@ -126,7 +127,7 @@ function computeSegmentTransform(
 }
 
 const CameraPresetController: React.FC<{
-  controlsRef: React.RefObject<any>;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
   preset?: ViewportCameraPreset | undefined;
   trigger?: number | undefined;
   tcpPosition?: [number, number, number] | null | undefined;
@@ -229,7 +230,7 @@ const SceneContent: React.FC<{
   cameraPresetTrigger,
 }) => {
   const tokens = useThemeTokens();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const hasRichUrdfVisuals = Boolean(urdfVisuals && urdfVisuals.length > 0);
 
   const linkSegments = useMemo(() => {

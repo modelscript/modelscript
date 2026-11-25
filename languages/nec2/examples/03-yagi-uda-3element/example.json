@@ -1,0 +1,11 @@
+{
+  "id": "nec2-03-yagi-uda-3element",
+  "lang": "nec2",
+  "subFormats": ["nec2", "directional-array"],
+  "difficulty": 3,
+  "title": "3-Element Yagi-Uda Directional Beam Antenna",
+  "description": "Three-element parasitic Yagi-Uda beam antenna (reflector, driven element, director) tuned for 300 MHz with full 360-degree azimuth gain pattern.",
+  "category": "Antennas & Electromagnetics",
+  "tags": ["nec2", "yagi-uda", "directional", "parasitic-array"],
+  "activeFile": "yagi_3el.nec"
+}

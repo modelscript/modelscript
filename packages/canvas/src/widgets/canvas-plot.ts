@@ -2,6 +2,7 @@
 
 import type { Canvas2DContextLike } from "../engine/glyph-compiler.js";
 import type { TileLodTier } from "../schema/canvas-document.js";
+import type { CanvasWidgetPalette } from "./palette.js";
 
 /**
  * Canvas2D-Native Plot & Chart Engine (Modelon Impact style).
@@ -69,6 +70,8 @@ export interface CanvasPlotSpec {
   /** Optional schematic anchor point in parent canvas coordinates to draw a dashed leader tether. */
   tetherTarget?: WidgetTetherTarget | undefined;
   dark?: boolean | undefined;
+  /** Optional colour overrides (board themes such as `blueprint`). Unset keys fall back to the `dark` defaults. */
+  palette?: Partial<CanvasWidgetPalette> | undefined;
   lod?: TileLodTier | undefined;
 }
 
@@ -443,11 +446,12 @@ export function paintCanvasPlot(
   height: number,
 ): { renderedPoints: number; bounds: PlotDataBounds } {
   const dark = spec.dark ?? true;
-  const bg = dark ? "#0b1220" : "#ffffff";
-  const border = dark ? "#334155" : "#cbd5e1";
-  const gridColor = dark ? "rgba(148,163,184,0.16)" : "rgba(15,23,42,0.1)";
-  const textColor = dark ? "#cbd5e1" : "#1e293b";
-  const mutedText = dark ? "#94a3b8" : "#64748b";
+  const pal = spec.palette;
+  const bg = pal?.background ?? (dark ? "#0b1220" : "#ffffff");
+  const border = pal?.border ?? (dark ? "#334155" : "#cbd5e1");
+  const gridColor = pal?.grid ?? (dark ? "rgba(148,163,184,0.16)" : "rgba(15,23,42,0.1)");
+  const textColor = pal?.text ?? (dark ? "#cbd5e1" : "#1e293b");
+  const mutedText = pal?.mutedText ?? (dark ? "#94a3b8" : "#64748b");
   const layout = computePlotLayout(spec, x, y, width, height);
   const { bounds, isSparkline, padL, padT, plotW, plotH, mapX, mapY } = layout;
 

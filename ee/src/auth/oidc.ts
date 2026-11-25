@@ -280,64 +280,54 @@ export class OidcService {
       }
     }
 
-    try {
-      const configRes = await fetch(`${this.issuerUrl}/.well-known/openid-configuration`);
-      if (!configRes.ok) {
-        throw new Error(`Failed to fetch OpenID configuration from ${this.issuerUrl}`);
-      }
-      const config = (await configRes.json()) as {
-        authorization_endpoint?: string | undefined;
-        token_endpoint?: string | undefined;
-        jwks_uri?: string | undefined;
-      };
-      this.discoveryCache = {
-        authorizationEndpoint: config.authorization_endpoint,
-        tokenEndpoint: config.token_endpoint,
-        jwksUri: config.jwks_uri,
-        expiresAt: now + 3600 * 1000,
-      };
-      if (!config.jwks_uri) {
-        throw new Error("OpenID configuration is missing jwks_uri");
-      }
+    const configRes = await fetch(`${this.issuerUrl}/.well-known/openid-configuration`);
+    if (!configRes.ok) {
+      throw new Error(`Failed to fetch OpenID configuration from ${this.issuerUrl}`);
+    }
+    const config = (await configRes.json()) as {
+      authorization_endpoint?: string | undefined;
+      token_endpoint?: string | undefined;
+      jwks_uri?: string | undefined;
+    };
+    this.discoveryCache = {
+      authorizationEndpoint: config.authorization_endpoint,
+      tokenEndpoint: config.token_endpoint,
+      jwksUri: config.jwks_uri,
+      expiresAt: now + 3600 * 1000,
+    };
+    if (!config.jwks_uri) {
+      throw new Error("OpenID configuration is missing jwks_uri");
+    }
 
-      const jwksRes = await fetch(config.jwks_uri);
-      if (!jwksRes.ok) {
-        throw new Error(`Failed to fetch JWKS from ${config.jwks_uri}`);
-      }
-      const jwks = (await jwksRes.json()) as {
-        keys?: (crypto.JsonWebKeyInput["key"] & { kty?: string | undefined; kid?: string | undefined })[] | undefined;
-      };
-      if (!Array.isArray(jwks.keys)) {
-        throw new Error("Invalid JWKS payload: missing keys array");
-      }
+    const jwksRes = await fetch(config.jwks_uri);
+    if (!jwksRes.ok) {
+      throw new Error(`Failed to fetch JWKS from ${config.jwks_uri}`);
+    }
+    const jwks = (await jwksRes.json()) as {
+      keys?: (crypto.JsonWebKeyInput["key"] & { kty?: string | undefined; kid?: string | undefined })[] | undefined;
+    };
+    if (!Array.isArray(jwks.keys)) {
+      throw new Error("Invalid JWKS payload: missing keys array");
+    }
 
-      this.jwksCache.clear();
-      for (const key of jwks.keys) {
-        if (key.kty === "RSA" || key.kty === "EC") {
-          try {
-            const keyObj = crypto.createPublicKey({ key, format: "jwk" });
-            const pem = keyObj.export({ type: "spki", format: "pem" }) as string;
-            const keyId = key.kid || "default";
-            this.jwksCache.set(keyId, { pem, expiresAt: now + 3600 * 1000 });
-          } catch {
-            // Ignore malformed keys in JWKS
-          }
+    this.jwksCache.clear();
+    for (const key of jwks.keys) {
+      if (key.kty === "RSA" || key.kty === "EC") {
+        try {
+          const keyObj = crypto.createPublicKey({ key, format: "jwk" });
+          const pem = keyObj.export({ type: "spki", format: "pem" }) as string;
+          const keyId = key.kid || "default";
+          this.jwksCache.set(keyId, { pem, expiresAt: now + 3600 * 1000 });
+        } catch {
+          // Ignore malformed keys in JWKS
         }
       }
-    } catch (err: unknown) {
-      if (process.env["NODE_ENV"] === "test") {
-        return "dummy-secret";
-      }
-      throw err;
     }
 
     if (kid) {
       const cached = this.jwksCache.get(kid);
       if (cached) {
         return cached.pem;
-      }
-      if (process.env["NODE_ENV"] === "test") {
-        return "dummy-secret";
       }
       throw new Error(`No matching signing key found in JWKS for kid: '${kid}'`);
     }
@@ -347,11 +337,14 @@ export class OidcService {
       return firstKey.pem;
     }
 
-    if (process.env["NODE_ENV"] === "test") {
-      return "dummy-secret";
-    }
-
     throw new Error("No signing keys available in JWKS");
+  }
+
+  /**
+   * Registers a pinned PEM public key in the JWKS cache (for air-gapped IdPs or unit tests).
+   */
+  public registerStaticSigningKey(kid: string, publicKeyPem: string, ttlMs = 3600 * 1000): void {
+    this.jwksCache.set(kid, { pem: publicKeyPem, expiresAt: Date.now() + ttlMs });
   }
 
   public async verifyIdToken(idToken: string): Promise<OidcClaims> {
@@ -360,29 +353,20 @@ export class OidcService {
     }
 
     const header = jwt.decode(idToken, { complete: true })?.header as
-      | { kid?: string | undefined; alg?: string | undefined }
-      | undefined;
+      { kid?: string | undefined; alg?: string | undefined } | undefined;
     if (!header || !header.alg || header.alg === "none") {
       throw new Error("Invalid ID token: unsigned tokens (alg=none) are strictly rejected");
     }
 
-    let rawDecoded: string | jwt.JwtPayload;
-
-    if (process.env["NODE_ENV"] === "test" && header.alg.startsWith("HS")) {
-      rawDecoded = jwt.verify(idToken, "dummy-secret", {
-        algorithms: ["HS256"],
-      });
-    } else {
-      if (!this.clientId || !this.issuerUrl) {
-        throw new Error("Invalid OIDC configuration: clientId and issuerUrl are required for token verification");
-      }
-      const pemKey = await this.getSigningKey(header.kid);
-      rawDecoded = jwt.verify(idToken, pemKey, {
-        algorithms: ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
-        audience: this.clientId,
-        issuer: this.issuerUrl,
-      });
+    if (!this.clientId || !this.issuerUrl) {
+      throw new Error("Invalid OIDC configuration: clientId and issuerUrl are required for token verification");
     }
+    const pemKey = await this.getSigningKey(header.kid);
+    const rawDecoded = jwt.verify(idToken, pemKey, {
+      algorithms: ["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
+      audience: this.clientId,
+      issuer: this.issuerUrl,
+    });
 
     const decoded = typeof rawDecoded === "object" && rawDecoded !== null ? (rawDecoded as DecodedOidcPayload) : null;
 

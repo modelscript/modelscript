@@ -1,0 +1,11 @@
+{
+  "id": "srec-02-hc11-sensor-calibration",
+  "lang": "srec",
+  "subFormats": ["s19"],
+  "difficulty": 2,
+  "title": "MC68HC11 EEPROM Sensor Calibration Table (S19)",
+  "description": "Motorola 68HC11 internal EEPROM image at 0xB600 storing a 14-point 16-bit thermistor linearization lookup table with S5 record count verification.",
+  "category": "Sensor Calibration",
+  "tags": ["srec", "s19", "hc11", "eeprom", "calibration"],
+  "activeFile": "hc11_cal.srec"
+}

@@ -1,0 +1,97 @@
+[
+  {
+    "id": "verilog-a-01-temp-dependent-resistor",
+    "lang": "verilog-a",
+    "subFormats": ["va", "vams"],
+    "difficulty": 1,
+    "title": "Linear Temperature-Dependent Resistor",
+    "description": "Compact Verilog-A resistor model with first- and second-order temperature coefficients referencing standard disciplines.vams.",
+    "category": "Passive Compact Models",
+    "tags": ["verilog-a", "resistor", "temperature", "multi-file"],
+    "activeFile": "resistor.va",
+    "fileNames": ["resistor.va", "disciplines.vams"],
+    "fileCount": 2,
+    "isDefaultStarter": true,
+    "code": "`include \"disciplines.vams\"\n\nmodule temp_resistor(p, n);\n  inout p, n;\n  electrical p, n;\n\n  parameter real R0 = 1000.0 from (0:inf);\n  parameter real TC1 = 0.0039;\n  parameter real TC2 = 1.0e-6;\n  parameter real Tnom = 300.15 from (0:inf);\n\n  real dT, Reff;\n\n  analog begin\n    dT = $temperature - Tnom;\n    Reff = R0 * (1.0 + TC1 * dT + TC2 * dT * dT);\n    V(p, n) <+ I(p, n) * Reff;\n  end\nendmodule\n",
+    "files": {
+      "resistor.va": "`include \"disciplines.vams\"\n\nmodule temp_resistor(p, n);\n  inout p, n;\n  electrical p, n;\n\n  parameter real R0 = 1000.0 from (0:inf);\n  parameter real TC1 = 0.0039;\n  parameter real TC2 = 1.0e-6;\n  parameter real Tnom = 300.15 from (0:inf);\n\n  real dT, Reff;\n\n  analog begin\n    dT = $temperature - Tnom;\n    Reff = R0 * (1.0 + TC1 * dT + TC2 * dT * dT);\n    V(p, n) <+ I(p, n) * Reff;\n  end\nendmodule\n",
+      "disciplines.vams": "// Standard IEEE 1364 / Verilog-AMS Electrical Discipline Header\nnature Current;\n  units      = \"A\";\n  access     = I;\n  abstol     = 1e-12;\nendnature\n\nnature Voltage;\n  units      = \"V\";\n  access     = V;\n  abstol     = 1e-6;\nendnature\n\ndiscipline electrical;\n  potential  Voltage;\n  flow       Current;\nenddiscipline\n"
+    }
+  },
+  {
+    "id": "verilog-a-02-shockley-pn-diode",
+    "lang": "verilog-a",
+    "subFormats": ["va", "vams"],
+    "difficulty": 2,
+    "title": "Shockley PN-Junction Diode with Junction Capacitance",
+    "description": "Nonlinear Shockley diode compact model using limexp() for numerical convergence and ddt() charge-conservative junction capacitance.",
+    "category": "Semiconductor Devices",
+    "tags": ["verilog-a", "diode", "shockley", "limexp", "multi-file"],
+    "activeFile": "diode.va",
+    "fileNames": ["diode.va", "constants.vams", "disciplines.vams"],
+    "fileCount": 3,
+    "code": "`include \"disciplines.vams\"\n`include \"constants.vams\"\n\nmodule pn_diode(a, c);\n  inout a, c;\n  electrical a, c;\n\n  parameter real Is = 1.0e-14 from (0:inf);\n  parameter real N = 1.05 from (0:inf);\n  parameter real Rs = 1.5 from [0:inf);\n  parameter real Cj0 = 2.0e-12 from [0:inf);\n  parameter real Tt = 1.0e-9 from [0:inf);\n\n  real Vd, Id, Qd;\n\n  analog begin\n    Vd = V(a, c);\n    Id = Is * (limexp(Vd / (N * $vt)) - 1.0);\n    Qd = Cj0 * Vd + Tt * Id;\n    I(a, c) <+ Id + ddt(Qd);\n  end\nendmodule\n",
+    "files": {
+      "diode.va": "`include \"disciplines.vams\"\n`include \"constants.vams\"\n\nmodule pn_diode(a, c);\n  inout a, c;\n  electrical a, c;\n\n  parameter real Is = 1.0e-14 from (0:inf);\n  parameter real N = 1.05 from (0:inf);\n  parameter real Rs = 1.5 from [0:inf);\n  parameter real Cj0 = 2.0e-12 from [0:inf);\n  parameter real Tt = 1.0e-9 from [0:inf);\n\n  real Vd, Id, Qd;\n\n  analog begin\n    Vd = V(a, c);\n    Id = Is * (limexp(Vd / (N * $vt)) - 1.0);\n    Qd = Cj0 * Vd + Tt * Id;\n    I(a, c) <+ Id + ddt(Qd);\n  end\nendmodule\n",
+      "constants.vams": "// Standard Physical Constants for Verilog-AMS Compact Modeling\n`define M_PI       3.14159265358979323846\n`define P_Q        1.602176634e-19\n`define P_K        1.380649e-23\n`define P_CELSIUS0 273.15\n",
+      "disciplines.vams": "// Standard IEEE 1364 / Verilog-AMS Electrical Discipline Header\nnature Current;\n  units      = \"A\";\n  access     = I;\n  abstol     = 1e-12;\nendnature\n\nnature Voltage;\n  units      = \"V\";\n  access     = V;\n  abstol     = 1e-6;\nendnature\n\ndiscipline electrical;\n  potential  Voltage;\n  flow       Current;\nenddiscipline\n"
+    }
+  },
+  {
+    "id": "verilog-a-03-mosfet-level1",
+    "lang": "verilog-a",
+    "subFormats": ["va", "vams"],
+    "difficulty": 3,
+    "title": "Level-1 Shichman-Hodges NMOS Transistor",
+    "description": "4-terminal Shichman-Hodges Level-1 NMOS compact model covering cutoff, linear triode, and saturation regions with channel-length modulation.",
+    "category": "MOSFET Compact Models",
+    "tags": ["verilog-a", "mosfet", "shichman-hodges", "analog", "multi-file"],
+    "activeFile": "mosfet_l1.va",
+    "fileNames": ["mosfet_l1.va", "disciplines.vams"],
+    "fileCount": 2,
+    "code": "`include \"disciplines.vams\"\n\nmodule mosfet_l1(d, g, s, b);\n  inout d, g, s, b;\n  electrical d, g, s, b;\n\n  parameter real W = 10.0e-6 from (0:inf);\n  parameter real L = 1.0e-6 from (0:inf);\n  parameter real Vto = 0.7;\n  parameter real Kp = 120.0e-6 from (0:inf);\n  parameter real Lambda = 0.02 from [0:inf);\n  parameter real Cgs = 5.0e-15 from [0:inf);\n  parameter real Cgd = 2.0e-15 from [0:inf);\n\n  real Vgs, Vds, Vov, Ids, beta;\n\n  analog begin\n    Vgs = V(g, s);\n    Vds = V(d, s);\n    Vov = Vgs - Vto;\n    beta = Kp * (W / L);\n\n    if (Vov <= 0.0) begin\n      Ids = 0.0;\n    end else if (Vds < Vov) begin\n      Ids = beta * (Vov * Vds - 0.5 * Vds * Vds) * (1.0 + Lambda * Vds);\n    end else begin\n      Ids = 0.5 * beta * Vov * Vov * (1.0 + Lambda * Vds);\n    end\n\n    I(d, s) <+ Ids;\n    I(g, s) <+ ddt(Cgs * Vgs);\n    I(g, d) <+ ddt(Cgd * V(g, d));\n  end\nendmodule\n",
+    "files": {
+      "mosfet_l1.va": "`include \"disciplines.vams\"\n\nmodule mosfet_l1(d, g, s, b);\n  inout d, g, s, b;\n  electrical d, g, s, b;\n\n  parameter real W = 10.0e-6 from (0:inf);\n  parameter real L = 1.0e-6 from (0:inf);\n  parameter real Vto = 0.7;\n  parameter real Kp = 120.0e-6 from (0:inf);\n  parameter real Lambda = 0.02 from [0:inf);\n  parameter real Cgs = 5.0e-15 from [0:inf);\n  parameter real Cgd = 2.0e-15 from [0:inf);\n\n  real Vgs, Vds, Vov, Ids, beta;\n\n  analog begin\n    Vgs = V(g, s);\n    Vds = V(d, s);\n    Vov = Vgs - Vto;\n    beta = Kp * (W / L);\n\n    if (Vov <= 0.0) begin\n      Ids = 0.0;\n    end else if (Vds < Vov) begin\n      Ids = beta * (Vov * Vds - 0.5 * Vds * Vds) * (1.0 + Lambda * Vds);\n    end else begin\n      Ids = 0.5 * beta * Vov * Vov * (1.0 + Lambda * Vds);\n    end\n\n    I(d, s) <+ Ids;\n    I(g, s) <+ ddt(Cgs * Vgs);\n    I(g, d) <+ ddt(Cgd * V(g, d));\n  end\nendmodule\n",
+      "disciplines.vams": "// Standard IEEE 1364 / Verilog-AMS Electrical Discipline Header\nnature Current;\n  units      = \"A\";\n  access     = I;\n  abstol     = 1e-12;\nendnature\n\nnature Voltage;\n  units      = \"V\";\n  access     = V;\n  abstol     = 1e-6;\nendnature\n\ndiscipline electrical;\n  potential  Voltage;\n  flow       Current;\nenddiscipline\n"
+    }
+  },
+  {
+    "id": "verilog-a-04-vco-behavioral",
+    "lang": "verilog-a",
+    "subFormats": ["va", "vams"],
+    "difficulty": 4,
+    "title": "Voltage-Controlled Oscillator (VCO) Behavioral RF Model",
+    "description": "RF behavioral voltage-controlled oscillator with center frequency, tuning sensitivity Kvco, and circular phase integration using idtmod.",
+    "category": "RF Behavioral Modeling",
+    "tags": ["verilog-a", "vco", "pll", "rf", "multi-file"],
+    "activeFile": "vco.va",
+    "fileNames": ["vco.va", "constants.vams", "disciplines.vams"],
+    "fileCount": 3,
+    "code": "`include \"disciplines.vams\"\n`include \"constants.vams\"\n\nmodule rf_vco(vctrl, vout, gnd);\n  input vctrl;\n  output vout;\n  inout gnd;\n  electrical vctrl, vout, gnd;\n\n  parameter real Fcenter = 2.4e9 from (0:inf);\n  parameter real Kvco = 150.0e6 from (0:inf);\n  parameter real Vamp = 0.5 from (0:inf);\n  parameter real Vmin = 0.0;\n  parameter real Vmax = 1.8;\n\n  real freq, phase;\n\n  analog begin\n    freq = Fcenter + Kvco * V(vctrl, gnd);\n    if (freq < 1.0e6) begin\n      freq = 1.0e6;\n    end\n    phase = 2.0 * 3.141592653589793 * idtmod(freq, 0.0, 1.0, 0.0);\n    V(vout, gnd) <+ Vamp * sin(phase);\n  end\nendmodule\n",
+    "files": {
+      "vco.va": "`include \"disciplines.vams\"\n`include \"constants.vams\"\n\nmodule rf_vco(vctrl, vout, gnd);\n  input vctrl;\n  output vout;\n  inout gnd;\n  electrical vctrl, vout, gnd;\n\n  parameter real Fcenter = 2.4e9 from (0:inf);\n  parameter real Kvco = 150.0e6 from (0:inf);\n  parameter real Vamp = 0.5 from (0:inf);\n  parameter real Vmin = 0.0;\n  parameter real Vmax = 1.8;\n\n  real freq, phase;\n\n  analog begin\n    freq = Fcenter + Kvco * V(vctrl, gnd);\n    if (freq < 1.0e6) begin\n      freq = 1.0e6;\n    end\n    phase = 2.0 * 3.141592653589793 * idtmod(freq, 0.0, 1.0, 0.0);\n    V(vout, gnd) <+ Vamp * sin(phase);\n  end\nendmodule\n",
+      "constants.vams": "// Standard Physical Constants for Verilog-AMS Compact Modeling\n`define M_PI       3.14159265358979323846\n`define P_Q        1.602176634e-19\n`define P_K        1.380649e-23\n`define P_CELSIUS0 273.15\n",
+      "disciplines.vams": "// Standard IEEE 1364 / Verilog-AMS Electrical Discipline Header\nnature Current;\n  units      = \"A\";\n  access     = I;\n  abstol     = 1e-12;\nendnature\n\nnature Voltage;\n  units      = \"V\";\n  access     = V;\n  abstol     = 1e-6;\nendnature\n\ndiscipline electrical;\n  potential  Voltage;\n  flow       Current;\nenddiscipline\n"
+    }
+  },
+  {
+    "id": "verilog-a-05-memristor-spice-testbench",
+    "lang": "verilog-a",
+    "subFormats": ["va", "vams", "sp"],
+    "difficulty": 5,
+    "title": "HP TiO2 Memristor Compact Device + SPICE Testbench",
+    "description": "Multi-file Verilog-A nonlinear ion-drift memristor model with internal state variable and accompanying SPICE transient hysteresis testbench.",
+    "category": "Emerging Devices",
+    "tags": ["verilog-a", "memristor", "spice-testbench", "compact-model", "multi-file"],
+    "activeFile": "memristor.va",
+    "fileNames": ["memristor.va", "constants.vams", "disciplines.vams", "testbench.sp"],
+    "fileCount": 4,
+    "code": "`include \"disciplines.vams\"\n`include \"constants.vams\"\n\nmodule hp_memristor(p, n);\n  inout p, n;\n  electrical p, n;\n\n  parameter real Ron = 100.0 from (0:inf);\n  parameter real Roff = 16000.0 from (0:inf);\n  parameter real D = 10.0e-9 from (0:inf);\n  parameter real Uv = 1.0e-14 from (0:inf);\n  parameter real Xinit = 0.1 from (0:1);\n\n  real x, Rm, Im, dxdt;\n\n  analog begin\n    x = idt(dxdt, Xinit);\n    if (x < 0.01) begin\n      x = 0.01;\n    end else if (x > 0.99) begin\n      x = 0.99;\n    end\n    Rm = Ron * x + Roff * (1.0 - x);\n    Im = V(p, n) / Rm;\n    dxdt = (Uv * Ron / (D * D)) * Im * (1.0 - (2.0 * x - 1.0) * (2.0 * x - 1.0));\n    I(p, n) <+ Im;\n  end\nendmodule\n",
+    "files": {
+      "memristor.va": "`include \"disciplines.vams\"\n`include \"constants.vams\"\n\nmodule hp_memristor(p, n);\n  inout p, n;\n  electrical p, n;\n\n  parameter real Ron = 100.0 from (0:inf);\n  parameter real Roff = 16000.0 from (0:inf);\n  parameter real D = 10.0e-9 from (0:inf);\n  parameter real Uv = 1.0e-14 from (0:inf);\n  parameter real Xinit = 0.1 from (0:1);\n\n  real x, Rm, Im, dxdt;\n\n  analog begin\n    x = idt(dxdt, Xinit);\n    if (x < 0.01) begin\n      x = 0.01;\n    end else if (x > 0.99) begin\n      x = 0.99;\n    end\n    Rm = Ron * x + Roff * (1.0 - x);\n    Im = V(p, n) / Rm;\n    dxdt = (Uv * Ron / (D * D)) * Im * (1.0 - (2.0 * x - 1.0) * (2.0 * x - 1.0));\n    I(p, n) <+ Im;\n  end\nendmodule\n",
+      "constants.vams": "// Standard Physical Constants for Verilog-AMS Compact Modeling\n`define M_PI       3.14159265358979323846\n`define P_Q        1.602176634e-19\n`define P_K        1.380649e-23\n`define P_CELSIUS0 273.15\n",
+      "disciplines.vams": "// Standard IEEE 1364 / Verilog-AMS Electrical Discipline Header\nnature Current;\n  units      = \"A\";\n  access     = I;\n  abstol     = 1e-12;\nendnature\n\nnature Voltage;\n  units      = \"V\";\n  access     = V;\n  abstol     = 1e-6;\nendnature\n\ndiscipline electrical;\n  potential  Voltage;\n  flow       Current;\nenddiscipline\n",
+      "testbench.sp": "* Memristor Pinched Hysteresis Loop Testbench\nVin in 0 SIN(0 1.2 1.0)\nRseries in mem_p 50\nRmem_eq mem_p 0 1000\n.TRAN 1m 2.0\n.END\n"
+    }
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "id": "slam-03-cnc-machining-cell",
+  "lang": "slam",
+  "subFormats": ["slam"],
+  "difficulty": 3,
+  "title": "Multi-Resource CNC Machining Cell with Operator Sharing",
+  "description": "Flexible machining cell where raw castings require both a shared human operator for setup/loading and a multi-unit CNC mill bank via SLAM II RESOURCE, AWAIT, and FREE nodes.",
+  "category": "Manufacturing Systems",
+  "tags": ["slam", "cnc", "resource", "await", "free"],
+  "activeFile": "cnc_cell.slam"
+}

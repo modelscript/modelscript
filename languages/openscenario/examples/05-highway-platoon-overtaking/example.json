@@ -1,0 +1,12 @@
+{
+  "id": "openscenario-05-highway-platoon-overtaking",
+  "lang": "openscenario",
+  "subFormats": ["xosc", "xodr"],
+  "difficulty": 5,
+  "title": "Multi-Agent Highway Platoon Overtaking with Catalog",
+  "description": "Multi-agent curved-highway scenario with an autonomous truck platoon, an overtaking Ego passenger car executing a coordinated double lane change, a curved OpenDRIVE motorway, and a reusable VehicleCatalog.",
+  "category": "Connected & Automated Mobility",
+  "tags": ["platoon", "overtaking", "catalog", "multi-agent", "multi-file"],
+  "activeFile": "platoon.xosc",
+  "fileOrder": ["platoon.xosc", "highway_curve.xodr", "VehicleCatalog.xosc"]
+}

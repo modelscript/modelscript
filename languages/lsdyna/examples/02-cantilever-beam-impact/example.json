@@ -1,0 +1,11 @@
+{
+  "id": "lsdyna-02-cantilever-beam-impact",
+  "lang": "lsdyna",
+  "subFormats": ["k"],
+  "difficulty": 2,
+  "title": "Cantilever Beam Transverse Impact Transient",
+  "description": "Four-element Euler-Bernoulli steel cantilever beam subjected to a triangular tip impulse load with clamped root SPC boundary conditions and explicit transient response.",
+  "category": "Explicit FEA & Impact",
+  "tags": ["lsdyna", "beam", "impact", "transient"],
+  "activeFile": "cantilever_impact.k"
+}

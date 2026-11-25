@@ -1,0 +1,17 @@
+# TOPAS Clinical Pencil-Beam Scanning (PBS) Master Treatment Plan
+includeFile = nozzle_geom.topas
+includeFile = spot_list.topas
+includeFile = dose_scorer.topas
+
+s:Ge/World/Material = "G4_AIR"
+d:Ge/World/HLX = 2.0 m
+d:Ge/World/HLY = 2.0 m
+d:Ge/World/HLZ = 2.0 m
+
+s:Ge/VacuumWindow/Type = "TsCylinder"
+s:Ge/VacuumWindow/Parent = "World"
+s:Ge/VacuumWindow/Material = "G4_Ti"
+d:Ge/VacuumWindow/RMin = 0.0 mm
+d:Ge/VacuumWindow/RMax = 50.0 mm
+d:Ge/VacuumWindow/HL = 0.05 mm
+d:Ge/VacuumWindow/TransZ = -600.0 mm

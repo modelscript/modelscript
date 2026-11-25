@@ -137,9 +137,9 @@ export const StlPanel: React.FC<LanguagePanelProps> = ({
                 </PanelButton>
               </>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "stl", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "stl", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

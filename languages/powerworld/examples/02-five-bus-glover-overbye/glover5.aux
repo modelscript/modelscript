@@ -1,0 +1,36 @@
+// 5-Bus Glover-Sarma-Overbye Textbook Benchmark (15 kV / 345 kV)
+DATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])
+{
+  1 "GEN1_15"   15.0  1.00 0.0 YES
+  2 "LOAD2_345" 345.0 0.98 -12.4 NO
+  3 "GEN3_15"   15.0  1.05 -0.6 NO
+  4 "SUB4_345"  345.0 1.02 -2.8 NO
+  5 "SUB5_345"  345.0 1.00 -4.5 NO
+}
+
+DATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])
+{
+  1 "1" Closed 320.0 60.0 600.0 50.0 1.00
+  3 "1" Closed 520.0 80.0 650.0 50.0 1.05
+}
+
+DATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])
+{
+  2 "1" Closed 800.0 280.0
+  4 "1" Closed  80.0  40.0
+}
+
+DATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])
+{
+  1 5 "T1" Closed 0.0015 0.020 0.000 600.0 YES
+  3 4 "T2" Closed 0.0008 0.010 0.000 1000.0 YES
+  2 4 "1"  Closed 0.0090 0.100 1.720 1200.0 NO
+  2 5 "1"  Closed 0.0045 0.050 0.880 1200.0 NO
+  4 5 "1"  Closed 0.0023 0.025 0.440 1200.0 NO
+}
+
+SCRIPT
+{
+  EnterMode(RUN);
+  SolvePowerFlow(RECTNEWT);
+}

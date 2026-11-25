@@ -1,0 +1,8 @@
+# GENSYS EN 14363 Certification Run File
+# Test Zone 3 (Medium Curve R = 600 m, Cant Deficiency I = 245 mm, v = 180 km/h)
+set v_test = 180.0
+set cant_deficiency = 0.245
+set y_q_limit = 0.80
+sub tilting_train
+sub s1002_wheel
+sub uic60_rail

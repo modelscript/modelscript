@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Model Title="Cold Shutdown and Hydrate Cooldown Thermal Profile" Author="FlowAssuranceTeam">
+  <Integration StartTime="0" EndTime="28800" MinDt="0.005" MaxDt="0.5" />
+
+  <Flowpath Name="INSULATED_PIP_TIEBACK">
+    <Pipe Label="WELLHEAD_JUMPER" Length="1800" Diameter="0.2032" Elevation="-90" Roughness="4.5e-5" Discretization="6" />
+    <Pipe Label="MAIN_PIP_TRUNK" Length="6000" Diameter="0.254" Elevation="-40" Roughness="4.5e-5" Discretization="15" />
+    <Pipe Label="RISER_SPOOL" Length="1600" Diameter="0.254" Elevation="135" Roughness="4.5e-5" Discretization="8" />
+    <Valve Name="SHUTDOWN_CHOKE" AbsolutePosition="9350" Diameter="0.14" Opening="0.25" Cd="0.82" />
+    <Source Name="SUBSEA_WELL_B" Position="0" TotalMassRate="26.0" GasMassFraction="0.18" WaterCut="0.15" Temperature="84C" Pressure="175bar" />
+    <Wax CloudPointTemp="32C" MolecularDiffusionCoeff="1.5e-9" WaxDensity="885" />
+    <HeatTransfer Type="WATER" AmbientTemperature="3.5C" AmbientHeatTransferCoeff="260">
+      <Layer Material="DUPLEX_STEEL" Thickness="0.018" Conductivity="19.0" />
+      <Layer Material="AEROGEL_BLANKET" Thickness="0.035" Conductivity="0.024" />
+      <Layer Material="CARRIER_STEEL" Thickness="0.014" Conductivity="45.0" />
+    </HeatTransfer>
+  </Flowpath>
+
+  <Node Name="WELLHEAD_XMT" Type="TERMINAL" Flowpath="INSULATED_PIP_TIEBACK" BoundaryPosition="0.0" MassRate="26.0" Temperature="84C" Pressure="175bar" />
+  <Node Name="HOST_PLATFORM_SEP" Type="PRESSURE" Flowpath="INSULATED_PIP_TIEBACK" BoundaryPosition="1.0" Pressure="30bar" Temperature="22C" />
+</Model>

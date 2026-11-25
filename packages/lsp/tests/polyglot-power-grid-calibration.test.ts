@@ -23,9 +23,9 @@ const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Extract the files map from the HeroExample in apps/web/src/pages/playground/constants.ts
+// Extract the files map from the HeroExample in apps/web/src/pages/ansatz-editor/constants.ts
 function loadPolyglotPowerGridFiles(): Record<string, string> {
-  const constantsPath = path.resolve(__dirname, "../../../apps/web/src/pages/playground/constants.ts");
+  const constantsPath = path.resolve(__dirname, "../../../apps/web/src/pages/ansatz-editor/constants.ts");
   const src = fs.readFileSync(constantsPath, "utf8");
   const marker = 'id: "polyglot-power-grid-comtrade-calibration"';
   const start = src.indexOf(marker);

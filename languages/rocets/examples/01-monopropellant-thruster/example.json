@@ -1,0 +1,12 @@
+{
+  "id": "rocets-01-monopropellant-thruster",
+  "lang": "rocets",
+  "subFormats": ["roc"],
+  "difficulty": 1,
+  "title": "Pressure-Fed Monopropellant Attitude Thruster",
+  "description": "Spacecraft pressure-fed monopropellant reaction-control thruster connecting a nitrogen-pressurized propellant tank through a solenoid thrust valve to a catalytic decomposition chamber and bell nozzle.",
+  "category": "Spacecraft Propulsion",
+  "tags": ["rocets", "monopropellant", "thruster", "pressure-fed"],
+  "activeFile": "monoprop_thruster.roc",
+  "isDefaultStarter": true
+}

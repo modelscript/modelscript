@@ -1,0 +1,77 @@
+[
+  {
+    "id": "esterel-01-abro-synchronizer",
+    "lang": "esterel",
+    "subFormats": ["strl"],
+    "difficulty": 1,
+    "title": "ABRO Canonical Reactive Synchronizer",
+    "description": "Gérard Berry's canonical synchronous reactive ABRO benchmark waiting concurrently for inputs A and B before emitting O, with strong reset preemption on R.",
+    "category": "Synchronous Reactive Systems",
+    "tags": ["esterel", "abro", "parallel", "preemption"],
+    "activeFile": "abro.strl",
+    "fileNames": ["abro.strl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "% Canonical Berry ABRO Synchronous Reactive Synchronizer\nmodule ABRO:\ninput A, B, R;\noutput O;\n\nloop\n  [ await A || await B ];\n  emit O\neach R\nend module\n"
+  },
+  {
+    "id": "esterel-02-stopwatch-preemption",
+    "lang": "esterel",
+    "subFormats": ["strl"],
+    "difficulty": 2,
+    "title": "Stopwatch with Start, Stop, Lap, and Reset Preemption",
+    "description": "Digital chronometer modeled in Esterel using suspend/when for pause-resume control, parallel lap-freeze display handling, and strong abort reset preemption.",
+    "category": "Embedded Reactive Controllers",
+    "tags": ["esterel", "stopwatch", "suspend", "abort"],
+    "activeFile": "stopwatch.strl",
+    "fileNames": ["stopwatch.strl"],
+    "fileCount": 1,
+    "code": "% Digital Stopwatch with Start/Stop, Lap Freeze, and Strong Reset Preemption\nmodule Stopwatch:\ninput TICK, START_STOP, LAP, RESET;\noutput DISPLAY_TICK, LAP_FROZEN, CLEARED;\nrelation START_STOP # RESET;\n\nloop\n  abort\n    [\n      loop\n        await START_STOP;\n        abort\n          every TICK do\n            emit DISPLAY_TICK\n          end\n        when START_STOP;\n        pause\n      end\n    ||\n      loop\n        await LAP;\n        abort\n          sustain LAP_FROZEN\n        when LAP;\n        pause\n      end\n    ]\n  when RESET do\n    emit CLEARED\n  end;\n  pause\nend\nend module\n"
+  },
+  {
+    "id": "esterel-03-elevator-door",
+    "lang": "esterel",
+    "subFormats": ["strl"],
+    "difficulty": 3,
+    "title": "Elevator Door Obstruction and Timeout Controller",
+    "description": "Reactive elevator cabin door controller handling open requests, dwell timer expiration, optical light-curtain obstruction reversal via trap/exit, and motor commands.",
+    "category": "Building Automation & Safety",
+    "tags": ["esterel", "elevator", "trap", "obstruction", "safety"],
+    "activeFile": "elevator_door.strl",
+    "fileNames": ["elevator_door.strl"],
+    "fileCount": 1,
+    "code": "% Elevator Door Obstruction Reversal and Timeout Reactive Controller\nmodule ElevatorDoor:\ninput OPEN_REQ, DOOR_OPENED, DOOR_CLOSED, OBSTRUCT, DWELL_DONE;\noutput MOTOR_OPEN, MOTOR_CLOSE, CHIME;\nrelation DOOR_OPENED # DOOR_CLOSED;\n\nloop\n  await OPEN_REQ;\n  trap CYCLE_DONE in\n    loop\n      abort\n        sustain MOTOR_OPEN\n      when DOOR_OPENED;\n      emit CHIME;\n      await DWELL_DONE;\n      abort\n        sustain MOTOR_CLOSE\n      when DOOR_CLOSED or OBSTRUCT do\n        present DOOR_CLOSED then\n          exit CYCLE_DONE\n        else\n          pause\n        end\n      end\n    end\n  end;\n  pause\nend\nend module\n"
+  },
+  {
+    "id": "esterel-04-railway-crossing",
+    "lang": "esterel",
+    "subFormats": ["strl"],
+    "difficulty": 4,
+    "title": "Railway Level-Crossing Gate and Signal Interlock",
+    "description": "Safety-critical railway grade-crossing controller synchronizing approach/exit track circuits, warning bell/lights, barrier lowering, and emergency fail-safe override.",
+    "category": "Railway Signaling",
+    "tags": ["esterel", "railway", "interlock", "safety", "parallel"],
+    "activeFile": "railway_crossing.strl",
+    "fileNames": ["railway_crossing.strl"],
+    "fileCount": 1,
+    "code": "% Safety-Critical Railway Level-Crossing Gate and Warning Interlock\nmodule RailwayCrossing:\ninput TRAIN_ENTER, TRAIN_EXIT, GATE_DOWN, GATE_UP, EMERG_STOP;\noutput LOWER_GATE, RAISE_GATE, FLASH_LIGHTS, RING_BELL, SAFE_CLEAR;\nrelation TRAIN_ENTER # TRAIN_EXIT, GATE_DOWN # GATE_UP;\n\nloop\n  await TRAIN_ENTER;\n  weak abort\n    [\n      sustain FLASH_LIGHTS\n    ||\n      sustain RING_BELL\n    ||\n      abort\n        sustain LOWER_GATE\n      when GATE_DOWN;\n      await TRAIN_EXIT\n    ]\n  when TRAIN_EXIT;\n  abort\n    sustain RAISE_GATE\n  when GATE_UP;\n  emit SAFE_CLEAR;\n  pause\nend\nend module\n"
+  },
+  {
+    "id": "esterel-05-cockpit-display-mgr",
+    "lang": "esterel",
+    "subFormats": ["strl"],
+    "difficulty": 5,
+    "title": "Avionics Cockpit Display Mode Manager",
+    "description": "Multi-file avionics primary flight display mode manager composing a reusable alarm-acknowledgement submodule (alarm_handler.strl) via Esterel run signal renaming and mode preemption.",
+    "category": "Avionics Systems",
+    "tags": ["esterel", "avionics", "cockpit", "run", "multi-file"],
+    "activeFile": "cockpit.strl",
+    "fileNames": ["cockpit.strl", "alarm_handler.strl"],
+    "fileCount": 2,
+    "code": "% Avionics Cockpit Display Mode Manager with Master Caution Alarm Submodule\nmodule AlarmHandler:\ninput FAULT_IN, ACK_BTN, FAULT_CLEARED;\noutput MASTER_WARN, AUDIO_TONE;\n\nloop\n  await FAULT_IN;\n  abort\n    [\n      sustain MASTER_WARN\n    ||\n      abort\n        sustain AUDIO_TONE\n      when ACK_BTN\n    ]\n  when FAULT_CLEARED;\n  pause\nend\nend module\n\nmodule CockpitDisplayManager:\ninput MODE_NAV, MODE_ENG, FAULT_ENG, MASTER_ACK, FAULT_OK, POWER_RST;\noutput SHOW_NAV, SHOW_ENG, WARN_LAMP, CHIME_OUT;\nrelation MODE_NAV # MODE_ENG;\n\nloop\n  abort\n    [\n      loop\n        abort\n          sustain SHOW_NAV\n        when MODE_ENG;\n        abort\n          sustain SHOW_ENG\n        when MODE_NAV;\n        pause\n      end\n    ||\n      run AlarmHandler [\n        signal FAULT_ENG / FAULT_IN,\n               MASTER_ACK / ACK_BTN,\n               FAULT_OK / FAULT_CLEARED,\n               WARN_LAMP / MASTER_WARN,\n               CHIME_OUT / AUDIO_TONE\n      ]\n    ]\n  when POWER_RST;\n  pause\nend\nend module\n",
+    "files": {
+      "cockpit.strl": "% Avionics Cockpit Display Mode Manager with Master Caution Alarm Submodule\nmodule AlarmHandler:\ninput FAULT_IN, ACK_BTN, FAULT_CLEARED;\noutput MASTER_WARN, AUDIO_TONE;\n\nloop\n  await FAULT_IN;\n  abort\n    [\n      sustain MASTER_WARN\n    ||\n      abort\n        sustain AUDIO_TONE\n      when ACK_BTN\n    ]\n  when FAULT_CLEARED;\n  pause\nend\nend module\n\nmodule CockpitDisplayManager:\ninput MODE_NAV, MODE_ENG, FAULT_ENG, MASTER_ACK, FAULT_OK, POWER_RST;\noutput SHOW_NAV, SHOW_ENG, WARN_LAMP, CHIME_OUT;\nrelation MODE_NAV # MODE_ENG;\n\nloop\n  abort\n    [\n      loop\n        abort\n          sustain SHOW_NAV\n        when MODE_ENG;\n        abort\n          sustain SHOW_ENG\n        when MODE_NAV;\n        pause\n      end\n    ||\n      run AlarmHandler [\n        signal FAULT_ENG / FAULT_IN,\n               MASTER_ACK / ACK_BTN,\n               FAULT_OK / FAULT_CLEARED,\n               WARN_LAMP / MASTER_WARN,\n               CHIME_OUT / AUDIO_TONE\n      ]\n    ]\n  when POWER_RST;\n  pause\nend\nend module\n",
+      "alarm_handler.strl": "% Reusable Master Caution and Audio Alarm Handler Submodule\nmodule AlarmHandler:\ninput FAULT_IN, ACK_BTN, FAULT_CLEARED;\noutput MASTER_WARN, AUDIO_TONE;\n\nloop\n  await FAULT_IN;\n  abort\n    [\n      sustain MASTER_WARN\n    ||\n      abort\n        sustain AUDIO_TONE\n      when ACK_BTN\n    ]\n  when FAULT_CLEARED;\n  pause\nend\nend module\n"
+    }
+  }
+]

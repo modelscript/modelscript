@@ -1,0 +1,9 @@
+CM Half-Wave Resonant Dipole Antenna at 300 MHz (Free Space)
+CM Wire length = 0.475 m (adjusted for end effect), radius = 1 mm
+CE
+GW 1 21 0.0 0.0 -0.2375 0.0 0.0 0.2375 0.001
+GE 0
+FR 0 1 0 0 300.0 0.0
+EX 0 1 11 0 1.0 0.0
+RP 0 37 1 1000 0.0 0.0 5.0 0.0
+EN

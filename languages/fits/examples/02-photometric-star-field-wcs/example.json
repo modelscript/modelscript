@@ -1,0 +1,11 @@
+{
+  "id": "fits-02-photometric-star-field-wcs",
+  "lang": "fits",
+  "subFormats": ["fits"],
+  "difficulty": 2,
+  "title": "Photometric Star Field with Complete TAN WCS Astrometry",
+  "description": "Calibrated 2D floating-point V-band optical image of the M67 open star cluster featuring full ICRS gnomonic tangent-plane (RA---TAN / DEC--TAN) WCS astrometry and CD rotation matrix.",
+  "category": "Astronomy & Scientific Imaging",
+  "tags": ["fits", "astrometry", "tan-wcs", "photometry"],
+  "activeFile": "star_field_wcs.fits"
+}

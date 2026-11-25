@@ -1,0 +1,58 @@
+set BUS := B1 B2 B3 B4 B5 ;
+set GEN := G1 G2 G3 ;
+set LINE := L12 L13 L23 L24 L35 L45 ;
+
+param load_scale := 1.0 ;
+
+param load_mw :=
+  B1  40
+  B2  80
+  B3  95
+  B4  70
+  B5  65 ;
+
+param gen_at :
+       B1 B2 B3 B4 B5 :=
+  G1    1  0  0  0  0
+  G2    0  1  0  0  0
+  G3    0  0  0  0  1 ;
+
+param pmin :=
+  G1 20
+  G2 15
+  G3 10 ;
+
+param pmax :=
+  G1 220
+  G2 180
+  G3 160 ;
+
+param c_lin :=
+  G1 24.0
+  G2 32.5
+  G3 41.0 ;
+
+param line_inc :
+        B1 B2 B3 B4 B5 :=
+  L12    1 -1  0  0  0
+  L13    1  0 -1  0  0
+  L23    0  1 -1  0  0
+  L24    0  1  0 -1  0
+  L35    0  0  1  0 -1
+  L45    0  0  0  1 -1 ;
+
+param susceptance :=
+  L12 1000
+  L13  800
+  L23  900
+  L24  850
+  L35  750
+  L45  950 ;
+
+param fmax :=
+  L12 150
+  L13 130
+  L23 110
+  L24 120
+  L35 100
+  L45 120 ;

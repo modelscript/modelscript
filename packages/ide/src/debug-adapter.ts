@@ -41,12 +41,10 @@ export let startLspDebugSession: ((program: string) => Promise<unknown>) | undef
 export let continueLspDebugSession: (() => Promise<void>) | undefined;
 /** Callback registered by the LSP client to inspect current variable values at a paused step. */
 export let getLspDebugVariables:
-  | (() => Promise<{ name: string; value: string; variablesReference: number }[]>)
-  | undefined;
+  (() => Promise<{ name: string; value: string; variablesReference: number }[]>) | undefined;
 /** Callback registered by the LSP client to synchronize source breakpoints with the simulator. */
 export let setLspBreakpoints:
-  | ((program: string, breakpoints: { line: number; column?: number | undefined }[]) => Promise<void>)
-  | undefined;
+  ((program: string, breakpoints: { line: number; column?: number | undefined }[]) => Promise<void>) | undefined;
 /** Callback registered by the LSP client to advance the simulation by a single statement/step. */
 export let nextLspDebugSession: (() => Promise<void>) | undefined;
 
@@ -268,7 +266,9 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
       try {
         const vars = getLspDebugVariables ? await getLspDebugVariables() : (this.stepper?.getDebugVariables() ?? []);
         MultiBodyAnimationPanel.currentPanel.syncWithDebugger(vars);
-      } catch {}
+      } catch {
+        // Optional animation sync or expression evaluation fallback
+      }
     }
   }
 
@@ -347,7 +347,9 @@ export class ModelScriptDebugSession extends LoggingDebugSession {
             response.body = { result: String(mathResult), variablesReference: 0 };
             this.sendResponse(response);
             return;
-          } catch {}
+          } catch {
+            // Optional animation sync or expression evaluation fallback
+          }
         }
 
         response.body = { result: "undefined", variablesReference: 0 };

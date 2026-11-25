@@ -1,0 +1,22 @@
+<simpack_model name="HelicalIsolationMount">
+  <!-- 6-DOF Compressor Skid Body -->
+  <body id="compressor_skid" name="CompressorSkid" mass="480.0" ixx="62.0" iyy="115.0" izz="140.0" />
+
+  <!-- Ground anchor markers at four corners -->
+  <marker id="m_gnd_fl" body="$inertial" x="0.65" y="0.45" z="0.0" />
+  <marker id="m_gnd_fr" body="$inertial" x="0.65" y="-0.45" z="0.0" />
+  <marker id="m_gnd_rl" body="$inertial" x="-0.65" y="0.45" z="0.0" />
+  <marker id="m_gnd_rr" body="$inertial" x="-0.65" y="-0.45" z="0.0" />
+
+  <!-- Skid corner mount markers -->
+  <marker id="m_skid_fl" body="compressor_skid" x="0.65" y="0.45" z="-0.18" />
+  <marker id="m_skid_fr" body="compressor_skid" x="0.65" y="-0.45" z="-0.18" />
+  <marker id="m_skid_rl" body="compressor_skid" x="-0.65" y="0.45" z="-0.18" />
+  <marker id="m_skid_rr" body="compressor_skid" x="-0.65" y="-0.45" z="-0.18" />
+
+  <!-- Four Tri-Axial Helical Isolation Mounts -->
+  <spring id="mount_fl" from="m_gnd_fl" to="m_skid_fl" kx="18000" ky="18000" kz="48000" cx="450" cy="450" cz="1400" />
+  <spring id="mount_fr" from="m_gnd_fr" to="m_skid_fr" kx="18000" ky="18000" kz="48000" cx="450" cy="450" cz="1400" />
+  <spring id="mount_rl" from="m_gnd_rl" to="m_skid_rl" kx="18000" ky="18000" kz="48000" cx="450" cy="450" cz="1400" />
+  <spring id="mount_rr" from="m_gnd_rr" to="m_skid_rr" kx="18000" ky="18000" kz="48000" cx="450" cy="450" cz="1400" />
+</simpack_model>

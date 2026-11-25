@@ -3,10 +3,11 @@
 import React from "react";
 import { useFeatureFlag } from "../../../../FeatureFlagContext";
 import type { VtuParseResult } from "../../../../util/vtu-parser";
+import type { SimulationResultViewConfig } from "../types";
 
 export interface ViewerHeaderBarProps {
   vtuData: VtuParseResult;
-  viewConfig: any;
+  viewConfig: SimulationResultViewConfig;
   onThreadNodeSelected?: ((threadId: string | number) => void) | undefined;
 }
 

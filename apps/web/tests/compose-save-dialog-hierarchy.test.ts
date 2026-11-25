@@ -102,14 +102,14 @@ describe("Compose Modal Multi-Level Blur & Stacking Hierarchy", () => {
     const composeBoxPath = path.resolve(__dirname, "../src/components/ComposeBox.tsx");
     const composeBoxSrc = fs.readFileSync(composeBoxPath, "utf-8");
 
-    // 1. Must offer Full Screen instead of "Edit in Playground" navigation
+    // 1. Must offer Full Screen instead of "Edit in Ansatz" navigation
     assert.ok(
       attachedArtifactSrc.includes("<span>Full Screen</span>"),
       "ComposeAttachedArtifact must provide a 'Full Screen' button",
     );
     assert.ok(
-      !attachedArtifactSrc.includes("Edit in Playground"),
-      "ComposeAttachedArtifact must NOT have 'Edit in Playground' button that triggers route navigation and save dialogs",
+      !attachedArtifactSrc.includes("Edit in Ansatz"),
+      "ComposeAttachedArtifact must NOT have 'Edit in Ansatz' button that triggers route navigation and save dialogs",
     );
     assert.ok(
       attachedArtifactSrc.includes("isFullScreen={isFullScreen}") &&

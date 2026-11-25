@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { encodeMorselPermalink } from "@modelscript/editor/workbench/util/permalink";
+import { encodeAnsatzPermalink } from "@modelscript/editor/workbench/util/permalink";
 import { safeJsonParse } from "./json";
 
 export const MULTI_FILE_VIEW_TYPES = new Set([
@@ -253,8 +253,8 @@ export const DIALECT_TO_EXTENSION: Record<string, string> = {
 export const VIEW_TYPE_TO_DIALECT: Record<string, string> = {
   "modelica-code": "modelica",
   "modelica-diagram": "modelica",
-  morsel: "modelica",
-  "polyglot-morsel": "modelica",
+  ansatz: "modelica",
+  "polyglot-ansatz": "modelica",
   simulation: "modelica",
   "simulation-plot": "modelica",
   "simulation-result": "modelica",
@@ -387,50 +387,55 @@ export function inferDialectFromFilename(filename?: string | null): string | nul
   return EXTENSION_TO_DIALECT[ext] || null;
 }
 
-function unwrapViewConfig(artifactOrConfig: any): { viewType: string; viewConfig: any } {
+function unwrapViewConfig(artifactOrConfig: unknown): {
+  viewType: string;
+  viewConfig: Record<string, unknown>;
+} {
   if (!artifactOrConfig || typeof artifactOrConfig !== "object") {
     return { viewType: "", viewConfig: {} };
   }
+  const obj = artifactOrConfig as Record<string, unknown>;
   const rawViewConfig =
-    artifactOrConfig.view_config !== undefined
-      ? typeof artifactOrConfig.view_config === "string"
-        ? safeJsonParse(artifactOrConfig.view_config, {})
-        : artifactOrConfig.view_config || {}
-      : artifactOrConfig.viewConfig !== undefined
-        ? typeof artifactOrConfig.viewConfig === "string"
-          ? safeJsonParse(artifactOrConfig.viewConfig, {})
-          : artifactOrConfig.viewConfig || {}
-        : artifactOrConfig;
+    obj.view_config !== undefined
+      ? typeof obj.view_config === "string"
+        ? safeJsonParse<Record<string, unknown>>(obj.view_config, {})
+        : (obj.view_config as Record<string, unknown> | null) || {}
+      : obj.viewConfig !== undefined
+        ? typeof obj.viewConfig === "string"
+          ? safeJsonParse<Record<string, unknown>>(obj.viewConfig, {})
+          : (obj.viewConfig as Record<string, unknown> | null) || {}
+        : obj;
 
-  const viewType = String(
-    artifactOrConfig.view_type ||
-      artifactOrConfig.viewType ||
-      rawViewConfig?.view_type ||
-      rawViewConfig?.viewType ||
-      "",
-  )
+  const viewConfigObj =
+    rawViewConfig && typeof rawViewConfig === "object" ? (rawViewConfig as Record<string, unknown>) : {};
+
+  const viewType = String(obj.view_type || obj.viewType || viewConfigObj.view_type || viewConfigObj.viewType || "")
     .toLowerCase()
     .trim();
 
   return {
     viewType,
-    viewConfig: rawViewConfig && typeof rawViewConfig === "object" ? rawViewConfig : {},
+    viewConfig: viewConfigObj,
   };
 }
 
 /**
  * Determines whether an artifact or its viewConfig represents a multi-file workspace
  * that should open in the full Studio Workbench (/studio) rather than the single-file
- * interactive Morsel (/morsel).
+ * interactive Ansatz (/ansatz).
  */
-export function isMultiFileArtifact(artifactOrConfig: any): boolean {
+export function isMultiFileArtifact(artifactOrConfig: unknown): boolean {
   const { viewType, viewConfig } = unwrapViewConfig(artifactOrConfig);
+  const top =
+    artifactOrConfig && typeof artifactOrConfig === "object"
+      ? (artifactOrConfig as Record<string, unknown>)
+      : undefined;
 
-  if (viewConfig.isMultiFile === true || artifactOrConfig?.isMultiFile === true) {
+  if (viewConfig.isMultiFile === true || top?.isMultiFile === true) {
     return true;
   }
 
-  const files = viewConfig.files ?? artifactOrConfig?.files;
+  const files = viewConfig.files ?? top?.files;
   if (Array.isArray(files) && files.length > 1) {
     return true;
   }
@@ -464,7 +469,7 @@ export const NON_EDITABLE_MEDIA_VIEW_TYPES = new Set([
 
 /**
  * Determines whether an artifact represents an editable/simulatable engineering model,
- * code snippet, dataset, or workspace that makes sense to open in Morsel or Studio,
+ * code snippet, dataset, or workspace that makes sense to open in Ansatz or Studio,
  * vs. static media/document assets (PDFs, images, videos, audio, link previews).
  */
 export function isEditableCodeOrModelArtifact(artifactOrConfig: unknown): boolean {
@@ -477,17 +482,16 @@ export function isEditableCodeOrModelArtifact(artifactOrConfig: unknown): boolea
  * Infers the canonical ModelScript language/dialect ID across all 44 supported engineering domains
  * from an artifact record, viewConfig object, or filename/title.
  */
-export function inferDialectFromArtifact(artifactOrConfig: any, title?: string): string {
+export function inferDialectFromArtifact(artifactOrConfig: unknown, title?: string): string {
   const { viewType, viewConfig } = unwrapViewConfig(artifactOrConfig);
+  const top =
+    artifactOrConfig && typeof artifactOrConfig === "object"
+      ? (artifactOrConfig as Record<string, unknown>)
+      : undefined;
 
   // 1. Explicit dialect/language field in viewConfig or top-level object
   const explicitDialect =
-    viewConfig.dialect ||
-    viewConfig.language ||
-    viewConfig.lang ||
-    artifactOrConfig?.dialect ||
-    artifactOrConfig?.language ||
-    artifactOrConfig?.lang;
+    viewConfig.dialect || viewConfig.language || viewConfig.lang || top?.dialect || top?.language || top?.lang;
   if (typeof explicitDialect === "string" && explicitDialect.trim()) {
     const norm = explicitDialect.trim().toLowerCase();
     if (norm === "sysml") return "sysml2";
@@ -504,17 +508,17 @@ export function inferDialectFromArtifact(artifactOrConfig: any, title?: string):
     viewConfig.filename,
     viewConfig.fileName,
     viewConfig.title,
-    artifactOrConfig?.title,
-    artifactOrConfig?.name,
+    top?.title,
+    top?.name,
     viewConfig.url,
   ];
   for (const candidate of candidateNames) {
-    const fromExt = inferDialectFromFilename(candidate);
+    const fromExt = inferDialectFromFilename(typeof candidate === "string" ? candidate : undefined);
     if (fromExt) return fromExt;
   }
 
   // 3. If files map has keys, check the first file key extension
-  const files = viewConfig.files ?? artifactOrConfig?.files;
+  const files = viewConfig.files ?? top?.files;
   if (files && typeof files === "object" && !Array.isArray(files)) {
     for (const filePath of Object.keys(files)) {
       const fromExt = inferDialectFromFilename(filePath);
@@ -522,7 +526,15 @@ export function inferDialectFromArtifact(artifactOrConfig: any, title?: string):
     }
   } else if (Array.isArray(files)) {
     for (const entry of files) {
-      const name = typeof entry === "string" ? entry : entry?.path || entry?.name;
+      const entryObj = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : undefined;
+      const name =
+        typeof entry === "string"
+          ? entry
+          : typeof entryObj?.path === "string"
+            ? entryObj.path
+            : typeof entryObj?.name === "string"
+              ? entryObj.name
+              : undefined;
       const fromExt = inferDialectFromFilename(name);
       if (fromExt) return fromExt;
     }
@@ -539,7 +551,7 @@ export function inferDialectFromArtifact(artifactOrConfig: any, title?: string):
 export interface BuildEditorUrlOptions {
   artifactId?: number | string | undefined;
   viewType?: string | undefined;
-  viewConfig?: any;
+  viewConfig?: Record<string, unknown> | string | null | undefined;
   code?: string | undefined;
   title?: string | undefined;
   dialect?: string | undefined;
@@ -551,7 +563,7 @@ export interface BuildEditorUrlOptions {
 
 /**
  * Builds the canonical URL to open, fork, edit, or reply to an artifact:
- * - Single-file artifacts route to `/morsel`
+ * - Single-file artifacts route to `/ansatz`
  * - Multi-file artifacts route to `/studio`
  */
 export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): string {
@@ -624,7 +636,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
     return `/studio${qs ? `?${qs}` : ""}${hash}`;
   }
 
-  // Single-file -> /morsel
+  // Single-file -> /ansatz
   const params = new URLSearchParams();
   if (artifactId !== undefined && artifactId !== null && String(artifactId) !== "") {
     params.set("fromArtifact", String(artifactId));
@@ -642,7 +654,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
     params.set("replyToPostId", String(options.replyToPostId));
   }
 
-  // Derive target Morsel view from previewMode:
+  // Derive target Ansatz view from previewMode:
   // - "simulation": split view (code + simulation plot) with auto-simulate
   // - "diagram": split view (code + diagram schematic)
   // - "code": code view
@@ -709,7 +721,7 @@ export function buildEditorUrlForArtifact(options: BuildEditorUrlOptions): strin
         ? parsedViewConfig.dependencies
         : undefined;
 
-    const encoded = encodeMorselPermalink({
+    const encoded = encodeAnsatzPermalink({
       code,
       title: title || "Shared Model",
       dialect,
@@ -848,7 +860,7 @@ export function openArtifactInVsCodeWindow(options: BuildEditorUrlOptions): void
       artifactId: number | string;
       title: string;
       viewType: string;
-      viewConfig: any;
+      viewConfig: Record<string, unknown>;
       files?: Record<string, string>;
       primaryFile?: string;
     } | null =

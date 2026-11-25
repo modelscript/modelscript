@@ -1,0 +1,39 @@
+TITLE High-Temperature Geothermal Brine Silica Scaling and Mixing
+SOLUTION 1 Deep Reservoir Brine
+    temp      180.0
+    pH        6.8
+    pe        -2.0
+    units     mmol/kgw
+    Na        42.0
+    K         4.5
+    Ca        1.8
+    Cl        46.0
+    S(6)      1.2
+    C(4)      3.5
+    Si        8.2
+
+SOLUTION 2 Reinjection Condensate
+    temp      70.0
+    pH        7.4
+    pe        4.0
+    units     mmol/kgw
+    Na        5.0
+    Cl        5.0
+    C(4)      0.5
+
+MIX 1
+    1 0.8
+    2 0.2
+
+EQUILIBRIUM_PHASES 1
+    Quartz    0.0 10.0
+    Calcite   0.0 5.0
+
+KINETICS 1
+    Quartz
+        -m0     1.0
+        -m      1.0
+        -parms  2.4e-7 5.0
+    -steps 10800 in 12 steps
+
+END

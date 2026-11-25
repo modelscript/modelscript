@@ -1,0 +1,9 @@
+network SolarBESS_24h baseMva=100
+bus SolarHub v_nom=230 carrier=AC
+bus CityLoad v_nom=230 carrier=AC
+generator PV_Farm bus=SolarHub carrier=solar p_nom=600 marginal_cost=0 capital_cost=850
+generator Gas_Backup bus=CityLoad carrier=gas p_nom=500 marginal_cost=64 capital_cost=600
+load Metro_Demand bus=CityLoad p_set=480
+line Corridor_SC bus0=SolarHub bus1=CityLoad r=1.8 x=16.5 s_nom=550
+storage_unit BESS_Hub bus=SolarHub p_nom=150 max_hours=4 efficiency_store=0.93 efficiency_dispatch=0.93 standing_loss=0.001
+storage_unit BESS_City bus=CityLoad p_nom=100 max_hours=4 efficiency_store=0.92 efficiency_dispatch=0.92 standing_loss=0.001

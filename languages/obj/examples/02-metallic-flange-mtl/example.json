@@ -1,0 +1,11 @@
+{
+  "id": "obj-02-metallic-flange-mtl",
+  "lang": "obj",
+  "subFormats": ["wavefront-obj", "wavefront-mtl"],
+  "difficulty": 2,
+  "title": "Machined Aluminum Mounting Plate with Material Library",
+  "description": "Wavefront OBJ mounting plate paired with a companion metals.mtl library specifying anodized aluminum and stainless steel Phong surface reflectance parameters.",
+  "category": "Mechanical CAD",
+  "tags": ["obj", "mtl", "aluminum", "flange", "multi-file"],
+  "activeFile": "flange.obj"
+}

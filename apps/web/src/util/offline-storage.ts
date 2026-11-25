@@ -3,19 +3,19 @@
 const DB_NAME = "modelscript_offline_v1";
 const DB_VERSION = 1;
 
-export interface CachedArtifact {
+export interface CachedArtifact<T = Record<string, unknown>> {
   id: string | number;
-  data: any;
+  data: T;
   timestamp: number;
 }
 
-export interface CachedPost {
+export interface CachedPost<T = Record<string, unknown>> {
   id: string | number;
-  data: any;
+  data: T;
   timestamp: number;
 }
 
-export interface PlaygroundDraft {
+export interface AnsatzDraft {
   id: string;
   code: string;
   title: string;
@@ -43,8 +43,8 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains("timeline")) {
         db.createObjectStore("timeline", { keyPath: "id" });
       }
-      if (!db.objectStoreNames.contains("playground_drafts")) {
-        db.createObjectStore("playground_drafts", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("ansatz_drafts")) {
+        db.createObjectStore("ansatz_drafts", { keyPath: "id" });
       }
     };
 
@@ -78,7 +78,7 @@ function awaitTx(tx: IDBTransaction): Promise<void> {
 /**
  * Cache an engineering artifact view in IndexedDB for offline inspection.
  */
-export async function cacheArtifact(artifact: any): Promise<void> {
+export async function cacheArtifact(artifact: { id?: string | number } | null | undefined): Promise<void> {
   if (!artifact?.id) return;
   try {
     const db = await openDatabase();
@@ -98,14 +98,14 @@ export async function cacheArtifact(artifact: any): Promise<void> {
 /**
  * Retrieve a cached artifact from IndexedDB if offline.
  */
-export async function getCachedArtifact(id: string | number): Promise<any | null> {
+export async function getCachedArtifact<T = Record<string, unknown>>(id: string | number): Promise<T | null> {
   try {
     const db = await openDatabase();
     return new Promise((resolve) => {
       const tx = db.transaction("artifacts", "readonly");
       const store = tx.objectStore("artifacts");
       const req = store.get(String(id));
-      req.onsuccess = () => resolve(req.result?.data ?? null);
+      req.onsuccess = () => resolve((req.result as CachedArtifact<T> | undefined)?.data ?? null);
       req.onerror = () => resolve(null);
     });
   } catch {
@@ -116,7 +116,7 @@ export async function getCachedArtifact(id: string | number): Promise<any | null
 /**
  * Cache a batch of timeline posts for offline feed rendering.
  */
-export async function cacheTimelinePosts(posts: any[]): Promise<void> {
+export async function cacheTimelinePosts(posts: ReadonlyArray<{ id?: string | number }>): Promise<void> {
   if (!Array.isArray(posts) || posts.length === 0) return;
   try {
     const db = await openDatabase();
@@ -141,7 +141,7 @@ export async function cacheTimelinePosts(posts: any[]): Promise<void> {
 /**
  * Retrieve cached timeline posts sorted by timestamp.
  */
-export async function getCachedTimelinePosts(): Promise<any[]> {
+export async function getCachedTimelinePosts<T = Record<string, unknown>>(): Promise<T[]> {
   try {
     const db = await openDatabase();
     return new Promise((resolve) => {
@@ -149,7 +149,7 @@ export async function getCachedTimelinePosts(): Promise<any[]> {
       const store = tx.objectStore("timeline");
       const req = store.getAll();
       req.onsuccess = () => {
-        const results = req.result || [];
+        const results = (req.result || []) as CachedPost<T>[];
         results.sort((a, b) => b.timestamp - a.timestamp);
         resolve(results.map((r) => r.data));
       };
@@ -161,13 +161,13 @@ export async function getCachedTimelinePosts(): Promise<any[]> {
 }
 
 /**
- * Save an active model draft from Morsel to persistent IndexedDB.
+ * Save an active model draft from Ansatz to persistent IndexedDB.
  */
-export async function savePlaygroundDraft(id: string, code: string, title: string): Promise<void> {
+export async function saveAnsatzDraft(id: string, code: string, title: string): Promise<void> {
   try {
     const db = await openDatabase();
-    const tx = db.transaction("playground_drafts", "readwrite");
-    const store = tx.objectStore("playground_drafts");
+    const tx = db.transaction("ansatz_drafts", "readwrite");
+    const store = tx.objectStore("ansatz_drafts");
     store.put({
       id,
       code,
@@ -176,19 +176,19 @@ export async function savePlaygroundDraft(id: string, code: string, title: strin
     });
     await awaitTx(tx);
   } catch (err) {
-    console.warn("[offline-storage] Failed to save playground draft:", err);
+    console.warn("[offline-storage] Failed to save ansatz draft:", err);
   }
 }
 
 /**
  * Retrieve a saved model draft from IndexedDB.
  */
-export async function getPlaygroundDraft(id: string): Promise<PlaygroundDraft | null> {
+export async function getAnsatzDraft(id: string): Promise<AnsatzDraft | null> {
   try {
     const db = await openDatabase();
     return new Promise((resolve) => {
-      const tx = db.transaction("playground_drafts", "readonly");
-      const store = tx.objectStore("playground_drafts");
+      const tx = db.transaction("ansatz_drafts", "readonly");
+      const store = tx.objectStore("ansatz_drafts");
       const req = store.get(id);
       req.onsuccess = () => resolve(req.result ?? null);
       req.onerror = () => resolve(null);
@@ -204,9 +204,7 @@ export async function getPlaygroundDraft(id: string): Promise<PlaygroundDraft | 
 export async function clearOfflineCache(): Promise<void> {
   try {
     const db = await openDatabase();
-    const storeNames = ["artifacts", "timeline", "playground_drafts"].filter((name) =>
-      db.objectStoreNames.contains(name),
-    );
+    const storeNames = ["artifacts", "timeline", "ansatz_drafts"].filter((name) => db.objectStoreNames.contains(name));
     if (storeNames.length === 0) return;
     const tx = db.transaction(storeNames, "readwrite");
     for (const name of storeNames) {

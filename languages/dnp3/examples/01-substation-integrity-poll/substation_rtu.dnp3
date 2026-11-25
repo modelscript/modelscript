@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DNP3DeviceProfile xmlns="http://www.dnp.org/DNP3/DeviceProfile/2010" id="SUB_138KV_RTU_01">
+  <DeviceIdentity>
+    <Vendor>Schweitzer Engineering Laboratories</Vendor>
+    <DeviceName>SEL-3530 Substation RTAC</DeviceName>
+    <Version>3.4.0</Version>
+  </DeviceIdentity>
+  <CommunicationSettings>
+    <OutstationAddress>101</OutstationAddress>
+    <MasterAddress>1</MasterAddress>
+  </CommunicationSettings>
+  <DNP3PointList>
+    <BinaryInputs>
+      <BinaryInput index="0" name="CB_52A_CLOSED" class="1" normalState="1"/>
+      <BinaryInput index="1" name="CB_52B_OPEN" class="1" normalState="0"/>
+      <BinaryInput index="2" name="RELAY_86_LOCKOUT" class="1" normalState="0"/>
+    </BinaryInputs>
+    <BinaryOutputs>
+      <BinaryOutput index="0" name="CB_52_TRIP_CMD"/>
+      <BinaryOutput index="1" name="CB_52_CLOSE_CMD"/>
+    </BinaryOutputs>
+    <AnalogInputs>
+      <AnalogInput index="0" name="BUS_VOLTAGE_KV" class="2" deadband="0.25" mult="0.01" offset="0.0" units="kV" min="0" max="160"/>
+      <AnalogInput index="1" name="FEEDER_CURRENT_A" class="2" deadband="2.0" mult="0.1" offset="0.0" units="A" min="0" max="1200"/>
+    </AnalogInputs>
+    <AnalogOutputs>
+      <AnalogOutput index="0" name="LTC_VOLTAGE_SETPOINT_KV" units="kV" min="130" max="145"/>
+    </AnalogOutputs>
+    <Counters>
+      <Counter index="0" name="FEEDER_IMPORT_KWH" class="3" units="kWh"/>
+    </Counters>
+  </DNP3PointList>
+</DNP3DeviceProfile>

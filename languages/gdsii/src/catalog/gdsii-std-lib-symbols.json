@@ -1,0 +1,652 @@
+[
+  {
+    "name": "NWELL",
+    "kind": "Class",
+    "namePath": "GDSII.Layers.NWELL",
+    "exports": [
+      "layer",
+      "datatype",
+      "minWidthUm",
+      "minSpacingUm",
+      "sheetResistance",
+      "thicknessUm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "N-Well Implant (Layer 1)",
+      "category": "Foundry Layer",
+      "domain": "semiconductor",
+      "description": "Deep N-well implant region for PMOS devices in cleanroom generic CMOS process.",
+      "provenance": "Cleanroom Generic 180nm CMOS PDK",
+      "aliases": [
+        "NW",
+        "L1"
+      ],
+      "parameters": [
+        {
+          "key": "layer",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "GDSII layer number"
+        },
+        {
+          "key": "datatype",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "GDSII datatype"
+        },
+        {
+          "key": "minWidthUm",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "um",
+          "description": "Minimum N-well width"
+        },
+        {
+          "key": "minSpacingUm",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "um",
+          "description": "Minimum N-well spacing"
+        },
+        {
+          "key": "sheetResistance",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "Ohm/sq",
+          "description": "N-well sheet resistance"
+        },
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "um",
+          "description": "Implant effective depth"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 1,
+      "color": "#93c5fd"
+    }
+  },
+  {
+    "name": "ACTIVE",
+    "kind": "Class",
+    "namePath": "GDSII.Layers.ACTIVE",
+    "exports": [
+      "layer",
+      "datatype",
+      "minWidthUm",
+      "minSpacingUm",
+      "sheetResistance",
+      "thicknessUm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Active Diffusion (Layer 2)",
+      "category": "Foundry Layer",
+      "domain": "semiconductor",
+      "description": "Active silicon diffusion region (OD) defining NMOS and PMOS source/drain/channel.",
+      "provenance": "Cleanroom Generic 180nm CMOS PDK",
+      "aliases": [
+        "DIFF",
+        "OD",
+        "L2"
+      ],
+      "parameters": [
+        {
+          "key": "layer",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "GDSII layer number"
+        },
+        {
+          "key": "datatype",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "GDSII datatype"
+        },
+        {
+          "key": "minWidthUm",
+          "type": "real",
+          "defaultValue": 0.24,
+          "unit": "um",
+          "description": "Minimum active width"
+        },
+        {
+          "key": "minSpacingUm",
+          "type": "real",
+          "defaultValue": 0.28,
+          "unit": "um",
+          "description": "Minimum active spacing"
+        },
+        {
+          "key": "sheetResistance",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm/sq",
+          "description": "Salicided diffusion sheet resistance"
+        },
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "um",
+          "description": "Diffusion thickness"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 2,
+      "color": "#4ade80"
+    }
+  },
+  {
+    "name": "POLY",
+    "kind": "Class",
+    "namePath": "GDSII.Layers.POLY",
+    "exports": [
+      "layer",
+      "datatype",
+      "minWidthUm",
+      "minSpacingUm",
+      "sheetResistance",
+      "thicknessUm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Polysilicon Gate (Layer 3)",
+      "category": "Foundry Layer",
+      "domain": "semiconductor",
+      "description": "Polysilicon gate electrode and local interconnect layer.",
+      "provenance": "Cleanroom Generic 180nm CMOS PDK",
+      "aliases": [
+        "PO",
+        "GATE",
+        "L3"
+      ],
+      "parameters": [
+        {
+          "key": "layer",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "",
+          "description": "GDSII layer number"
+        },
+        {
+          "key": "datatype",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "GDSII datatype"
+        },
+        {
+          "key": "minWidthUm",
+          "type": "real",
+          "defaultValue": 0.18,
+          "unit": "um",
+          "description": "Minimum poly gate length"
+        },
+        {
+          "key": "minSpacingUm",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "um",
+          "description": "Minimum poly spacing"
+        },
+        {
+          "key": "sheetResistance",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "Ohm/sq",
+          "description": "Poly sheet resistance"
+        },
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "um",
+          "description": "Poly thickness"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 3,
+      "color": "#f87171"
+    }
+  },
+  {
+    "name": "CONTACT",
+    "kind": "Class",
+    "namePath": "GDSII.Layers.CONTACT",
+    "exports": [
+      "layer",
+      "datatype",
+      "minWidthUm",
+      "minSpacingUm",
+      "sheetResistance",
+      "thicknessUm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Contact Cut (Layer 4)",
+      "category": "Foundry Layer",
+      "domain": "semiconductor",
+      "description": "Tungsten contact cut connecting Active/Poly to Metal 1.",
+      "provenance": "Cleanroom Generic 180nm CMOS PDK",
+      "aliases": [
+        "CO",
+        "CONT",
+        "L4"
+      ],
+      "parameters": [
+        {
+          "key": "layer",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "",
+          "description": "GDSII layer number"
+        },
+        {
+          "key": "datatype",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "GDSII datatype"
+        },
+        {
+          "key": "minWidthUm",
+          "type": "real",
+          "defaultValue": 0.22,
+          "unit": "um",
+          "description": "Exact contact square size"
+        },
+        {
+          "key": "minSpacingUm",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "um",
+          "description": "Minimum contact-to-contact spacing"
+        },
+        {
+          "key": "sheetResistance",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "Ohm/sq",
+          "description": "Contact resistance per cut"
+        },
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 0.44,
+          "unit": "um",
+          "description": "Contact vertical height"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 4,
+      "color": "#facc15"
+    }
+  },
+  {
+    "name": "METAL1",
+    "kind": "Class",
+    "namePath": "GDSII.Layers.METAL1",
+    "exports": [
+      "layer",
+      "datatype",
+      "minWidthUm",
+      "minSpacingUm",
+      "sheetResistance",
+      "thicknessUm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Metal 1 Interconnect (Layer 5)",
+      "category": "Foundry Layer",
+      "domain": "semiconductor",
+      "description": "First aluminum/copper metal routing layer for standard cell power rails and local wiring.",
+      "provenance": "Cleanroom Generic 180nm CMOS PDK",
+      "aliases": [
+        "M1",
+        "L5"
+      ],
+      "parameters": [
+        {
+          "key": "layer",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "",
+          "description": "GDSII layer number"
+        },
+        {
+          "key": "datatype",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "GDSII datatype"
+        },
+        {
+          "key": "minWidthUm",
+          "type": "real",
+          "defaultValue": 0.24,
+          "unit": "um",
+          "description": "Minimum Metal 1 width"
+        },
+        {
+          "key": "minSpacingUm",
+          "type": "real",
+          "defaultValue": 0.24,
+          "unit": "um",
+          "description": "Minimum Metal 1 spacing"
+        },
+        {
+          "key": "sheetResistance",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "Ohm/sq",
+          "description": "Metal 1 sheet resistance"
+        },
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "um",
+          "description": "Metal 1 thickness"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 5,
+      "color": "#60a5fa"
+    }
+  },
+  {
+    "name": "VIA1",
+    "kind": "Class",
+    "namePath": "GDSII.Layers.VIA1",
+    "exports": [
+      "layer",
+      "datatype",
+      "minWidthUm",
+      "minSpacingUm",
+      "sheetResistance",
+      "thicknessUm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Via 1 Cut (Layer 6)",
+      "category": "Foundry Layer",
+      "domain": "semiconductor",
+      "description": "Inter-layer via cut connecting Metal 1 to Metal 2.",
+      "provenance": "Cleanroom Generic 180nm CMOS PDK",
+      "aliases": [
+        "V1",
+        "L6"
+      ],
+      "parameters": [
+        {
+          "key": "layer",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "",
+          "description": "GDSII layer number"
+        },
+        {
+          "key": "datatype",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "GDSII datatype"
+        },
+        {
+          "key": "minWidthUm",
+          "type": "real",
+          "defaultValue": 0.26,
+          "unit": "um",
+          "description": "Exact Via 1 cut size"
+        },
+        {
+          "key": "minSpacingUm",
+          "type": "real",
+          "defaultValue": 0.26,
+          "unit": "um",
+          "description": "Minimum Via 1 spacing"
+        },
+        {
+          "key": "sheetResistance",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "Ohm/sq",
+          "description": "Via 1 resistance per cut"
+        },
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "um",
+          "description": "Via 1 vertical height"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 6,
+      "color": "#c084fc"
+    }
+  },
+  {
+    "name": "METAL2",
+    "kind": "Class",
+    "namePath": "GDSII.Layers.METAL2",
+    "exports": [
+      "layer",
+      "datatype",
+      "minWidthUm",
+      "minSpacingUm",
+      "sheetResistance",
+      "thicknessUm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Metal 2 Interconnect (Layer 7)",
+      "category": "Foundry Layer",
+      "domain": "semiconductor",
+      "description": "Second metal routing layer for block-level signal and power distribution.",
+      "provenance": "Cleanroom Generic 180nm CMOS PDK",
+      "aliases": [
+        "M2",
+        "L7"
+      ],
+      "parameters": [
+        {
+          "key": "layer",
+          "type": "real",
+          "defaultValue": 7,
+          "unit": "",
+          "description": "GDSII layer number"
+        },
+        {
+          "key": "datatype",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "GDSII datatype"
+        },
+        {
+          "key": "minWidthUm",
+          "type": "real",
+          "defaultValue": 0.28,
+          "unit": "um",
+          "description": "Minimum Metal 2 width"
+        },
+        {
+          "key": "minSpacingUm",
+          "type": "real",
+          "defaultValue": 0.28,
+          "unit": "um",
+          "description": "Minimum Metal 2 spacing"
+        },
+        {
+          "key": "sheetResistance",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "Ohm/sq",
+          "description": "Metal 2 sheet resistance"
+        },
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 0.6,
+          "unit": "um",
+          "description": "Metal 2 thickness"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 7,
+      "color": "#f472b6"
+    }
+  },
+  {
+    "name": "INV",
+    "kind": "Class",
+    "namePath": "GDSII.Cells.INV",
+    "exports": [
+      "cellWidthUm",
+      "cellHeightUm",
+      "gateLengthUm",
+      "wnUm",
+      "wpUm",
+      "cinFf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "CMOS Inverter (INV)",
+      "category": "Standard Cell",
+      "domain": "semiconductor",
+      "description": "Cleanroom 1x CMOS static inverter standard cell (PMOS in NWELL + NMOS in substrate).",
+      "provenance": "Cleanroom Generic 180nm CMOS Standard Cell Library",
+      "aliases": [
+        "INV_X1",
+        "INVERTER"
+      ],
+      "parameters": [
+        {
+          "key": "cellWidthUm",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "um",
+          "description": "Standard cell width"
+        },
+        {
+          "key": "cellHeightUm",
+          "type": "real",
+          "defaultValue": 4.8,
+          "unit": "um",
+          "description": "Standard cell height"
+        },
+        {
+          "key": "gateLengthUm",
+          "type": "real",
+          "defaultValue": 0.18,
+          "unit": "um",
+          "description": "Transistor gate length"
+        },
+        {
+          "key": "wnUm",
+          "type": "real",
+          "defaultValue": 0.6,
+          "unit": "um",
+          "description": "NMOS channel width"
+        },
+        {
+          "key": "wpUm",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "um",
+          "description": "PMOS channel width"
+        },
+        {
+          "key": "cinFf",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "fF",
+          "description": "Input gate capacitance"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 101,
+      "color": "#38bdf8"
+    }
+  },
+  {
+    "name": "NAND2",
+    "kind": "Class",
+    "namePath": "GDSII.Cells.NAND2",
+    "exports": [
+      "cellWidthUm",
+      "cellHeightUm",
+      "gateLengthUm",
+      "wnUm",
+      "wpUm",
+      "cinFf"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Input CMOS NAND (NAND2)",
+      "category": "Standard Cell",
+      "domain": "semiconductor",
+      "description": "Cleanroom 1x 2-input CMOS NAND standard cell with series NMOS and parallel PMOS.",
+      "provenance": "Cleanroom Generic 180nm CMOS Standard Cell Library",
+      "aliases": [
+        "NAND2_X1"
+      ],
+      "parameters": [
+        {
+          "key": "cellWidthUm",
+          "type": "real",
+          "defaultValue": 3.6,
+          "unit": "um",
+          "description": "Standard cell width"
+        },
+        {
+          "key": "cellHeightUm",
+          "type": "real",
+          "defaultValue": 4.8,
+          "unit": "um",
+          "description": "Standard cell height"
+        },
+        {
+          "key": "gateLengthUm",
+          "type": "real",
+          "defaultValue": 0.18,
+          "unit": "um",
+          "description": "Transistor gate length"
+        },
+        {
+          "key": "wnUm",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "um",
+          "description": "Series NMOS channel width"
+        },
+        {
+          "key": "wpUm",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "um",
+          "description": "Parallel PMOS channel width"
+        },
+        {
+          "key": "cinFf",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "fF",
+          "description": "Per-input gate capacitance"
+        }
+      ],
+      "wasmKernel": "gdsiiElmoreDelayPs",
+      "archetypeId": 102,
+      "color": "#34d399"
+    }
+  }
+]

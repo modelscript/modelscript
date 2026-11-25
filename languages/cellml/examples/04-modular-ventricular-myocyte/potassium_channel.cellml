@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model name="cardiac_potassium_channel_module" xmlns="http://www.cellml.org/cellml/1.1#">
+  <units name="millisecond">
+    <unit units="second" prefix="milli"/>
+  </units>
+  <units name="per_millisecond">
+    <unit units="second" prefix="milli" exponent="-1"/>
+  </units>
+  <units name="millivolt">
+    <unit units="volt" prefix="milli"/>
+  </units>
+  <units name="millisiemens_per_cmsq">
+    <unit units="siemens" prefix="milli"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="microampere_per_cmsq">
+    <unit units="ampere" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+
+  <component name="potassium_channel">
+    <variable name="time" units="millisecond" public_interface="in"/>
+    <variable name="V" units="millivolt" public_interface="in"/>
+    <variable name="g_K" units="millisiemens_per_cmsq" initial_value="0.282"/>
+    <variable name="E_K" units="millivolt" initial_value="-77.0"/>
+    <variable name="x_k" units="dimensionless" initial_value="0.0057"/>
+    <variable name="alpha_x" units="per_millisecond"/>
+    <variable name="beta_x" units="per_millisecond"/>
+    <variable name="i_K" units="microampere_per_cmsq" public_interface="out"/>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <eq/>
+        <ci>alpha_x</ci>
+        <apply><times/><cn>0.0005</cn><apply><exp/><apply><times/><cn>0.083</cn><apply><plus/><ci>V</ci><cn>50.0</cn></apply></apply></apply></apply>
+      </apply>
+      <apply>
+        <eq/>
+        <ci>beta_x</ci>
+        <apply><times/><cn>0.0013</cn><apply><exp/><apply><times/><cn>-0.06</cn><apply><plus/><ci>V</ci><cn>20.0</cn></apply></apply></apply></apply>
+      </apply>
+      <apply>
+        <eq/>
+        <apply><diff/><bvar><ci>time</ci></bvar><ci>x_k</ci></apply>
+        <apply><minus/><apply><times/><ci>alpha_x</ci><apply><minus/><cn>1.0</cn><ci>x_k</ci></apply></apply><apply><times/><ci>beta_x</ci><ci>x_k</ci></apply></apply>
+      </apply>
+      <apply>
+        <eq/>
+        <ci>i_K</ci>
+        <apply><times/><ci>g_K</ci><ci>x_k</ci><apply><minus/><ci>V</ci><ci>E_K</ci></apply></apply>
+      </apply>
+    </math>
+  </component>
+</model>

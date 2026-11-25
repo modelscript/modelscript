@@ -1,0 +1,11 @@
+{
+  "id": "phreeqc-04-reactive-transport-column",
+  "lang": "phreeqc",
+  "subFormats": ["phreeqc"],
+  "difficulty": 4,
+  "title": "1D Advective-Dispersive Reactive Ion-Exchange Column",
+  "description": "One-dimensional reactive transport simulation of CaCl2 brine displacing Na-K groundwater through a 20-cell cation-exchange aquifer column.",
+  "category": "Hydrogeology & Reactive Transport",
+  "tags": ["phreeqc", "transport", "ion-exchange", "hydrogeology"],
+  "activeFile": "ion_exchange_column.pqi"
+}

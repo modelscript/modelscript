@@ -1,0 +1,11 @@
+{
+  "id": "hec-hms-05-multi-subbasin-river-basin",
+  "lang": "hec-hms",
+  "subFormats": ["hms", "basin", "met", "control", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Subbasin River Basin with Reservoir & Observed Gage",
+  "description": "Full 5-file regional river basin hydrologic model with four subbasins, cascading Muskingum reaches, flood-control dam reservoir, meteorological storm spec, and observed stream gage CSV.",
+  "category": "Regional Flood Hydrology",
+  "tags": ["hec-hms", "river-basin", "reservoir", "calibration", "multi-file"],
+  "activeFile": "basin_full.basin"
+}

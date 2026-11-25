@@ -17,7 +17,7 @@ import {
   SplitSectionGeometryPasses,
   StencilSectionCapQuad,
 } from "@modelscript/editor/workbench/cad-viewer/HeroCadMaterials";
-import { tessellateScadSource } from "@modelscript/editor/workbench/hooks/useMorselEngine";
+import { tessellateScadSource } from "@modelscript/editor/workbench/hooks/useAnsatzEngine";
 import { getCadComponents } from "@modelscript/editor/workbench/util/lsp-bridge";
 import { CheckIcon, CopyIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
@@ -27,6 +27,7 @@ import DOMPurify from "dompurify";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { convertCadGeometry } from "../../api";
 import { useTheme } from "../../theme";
@@ -43,9 +44,37 @@ import type { SpatialPin } from "./spatial-pin";
 import ViewportCameraControls, { type CameraPreset, type ClipAxis, type RenderMode } from "./ViewportCameraControls";
 import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
+export interface CadStepViewConfig {
+  id?: string | number | undefined;
+  artifactId?: string | number | undefined;
+  dialect?: string | undefined;
+  url?: string | undefined;
+  stepUrl?: string | undefined;
+  fileUrl?: string | undefined;
+  downloadUrl?: string | undefined;
+  path?: string | undefined;
+  meshUrl?: string | undefined;
+  uri?: string | undefined;
+  title?: string | undefined;
+  modelName?: string | undefined;
+  code?: string | undefined;
+  stepCode?: string | undefined;
+  stepSource?: string | undefined;
+  source?: string | undefined;
+  content?: string | undefined;
+  expressSvg?: string | undefined;
+  gdtOverlay?: unknown;
+  verificationOverlay?: Verification3DOverlayPayload | undefined;
+  meshes?: RawStepMeshData[] | undefined;
+  thumbnailUrl?: string | undefined;
+  thumbnail_url?: string | undefined;
+  standalone?: boolean | undefined;
+  [key: string]: unknown;
+}
+
 interface CadStepViewerProps {
   artifactId?: number | undefined;
-  viewConfig: any;
+  viewConfig?: CadStepViewConfig | null | undefined;
   dialect?: string | undefined;
   isFullScreen?: boolean | undefined;
   onPinCreated?: ((pin: SpatialPin) => void) | undefined;
@@ -373,7 +402,7 @@ function CameraController({
   controlsRef,
   presetTrigger,
 }: {
-  controlsRef: React.RefObject<any>;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
   presetTrigger: { preset: CameraPreset; timestamp: number } | null;
 }) {
   const { camera } = useThree();
@@ -1276,7 +1305,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
   } | null>(null);
   const [isPinMode, setIsPinMode] = useState(false);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const stepSourceRef = useRef(stepSource);
   useEffect(() => {
     stepSourceRef.current = stepSource;
@@ -1417,7 +1446,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
     return payload.callouts.length > 0 || payload.datums.length > 0 ? payload : null;
   }, [viewTab, isScadDialect, effectiveStepSource, pregenGdtOverlay]);
 
-  const handleOpenInPlayground = () => {
+  const handleOpenInAnsatzEditor = () => {
     const targetUrl = buildEditorUrlForArtifact({
       artifactId: artifactId ?? viewConfig?.artifactId ?? viewConfig?.id,
       viewType: "cad-step",
@@ -2199,7 +2228,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                   size="small"
                   variant="primary"
                   leadingVisual={DraftingTriangleIcon}
-                  onClick={handleOpenInPlayground}
+                  onClick={handleOpenInAnsatzEditor}
                 >
                   Open in Ansatz
                 </Button>
@@ -2268,7 +2297,7 @@ const CadStepViewer: React.FC<CadStepViewerProps> = ({
                     size="small"
                     variant="primary"
                     leadingVisual={DraftingTriangleIcon}
-                    onClick={handleOpenInPlayground}
+                    onClick={handleOpenInAnsatzEditor}
                   >
                     Open in Ansatz
                   </Button>

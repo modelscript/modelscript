@@ -1,0 +1,11 @@
+{
+  "id": "modelica-03-chua-chaotic-oscillator",
+  "lang": "modelica",
+  "subFormats": ["mo"],
+  "difficulty": 3,
+  "title": "Chua's Chaotic Double-Scroll Oscillator",
+  "description": "Nonlinear third-order autonomous circuit featuring a piecewise-linear Chua diode exhibiting double-scroll chaotic attractors.",
+  "category": "Nonlinear Dynamics",
+  "tags": ["modelica", "chaos", "nonlinear", "oscillator", "circuit"],
+  "activeFile": "ChuaOscillator.mo"
+}

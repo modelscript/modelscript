@@ -25,6 +25,7 @@ import {
   type LibraryCardRect,
   type LibraryPanelLayout,
 } from "./wrist-palette-logic.js";
+import { tryCapturePointer } from "./xr-handle.js";
 import type { RotundaCueKind } from "./xr-session.js";
 
 const PANEL_WIDTH_M = 0.68;
@@ -665,7 +666,15 @@ export function FloatingLibraryPanel3D({
           } else {
             panelDragOffset.current.set(0, 0, 0);
           }
+          tryCapturePointer(e);
           onCue?.("grab");
+        }}
+        onPointerUp={(e) => {
+          if (!isDraggingPanelRef.current) return;
+          e.stopPropagation();
+          isDraggingPanelRef.current = false;
+          onPanelDragLockChange?.(false);
+          onCue?.("release");
         }}
         onPointerMove={handlePointerMove}
       >

@@ -1,0 +1,22 @@
+MODEL: SingleCyl_500cc_SI
+SPEED: 3200.0
+LAMBDA: 1.0
+
+COMPONENTS:
+  INLET = environment_inlet (P = 101325, T = 298.15)
+  AIRBOX = plenum (VOL = 0.0045, P = 101325, T = 298.15)
+  RUNNER_IN = intake_runner (D = 0.044, L = 0.40, CELLS = 4)
+  CYL1 = cylinder (BORE = 0.086, STROKE = 0.086, ROD = 0.145, CR = 10.5, ANCHOR = 14, DURATION = 42)
+  RUNNER_EXH = exhaust_runner (D = 0.038, L = 0.60, CELLS = 4)
+  MUFFLER = plenum (VOL = 0.008, P = 103000, T = 750.0)
+  TAILPIPE = pipe (D = 0.048, L = 0.80, CELLS = 5)
+  OUTLET = environment_outlet (P = 101325, T = 298.15)
+
+CONNECTIONS:
+  INLET.out -> AIRBOX.in
+  AIRBOX.port1 -> RUNNER_IN.in
+  RUNNER_IN.out -> CYL1.intake
+  CYL1.exhaust -> RUNNER_EXH.in
+  RUNNER_EXH.out -> MUFFLER.in
+  MUFFLER.out -> TAILPIPE.in
+  TAILPIPE.out -> OUTLET.in

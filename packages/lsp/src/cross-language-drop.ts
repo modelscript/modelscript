@@ -811,8 +811,10 @@ export function computePscadComponentDropEdits(opts: PscadForeignDropOptions): T
     schematicEndLine: opts.schematicEndLine,
     batchState: opts.batchState,
     sanitizeIdentifier,
-    allocateUniqueIdentifier,
-    allocateUniqueNumericId,
+    allocateUniqueIdentifier: (docText, baseName, batchState) =>
+      allocateUniqueIdentifier(docText, baseName, batchState as DropBatchState | undefined),
+    allocateUniqueNumericId: (xmlRoot, seed, batchState) =>
+      allocateUniqueNumericId(xmlRoot, seed, batchState as DropBatchState | undefined),
   }) as TextEdit[] | null;
 }
 
@@ -842,7 +844,8 @@ export function computeSimulinkComponentDropEdits(opts: SimulinkDropOptions): Te
     section: opts.section,
     batchState: opts.batchState,
     sanitizeIdentifier,
-    allocateUniqueIdentifier,
+    allocateUniqueIdentifier: (docText, baseName, batchState) =>
+      allocateUniqueIdentifier(docText, baseName, batchState as DropBatchState | undefined),
   }) as TextEdit[];
 }
 

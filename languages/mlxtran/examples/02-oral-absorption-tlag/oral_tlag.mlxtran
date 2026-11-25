@@ -1,0 +1,15 @@
+; One-compartment oral absorption with lag time
+[LONGITUDINAL]
+input = {Tlag, ka, Cl, V}
+
+PK:
+depot(target = Ad, Tlag = Tlag)
+compartment(cmt = 1, amount = Ac, volume = V)
+
+EQUATION:
+ddt_Ad = -ka * Ad
+ddt_Ac = ka * Ad - (Cl / V) * Ac
+Cc = Ac / V
+
+OUTPUT:
+output = {Cc}

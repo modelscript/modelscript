@@ -7,11 +7,11 @@ import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 /**
  * Dispatches a custom JSON-RPC request to the language-specific handler registered for the document URI.
  */
-export async function dispatchLanguageRequest<T = any>(
+export async function dispatchLanguageRequest<T = unknown>(
   context: LspContext,
   method: string,
   uri: string,
-  params: any,
+  params: unknown,
   fallback?: T,
 ): Promise<T> {
   const handler = globalLanguageRegistry.getHandlerForUri(uri, method);
@@ -34,9 +34,10 @@ export async function dispatchLanguageRequest<T = any>(
   };
 
   try {
-    return await handler(reqContext, params);
-  } catch (e: any) {
-    context.connection.console.error(`[lsp] Error executing '${method}' for '${uri}': ${e?.message ?? e}`);
+    return (await handler(reqContext, params)) as T;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    context.connection.console.error(`[lsp] Error executing '${method}' for '${uri}': ${msg}`);
     throw e;
   }
 }

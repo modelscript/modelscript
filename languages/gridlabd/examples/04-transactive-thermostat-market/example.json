@@ -1,0 +1,11 @@
+{
+  "id": "gridlabd-04-transactive-thermostat-market",
+  "lang": "gridlabd",
+  "subFormats": ["glm", "player", "csv"],
+  "difficulty": 4,
+  "title": "Transactive Double-Auction Smart Thermostat Neighborhood",
+  "description": "Multi-house GridLAB-D neighborhood coupled to a 5-minute clearing electricity market with companion clearing-price player and ambient temperature weather CSV.",
+  "category": "Distribution Power Systems",
+  "tags": ["gridlabd", "transactive-energy", "market", "thermostat", "multi-file"],
+  "activeFile": "market.glm"
+}

@@ -9,7 +9,7 @@ import Box from "../Box";
 export interface ZeroCopyWebGPUViewerProps {
   // If runner is provided, run in main thread (for VS Code Webview fallback)
   runner?: WebGPUSimulationRunner | undefined;
-  // If uri and className are provided, run via OffscreenCanvas in the LSP worker (for Morsel / Studio)
+  // If uri and className are provided, run via OffscreenCanvas in the LSP worker (for Ansatz / Studio)
   uri?: string | undefined;
   className?: string | undefined;
   width?: string | undefined;
@@ -109,7 +109,7 @@ export const ZeroCopyWebGPUViewer: React.FC<ZeroCopyWebGPUViewerProps> = ({
 
   useEffect(() => {
     const readyTimer = setTimeout(() => {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }, 400);
     return () => clearTimeout(readyTimer);
   }, [runner, uri, rawFieldData]);

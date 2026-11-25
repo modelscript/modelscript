@@ -6,10 +6,10 @@ import { describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PolyglotDomainPanel } from "../../../packages/editor/src/workbench/panels/PolyglotDomainPanel.js";
-import { decompressMorselPayload } from "../../../packages/editor/src/workbench/util/permalink.js";
-import { buildMorselHandoffUrl } from "../../docs/docs/.vitepress/theme/util/polyglot-paste-detector.js";
+import { decompressAnsatzPayload } from "../../../packages/editor/src/workbench/util/permalink.js";
+import { buildAnsatzHandoffUrl } from "../../docs/docs/.vitepress/theme/util/polyglot-paste-detector.js";
 
-describe("Polyglot Paste Auto-Detection, Fault Injection & Docs-to-Morsel Handoff", () => {
+describe("Polyglot Paste Auto-Detection, Fault Injection & Docs-to-Ansatz Handoff", () => {
   it("detects core and specialized engineering dialects from pasted content and filenames", () => {
     const cases: Array<{ content: string; fileName?: string; expectedSlug: string }> = [
       {
@@ -110,7 +110,7 @@ describe("Polyglot Paste Auto-Detection, Fault Injection & Docs-to-Morsel Handof
     }
   });
 
-  it("encodes multi-file docs sandbox state into #m= deflate hash readable by decompressMorselPayload", async () => {
+  it("encodes multi-file docs sandbox state into #m= deflate hash readable by decompressAnsatzPayload", async () => {
     const tabs = [
       {
         fileName: "PowerSupply.sysml",
@@ -124,19 +124,19 @@ describe("Polyglot Paste Auto-Detection, Fault Injection & Docs-to-Morsel Handof
       },
     ];
 
-    const url = await buildMorselHandoffUrl("https://ansatz.social", tabs, 1);
+    const url = await buildAnsatzHandoffUrl("https://ansatz.social", tabs, 1);
     assert.ok(url.startsWith("https://ansatz.social/editor#m="), `Expected compressed #m= permalink, got: ${url}`);
 
     const hash = url.slice(url.indexOf("#"));
-    const decoded = decompressMorselPayload(hash) as
-      | (ReturnType<typeof decompressMorselPayload> & {
+    const decoded = decompressAnsatzPayload(hash) as
+      | (ReturnType<typeof decompressAnsatzPayload> & {
           files?: Record<string, string>;
           activeFile?: string;
           isMultiFile?: boolean;
         })
       | null;
 
-    assert.ok(decoded, "Expected decompressMorselPayload to inflate CompressionStream('deflate') token");
+    assert.ok(decoded, "Expected decompressAnsatzPayload to inflate CompressionStream('deflate') token");
     assert.equal(decoded.dialect, "spice");
     assert.equal(decoded.lang, "spice");
     assert.equal(decoded.activeFile, "FilterStage.sp");

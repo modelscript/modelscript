@@ -1,0 +1,11 @@
+{
+  "id": "topas-03-sobp-range-modulator",
+  "lang": "topas",
+  "subFormats": ["topas"],
+  "difficulty": 3,
+  "title": "Spread-Out Bragg Peak (SOBP) Range Modulator Assembly",
+  "description": "Modular passive-scattering proton therapy SOBP setup combining a PMMA range modulator wheel, modular beam source file, and water phantom scorer via TOPAS includeFile hierarchy.",
+  "category": "Medical Physics & Monte Carlo",
+  "tags": ["topas", "sobp", "range-modulator", "includefile", "multi-file"],
+  "activeFile": "sobp_main.topas"
+}

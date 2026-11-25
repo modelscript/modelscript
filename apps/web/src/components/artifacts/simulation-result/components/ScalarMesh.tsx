@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { ThreeEvent } from "@react-three/fiber";
 import React, { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { COLORMAP_FRAGMENT_SHADER, COLORMAP_VERTEX_SHADER, computeScaledScalar } from "../../../../util/colormap";
@@ -133,7 +134,7 @@ export const ScalarMesh: React.FC<ScalarMeshProps> = ({
   }, [scalarMin, scalarMax, colormapTexture, loadFactor, clipPlane]);
 
   // Handle double click for spatial pinning
-  const handleDoubleClick = (e: any) => {
+  const handleDoubleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
 
     // Find scalar value at this face (approximate by taking the first vertex of the face)
@@ -159,7 +160,7 @@ export const ScalarMesh: React.FC<ScalarMeshProps> = ({
     }
   };
 
-  const handlePointerMove = (e: any) => {
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     let rawScalar = 0;
     if (e.face && e.face.a !== undefined && scalarData) {

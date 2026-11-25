@@ -97,7 +97,9 @@ function pruneCloudJobs(): void {
       if (rec.tmpDir) {
         try {
           fs.rmSync(rec.tmpDir, { recursive: true, force: true });
-        } catch {}
+        } catch {
+          // Best-effort cleanup of evicted cloud job temp directory
+        }
       }
       activeJobs.delete(id);
     }
@@ -129,7 +131,9 @@ export function cloudRouter(storage: LibraryStorage, jobQueue: JobQueue, databas
       for (const sub of jobRecord.subscribers) {
         try {
           sub(event);
-        } catch {}
+        } catch {
+          // Ignore disconnected SSE subscriber errors
+        }
       }
     };
 
@@ -783,7 +787,7 @@ getErrorString();
   });
 
   // ── 7. GET /api/v1/cloud/jobs/:id/events ──
-  // Real-time Server-Sent Events (SSE) stream for terminal, webview, and morsel
+  // Real-time Server-Sent Events (SSE) stream for terminal, webview, and ansatz
   router.get("/cloud/jobs/:id/events", (req: Request, res: Response): void => {
     const job = activeJobs.get(req.params["id"] as string);
     if (!job) {
@@ -881,7 +885,9 @@ getErrorString();
     for (const sub of job.subscribers) {
       try {
         sub({ type: "status", data: { status: "cancelled" } });
-      } catch {}
+      } catch {
+        // Ignore disconnected SSE subscriber errors
+      }
     }
 
     if (database && job.dbJobId) {

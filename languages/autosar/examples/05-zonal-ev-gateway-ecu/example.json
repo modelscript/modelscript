@@ -1,0 +1,12 @@
+{
+  "id": "autosar-05-zonal-ev-gateway-ecu",
+  "lang": "autosar",
+  "subFormats": ["arxml"],
+  "difficulty": 5,
+  "title": "Zonal EV Gateway ECU with CAN-FD Signal Mapping",
+  "description": "Full 5-file AUTOSAR Zonal EV Gateway architecture integrating BMS and Traction Inverter SWCs, assembly connectors, non-overlapping 64-byte CAN-FD I-PDU signal mappings, and schedulable ECU timing.",
+  "category": "EV Zonal Architecture",
+  "tags": ["ev-gateway", "can-fd", "pdu-mapping", "autosar", "multi-file"],
+  "activeFile": "GatewayComp.arxml",
+  "fileOrder": ["GatewayComp.arxml", "Interfaces.arxml", "BmsSwc.arxml", "InverterSwc.arxml", "EcuTiming.arxml"]
+}

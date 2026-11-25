@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-11-24T12:00:00" description="Constant-Speed Cruise Follow Scenario" author="Ansatz"/>
+  <ParameterDeclarations>
+    <ParameterDeclaration name="CruiseSpeed" parameterType="double" value="25.0"/>
+  </ParameterDeclarations>
+  <RoadNetwork>
+    <LogicFile filepath="straight_road.xodr"/>
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car">
+        <Performance maxSpeed="55.0" maxAcceleration="3.5" maxDeceleration="8.5"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.6" height="1.45"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="LeadVehicle">
+      <Vehicle name="LeadVehicle" vehicleCategory="car">
+        <Performance maxSpeed="50.0" maxAcceleration="3.0" maxDeceleration="8.0"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.5" height="1.45"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <Private entityRef="Ego">
+          <PrivateAction>
+            <TeleportAction><Position><LanePosition roadId="1" laneId="-1" s="20.0"/></Position></TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$CruiseSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="LeadVehicle">
+          <PrivateAction>
+            <TeleportAction><Position><LanePosition roadId="1" laneId="-1" s="70.0"/></Position></TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$CruiseSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="CruiseFollowStory">
+      <Act name="SteadyFollowAct">
+        <ManeuverGroup maximumExecutionCount="1" name="LeadCruiseGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="LeadVehicle"/>
+          </Actors>
+          <Maneuver name="MaintainSpeedManeuver">
+            <Event name="GentleDecelEvent" priority="overwrite" maximumExecutionCount="1">
+              <Action name="DecelAction">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="linear" value="1.5" dynamicsDimension="rate"/>
+                      <SpeedActionTarget><AbsoluteTargetSpeed value="20.0"/></SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="TimeTrig" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition><SimulationTimeCondition value="4.0" rule="greaterOrEqual"/></ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+      </Act>
+    </Story>
+  </Storyboard>
+</OpenSCENARIO>

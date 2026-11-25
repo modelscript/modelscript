@@ -1,0 +1,24 @@
+# GATE Cylindrical PET Scanner & 511 keV Annihilation Phantom Macro
+/gate/world/daughters/name PetPhantom
+/gate/world/daughters/insert cylinder
+/gate/PetPhantom/setMaterial G4_WATER
+/gate/PetPhantom/geometry/setRmin 0. mm
+/gate/PetPhantom/geometry/setRmax 100. mm
+/gate/PetPhantom/geometry/setHeight 200. mm
+/gate/PetPhantom/placement/setTranslation 0. 0. 0. mm
+
+/gate/world/daughters/name ScintillatorRing
+/gate/world/daughters/insert cylinder
+/gate/ScintillatorRing/setMaterial G4_BONE_COMPACT_ICRU
+/gate/ScintillatorRing/geometry/setRmin 380. mm
+/gate/ScintillatorRing/geometry/setRmax 410. mm
+/gate/ScintillatorRing/geometry/setHeight 180. mm
+/gate/ScintillatorRing/placement/setTranslation 0. 0. 0. mm
+
+/gate/source/addSource F18Source gps
+/gate/source/F18Source/gps/particle gamma
+/gate/source/F18Source/gps/ene/mono 0.511 MeV
+/gate/source/F18Source/gps/ene/sigma 0.005 MeV
+
+/gate/actor/addActor DoseActor PetCrystalHits
+/gate/actor/PetCrystalHits/attachTo ScintillatorRing

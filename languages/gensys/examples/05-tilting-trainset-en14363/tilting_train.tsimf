@@ -1,0 +1,43 @@
+# GENSYS Model: Two-Car Articulated Tilting Trainset (EN 14363 Certification)
+# Shared center Jacobs bogie + front/rear end bogies + tilting bolsters
+set m_car = 31500.0
+set m_bogie = 2900.0
+set m_bolster = 680.0
+set m_ws = 1520.0
+
+body car_a m_car 62000.0 1680000.0 1620000.0 10.5 0.0 1.68
+body car_b m_car 62000.0 1680000.0 1620000.0 -10.5 0.0 1.68
+body bolster_a m_bolster 420.0 380.0 610.0 10.5 0.0 0.88
+body bolster_b m_bolster 420.0 380.0 610.0 -10.5 0.0 0.88
+
+body bogie_front m_bogie 2050.0 1850.0 3300.0 18.0 0.0 0.55
+body bogie_jacobs 3250.0 2300.0 2100.0 3650.0 0.0 0.0 0.55
+body bogie_rear m_bogie 2050.0 1850.0 3300.0 -18.0 0.0 0.55
+
+wheelset ws1 m_ws 1.435 0.46 0.06 "s1002_wheel.sub"
+wheelset ws2 m_ws 1.435 0.46 0.06 "s1002_wheel.sub"
+wheelset ws3 m_ws 1.435 0.46 0.06 "s1002_wheel.sub"
+wheelset ws4 m_ws 1.435 0.46 0.06 "s1002_wheel.sub"
+wheelset ws5 m_ws 1.435 0.46 0.06 "s1002_wheel.sub"
+wheelset ws6 m_ws 1.435 0.46 0.06 "s1002_wheel.sub"
+
+# Active tilt bolster couplings
+spring tilt_a car_a bolster_a 450000 320000 680000 35000 28000 45000
+spring tilt_b car_b bolster_b 450000 320000 680000 35000 28000 45000
+
+# Secondary air springs & inter-car articulation
+spring sec_front bolster_a bogie_front 155000 150000 420000 28000 32000 40000
+spring sec_jac_a car_a bogie_jacobs 195000 185000 460000 32000 36000 44000
+spring sec_jac_b car_b bogie_jacobs 195000 185000 460000 32000 36000 44000
+spring sec_rear bolster_b bogie_rear 155000 150000 420000 28000 32000 40000
+
+# Primary axlebox suspensions
+spring p1 bogie_front ws1 9200000 4100000 1220000 15000 12000 20000
+spring p2 bogie_front ws2 9200000 4100000 1220000 15000 12000 20000
+spring p3 bogie_jacobs ws3 9600000 4300000 1280000 16000 13000 21000
+spring p4 bogie_jacobs ws4 9600000 4300000 1280000 16000 13000 21000
+spring p5 bogie_rear ws5 9200000 4100000 1220000 15000 12000 20000
+spring p6 bogie_rear ws6 9200000 4100000 1220000 15000 12000 20000
+
+sub s1002_wheel
+sub uic60_rail

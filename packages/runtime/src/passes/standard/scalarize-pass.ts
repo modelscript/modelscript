@@ -15,7 +15,7 @@ export class ScalarizePass implements DAEPass {
     let hasPreservedArrays = hasArrayEquations(arena);
     if (!hasPreservedArrays) {
       for (let i = 0; i < arena.varCount; i++) {
-        if (!arena.isVarRemoved(i) && (arena as any).getVarShape?.(i)?.length > 0) {
+        if (!arena.isVarRemoved(i) && arena.getVarShape(i).length > 0) {
           hasPreservedArrays = true;
           break;
         }

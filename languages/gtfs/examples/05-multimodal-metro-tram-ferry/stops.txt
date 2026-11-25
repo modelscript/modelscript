@@ -1,0 +1,6 @@
+stop_id,stop_name,stop_lat,stop_lon
+METRO_CIVIC,Civic Center Metro,37.7793,-122.4175
+EMBARCADERO_HUB,Embarcadero Intermodal,37.7929,-122.3970
+FERRY_BLDG,Ferry Building Pier 1,37.7955,-122.3934
+ALAMEDA_PIER,Alameda Seaplane Terminal,37.7718,-122.2995
+FISHERMAN_WHARF,Waterfront Tram Terminus,37.8080,-122.4177

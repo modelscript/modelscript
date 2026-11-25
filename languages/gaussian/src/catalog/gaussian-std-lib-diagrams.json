@@ -1,0 +1,434 @@
+[
+  {
+    "namePath": "Gaussian.WavefunctionMethod.HF",
+    "aliases": [
+      "RHF",
+      "UHF",
+      "ROHF",
+      "Hartree-Fock"
+    ],
+    "label": "Hartree-Fock (HF)",
+    "category": "Wavefunction Method",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">WFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HF</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "basis_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "energy_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 16
+      },
+      {
+        "name": "hessian_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.WavefunctionMethod.MP2",
+    "aliases": [
+      "RMP2",
+      "UMP2",
+      "Moller-Plesset-2"
+    ],
+    "label": "Møller-Plesset 2nd Order (MP2)",
+    "category": "Wavefunction Method",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">WFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MP2</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "basis_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "energy_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 16
+      },
+      {
+        "name": "hessian_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.WavefunctionMethod.CCSD(T)",
+    "aliases": [
+      "CCSDT",
+      "CCSD-T"
+    ],
+    "label": "Coupled Cluster Singles, Doubles & Perturbative Triples (CCSD(T))",
+    "category": "Wavefunction Method",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#38bdf8\">WFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CCSD(T)</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "basis_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "energy_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 16
+      },
+      {
+        "name": "hessian_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.DensityFunctional.B3LYP",
+    "aliases": [
+      "RB3LYP",
+      "UB3LYP"
+    ],
+    "label": "Becke 3-Parameter Lee-Yang-Parr (B3LYP)",
+    "category": "Density Functional",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#34d399\">DFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">B3LYP</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "basis_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "energy_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 16
+      },
+      {
+        "name": "hessian_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.DensityFunctional.PBE0",
+    "aliases": [
+      "PBE1PBE",
+      "PBEh"
+    ],
+    "label": "Perdew-Burke-Ernzerhof Hybrid (PBE0)",
+    "category": "Density Functional",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#34d399\">DFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PBE0</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "basis_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "energy_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 16
+      },
+      {
+        "name": "hessian_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.DensityFunctional.M06-2X",
+    "aliases": [
+      "M062X",
+      "M06_2X"
+    ],
+    "label": "Minnesota 06 Global Hybrid Meta-GGA (M06-2X)",
+    "category": "Density Functional",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#34d399\">DFT</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M06-2X</text></svg>",
+    "ports": [
+      {
+        "name": "geometry_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "basis_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "energy_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 16
+      },
+      {
+        "name": "hessian_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.PopleBasisSet.STO-3G",
+    "aliases": [
+      "STO3G"
+    ],
+    "label": "Minimal Slater-Type Orbital 3-Gaussian (STO-3G)",
+    "category": "Pople Basis Set",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1d4a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">POPLE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">STO-3G</text></svg>",
+    "ports": [
+      {
+        "name": "atoms_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "basis_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.PopleBasisSet.3-21G",
+    "aliases": [
+      "321G"
+    ],
+    "label": "Pople Split-Valence 3-21G",
+    "category": "Pople Basis Set",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1d4a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">POPLE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">3-21G</text></svg>",
+    "ports": [
+      {
+        "name": "atoms_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "basis_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.PopleBasisSet.6-31G(d)",
+    "aliases": [
+      "6-31G*",
+      "6-31Gd"
+    ],
+    "label": "Pople Polarized Split-Valence 6-31G(d)",
+    "category": "Pople Basis Set",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1d4a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">POPLE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">6-31G(D)</text></svg>",
+    "ports": [
+      {
+        "name": "atoms_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "basis_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.PopleBasisSet.6-311++G(d,p)",
+    "aliases": [
+      "6-311++G**"
+    ],
+    "label": "Pople Triple-Zeta Diffuse & Polarized 6-311++G(d,p)",
+    "category": "Pople Basis Set",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#3b1d4a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#c084fc\">POPLE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.6\" font-weight=\"bold\" fill=\"#f8fafc\">6-311++G(D,P</text></svg>",
+    "ports": [
+      {
+        "name": "atoms_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "basis_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.CorrelationConsistentBasisSet.cc-pVDZ",
+    "aliases": [
+      "cc-pVDZ",
+      "ccpvdz"
+    ],
+    "label": "Dunning Correlation-Consistent Polarized Valence Double-Zeta (cc-pVDZ)",
+    "category": "Correlation-Consistent Basis Set",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a2511\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#fb923c\">DUNN</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CC-PVDZ</text></svg>",
+    "ports": [
+      {
+        "name": "atoms_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "basis_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Gaussian.CorrelationConsistentBasisSet.cc-pVTZ",
+    "aliases": [
+      "cc-pVTZ",
+      "ccpvtz"
+    ],
+    "label": "Dunning Correlation-Consistent Polarized Valence Triple-Zeta (cc-pVTZ)",
+    "category": "Correlation-Consistent Basis Set",
+    "domain": "chemistry",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a2511\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.0\" fill=\"#fb923c\">DUNN</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CC-PVTZ</text></svg>",
+    "ports": [
+      {
+        "name": "atoms_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "basis_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  }
+]

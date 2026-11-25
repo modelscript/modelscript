@@ -1,0 +1,11 @@
+{
+  "id": "dnp3-02-unsolicited-event-reporting",
+  "lang": "dnp3",
+  "subFormats": ["dnp3"],
+  "difficulty": 2,
+  "title": "Class 1/2/3 Unsolicited Event Reporting Outstation",
+  "description": "IEEE 1815 outstation configuration separating high-priority protection trips (Class 1), analog deadband excursions (Class 2), and energy accumulator rollovers (Class 3) for unsolicited reporting.",
+  "category": "Power Systems SCADA",
+  "tags": ["dnp3", "unsolicited", "event-classes", "deadband", "scada"],
+  "activeFile": "event_rtu.dnp3"
+}

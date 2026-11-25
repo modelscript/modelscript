@@ -1,0 +1,15 @@
+import { QuadParams, AltitudeGains } from "./types.msx";
+
+function computeRotorRpmCommand(p: QuadParams, g: AltitudeGains, targetZ: f64, z: f64, vz: f64): f64 {
+  let hoverThrust: f64 = p.massKg * p.gravity;
+  let thrustCmd: f64 = hoverThrust + g.kp * (targetZ - z) - g.kd * vz;
+  if (thrustCmd < 0.0) {
+    return 0.0;
+  }
+  let rpmSq: f64 = thrustCmd / (4.0 * p.thrustCoeff);
+  let estRpm: f64 = rpmSq * 0.00025;
+  if (estRpm > p.maxRotorRpm) {
+    return p.maxRotorRpm;
+  }
+  return estRpm;
+}

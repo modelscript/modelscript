@@ -15,7 +15,7 @@ export interface InspectorTabsProps<T extends string = string> {
 }
 
 /**
- * Shared Primer SegmentedControl sub-view switcher for Morsel domain inspectors and visualizers.
+ * Shared Primer SegmentedControl sub-view switcher for Ansatz domain inspectors and visualizers.
  */
 export function InspectorTabs<T extends string = string>({
   tabs,

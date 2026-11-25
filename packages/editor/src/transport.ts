@@ -5,7 +5,7 @@
  *
  * Allows visual & code editor workbenches to run identically over:
  *   1. Production WebWorker LSP connections (`browserServerMain.js`)
- *   2. Single-language dev playground HTTP transport (`/__playground/lsp` -> `@modelscript/lsp/core`)
+ *   2. Single-language dev ansatz HTTP transport (`/__ansatz/lsp` -> `@modelscript/lsp/core`)
  *   3. In-memory transports for deterministic unit & browser tests
  */
 
@@ -35,9 +35,9 @@ export function getCustomEditorLspTransport(): EditorLspTransport | null {
 
 /**
  * Creates an `EditorLspTransport` backed by a single-language HTTP endpoint
- * such as `scripts/tools/language-playground.ts` (`/__playground/lsp` -> `@modelscript/lsp/core`).
+ * such as `scripts/tools/language-ansatz.ts` (`/__ansatz/lsp` -> `@modelscript/lsp/core`).
  */
-export function createHttpLspTransport(endpoint = "/__playground/lsp"): EditorLspTransport {
+export function createHttpLspTransport(endpoint = "/__ansatz/lsp"): EditorLspTransport {
   const listeners = new Map<string, Set<(params: unknown) => void>>();
   const lastDiagnosticsByUri = new Map<string, unknown>();
 

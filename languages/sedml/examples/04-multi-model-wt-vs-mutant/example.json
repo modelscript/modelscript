@@ -1,0 +1,12 @@
+{
+  "id": "sedml-04-multi-model-wt-vs-mutant",
+  "lang": "sedml",
+  "subFormats": ["sedml-l1v4", "sbml"],
+  "difficulty": 4,
+  "title": "Multi-Model Comparison: Wild-Type vs Knockout Mutant",
+  "description": "Comparative SED-ML experiment executing identical CVODE trajectories across wild-type and catalytic-mutant SBML models and plotting their differential product ratio.",
+  "category": "Simulation Experiments",
+  "tags": ["sedml", "comparative", "mutant", "sbml", "multi-file"],
+  "activeFile": "compare.sedml",
+  "fileOrder": ["compare.sedml", "wt.sbml", "mutant.sbml"]
+}

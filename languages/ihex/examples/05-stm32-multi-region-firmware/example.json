@@ -1,0 +1,11 @@
+{
+  "id": "ihex-05-stm32-multi-region-firmware",
+  "lang": "ihex",
+  "subFormats": ["i32hex"],
+  "difficulty": 5,
+  "title": "STM32 Multi-Region Bootloader, Application & CRC Header Flash Image",
+  "description": "Multi-section I32HEX STM32F4 firmware image placing a bootloader at 0x08000000, main application at 0x08000400, and version/CRC metadata block at 0x08000800.",
+  "category": "Automotive & Industrial Firmware",
+  "tags": ["ihex", "i32hex", "stm32", "bootloader", "multi-region"],
+  "activeFile": "stm32_full_flash.hex"
+}

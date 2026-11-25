@@ -1,0 +1,11 @@
+{
+  "id": "eclipse-03-spe1-gas-injection",
+  "lang": "eclipse",
+  "subFormats": ["data", "inc"],
+  "difficulty": 3,
+  "title": "SPE-1 Gas Injection Benchmark",
+  "description": "Classic 3-phase black-oil SPE-1 comparative solution benchmark on a 10x10x3 grid with crestal gas injection, dissolved gas, and external PVT property INCLUDE file.",
+  "category": "Reservoir Simulation",
+  "tags": ["eclipse", "spe1", "gas-injection", "multi-file", "include"],
+  "activeFile": "spe1.data"
+}

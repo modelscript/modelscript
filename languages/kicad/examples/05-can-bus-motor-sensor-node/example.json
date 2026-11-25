@@ -1,0 +1,11 @@
+{
+  "id": "kicad-05-can-bus-motor-sensor-node",
+  "lang": "kicad",
+  "subFormats": ["kicad_pcb", "kicad_sch", "kicad_pro"],
+  "difficulty": 5,
+  "title": "4-Layer CAN-Bus Motor Sensor Node",
+  "description": "Production 4-layer mixed-signal KiCad 8 PCB stackup (F.Cu / In1.Cu GND / In2.Cu 3V3 / B.Cu) integrating an STM32 MCU, CAN-FD transceiver, 120 Ohm differential termination, and synchronized schematic.",
+  "category": "ECAD & PCB Layout",
+  "tags": ["kicad", "4-layer", "can-bus", "mixed-signal", "multi-file"],
+  "activeFile": "can_node.kicad_pcb"
+}

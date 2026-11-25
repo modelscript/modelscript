@@ -1,0 +1,4 @@
+'' Companion Scheduled Event Notice Handlers for Multi-Echelon Logistics Network
+EVENT INVENTORY.AUDIT
+  PRINT DAILY MULTI-ECHELON INVENTORY AUDIT COMPLETE
+END

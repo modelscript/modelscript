@@ -1,0 +1,11 @@
+{
+  "id": "reqif-02-iso26262-brake-by-wire",
+  "lang": "reqif",
+  "subFormats": ["reqif"],
+  "difficulty": 2,
+  "title": "ISO 26262 ASIL-D Brake-by-Wire Specification",
+  "description": "Automotive functional safety ReqIF specification with ASIL enumerations, braking latency contracts, and safety-goal refinement links.",
+  "category": "Automotive Safety",
+  "tags": ["reqif", "iso26262", "asil-d", "brake-by-wire", "automotive"],
+  "activeFile": "brake_by_wire.reqif"
+}

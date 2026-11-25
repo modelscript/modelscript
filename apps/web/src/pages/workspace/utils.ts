@@ -223,7 +223,7 @@ export function getDialectForFileName(fileName: string): string | null {
   }
 }
 
-export function canOpenFileInPlayground(fileName: string): boolean {
+export function canOpenFileInAnsatzEditor(fileName: string): boolean {
   return getDialectForFileName(fileName) !== null;
 }
 
@@ -525,8 +525,16 @@ export interface FileTreeNode {
   size?: number;
 }
 
+interface FileTreeBuilderNode {
+  name: string;
+  path: string;
+  type: "tree" | "blob";
+  size?: number | undefined;
+  children?: Map<string, FileTreeBuilderNode> | undefined;
+}
+
 export function buildFileTree(files: { path: string; name?: string; type?: string; size?: number }[]): FileTreeNode[] {
-  const rootMap = new Map<string, any>();
+  const rootMap = new Map<string, FileTreeBuilderNode>();
 
   for (const f of files) {
     const parts = f.path.split("/").filter(Boolean);
@@ -544,18 +552,18 @@ export function buildFileTree(files: { path: string; name?: string; type?: strin
           path: currentPath,
           type: isFile ? "blob" : "tree",
           size: isFile ? f.size : undefined,
-          children: isFile ? undefined : new Map<string, any>(),
+          children: isFile ? undefined : new Map<string, FileTreeBuilderNode>(),
         });
       }
 
       const node = currentMap.get(part);
-      if (!isFile && node.children) {
+      if (!isFile && node?.children) {
         currentMap = node.children;
       }
     }
   }
 
-  function convertMap(map: Map<string, any>): FileTreeNode[] {
+  function convertMap(map: Map<string, FileTreeBuilderNode>): FileTreeNode[] {
     const list: FileTreeNode[] = [];
     for (const item of map.values()) {
       const children = item.children ? convertMap(item.children) : undefined;

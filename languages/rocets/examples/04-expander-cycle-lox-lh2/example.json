@@ -1,0 +1,11 @@
+{
+  "id": "rocets-04-expander-cycle-lox-lh2",
+  "lang": "rocets",
+  "subFormats": ["roc"],
+  "difficulty": 4,
+  "title": "Expander-Cycle LOX/LH2 Upper-Stage Engine",
+  "description": "RL10-class closed expander-cycle cryogenic LOX/LH2 upper-stage rocket engine where heated hydrogen from the regenerative cooling jacket drives the turbopump turbine before entering the main injector.",
+  "category": "Upper-Stage Cryogenic Propulsion",
+  "tags": ["rocets", "expander-cycle", "lox-lh2", "rl10"],
+  "activeFile": "expander_rl10.roc"
+}

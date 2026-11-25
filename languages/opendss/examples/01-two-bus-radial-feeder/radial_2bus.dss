@@ -1,0 +1,13 @@
+! 2-Bus Radial Distribution Feeder (12.47 kV)
+Clear
+
+New Circuit.Radial2Bus basekv=12.47 pu=1.02 phases=3 bus1=SourceBus
+
+New LineCode.OH_336ACSR nphases=3 r1=0.190 x1=0.390 r0=0.450 x0=1.220 units=km
+New Line.FeederMain bus1=SourceBus bus2=LoadBus1 phases=3 linecode=OH_336ACSR length=3.2
+
+New Load.CommercialLoad bus1=LoadBus1 phases=3 kv=12.47 kw=1500 kvar=480
+
+Set VoltageBases = [12.47]
+CalcVoltageBases
+Solve

@@ -95,6 +95,38 @@ export function parseComparisonOp(opStr: string): VerifyOp {
   }
 }
 
+interface VerifierWasmExports {
+  memory: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
+  verifier_settlingTime?: (tPtr: number, xPtr: number, n: number, band: number) => number;
+  verifier_overshoot?: (xPtr: number, n: number, hasTarget: number, targetVal: number) => number;
+  verifier_steadyState?: (xPtr: number, n: number, windowFrac: number) => number;
+  verifier_integral?: (tPtr: number, xPtr: number, n: number) => number;
+  verifier_verifyTrajectoryDirect?: (
+    tPtr: number,
+    yPtr: number,
+    numSteps: number,
+    numStates: number,
+    stateIdx: number,
+    verifyOp: number,
+    limitValue: number,
+    tol: number,
+    outSeriesPtr: number,
+    outStatsPtr: number,
+  ) => number;
+}
+
+interface CstLikeNode {
+  text?: string;
+  children?: CstLikeNode[];
+  childForFieldName?: (name: string) => CstLikeNode | null | undefined;
+}
+
+function isCstLikeNode(val: unknown): val is CstLikeNode {
+  return typeof val === "object" && val !== null;
+}
+
 /**
  * Computes the settling time of a signal trajectory x(t).
  * Settling time is the earliest time t_s such that for all t >= t_s,
@@ -103,7 +135,7 @@ export function parseComparisonOp(opStr: string): VerifyOp {
 export function computeSettlingTime(t: number[], x: number[], band: number = 0.02): number {
   if (t.length === 0 || x.length === 0) return 0;
   const n = Math.min(t.length, x.length);
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as VerifierWasmExports | null;
   if (
     w &&
     typeof w.verifier_settlingTime === "function" &&
@@ -139,7 +171,7 @@ export function computeSettlingTime(t: number[], x: number[], band: number = 0.0
 export function computeOvershoot(x: number[], targetVal?: number): number {
   if (x.length === 0) return 0;
   const n = x.length;
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as VerifierWasmExports | null;
   if (
     w &&
     typeof w.verifier_overshoot === "function" &&
@@ -183,7 +215,7 @@ export function computeOvershoot(x: number[], targetVal?: number): number {
 export function computeSteadyState(x: number[], windowFrac = 0.1): number {
   if (x.length === 0) return 0;
   const n = x.length;
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as VerifierWasmExports | null;
   if (
     w &&
     typeof w.verifier_steadyState === "function" &&
@@ -211,7 +243,7 @@ export function computeSteadyState(x: number[], windowFrac = 0.1): number {
 export function computeIntegral(t: number[], x: number[]): number {
   if (t.length < 2 || x.length < 2) return 0;
   const n = Math.min(t.length, x.length);
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as VerifierWasmExports | null;
   if (w && typeof w.verifier_integral === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
     const tPtr = w.alloc(n * 8);
     const xPtr = w.alloc(n * 8);
@@ -574,8 +606,8 @@ export class VerificationRunner {
   // CST comparison extraction
   // -------------------------------------------------------------------------
 
-  public extractComparison(node: any): { lhs: string; op: ComparisonOp; rhs: string } | null {
-    if (!node) return null;
+  public extractComparison(node: unknown): { lhs: string; op: ComparisonOp; rhs: string } | null {
+    if (!isCstLikeNode(node)) return null;
 
     const opNodeRef = node.childForFieldName ? node.childForFieldName("operator") : null;
     const leftNodeRef = node.childForFieldName
@@ -678,7 +710,7 @@ export class VerificationRunner {
     simResult: SimulationResult,
     timeIndex: number,
   ): { isSatisfied: boolean; error?: string | undefined } {
-    const cst = this.db.cstNode(constraint.id) as any;
+    const cst: unknown = this.db.cstNode(constraint.id);
     if (!cst) {
       return { isSatisfied: false, error: "No CST node found for constraint" };
     }
@@ -750,8 +782,8 @@ export class VerificationRunner {
       if (metricMatch) {
         const rawMetricName = metricMatch[1]!;
         const innerVar = metricMatch[2]!.trim();
-        const metricName: "max" | "min" | "settlingTime" | "overshoot" | "steadyState" | "integral" =
-          rawMetricName === "peak" ? "max" : (rawMetricName as any);
+        type TemporalMetricName = "max" | "min" | "settlingTime" | "overshoot" | "steadyState" | "integral";
+        const metricName: TemporalMetricName = rawMetricName === "peak" ? "max" : (rawMetricName as TemporalMetricName);
 
         const xVals: number[] = [];
         for (let i = 0; i < simResult.t.length; i++) {
@@ -1015,7 +1047,7 @@ export function verifyTrajectoryDirect(
   const verifyOp = parseComparisonOp(op);
 
   if (numSteps > 0) {
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as VerifierWasmExports | null;
     if (
       w &&
       typeof w.verifier_verifyTrajectoryDirect === "function" &&

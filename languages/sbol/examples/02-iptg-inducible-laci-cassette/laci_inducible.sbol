@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#" xml:base="http://modelscript.org/sbol/inducible#">
+  <sbol:Sequence displayId="seq_rfp_tu" encoding="IUPAC_DNA">
+    <sbol:elements>TTGACAAAGAGGAGAAATGGCTTCCTCCGAAGACGTTATCAAAGAGTTCTAAAGGTTTTTT</sbol:elements>
+  </sbol:Sequence>
+
+  <sbol:Component displayId="pLac" name="LacI-Repressible Promoter" role="SO:0000167"/>
+  <sbol:Component displayId="rbs1" name="Bacterial RBS B0034" role="SO:0000139"/>
+  <sbol:Component displayId="LacI" name="Lactose Repressor Protein" role="SO:0000316" initialConcentration="2.0" basalRate="0.1" maxExpressionRate="8.0" degradationRate="0.8"/>
+  <sbol:Component displayId="RFP" name="Red Fluorescent Protein" role="SO:0000316" initialConcentration="0.1" basalRate="0.05" maxExpressionRate="14.0" degradationRate="0.6"/>
+  <sbol:Component displayId="term1" name="Double Terminator B0015" role="SO:0000141"/>
+
+  <sbol:Component displayId="tu_RFP" name="Inducible RFP Cassette" role="SO:0000804" hasSequence="seq_rfp_tu">
+    <sbol:SubComponent displayId="sub_pLac" instanceOf="pLac" start="1" end="6"/>
+    <sbol:SubComponent displayId="sub_rbs1" instanceOf="rbs1" start="7" end="16"/>
+    <sbol:SubComponent displayId="sub_RFP" instanceOf="RFP" start="17" end="52"/>
+    <sbol:SubComponent displayId="sub_term1" instanceOf="term1" start="53" end="61"/>
+  </sbol:Component>
+
+  <sbol:Interaction displayId="rep_LacI_RFP" type="SBO:0000169" K="1.2" n="2.0" alpha="14.0">
+    <sbol:Participation participant="LacI" role="SBO:0000020"/>
+    <sbol:Participation participant="RFP" role="SBO:0000642"/>
+  </sbol:Interaction>
+</rdf:RDF>

@@ -1,0 +1,9 @@
+-- Companion Reusable Spool-Valve Submodel Module for Electro-Hydraulic Actuator
+STUDY ValveLibrary
+  SUBMODEL ProportionalSpoolValve(IN REAL: u_err; IN REAL: tau_v; IN REAL: kv; OUT REAL: q_out)
+    REAL: x_spool;
+  DYNAMIC
+    x_spool' = (u_err - x_spool) / tau_v;
+    q_out = kv * x_spool;
+  END SUBMODEL ProportionalSpoolValve
+END STUDY ValveLibrary

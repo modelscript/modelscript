@@ -1,0 +1,11 @@
+{
+  "id": "ran-02-macro-sector-65deg",
+  "lang": "ran",
+  "subFormats": ["adf"],
+  "difficulty": 2,
+  "title": "65-Degree Macro Base Station Sector Antenna",
+  "description": "18 dBi dual-polarized 1710–2170 MHz macro cellular sector antenna with 65-degree horizontal half-power beamwidth and 2-degree electrical downtilt.",
+  "category": "Cellular Base Stations",
+  "tags": ["ran", "adf", "sector-antenna", "macro-cell"],
+  "activeFile": "macro_65deg.adf"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "pslf-02-wecc9-steady-state",
+  "lang": "pslf",
+  "subFormats": ["epc"],
+  "difficulty": 2,
+  "title": "WECC 9-Bus Steady-State Case",
+  "description": "Standard WSCC/WECC 9-bus 3-machine transmission system with step-up transformers and 230 kV transmission ring in GE PSLF EPC format.",
+  "category": "WECC Benchmark",
+  "tags": ["pslf", "wecc9", "epc", "power-flow"],
+  "activeFile": "wecc9.epc"
+}

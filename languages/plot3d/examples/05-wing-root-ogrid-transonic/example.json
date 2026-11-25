@@ -1,0 +1,11 @@
+{
+  "id": "plot3d-05-wing-root-ogrid-transonic",
+  "lang": "plot3d",
+  "subFormats": ["xyz", "q", "nam"],
+  "difficulty": 5,
+  "title": "3D Wing-Root O-Grid with Transonic Flow Solution",
+  "description": "Curvilinear 3D wing-root boundary-layer structured mesh paired with a transonic Mach 0.82 conservative flow solution at 2.0-degree angle of attack and a companion PLOT3D variable metadata file.",
+  "category": "Structured CFD & Aerodynamics",
+  "tags": ["plot3d", "transonic", "wing", "multi-file"],
+  "activeFile": "wing_ogrid.xyz"
+}

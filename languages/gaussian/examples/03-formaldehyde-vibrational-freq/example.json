@@ -1,0 +1,11 @@
+{
+  "id": "gaussian-03-formaldehyde-vibrational-freq",
+  "lang": "gaussian",
+  "subFormats": ["gjf"],
+  "difficulty": 3,
+  "title": "Formaldehyde Vibrational Frequencies and IR Spectrum",
+  "description": "Combined geometry optimization and harmonic vibrational frequency analysis of planar formaldehyde (H2CO) at B3LYP/6-311++G(d,p) to compute C=O stretching frequency and zero-point energy.",
+  "category": "Quantum Chemistry & Electronic Structure",
+  "tags": ["gaussian", "frequencies", "ir-spectrum", "b3lyp"],
+  "activeFile": "formaldehyde_freq.gjf"
+}

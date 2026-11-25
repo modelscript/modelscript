@@ -6,6 +6,7 @@ import {
   SosBarrierSynthesizer,
   TraceRecordNormalizer,
   type CanonicalTraceRecord,
+  type DAEBuilder,
 } from "@modelscript/runtime";
 import { simulateArena, UnifiedVerifier } from "@modelscript/simulate";
 import {
@@ -22,6 +23,18 @@ import {
 import { ClosedLoopCompilerEngine, runSelfHealingPipeline } from "../agent/index.js";
 import { LspContext, resolveFeatureFlags } from "../lsp-context.js";
 import { getRequirements } from "../requirements.js";
+
+function callFlattenArenaFromInstance(classInstance: unknown, ctx: unknown): DAEBuilder {
+  const fn = (
+    globalThis as unknown as {
+      flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder;
+    }
+  ).flattenArenaFromInstance;
+  if (typeof fn !== "function") {
+    throw new Error("flattenArenaFromInstance is not initialized.");
+  }
+  return fn(classInstance, ctx);
+}
 
 export function registerFormalVerificationEndpoints(context: LspContext): void {
   context.connection.onRequest("modelscript/getRequirements", (params: { uri: string }) => {
@@ -86,10 +99,13 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
           const found = instances.find((i) => i.name === params.className);
           if (found) target = found;
         }
+        if (!target) {
+          return { success: false, error: "No class instances found." };
+        }
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return { success: false, error: "Context not initialized." };
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
         try {
           const tSpan: [number, number] = params.tSpan ?? [0, 1.0];
           const dt = params.dt ?? 0.05;
@@ -115,15 +131,13 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
           let usedNumericalFallback = false;
 
           if (fpDetails?.steps && Array.isArray(fpDetails.steps) && fpDetails.steps.length > 0) {
-            times = fpDetails.steps.map((s: any) => s.tEnd ?? s.t ?? 0);
+            times = fpDetails.steps.map((s) => s.tEnd ?? s.t ?? 0);
             variableNames = fpDetails.stateNames?.length ? fpDetails.stateNames : [arena.getVarName(0) || "x"];
-            tubes = fpDetails.steps.map((s: any) =>
-              (s.xEnclosure || []).map((iv: any) => ({ lo: iv.lo ?? -1, hi: iv.hi ?? 1 })),
-            );
+            tubes = fpDetails.steps.map((s) => (s.xEnclosure || []).map((iv) => ({ lo: iv.lo ?? -1, hi: iv.hi ?? 1 })));
           } else {
             usedNumericalFallback = true;
             try {
-              const simRes = simulateArena(arena as any, {
+              const simRes = simulateArena(arena, {
                 startTime: tSpan[0],
                 stopTime: tSpan[1],
                 step: dt,
@@ -155,8 +169,11 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
           });
 
           const { verifyArenaFormal } = await import("@modelscript/modelica");
-          const formalCst = target.entry ? docContext.queryEngine.toQueryDB().cstNode(target.entry.id) : null;
-          const formalDiagnostics = await verifyArenaFormal(arena, target.name, formalCst, null);
+          const docQe = docContext.queryEngine as
+            { toQueryDB?: () => { cstNode(id: number): Parameters<typeof verifyArenaFormal>[2] } } | undefined;
+          const targetEntry = (target as { entry?: { id: number } }).entry;
+          const formalCst = targetEntry ? (docQe?.toQueryDB?.().cstNode(targetEntry.id) ?? null) : null;
+          const formalDiagnostics = await verifyArenaFormal(arena, target.name ?? "", formalCst, null);
 
           return {
             success: true,
@@ -210,7 +227,9 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
                   try {
                     const overlay = qEngine.query("verification3DOverlay", sym.id);
                     if (overlay) return overlay;
-                  } catch {}
+                  } catch {
+                    // Overlay query is optional per symbol; continue scanning or fall back to default report.
+                  }
                 }
               }
             }
@@ -264,33 +283,35 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
             const found = instances.find((i) => i.name === params.className);
             if (found) target = found;
           }
-          const arena = flattenArenaFromInstance(target, docContext);
-          try {
-            const verifyReport = await UnifiedVerifier.verify({ uri: params.uri, arena }, { barriers: true });
-            const barrierStage = verifyReport.stages["barriers"];
-            const barrierDetails = barrierStage?.details as
-              | {
-                  barrierCoefficients?: unknown;
-                  candidateFound?: boolean;
-                  verdict?: string;
-                  barrierDegree?: number;
-                  stateNames?: string[];
-                }
-              | undefined;
-            if (barrierStage && barrierDetails?.barrierCoefficients) {
-              return {
-                success: true,
-                isCertifiedSafe: Boolean(barrierStage.certified),
-                candidateFound: Boolean(barrierDetails.candidateFound),
-                verdict: barrierDetails.verdict,
-                boundToModel: true,
-                degree: barrierDetails.barrierDegree ?? 2,
-                stateNames: barrierDetails.stateNames ?? [],
-                summary: barrierStage.summary,
-              };
+          if (target) {
+            const arena = callFlattenArenaFromInstance(target, docContext);
+            try {
+              const verifyReport = await UnifiedVerifier.verify({ uri: params.uri, arena }, { barriers: true });
+              const barrierStage = verifyReport.stages["barriers"];
+              const barrierDetails = barrierStage?.details as
+                | {
+                    barrierCoefficients?: unknown;
+                    candidateFound?: boolean;
+                    verdict?: string;
+                    barrierDegree?: number;
+                    stateNames?: string[];
+                  }
+                | undefined;
+              if (barrierStage && barrierDetails?.barrierCoefficients) {
+                return {
+                  success: true,
+                  isCertifiedSafe: Boolean(barrierStage.certified),
+                  candidateFound: Boolean(barrierDetails.candidateFound),
+                  verdict: barrierDetails.verdict,
+                  boundToModel: true,
+                  degree: barrierDetails.barrierDegree ?? 2,
+                  stateNames: barrierDetails.stateNames ?? [],
+                  summary: barrierStage.summary,
+                };
+              }
+            } finally {
+              (arena as { free?: () => void } | null)?.free?.();
             }
-          } finally {
-            (arena as { free?: () => void } | null)?.free?.();
           }
         }
 
@@ -328,7 +349,9 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
       targetGates?: (1 | 2 | 3 | 4)[] | undefined;
     }) => {
       try {
-        const engine = new ClosedLoopCompilerEngine(context);
+        const engine = new ClosedLoopCompilerEngine(
+          context as unknown as ConstructorParameters<typeof ClosedLoopCompilerEngine>[0],
+        );
         const parser = context.parserService?.getParser(params.language ?? "sysml2");
         const verification = await engine.verifyCandidate(params.code, params.language ?? "sysml2", {
           parser,
@@ -496,7 +519,7 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
           const resultsMap = DecisionTableVerifier.verifyAllDecisionsFromText(params.sourceText, {
             domainBounds: boundsMap,
           });
-          const serialized: Record<string, any> = {};
+          const serialized: Record<string, unknown> = {};
           for (const [k, v] of resultsMap.entries()) {
             serialized[k] = v;
           }
@@ -513,8 +536,8 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/decomposeRegions",
     async (params: {
-      conditions?: any[] | undefined;
-      branches?: { id: string; constraints: any[]; terminalValue?: any }[] | undefined;
+      conditions?: Parameters<typeof RegionDecomposer.decompose>[0] | undefined;
+      branches?: Parameters<typeof RegionDecomposer.decomposeBranches>[0] | undefined;
       domainBounds?: Record<string, [number, number]> | undefined;
       maxDepth?: number | undefined;
       maxRegions?: number | undefined;
@@ -548,8 +571,8 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
   context.connection.onRequest(
     "modelscript/generateBoundaryTests",
     async (params: {
-      decomposition?: any;
-      branches?: { id: string; constraints: any[]; terminalValue?: any }[] | undefined;
+      decomposition?: Parameters<typeof BoundaryTestSynthesizer.synthesizeTestSuite>[0] | undefined;
+      branches?: Parameters<typeof RegionDecomposer.decomposeBranches>[0] | undefined;
       domainBounds?: Record<string, [number, number]> | undefined;
       suiteName?: string | undefined;
       format?: "json" | "ctrf" | "junit" | "modelica" | undefined;
@@ -619,7 +642,7 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
           ? new Map(Object.entries(params.domainBounds))
           : new Map(lowered.inputs.map((inVar) => [inVar, [0, 100] as [number, number]]));
 
-        let decomp: any;
+        let decomp: ReturnType<typeof RegionDecomposer.decompose> | undefined;
         try {
           const conds = lowered.inputs.map((inVar) => ({
             expr: { kind: "var" as const, name: inVar },
@@ -759,16 +782,14 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
             docText = context.documents.get(params.uri)?.getText();
             if (!docText) {
               const targetPath = params.uri.split("/").pop();
-              if (targetPath && typeof (context.documents as any).all === "function") {
-                const matchDoc = (context.documents as any).all().find((d: any) => d.uri.endsWith(targetPath));
+              if (targetPath && typeof context.documents.all === "function") {
+                const matchDoc = context.documents.all().find((d) => d.uri.endsWith(targetPath));
                 if (matchDoc) docText = matchDoc.getText();
               }
             }
           }
-          if (!docText && typeof (context.documents as any).all === "function") {
-            const sysmlDoc = (context.documents as any)
-              .all()
-              .find((d: any) => d.uri.endsWith(".sysml") || d.uri.endsWith(".kerml"));
+          if (!docText && typeof context.documents.all === "function") {
+            const sysmlDoc = context.documents.all().find((d) => d.uri.endsWith(".sysml") || d.uri.endsWith(".kerml"));
             if (sysmlDoc) docText = sysmlDoc.getText();
           }
 
@@ -783,7 +804,7 @@ export function registerFormalVerificationEndpoints(context: LspContext): void {
                 hierarchy: extracted,
               };
             }
-            const features = resolveFeatureFlags((context as any).settings);
+            const features = resolveFeatureFlags(context.settings);
             const isPowertrainDemo =
               features.demos && (Boolean(params.uri && /powertrain/i.test(params.uri)) || /Powertrain/i.test(docText));
             if (!isPowertrainDemo) {

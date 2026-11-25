@@ -1,0 +1,11 @@
+{
+  "id": "scl-02-overcurrent-protection-relay",
+  "lang": "scl",
+  "subFormats": ["icd"],
+  "difficulty": 2,
+  "title": "Feeder Overcurrent Protection Relay (.icd)",
+  "description": "IEC 61850 feeder protection relay (.icd) modeling instantaneous (PIOC) and time-overcurrent (PTOC) elements, PTRC trip conditioning, and GOOSE publishing.",
+  "category": "Protection Relay Modeling",
+  "tags": ["scl", "iec61850", "ptoc", "pioc", "goose"],
+  "activeFile": "p_relay.icd"
+}

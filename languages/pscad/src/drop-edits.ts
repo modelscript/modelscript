@@ -24,10 +24,10 @@ export interface PscadDropBuildOptions {
   section?: string | undefined;
   hasNativeSchema?: boolean | undefined;
   schematicEndLine: number;
-  batchState?: any;
+  batchState?: unknown;
   sanitizeIdentifier: (raw: string, fallback?: string) => string;
-  allocateUniqueIdentifier: (docText: string, baseName: string, batchState?: any) => string;
-  allocateUniqueNumericId: (xmlRoot: XmlElement | null, seed: number, batchState?: any) => number;
+  allocateUniqueIdentifier: (docText: string, baseName: string, batchState?: unknown) => string;
+  allocateUniqueNumericId: (xmlRoot: XmlElement | null, seed: number, batchState?: unknown) => number;
 }
 
 function escapeXmlAttr(text: string): string {

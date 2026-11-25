@@ -1,0 +1,33 @@
+station "Highway_DCFC_North" {
+  model: "Terra-240"
+  vendor: "ABB"
+  gridLimitKW: 240.0
+
+  evse 1 {
+    connector 1 {
+      type: "CCS2"
+      maxPowerKW: 120.0
+      currentSession: {
+        transactionId: "TX-HWY-2001"
+        evBatteryCapacityKWh: 82.0
+        currentSoC: 0.15
+        targetSoC: 0.80
+        departureMinutes: 35
+      }
+    }
+  }
+
+  evse 2 {
+    connector 1 {
+      type: "CCS2"
+      maxPowerKW: 120.0
+      currentSession: {
+        transactionId: "TX-HWY-2002"
+        evBatteryCapacityKWh: 98.0
+        currentSoC: 0.25
+        targetSoC: 0.85
+        departureMinutes: 45
+      }
+    }
+  }
+}

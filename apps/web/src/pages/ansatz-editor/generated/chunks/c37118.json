@@ -1,0 +1,77 @@
+[
+  {
+    "id": "c37118-01-single-bus-pmu-cfg2",
+    "lang": "c37118",
+    "subFormats": ["c37118"],
+    "difficulty": 1,
+    "title": "Single-Bus 60 Hz PMU Configuration Frame (CFG-2)",
+    "description": "Minimal IEEE C37.118.2 synchrophasor PMU configuration at 30 frames/s reporting positive-sequence 138 kV bus voltage, feeder current, active power, and breaker status.",
+    "category": "Wide-Area Grid Monitoring",
+    "tags": ["c37118", "pmu", "synchrophasor", "cfg-2", "60hz"],
+    "activeFile": "pmu_cfg2.c37118",
+    "fileNames": ["pmu_cfg2.c37118"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "pmu Sub_East_138kV idcode=101 fnom=60 rate=30\nphasor V1_POS V format=polar scale=1.0 mag=138000 ang=0.0\nphasor I1_POS I format=polar scale=1.0 mag=420 ang=-12.5\nanalog P_MW units=MW scale=1.0 init=98.2\nanalog Q_MVAR units=MVAR scale=1.0 init=21.4\ndigital BRK_52A\nframe 2026-11-17T20:00:00.000Z 60.001 0.002\nframe 2026-11-17T20:00:00.033Z 60.001 0.001\n"
+  },
+  {
+    "id": "c37118-02-three-phase-phasor-stream",
+    "lang": "c37118",
+    "subFormats": ["c37118"],
+    "difficulty": 2,
+    "title": "3-Phase Balanced Voltage & Current Synchrophasor Stream",
+    "description": "60 frames/s IEEE C37.118 PMU telemetry stream capturing individual A-B-C phase voltage and line current phasors on a 230 kV transmission corridor.",
+    "category": "Wide-Area Grid Monitoring",
+    "tags": ["c37118", "three-phase", "phasors", "230kv", "telemetry"],
+    "activeFile": "three_phase_stream.c37118",
+    "fileNames": ["three_phase_stream.c37118"],
+    "fileCount": 1,
+    "code": "pmu Sub_North_230kV idcode=202 fnom=60 rate=60\nphasor VA_230 V format=polar scale=1.0 mag=132790 ang=0.0\nphasor VB_230 V format=polar scale=1.0 mag=132790 ang=-120.0\nphasor VC_230 V format=polar scale=1.0 mag=132790 ang=120.0\nphasor IA_230 I format=polar scale=1.0 mag=615 ang=-14.2\nphasor IB_230 I format=polar scale=1.0 mag=615 ang=-134.2\nphasor IC_230 I format=polar scale=1.0 mag=615 ang=105.8\nanalog LINE_MW units=MW scale=1.0 init=237.5\nanalog LINE_MVAR units=MVAR scale=1.0 init=60.1\ndigital CB_230_1\ndigital GPS_LOCK\nframe 2026-11-17T20:05:00.000Z 60.000 0.000\nframe 2026-11-17T20:05:00.017Z 59.999 -0.005\nframe 2026-11-17T20:05:00.033Z 59.999 -0.004\nframe 2026-11-17T20:05:00.050Z 60.000 0.003\n"
+  },
+  {
+    "id": "c37118-03-interarea-oscillation-event",
+    "lang": "c37118",
+    "subFormats": ["c37118"],
+    "difficulty": 3,
+    "title": "Inter-Area 0.7 Hz Electromechanical Oscillation Event",
+    "description": "Wide-area 500 kV tie-line PMU recording capturing a lightly damped 0.7 Hz inter-area frequency and tie-line power oscillation across consecutive synchrophasor frames.",
+    "category": "Wide-Area Grid Monitoring",
+    "tags": ["c37118", "oscillation", "inter-area", "500kv", "dynamics"],
+    "activeFile": "interarea_osc.c37118",
+    "fileNames": ["interarea_osc.c37118"],
+    "fileCount": 1,
+    "code": "pmu Tie500_WestEast idcode=305 fnom=60 rate=30\nphasor V1_500 V format=polar scale=1.0 mag=504200 ang=-18.4\nphasor I1_TIE I format=polar scale=1.0 mag=1180 ang=-24.1\nanalog TIE_FLOW_MW units=MW scale=1.0 init=965.0\nanalog DAMPING_RATIO units=pct scale=1.0 init=3.2\ndigital OSC_ALARM\ndigital PSS_ACTIVE\nframe 2026-11-17T21:10:00.000Z 60.000 0.045\nframe 2026-11-17T21:10:00.350Z 60.038 0.002\nframe 2026-11-17T21:10:00.700Z 60.002 -0.044\nframe 2026-11-17T21:10:01.050Z 59.964 -0.001\nframe 2026-11-17T21:10:01.400Z 59.999 0.041\nframe 2026-11-17T21:10:01.750Z 60.032 0.001\n"
+  },
+  {
+    "id": "c37118-04-generator-trip-rocof",
+    "lang": "c37118",
+    "subFormats": ["c37118"],
+    "difficulty": 4,
+    "title": "Generator Trip Under-Frequency & RoCoF Event Capture",
+    "description": "High-resolution 60 Hz PMU event record capturing inertial frequency decline, negative Rate-of-Change-of-Frequency (RoCoF), and primary governor arrest following a 650 MW unit trip.",
+    "category": "Wide-Area Grid Monitoring",
+    "tags": ["c37118", "rocof", "under-frequency", "inertia", "generator-trip"],
+    "activeFile": "gen_trip_rocof.c37118",
+    "fileNames": ["gen_trip_rocof.c37118"],
+    "fileCount": 1,
+    "code": "pmu GenPlant_345kV idcode=410 fnom=60 rate=60\nphasor V1_345 V format=polar scale=1.0 mag=346500 ang=-6.2\nphasor I1_GEN I format=polar scale=1.0 mag=1085 ang=-11.8\nanalog UNIT_MW units=MW scale=1.0 init=650.0\nanalog RESERVE_MW units=MW scale=1.0 init=180.0\ndigital GEN_52G_TRIP\ndigital UFLS_ARMED\nframe 2026-11-17T22:15:00.000Z 60.000 0.000\nframe 2026-11-17T22:15:00.500Z 59.890 -0.220\nframe 2026-11-17T22:15:01.000Z 59.795 -0.175\nframe 2026-11-17T22:15:02.000Z 59.685 -0.085\nframe 2026-11-17T22:15:03.500Z 59.640 -0.012\nframe 2026-11-17T22:15:05.000Z 59.665 0.025\nframe 2026-11-17T22:15:08.000Z 59.780 0.038\n"
+  },
+  {
+    "id": "c37118-05-multi-pmu-wide-area-pdc",
+    "lang": "c37118",
+    "subFormats": ["c37118"],
+    "difficulty": 5,
+    "title": "Multi-PMU Wide-Area Phasor Data Concentrator (PDC)",
+    "description": "Multi-file IEEE C37.118.2 wide-area monitoring bundle pairing a regional PDC JSON configuration profile (pdc_cfg2.c37118) with time-aligned corridor synchrophasor frames (pmu_frames.c37118).",
+    "category": "Wide-Area Grid Monitoring",
+    "tags": ["c37118", "pdc", "wams", "multi-file", "synchrophasor"],
+    "activeFile": "pdc_cfg2.c37118",
+    "fileNames": ["pdc_cfg2.c37118", "pmu_frames.c37118"],
+    "fileCount": 2,
+    "code": "{\n  \"stn\": \"Regional_PDC_North\",\n  \"idcode\": 500,\n  \"fnom\": 60,\n  \"dataRate\": 30,\n  \"phasors\": [\n    { \"name\": \"V1_NORTH_500\", \"type\": \"V\", \"format\": \"polar\", \"scale\": 1.0, \"mag\": 502000, \"ang\": 0.0 },\n    { \"name\": \"V1_SOUTH_500\", \"type\": \"V\", \"format\": \"polar\", \"scale\": 1.0, \"mag\": 497500, \"ang\": -22.8 },\n    { \"name\": \"I1_CORRIDOR\", \"type\": \"I\", \"format\": \"polar\", \"scale\": 1.0, \"mag\": 1340, \"ang\": -15.4 }\n  ],\n  \"analogs\": [\n    { \"name\": \"ANGLE_DIFF_DEG\", \"units\": \"deg\", \"scale\": 1.0, \"init\": 22.8 },\n    { \"name\": \"CORRIDOR_MW\", \"units\": \"MW\", \"scale\": 1.0, \"init\": 1140.0 }\n  ],\n  \"digitals\": [\"PDC_TIME_SYNC_OK\", \"ANGLE_LIMIT_OK\"],\n  \"frames\": [\n    { \"timestamp\": \"2026-11-17T23:00:00.000Z\", \"freq\": 60.002, \"rocof\": 0.001 },\n    { \"timestamp\": \"2026-11-17T23:00:00.033Z\", \"freq\": 60.001, \"rocof\": -0.002 }\n  ]\n}\n",
+    "files": {
+      "pdc_cfg2.c37118": "{\n  \"stn\": \"Regional_PDC_North\",\n  \"idcode\": 500,\n  \"fnom\": 60,\n  \"dataRate\": 30,\n  \"phasors\": [\n    { \"name\": \"V1_NORTH_500\", \"type\": \"V\", \"format\": \"polar\", \"scale\": 1.0, \"mag\": 502000, \"ang\": 0.0 },\n    { \"name\": \"V1_SOUTH_500\", \"type\": \"V\", \"format\": \"polar\", \"scale\": 1.0, \"mag\": 497500, \"ang\": -22.8 },\n    { \"name\": \"I1_CORRIDOR\", \"type\": \"I\", \"format\": \"polar\", \"scale\": 1.0, \"mag\": 1340, \"ang\": -15.4 }\n  ],\n  \"analogs\": [\n    { \"name\": \"ANGLE_DIFF_DEG\", \"units\": \"deg\", \"scale\": 1.0, \"init\": 22.8 },\n    { \"name\": \"CORRIDOR_MW\", \"units\": \"MW\", \"scale\": 1.0, \"init\": 1140.0 }\n  ],\n  \"digitals\": [\"PDC_TIME_SYNC_OK\", \"ANGLE_LIMIT_OK\"],\n  \"frames\": [\n    { \"timestamp\": \"2026-11-17T23:00:00.000Z\", \"freq\": 60.002, \"rocof\": 0.001 },\n    { \"timestamp\": \"2026-11-17T23:00:00.033Z\", \"freq\": 60.001, \"rocof\": -0.002 }\n  ]\n}\n",
+      "pmu_frames.c37118": "pmu Corridor_South_PMU idcode=502 fnom=60 rate=30\nphasor V1_SOUTH_500 V format=polar scale=1.0 mag=497500 ang=-22.8\nphasor I1_SOUTH I format=polar scale=1.0 mag=1340 ang=-15.4\nanalog SOUTH_MW units=MW scale=1.0 init=1132.0\ndigital GPS_LOCK_SOUTH\nframe 2026-11-17T23:00:00.000Z 60.002 0.001\nframe 2026-11-17T23:00:00.033Z 60.001 -0.002\nframe 2026-11-17T23:00:00.067Z 60.000 -0.001\n"
+    }
+  }
+]

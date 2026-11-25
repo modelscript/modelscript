@@ -1,0 +1,12 @@
+{
+  "id": "matpower-01-three-bus-dc-opf",
+  "lang": "matpower",
+  "subFormats": ["m"],
+  "difficulty": 1,
+  "title": "3-Bus Economic Dispatch DC-OPF",
+  "description": "Minimal 3-bus 138 kV MATPOWER v2 case with one slack generator, one thermal unit, quadratic generation costs, and thermal line limits.",
+  "category": "Optimal Power Flow",
+  "tags": ["matpower", "dc-opf", "economic-dispatch", "3-bus"],
+  "activeFile": "case3.m",
+  "isDefaultStarter": true
+}

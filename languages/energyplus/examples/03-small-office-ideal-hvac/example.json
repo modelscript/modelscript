@@ -1,0 +1,11 @@
+{
+  "id": "energyplus-03-small-office-ideal-hvac",
+  "lang": "energyplus",
+  "subFormats": ["idf", "epw"],
+  "difficulty": 3,
+  "title": "Small Office HVAC with Ideal Loads & Weather",
+  "description": "Two-zone small office building with reciprocal interzone partition wall, internal lighting and occupancy gains, ideal loads HVAC, and companion Chicago TMY weather EPW file.",
+  "category": "Building Energy Modeling",
+  "tags": ["energyplus", "office", "ideal-loads", "epw", "multi-file"],
+  "activeFile": "office.idf"
+}

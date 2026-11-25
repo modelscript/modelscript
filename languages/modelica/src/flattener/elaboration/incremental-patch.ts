@@ -16,6 +16,7 @@ import {
 } from "@modelscript/runtime";
 import { Cst, FieldId, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
+import type { ModelicaFlattener } from "../class-flattener.js";
 import {
   castToRealExpr,
   type CstNodeLike,
@@ -28,10 +29,35 @@ import {
   stripAsciiWhitespace,
   tokenizeCommentStrippedWords,
 } from "../expressions/index.js";
+import type { FlattenerCstNode } from "../types.js";
 
-export function findEquationNodeAt(root: any, start: number, end: number): any {
-  const queue = [root];
-  let candidate = null;
+interface DirtyRangeWithDelta {
+  startOffset: number;
+  endOffset: number;
+  delta?: number;
+}
+
+interface BranchEquationLike {
+  isIf?: boolean;
+  thenEquations?: BranchEquationLike[];
+  lhsExprId?: number;
+  rhsExprId?: number;
+  lhs?: number;
+  rhs?: number;
+}
+
+interface FmuInstanceMeta {
+  instanceName?: string;
+  outputs?: string[];
+}
+
+export function findEquationNodeAt(
+  root: FlattenerCstNode | null | undefined,
+  start: number,
+  end: number,
+): SyntaxNode | null {
+  const queue: (FlattenerCstNode | null | undefined)[] = [root];
+  let candidate: FlattenerCstNode | null = null;
   while (queue.length > 0) {
     const curr = queue.pop();
     if (!curr) continue;
@@ -47,12 +73,16 @@ export function findEquationNodeAt(root: any, start: number, end: number): any {
       }
     }
   }
-  return candidate;
+  return candidate as SyntaxNode | null;
 }
 
-export function findComponentDeclarationAt(root: any, start: number, end: number): any {
-  const queue = [root];
-  let candidate = null;
+export function findComponentDeclarationAt(
+  root: FlattenerCstNode | null | undefined,
+  start: number,
+  end: number,
+): SyntaxNode | null {
+  const queue: (FlattenerCstNode | null | undefined)[] = [root];
+  let candidate: FlattenerCstNode | null = null;
   while (queue.length > 0) {
     const curr = queue.pop();
     if (!curr) continue;
@@ -73,19 +103,23 @@ export function findComponentDeclarationAt(root: any, start: number, end: number
       }
     }
   }
-  return candidate;
+  return candidate as SyntaxNode | null;
 }
 
-export function isCstNodeProtected(node: any, cache = new WeakMap<any, boolean>()): boolean {
+export function isCstNodeProtected(
+  node: FlattenerCstNode | object | null | undefined,
+  cache: WeakMap<object, boolean> = new WeakMap<object, boolean>(),
+): boolean {
   if (!node) return false;
   if (cache.has(node)) {
     return cache.get(node)!;
   }
-  let curr = node;
-  const nodeStart = node?.startIndex ?? node?.startOffset ?? 0;
+  const startNode = node as FlattenerCstNode;
+  let curr: FlattenerCstNode | null | undefined = startNode;
+  const nodeStart = startNode?.startIndex ?? startNode?.startOffset ?? 0;
   while (curr) {
     if (curr.type === "ElementSection" || curr.type === "element_section") {
-      const isProt = curr.children?.[0]?.text === "protected" || curr.text?.startsWith("protected");
+      const isProt = curr.children?.[0]?.text === "protected" || Boolean(curr.text?.startsWith("protected"));
       cache.set(node, isProt);
       return isProt;
     }
@@ -137,7 +171,8 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
   if (!rootClassId) return;
   const rootSym = db.symbol(rootClassId);
   const rootName = rootSym?.name ?? "Model";
-  const rawKind = (rootSym?.metadata as any)?.classKind ?? (rootSym?.metadata as any)?.classPrefixes ?? "model";
+  const rootMeta = rootSym?.metadata as { classKind?: string; classPrefixes?: string } | undefined;
+  const rawKind = rootMeta?.classKind ?? rootMeta?.classPrefixes ?? "model";
   let specKind: string | null = null;
   if (typeof rawKind === "string") {
     const words = tokenizeCommentStrippedWords(rawKind);
@@ -161,7 +196,7 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
   }
 
   // Clear any previous balance diagnostics
-  dae.diagnostics = dae.diagnostics.filter((d: any) => d.code !== ModelicaErrorCode.UNBALANCED_MODEL.code);
+  dae.diagnostics = dae.diagnostics.filter((d) => d.code !== ModelicaErrorCode.UNBALANCED_MODEL.code);
 
   let stateCount = 0;
   let boundStateEqCount = 0;
@@ -236,7 +271,7 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
     return count;
   };
 
-  const countIfBranchEqs = (branchEqs: any[] | undefined): number => {
+  const countIfBranchEqs = (branchEqs: BranchEquationLike[] | undefined): number => {
     if (!branchEqs || branchEqs.length === 0) return 0;
     let total = 0;
     for (const subEq of branchEqs) {
@@ -272,7 +307,7 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
       eqCount += count;
     } else if (kind === EqKind.If) {
       const meta = dae.getIfEquationMeta(i);
-      eqCount += countIfBranchEqs(meta?.thenEquations);
+      eqCount += countIfBranchEqs(meta?.thenEquations as BranchEquationLike[] | undefined);
     }
   }
   eqCount += boundStateEqCount;
@@ -314,7 +349,7 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
 
   // Account for FMU black-box outputs as equations provided by external subsystems
   let fmuEqCount = 0;
-  const fmuInstances = dae.extensionMetadata?.fmuInstances as any[];
+  const fmuInstances = dae.extensionMetadata?.fmuInstances as FmuInstanceMeta[] | undefined;
   if (Array.isArray(fmuInstances)) {
     for (const fmu of fmuInstances) {
       for (const outVar of fmu.outputs || []) {
@@ -328,12 +363,7 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
   }
   eqCount += fmuEqCount;
 
-  if (
-    !dae.diagnostics.some((d: any) => d.severity === "error") &&
-    stateCount > 0 &&
-    eqCount > 0 &&
-    stateCount !== eqCount
-  ) {
+  if (!dae.diagnostics.some((d) => d.severity === "error") && stateCount > 0 && eqCount > 0 && stateCount !== eqCount) {
     const kindStr = specKind ?? "model";
     dae.diagnostics.push({
       severity: ModelicaErrorCode.UNBALANCED_MODEL.severity,
@@ -344,27 +374,27 @@ export function checkBalance(dae: DAEBuilder, db: QueryDB, rootClassId?: SymbolI
 }
 
 export function patchIncremental(
-  flattener: any,
+  flattener: ModelicaFlattener,
   rootClassId: SymbolId,
   dae: DAEBuilder,
-  dirtyRanges: { startOffset: number; endOffset: number }[],
+  dirtyRanges: DirtyRangeWithDelta[],
   delta?: number,
 ): boolean {
   if (!dirtyRanges || dirtyRanges.length === 0) return true;
 
   const db: QueryDB = flattener.db;
-  const rootCst = db.cstNode(rootClassId) as any;
+  const rootCst = db.cstNode(rootClassId) as SyntaxNode | null;
   if (!rootCst) return false;
 
   const lowerExpr = (
-    node: any,
+    node: FlattenerCstNode | SyntaxNode | null | undefined,
     targetDae: DAEBuilder,
     prefix = "",
     substitutions?: Map<string, number | string>,
     tupleContext?: boolean,
     isAssignmentLhs?: boolean,
   ): number => {
-    return lowerCSTExpression(node, targetDae, {
+    return lowerCSTExpression(node as SyntaxNode, targetDae, {
       prefix,
       substitutions,
       imports: flattener.currentImports,
@@ -386,10 +416,12 @@ export function patchIncremental(
   for (const childSym of classChildren) {
     if (childSym && childSym.name) {
       dbVarNames.add(childSym.name);
+      const childSymRec = childSym as { typeName?: string };
+      const childMeta = childSym.metadata as { typeName?: string; typeSpecifier?: string } | undefined;
       const childTypeName =
-        (childSym as any).typeName ??
-        (childSym.metadata as any)?.typeName ??
-        (childSym.metadata as any)?.typeSpecifier ??
+        childSymRec.typeName ??
+        childMeta?.typeName ??
+        childMeta?.typeSpecifier ??
         db.query<string | null>("typeSpecifier", childSym.id);
       if (childSym.kind === "Component" && childTypeName && PRIMITIVE_TYPES.has(childTypeName)) {
         dbPrimitiveVarNames.add(childSym.name);
@@ -415,7 +447,7 @@ export function patchIncremental(
   }
 
   if (missingFromDb && newInDb) {
-    (dae as any).renameVar?.(missingFromDb, newInDb);
+    dae.renameVar?.(missingFromDb, newInDb);
     if (delta && delta !== 0 && dirtyRanges.length > 0) {
       dae.shiftSourceRanges(dirtyRanges[0]!.endOffset, delta);
     }
@@ -423,7 +455,7 @@ export function patchIncremental(
   }
 
   for (const range of dirtyRanges) {
-    const curDelta = (range as any).delta ?? (dirtyRanges.length === 1 ? delta : 0);
+    const curDelta = range.delta ?? (dirtyRanges.length === 1 ? delta : 0);
     // 1. Check if range matches an equation
     const eqIdx = dae.findEqAtRange(range.startOffset, range.endOffset);
     const varIdx = dae.findVarAtRange(range.startOffset, range.endOffset);
@@ -445,17 +477,17 @@ export function patchIncremental(
             }
             const oldLhs = dae.getEqLhs(eqIdx);
             const oldRhs = dae.getEqRhs(eqIdx);
-            const oldVars = (dae as any).collectExprVarNames ? (dae as any).collectExprVarNames(oldLhs) : new Set();
-            if ((dae as any).collectExprVarNames) (dae as any).collectExprVarNames(oldRhs, oldVars);
+            const oldVars = dae.collectExprVarNames ? dae.collectExprVarNames(oldLhs) : new Set<string>();
+            if (dae.collectExprVarNames) dae.collectExprVarNames(oldRhs, oldVars);
 
             dae.setEqLhs(eqIdx, lhsExprId);
             dae.setEqRhs(eqIdx, rhsExprId);
-            (dae as any).setOrigEqRhs?.(eqIdx, rhsExprId);
+            dae.setOrigEqRhs?.(eqIdx, rhsExprId);
 
-            const newVars = (dae as any).collectExprVarNames ? (dae as any).collectExprVarNames(lhsExprId) : new Set();
-            if ((dae as any).collectExprVarNames) (dae as any).collectExprVarNames(rhsExprId, newVars);
+            const newVars = dae.collectExprVarNames ? dae.collectExprVarNames(lhsExprId) : new Set<string>();
+            if (dae.collectExprVarNames) dae.collectExprVarNames(rhsExprId, newVars);
 
-            if ((dae as any).cachedBlt) {
+            if (dae.cachedBlt) {
               let same = oldVars.size === newVars.size;
               if (same) {
                 for (const v of oldVars) {
@@ -466,7 +498,7 @@ export function patchIncremental(
                 }
               }
               if (!same) {
-                (dae as any).cachedBlt = undefined;
+                dae.cachedBlt = undefined;
               }
             }
 
@@ -501,7 +533,7 @@ export function patchIncremental(
           rhsExprId = castToRealExpr(rhsExprId, dae);
         }
         const newEqIdx = dae.addEquation(EqKind.Simple, lhsExprId, rhsExprId);
-        (dae as any).setOrigEqRhs?.(newEqIdx, rhsExprId);
+        dae.setOrigEqRhs?.(newEqIdx, rhsExprId);
 
         const startB = insertedEqNode.startIndex ?? insertedEqNode.startOffset;
         const endB = insertedEqNode.endIndex ?? insertedEqNode.endOffset;
@@ -512,8 +544,8 @@ export function patchIncremental(
           dae.shiftSourceRanges(range.endOffset, curDelta);
         }
         foldSingleArenaEquation(dae, newEqIdx, db, rootClassId, flattener.options.omcCompatibility);
-        if ((dae as any).cachedBlt) {
-          (dae as any).cachedBlt = undefined;
+        if (dae.cachedBlt) {
+          dae.cachedBlt = undefined;
         }
         checkBalance(dae, db, rootClassId);
         continue;
@@ -586,7 +618,7 @@ export function patchIncremental(
         let newName = getDeclName(declNode) ?? getDeclName(getFallbackParsedDecl());
         if (newName) {
           if (baseName && newName !== baseName) {
-            (dae as unknown as { renameVar?: (a: string, b: string) => void }).renameVar?.(baseName, newName);
+            dae.renameVar?.(baseName, newName);
             baseName = newName;
           } else if (!baseName) {
             baseName = newName;
@@ -601,7 +633,7 @@ export function patchIncremental(
               const oldVarIdx = dae.findVarAtRange(range.startOffset, range.endOffset);
               if (oldVarIdx >= 0) {
                 const vn = dae.getVarName(oldVarIdx).split("[")[0];
-                (dae as unknown as { renameVar?: (a: string | undefined, b: string) => void }).renameVar?.(vn, newName);
+                if (vn) dae.renameVar?.(vn, newName);
                 targetVarIdx = oldVarIdx;
                 baseName = newName;
               }
@@ -671,7 +703,8 @@ export function patchIncremental(
             const numVal = parseFloat(valStr);
             const oldVal = dae.getVarStartValue(targetVarIdx);
             const isIntVar = dae.getVarType(targetVarIdx) === VarType.Integer;
-            if (isIntVar && ((dae as any).namedArrayShapes?.size > 0 || (dae as any).arrayElementMap?.size > 0)) {
+            const arrayElementMap = (dae as unknown as { arrayElementMap?: Map<string, number[]> }).arrayElementMap;
+            if (isIntVar && ((dae.namedArrayShapes?.size ?? 0) > 0 || (arrayElementMap?.size ?? 0) > 0)) {
               return false;
             }
             const nextVal = isIntVar ? Math.trunc(numVal) : numVal;
@@ -710,10 +743,10 @@ export function patchIncremental(
             const exprNode =
               (cstExprNode?.type === "expression"
                 ? cstExprNode
-                : cstExprNode?.children?.find((c: any) => c.type === "expression")) ??
+                : cstExprNode?.children?.find((c) => c.type === "expression")) ??
               effectiveNode.children
-                ?.find((c: any) => c.type === "modification")
-                ?.children?.find((c: any) => c.type === "expression");
+                ?.find((c) => c.type === "modification")
+                ?.children?.find((c) => c.type === "expression");
             if (exprNode) {
               const exprId = lowerExpr(exprNode, dae, "");
               dae.setVarExpression(targetVarIdx, exprId);

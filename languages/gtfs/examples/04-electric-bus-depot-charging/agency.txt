@@ -1,0 +1,2 @@
+agency_id,agency_name,agency_url,agency_timezone
+EASTBAY_EV,East Bay Zero-Emission Transit,https://example.org/eastbay-ev,America/Los_Angeles

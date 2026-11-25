@@ -1,0 +1,23 @@
+@prefix grid: <http://modelscript.dev/ontology/substation#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+grid:SubstationOntology a owl:Ontology .
+grid:PowerTransformer a owl:Class .
+grid:Busbar a owl:Class .
+grid:FeederBay a owl:Class .
+grid:feeds a owl:ObjectProperty .
+
+grid:TX_138_13KV a grid:PowerTransformer ;
+  rdfs:label "Main Transformer T1 138/13.8 kV" ;
+  grid:feeds grid:BUS_13KV_A .
+
+grid:BUS_13KV_A a grid:Busbar ;
+  rdfs:label "13.8 kV Switchgear Bus A" ;
+  grid:feeds grid:FDR_HOSPITAL , grid:FDR_WATER_PLANT .
+
+grid:FDR_HOSPITAL a grid:FeederBay ;
+  rdfs:label "Feeder 101 Regional Hospital" .
+
+grid:FDR_WATER_PLANT a grid:FeederBay ;
+  rdfs:label "Feeder 102 Municipal Water Plant" .

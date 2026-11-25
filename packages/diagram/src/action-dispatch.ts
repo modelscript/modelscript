@@ -2,7 +2,7 @@
 
 /**
  * @fileoverview Framework-agnostic diagram action queue, coalescer, and serialized
- * edit dispatcher shared across VS Code extension webviews and the Morsel web IDE.
+ * edit dispatcher shared across VS Code extension webviews and the Ansatz Editor.
  */
 
 export interface DiagramActionLike {

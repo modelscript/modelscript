@@ -24,7 +24,7 @@ const INDUSTRIAL_ARTIFACT_PATTERN =
 /**
  * Chooses a bright default VR Rotunda environment for an artifact when no explicit
  * environment is specified: `"warehouse"` (Factory floor) for CAD/STEP/FEA/CFD/GCode
- * mechanical artifacts, and `"outdoors"` (Grassy Proving Ground) otherwise.
+ * mechanical artifacts, and `"atrium"` (Future Atrium hero environment) otherwise.
  */
 export function resolveDefaultArtifactEnvironment(
   viewType?: string | null | undefined,
@@ -47,13 +47,13 @@ export function resolveDefaultArtifactEnvironment(
       return "warehouse";
     }
   }
-  return "outdoors";
+  return "atrium";
 }
 
 /** Validates an untrusted string into a supported `RotundaEnvironmentId`, falling back cleanly. */
 export function parseRotundaEnvironmentId(
   raw: unknown,
-  fallback: RotundaEnvironmentId = "outdoors",
+  fallback: RotundaEnvironmentId = "atrium",
 ): RotundaEnvironmentId {
   if (typeof raw === "string") {
     const normalized = raw.trim().toLowerCase();

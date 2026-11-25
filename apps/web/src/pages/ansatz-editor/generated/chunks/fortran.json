@@ -1,0 +1,84 @@
+[
+  {
+    "id": "fortran-01-rk4-damped-oscillator",
+    "lang": "fortran",
+    "subFormats": ["fortran90"],
+    "difficulty": 1,
+    "title": "RK4 Damped Harmonic Oscillator",
+    "description": "Fourth-order Runge-Kutta (RK4) numerical integrator in Fortran 90 solving a viscously damped mechanical mass-spring-damper oscillator with energy tracking.",
+    "category": "Scientific Computing",
+    "tags": ["fortran", "rk4", "ode", "oscillator"],
+    "activeFile": "oscillator.f90",
+    "fileNames": ["oscillator.f90"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "subroutine damped_oscillator_rk4(x_in, v_in, x_out, v_out, energy)\n  implicit none\n  real(8) :: x_in, v_in, x_out, v_out, energy\n  real(8) :: m, c, k, dt, inv_m\n  real(8) :: k1x, k1v, k2x, k2v, k3x, k3v, k4x, k4v\n  real(8) :: xm2, vm2, xm3, vm3, xm4, vm4\n\n  m = 2.0d0\n  c = 0.4d0\n  k = 18.0d0\n  dt = 0.01d0\n  inv_m = 0.5d0\n\n  k1x = v_in\n  k1v = -(c * v_in + k * x_in) * inv_m\n\n  xm2 = x_in + 0.5d0 * dt * k1x\n  vm2 = v_in + 0.5d0 * dt * k1v\n  k2x = vm2\n  k2v = -(c * vm2 + k * xm2) * inv_m\n\n  xm3 = x_in + 0.5d0 * dt * k2x\n  vm3 = v_in + 0.5d0 * dt * k2v\n  k3x = vm3\n  k3v = -(c * vm3 + k * xm3) * inv_m\n\n  xm4 = x_in + dt * k3x\n  vm4 = v_in + dt * k3v\n  k4x = vm4\n  k4v = -(c * vm4 + k * xm4) * inv_m\n\n  x_out = x_in + (dt * 0.1666666666666667d0) * (k1x + 2.0d0 * k2x + 2.0d0 * k3x + k4x)\n  v_out = v_in + (dt * 0.1666666666666667d0) * (k1v + 2.0d0 * k2v + 2.0d0 * k3v + k4v)\n  energy = 0.5d0 * m * v_out * v_out + 0.5d0 * k * x_out * x_out\nend subroutine damped_oscillator_rk4\n"
+  },
+  {
+    "id": "fortran-02-heat1d-explicit-solver",
+    "lang": "fortran",
+    "subFormats": ["fortran90"],
+    "difficulty": 2,
+    "title": "1D Explicit Heat Conduction Equation Solver",
+    "description": "Finite-difference FTCS explicit parabolic PDE solver for one-dimensional transient heat diffusion along an aluminum rod with fixed Dirichlet boundaries.",
+    "category": "Partial Differential Equations",
+    "tags": ["fortran", "heat-equation", "finite-difference", "pde"],
+    "activeFile": "heat1d.f90",
+    "fileNames": ["heat1d.f90"],
+    "fileCount": 1,
+    "code": "subroutine heat1d_step(t_mid)\n  implicit none\n  real(8) :: t_mid\n  real(8) :: u(41), u_new(41)\n  real(8) :: r\n  integer :: i, n\n\n  r = 0.25d0\n\n  do i = 1, 41\n    u(i) = 20.0d0\n    u_new(i) = 20.0d0\n  end do\n  u(1) = 100.0d0\n  u(41) = 20.0d0\n\n  do n = 1, 200\n    u_new(1) = 100.0d0\n    u_new(41) = 20.0d0\n    do i = 2, 40\n      u_new(i) = u(i) + r * (u(i + 1) - 2.0d0 * u(i) + u(i - 1))\n    end do\n    do i = 1, 41\n      u(i) = u_new(i)\n    end do\n  end do\n\n  t_mid = u(21)\nend subroutine heat1d_step\n"
+  },
+  {
+    "id": "fortran-03-conjugate-gradient-solver",
+    "lang": "fortran",
+    "subFormats": ["fortran90"],
+    "difficulty": 3,
+    "title": "Symmetric Positive-Definite Conjugate Gradient Solver",
+    "description": "Matrix-free Krylov subspace Conjugate Gradient solver for a 1D discrete Poisson tridiagonal linear system with residual norm convergence check.",
+    "category": "Numerical Linear Algebra",
+    "tags": ["fortran", "conjugate-gradient", "krylov", "linear-solver"],
+    "activeFile": "cg_solver.f90",
+    "fileNames": ["cg_solver.f90"],
+    "fileCount": 1,
+    "code": "subroutine cg_tridiagonal_solve(res_norm)\n  implicit none\n  real(8) :: res_norm\n  real(8) :: x(16), b(16), r(16), p(16), ap(16)\n  real(8) :: rsold, rsnew, pap, alpha, beta, denom_pap, denom_rs\n  integer :: i, iter\n\n  do i = 1, 16\n    x(i) = 0.0d0\n    b(i) = 1.0d0\n    r(i) = 1.0d0\n    p(i) = 1.0d0\n    ap(i) = 0.0d0\n  end do\n\n  rsold = 16.0d0\n\n  do iter = 1, 30\n    ap(1) = 2.0d0 * p(1) - p(2)\n    do i = 2, 15\n      ap(i) = -p(i - 1) + 2.0d0 * p(i) - p(i + 1)\n    end do\n    ap(16) = -p(15) + 2.0d0 * p(16)\n\n    pap = 0.0d0\n    do i = 1, 16\n      pap = pap + p(i) * ap(i)\n    end do\n\n    denom_pap = 1.0d0\n    if (pap > 1.0d-12) then\n      denom_pap = pap\n    end if\n    alpha = rsold / denom_pap\n\n    rsnew = 0.0d0\n    do i = 1, 16\n      x(i) = x(i) + alpha * p(i)\n      r(i) = r(i) - alpha * ap(i)\n      rsnew = rsnew + r(i) * r(i)\n    end do\n\n    denom_rs = 1.0d0\n    if (rsold > 1.0d-12) then\n      denom_rs = rsold\n    end if\n    beta = rsnew / denom_rs\n\n    do i = 1, 16\n      p(i) = r(i) + beta * p(i)\n    end do\n    rsold = rsnew\n  end do\n\n  res_norm = rsold\nend subroutine cg_tridiagonal_solve\n"
+  },
+  {
+    "id": "fortran-04-orbital-two-body-propagator",
+    "lang": "fortran",
+    "subFormats": ["fortran90"],
+    "difficulty": 4,
+    "title": "Modular Orbital Two-Body Keplerian Propagator",
+    "description": "Multi-module Fortran 90 astrodynamics propagator integrating a Low-Earth-Orbit satellite state vector via shared physical constants and an RK4 integrator module.",
+    "category": "Astrodynamics",
+    "tags": ["fortran", "orbital-mechanics", "rk4", "modules", "multi-file"],
+    "activeFile": "main.f90",
+    "fileNames": ["main.f90", "constants_mod.f90", "rk4_mod.f90"],
+    "fileCount": 3,
+    "code": "program orbital_propagator\n  use constants_mod\n  use rk4_mod\n  implicit none\n\n  real(8) :: state(6), dt, t, r_orbit, v_circ\n  integer :: step\n\n  r_orbit = 6.778137d6\n  v_circ = 7668.55d0\n  state(1) = r_orbit\n  state(2) = 0.0d0\n  state(3) = 0.0d0\n  state(4) = 0.0d0\n  state(5) = v_circ\n  state(6) = 0.0d0\n\n  dt = 10.0d0\n  t = 0.0d0\n\n  do step = 1, 540\n    call rk4_orbit_step(state, dt)\n    t = t + dt\n  end do\nend program orbital_propagator\n",
+    "files": {
+      "main.f90": "program orbital_propagator\n  use constants_mod\n  use rk4_mod\n  implicit none\n\n  real(8) :: state(6), dt, t, r_orbit, v_circ\n  integer :: step\n\n  r_orbit = 6.778137d6\n  v_circ = 7668.55d0\n  state(1) = r_orbit\n  state(2) = 0.0d0\n  state(3) = 0.0d0\n  state(4) = 0.0d0\n  state(5) = v_circ\n  state(6) = 0.0d0\n\n  dt = 10.0d0\n  t = 0.0d0\n\n  do step = 1, 540\n    call rk4_orbit_step(state, dt)\n    t = t + dt\n  end do\nend program orbital_propagator\n",
+      "constants_mod.f90": "module constants_mod\n  implicit none\n  real(8), parameter :: MU_EARTH = 3.986004418d14\n  real(8), parameter :: R_EARTH  = 6.378137d6\nend module constants_mod\n",
+      "rk4_mod.f90": "module rk4_mod\n  use constants_mod\n  implicit none\ncontains\n  subroutine two_body_rhs(y, dydt)\n    real(8), intent(in)  :: y(6)\n    real(8), intent(out) :: dydt(6)\n    real(8) :: r, r3\n\n    r = sqrt(y(1)*y(1) + y(2)*y(2) + y(3)*y(3))\n    r3 = max(r * r * r, 1.0d-12)\n    dydt(1) = y(4)\n    dydt(2) = y(5)\n    dydt(3) = y(6)\n    dydt(4) = -MU_EARTH * y(1) / r3\n    dydt(5) = -MU_EARTH * y(2) / r3\n    dydt(6) = -MU_EARTH * y(3) / r3\n  end subroutine two_body_rhs\n\n  subroutine rk4_orbit_step(y, dt)\n    real(8), intent(inout) :: y(6)\n    real(8), intent(in)    :: dt\n    real(8) :: k1(6), k2(6), k3(6), k4(6)\n\n    call two_body_rhs(y, k1)\n    call two_body_rhs(y + 0.5d0 * dt * k1, k2)\n    call two_body_rhs(y + 0.5d0 * dt * k2, k3)\n    call two_body_rhs(y + dt * k3, k4)\n    y = y + (dt / 6.0d0) * (k1 + 2.0d0 * k2 + 2.0d0 * k3 + k4)\n  end subroutine rk4_orbit_step\nend module rk4_mod\n"
+    }
+  },
+  {
+    "id": "fortran-05-lid-driven-cavity-cfd",
+    "lang": "fortran",
+    "subFormats": ["fortran90"],
+    "difficulty": 5,
+    "title": "2D Lid-Driven Cavity Navier-Stokes Projection Solver",
+    "description": "Multi-module Fortran 90 incompressible CFD fractional-step projection solver separating Cartesian grid parameters, pressure Poisson relaxation, and wall boundary conditions.",
+    "category": "Computational Fluid Dynamics",
+    "tags": ["fortran", "cfd", "navier-stokes", "poisson", "multi-file"],
+    "activeFile": "cavity_main.f90",
+    "fileNames": ["cavity_main.f90", "grid_mod.f90", "poisson_mod.f90", "bc_mod.f90"],
+    "fileCount": 4,
+    "code": "program cavity_navier_stokes\n  use grid_mod\n  use poisson_mod\n  use bc_mod\n  implicit none\n\n  real(8) :: u(289), v(289), p(289), rhs(289)\n  real(8) :: dt, nu, inv_2dx, inv_dx2, inv_dt, u_center\n  integer :: step, k\n\n  dt = 0.002d0\n  nu = 0.01d0\n  inv_2dx = 8.0d0\n  inv_dx2 = 256.0d0\n  inv_dt = 500.0d0\n\n  do k = 1, 289\n    u(k) = 0.0d0\n    v(k) = 0.0d0\n    p(k) = 0.0d0\n    rhs(k) = 0.0d0\n  end do\n\n  do step = 1, 20\n    call apply_cavity_bc(u, v)\n    do k = 19, 271\n      rhs(k) = ((u(k + 1) - u(k - 1)) * inv_2dx + (v(k + 17) - v(k - 17)) * inv_2dx) * inv_dt\n    end do\n    call solve_pressure_poisson(p, rhs, 15)\n    do k = 19, 271\n      u(k) = u(k) - dt * (p(k + 1) - p(k - 1)) * inv_2dx + nu * dt * (u(k + 1) - 2.0d0 * u(k) + u(k - 1)) * inv_dx2\n      v(k) = v(k) - dt * (p(k + 17) - p(k - 17)) * inv_2dx + nu * dt * (v(k + 17) - 2.0d0 * v(k) + v(k - 17)) * inv_dx2\n    end do\n  end do\n\n  u_center = u(145)\nend program cavity_navier_stokes\n",
+    "files": {
+      "cavity_main.f90": "program cavity_navier_stokes\n  use grid_mod\n  use poisson_mod\n  use bc_mod\n  implicit none\n\n  real(8) :: u(289), v(289), p(289), rhs(289)\n  real(8) :: dt, nu, inv_2dx, inv_dx2, inv_dt, u_center\n  integer :: step, k\n\n  dt = 0.002d0\n  nu = 0.01d0\n  inv_2dx = 8.0d0\n  inv_dx2 = 256.0d0\n  inv_dt = 500.0d0\n\n  do k = 1, 289\n    u(k) = 0.0d0\n    v(k) = 0.0d0\n    p(k) = 0.0d0\n    rhs(k) = 0.0d0\n  end do\n\n  do step = 1, 20\n    call apply_cavity_bc(u, v)\n    do k = 19, 271\n      rhs(k) = ((u(k + 1) - u(k - 1)) * inv_2dx + (v(k + 17) - v(k - 17)) * inv_2dx) * inv_dt\n    end do\n    call solve_pressure_poisson(p, rhs, 15)\n    do k = 19, 271\n      u(k) = u(k) - dt * (p(k + 1) - p(k - 1)) * inv_2dx + nu * dt * (u(k + 1) - 2.0d0 * u(k) + u(k - 1)) * inv_dx2\n      v(k) = v(k) - dt * (p(k + 17) - p(k - 17)) * inv_2dx + nu * dt * (v(k + 17) - 2.0d0 * v(k) + v(k - 17)) * inv_dx2\n    end do\n  end do\n\n  u_center = u(145)\nend program cavity_navier_stokes\n",
+      "grid_mod.f90": "module grid_mod\n  implicit none\n  integer, parameter :: NX = 17\n  integer, parameter :: NY = 17\n  real(8), parameter :: DX = 1.0d0 / dble(NX - 1)\n  real(8), parameter :: DY = 1.0d0 / dble(NY - 1)\nend module grid_mod\n",
+      "poisson_mod.f90": "module poisson_mod\n  use grid_mod\n  implicit none\ncontains\n  subroutine solve_pressure_poisson(p, rhs, nit)\n    real(8), intent(inout) :: p(NX, NY)\n    real(8), intent(in)    :: rhs(NX, NY)\n    integer, intent(in)    :: nit\n    real(8) :: pn(NX, NY), denom\n    integer :: it, i, j\n\n    denom = 2.0d0 * (DX * DX + DY * DY)\n    do it = 1, nit\n      pn = p\n      do j = 2, NY - 1\n        do i = 2, NX - 1\n          p(i, j) = ((pn(i + 1, j) + pn(i - 1, j)) * DY * DY + &\n                     (pn(i, j + 1) + pn(i, j - 1)) * DX * DX - &\n                     rhs(i, j) * DX * DX * DY * DY) / denom\n        end do\n      end do\n      p(1, :) = p(2, :)\n      p(NX, :) = p(NX - 1, :)\n      p(:, 1) = p(:, 2)\n      p(:, NY) = 0.0d0\n    end do\n  end subroutine solve_pressure_poisson\nend module poisson_mod\n",
+      "bc_mod.f90": "module bc_mod\n  use grid_mod\n  implicit none\ncontains\n  subroutine apply_cavity_bc(u, v)\n    real(8), intent(inout) :: u(NX, NY), v(NX, NY)\n    u(1, :) = 0.0d0\n    u(NX, :) = 0.0d0\n    u(:, 1) = 0.0d0\n    u(:, NY) = 1.0d0\n    v(1, :) = 0.0d0\n    v(NX, :) = 0.0d0\n    v(:, 1) = 0.0d0\n    v(:, NY) = 0.0d0\n  end subroutine apply_cavity_bc\nend module bc_mod\n"
+    }
+  }
+]

@@ -75,9 +75,9 @@ export const AmplPanel: React.FC<LanguagePanelProps> = ({
         subtitle="AMPL Optimization Inspector"
         badge={parsed.error ? { label: "Parse Error", tone: "danger" } : { label: "AMPL", tone: "info" }}
         actions={
-          mode === "artifact" && host.openInMorsel && code ? (
-            <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "ampl", title)}>
-              Open in Morsel
+          mode === "artifact" && host.openInAnsatzEditor && code ? (
+            <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "ampl", title)}>
+              Open in Ansatz Editor
             </PanelButton>
           ) : undefined
         }

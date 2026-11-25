@@ -1,0 +1,73 @@
+[
+  {
+    "id": "cplex-lp-01-profit-maximization-lp",
+    "lang": "cplex-lp",
+    "subFormats": ["cplex-lp", "lp"],
+    "difficulty": 1,
+    "title": "Two-Variable Workshop Profit Maximization LP",
+    "description": "Textbook two-variable CPLEX LP maximizing workshop profit subject to CNC milling, finishing, and raw-material availability constraints.",
+    "category": "Linear Programming",
+    "tags": ["cplex-lp", "lp", "profit-maximization"],
+    "activeFile": "profit_max.lp",
+    "fileNames": ["profit_max.lp"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "\\ Two-Variable Workshop Profit Maximization LP\nMaximize\n  profit: 45 x1 + 60 x2\nSubject To\n  milling:   2 x1 + 3 x2 <= 120\n  finishing: 1 x1 + 2 x2 <= 70\n  material:  3 x1 + 1 x2 <= 135\nBounds\n  0 <= x1 <= 45\n  0 <= x2 <= 35\nEnd\n"
+  },
+  {
+    "id": "cplex-lp-02-diet-optimization-bounded",
+    "lang": "cplex-lp",
+    "subFormats": ["cplex-lp", "lp"],
+    "difficulty": 2,
+    "title": "Diet Optimization with Bounded Nutrients",
+    "description": "Minimum-cost clinical diet formulation with lower and upper bounds on daily servings, calories, protein, and sodium intake.",
+    "category": "Linear Programming",
+    "tags": ["cplex-lp", "lp", "diet", "bounds"],
+    "activeFile": "diet_bounded.lp",
+    "fileNames": ["diet_bounded.lp"],
+    "fileCount": 1,
+    "code": "\\ Minimum-Cost Clinical Diet Optimization with Bounded Servings\nMinimize\n  cost: 0.40 oats + 2.20 salmon + 0.60 milk + 0.50 lentils\nSubject To\n  calories_min: 300 oats + 250 salmon + 150 milk + 230 lentils >= 1900\n  protein_min:   10 oats +  28 salmon +   8 milk +  18 lentils >= 75\n  calcium_min:   40 oats +  20 salmon + 300 milk +  40 lentils >= 700\n  sodium_max:     5 oats + 120 salmon + 100 milk +  10 lentils <= 1200\nBounds\n  1 <= oats <= 4\n  0 <= salmon <= 3\n  1 <= milk <= 5\n  0 <= lentils <= 4\nEnd\n"
+  },
+  {
+    "id": "cplex-lp-03-shift-scheduling-integer",
+    "lang": "cplex-lp",
+    "subFormats": ["cplex-lp", "ip"],
+    "difficulty": 3,
+    "title": "Factory Shift Scheduling Integer Program",
+    "description": "Pure integer program (Generals) determining minimum operator headcount across overlapping 8-hour shifts to cover 24-hour plant staffing requirements.",
+    "category": "Workforce Scheduling",
+    "tags": ["cplex-lp", "integer-programming", "scheduling", "generals"],
+    "activeFile": "shift_schedule.lp",
+    "fileNames": ["shift_schedule.lp"],
+    "fileCount": 1,
+    "code": "\\ 24-Hour Factory Shift Scheduling Integer Program\nMinimize\n  headcount: 180 s1 + 195 s2 + 210 s3 + 225 s4\nSubject To\n  block_00_06: s4 + s1 >= 8\n  block_06_12: s1 + s2 >= 14\n  block_12_18: s2 + s3 >= 16\n  block_18_24: s3 + s4 >= 10\nBounds\n  0 <= s1 <= 20\n  0 <= s2 <= 20\n  0 <= s3 <= 20\n  0 <= s4 <= 20\nGenerals\n  s1 s2 s3 s4\nEnd\n"
+  },
+  {
+    "id": "cplex-lp-04-portfolio-variance-qp",
+    "lang": "cplex-lp",
+    "subFormats": ["cplex-lp", "qp"],
+    "difficulty": 4,
+    "title": "Markowitz Portfolio Variance Quadratic Program",
+    "description": "Convex quadratic program (QP) minimizing portfolio return variance across three asset classes subject to full capital allocation and minimum expected return.",
+    "category": "Quantitative Finance",
+    "tags": ["cplex-lp", "qp", "portfolio", "markowitz"],
+    "activeFile": "portfolio_qp.lp",
+    "fileNames": ["portfolio_qp.lp"],
+    "fileCount": 1,
+    "code": "\\ Markowitz Mean-Variance Portfolio Optimization QP\nMinimize\n  variance: - 0.01 w1 - 0.02 w2 - 0.005 w3\n            + [ 0.08 w1 ^ 2 + 0.04 w1 * w2 + 0.14 w2 ^ 2 + 0.02 w2 * w3 + 0.03 w3 ^ 2 ] / 2\nSubject To\n  budget:     w1 + w2 + w3 = 1\n  min_return: 0.08 w1 + 0.12 w2 + 0.04 w3 >= 0.08\nBounds\n  0 <= w1 <= 0.7\n  0 <= w2 <= 0.7\n  0 <= w3 <= 0.7\nEnd\n"
+  },
+  {
+    "id": "cplex-lp-05-supply-chain-milp",
+    "lang": "cplex-lp",
+    "subFormats": ["cplex-lp", "milp"],
+    "difficulty": 5,
+    "title": "Multi-Commodity Supply Chain Network MILP",
+    "description": "Mixed-integer supply chain design combining binary plant openings, integer truck dispatches, and continuous commodity flows to meet regional demand at minimum cost.",
+    "category": "Supply Chain Optimization",
+    "tags": ["cplex-lp", "milp", "binaries", "generals", "supply-chain"],
+    "activeFile": "supply_chain.lp",
+    "fileNames": ["supply_chain.lp"],
+    "fileCount": 1,
+    "code": "\\ Multi-Commodity Supply Chain Design MILP\nMinimize\n  total_cost: 500 y1 + 620 y2 + 45 t1 + 50 t2\n              + 4 x11 + 7 x12 + 6 x21 + 3 x22\nSubject To\n  demand_r1:   x11 + x21 = 60\n  demand_r2:   x12 + x22 = 80\n  cap_plant1:  x11 + x12 - 110 y1 <= 0\n  cap_plant2:  x21 + x22 - 130 y2 <= 0\n  trucks_p1:   x11 + x12 - 25 t1 <= 0\n  trucks_p2:   x21 + x22 - 25 t2 <= 0\nBounds\n  0 <= x11 <= 110\n  0 <= x12 <= 110\n  0 <= x21 <= 130\n  0 <= x22 <= 130\n  0 <= t1 <= 10\n  0 <= t2 <= 10\nGenerals\n  t1 t2\nBinaries\n  y1 y2\nEnd\n"
+  }
+]

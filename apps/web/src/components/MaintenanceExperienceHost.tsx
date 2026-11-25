@@ -184,13 +184,13 @@ export const MaintenanceExperienceHost: React.FC = () => {
   // Exempt routes where the full-screen lockdown overlay should not block access:
   // - /login (so admins can sign in during lockdown)
   // - /admin (so admins can manage the instance)
-  // - /playground & /ide (client-side WASM sandbox escape hatch!)
+  // - /editor & /ide (client-side WASM sandbox escape hatch!)
   // - /setup
   const pathname = location.pathname || "/";
   const isExemptRoute =
     pathname.startsWith("/login") ||
     pathname.startsWith("/admin") ||
-    pathname.startsWith("/playground") ||
+    pathname.startsWith("/editor") ||
     pathname.startsWith("/ide") ||
     pathname.startsWith("/setup");
 
@@ -670,7 +670,7 @@ export const MaintenanceExperienceHost: React.FC = () => {
               ))}
             </div>
 
-            {/* Action Bar: Offline WASM Playground Escape Hatch + Manual Status Check + Admin Sign-In */}
+            {/* Action Bar: Offline WASM Ansatz Escape Hatch + Manual Status Check + Admin Sign-In */}
             <div
               style={{
                 display: "flex",
@@ -683,8 +683,8 @@ export const MaintenanceExperienceHost: React.FC = () => {
               <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
                 <button
                   type="button"
-                  data-testid="launch-offline-wasm-playground"
-                  onClick={() => navigate("/playground")}
+                  data-testid="launch-offline-wasm-ansatz"
+                  onClick={() => navigate("/editor")}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
@@ -701,7 +701,7 @@ export const MaintenanceExperienceHost: React.FC = () => {
                   }}
                 >
                   <CodeIcon size={15} />
-                  <span>Open Offline WASM Playground</span>
+                  <span>Open Offline WASM Ansatz</span>
                 </button>
 
                 <button

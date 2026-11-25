@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-export enum MorselView {
+export enum AnsatzView {
   CODE,
   DIAGRAM,
   SPLIT_COLUMNS,

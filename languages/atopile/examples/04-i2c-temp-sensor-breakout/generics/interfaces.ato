@@ -1,0 +1,7 @@
+interface Power:
+    signal vcc
+    signal gnd
+
+interface I2C:
+    signal sda
+    signal scl

@@ -1,0 +1,11 @@
+{
+  "id": "lustre-03-cruise-control-logic",
+  "lang": "lustre",
+  "subFormats": ["lus"],
+  "difficulty": 3,
+  "title": "Cruise Control Mode Logic with Safety Latch",
+  "description": "Automotive cruise control engagement state logic with brake-override safety latch, speed envelope checks, and clamped proportional-integral throttle regulation.",
+  "category": "Automotive Safety",
+  "tags": ["lustre", "cruise-control", "safety", "automotive"],
+  "activeFile": "cruise_ctrl.lus"
+}

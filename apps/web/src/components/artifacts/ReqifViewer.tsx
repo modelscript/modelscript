@@ -8,7 +8,7 @@ import {
   type TabularMutationRequest,
   type TabularRow,
 } from "@modelscript/dsl/dsl";
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { buildReqIfDiagram, renderReqIfDiagramSvg } from "@modelscript/reqif/diagram";
 import {
   applyReqIfTabularMutation,
@@ -463,7 +463,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
 
   useEffect(() => {
     if (!isLoadingUrl && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [isLoadingUrl, xmlText]);
 
@@ -736,11 +736,11 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
     URL.revokeObjectURL(url);
   }, [xmlText, viewConfig?.specId]);
 
-  const handleOpenInPlayground = useCallback(() => {
+  const handleOpenInAnsatzEditor = useCallback(() => {
     const title = specTitle || "Specification.reqif";
-    const encoded = compressMorselPayload({
+    const encoded = compressAnsatzPayload({
       v: 1,
-      lang: "reqif" as any,
+      lang: "reqif",
       code: xmlText,
       title,
     });
@@ -1588,7 +1588,7 @@ export const ReqifViewer: React.FC<ReqifViewerProps> = ({
             {Boolean(viewConfig?.standalone) && !isFullScreen && (
               <PillButton
                 $isDark={isDark}
-                onClick={handleOpenInPlayground}
+                onClick={handleOpenInAnsatzEditor}
                 title="Open in Ansatz (powered by ModelScript)"
               >
                 <DraftingTriangleIcon size={12} style={{ verticalAlign: -1, marginRight: 4 }} />

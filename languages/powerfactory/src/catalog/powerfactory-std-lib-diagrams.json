@@ -1,0 +1,2101 @@
+[
+  {
+    "namePath": "powerfactory:TypLne_OHL_110kV",
+    "aliases": [
+      "OHL_110kV",
+      "TypLne.OHL110"
+    ],
+    "label": "110 kV Overhead Line (ACSR 240/40)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OHL_110kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_OHL_220kV",
+    "aliases": [
+      "OHL_220kV",
+      "TypLne.OHL220"
+    ],
+    "label": "220 kV Overhead Line (ACSR 2x265/35)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OHL_220kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_OHL_400kV",
+    "aliases": [
+      "OHL_400kV",
+      "TypLne.OHL400"
+    ],
+    "label": "400 kV Overhead Line (ACSR 4x265/35)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OHL_400kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_Cable_20kV",
+    "aliases": [
+      "Cable_20kV",
+      "NA2XS2Y_20kV"
+    ],
+    "label": "20 kV XLPE Underground Cable (185 mm2 Al)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Cable_20kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_Cable_110kV",
+    "aliases": [
+      "Cable_110kV",
+      "XLPE_110kV"
+    ],
+    "label": "110 kV XLPE Underground Cable (630 mm2 Cu)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Cable_110k</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypTr2_110_20kV",
+    "aliases": [
+      "Tr2_110_20kV",
+      "TypTr2.110_20"
+    ],
+    "label": "2-Winding Transformer 110/20 kV (40 MVA)",
+    "category": "Transformer",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRF</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">110_20kV</text></svg>",
+    "ports": [
+      {
+        "name": "hv",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "lv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypTr2_220_110kV",
+    "aliases": [
+      "Tr2_220_110kV",
+      "TypTr2.220_110"
+    ],
+    "label": "2-Winding Transformer 220/110 kV (150 MVA)",
+    "category": "Transformer",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRF</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">220_110kV</text></svg>",
+    "ports": [
+      {
+        "name": "hv",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "lv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypTr2_400_220kV",
+    "aliases": [
+      "Tr2_400_220kV",
+      "TypTr2.400_220"
+    ],
+    "label": "2-Winding Transformer 400/220 kV (300 MVA)",
+    "category": "Transformer",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRF</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">400_220kV</text></svg>",
+    "ports": [
+      {
+        "name": "hv",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "lv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypTr3_3W",
+    "aliases": [
+      "Tr3_3W",
+      "TypTr3.400_110_30"
+    ],
+    "label": "3-Winding Transformer 400/110/30 kV (300 MVA)",
+    "category": "Transformer",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRF</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">3W</text></svg>",
+    "ports": [
+      {
+        "name": "hv",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "lv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypSym_Thermal",
+    "aliases": [
+      "Sym_Thermal",
+      "TypSym.RoundRotor"
+    ],
+    "label": "Thermal Synchronous Generator (Round Rotor)",
+    "category": "Rotating Machine",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Thermal</text></svg>",
+    "ports": [
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypSym_Hydro",
+    "aliases": [
+      "Sym_Hydro",
+      "TypSym.SalientPole"
+    ],
+    "label": "Hydro Synchronous Generator (Salient Pole)",
+    "category": "Rotating Machine",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Hydro</text></svg>",
+    "ports": [
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypAsmo_IndMotor",
+    "aliases": [
+      "Asmo_IndMotor",
+      "TypAsmo.Cage"
+    ],
+    "label": "Squirrel-Cage Induction Motor",
+    "category": "Rotating Machine",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SYM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IndMotor</text></svg>",
+    "ports": [
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLod_ZIP",
+    "aliases": [
+      "Lod_ZIP",
+      "TypLod.Composite"
+    ],
+    "label": "Static ZIP Voltage/Frequency Load",
+    "category": "Static Load / IBR",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">GEN</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ZIP</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypGenstat_PV",
+    "aliases": [
+      "Genstat_PV",
+      "PV_Inverter"
+    ],
+    "label": "Static Generator — Utility-Scale Solar PV",
+    "category": "Static Load / IBR",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">GEN</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PV</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypGenstat_BESS",
+    "aliases": [
+      "Genstat_BESS",
+      "BESS_Inverter"
+    ],
+    "label": "Static Generator — Battery Energy Storage (BESS)",
+    "category": "Static Load / IBR",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">GEN</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BESS</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypGenstat_Wind",
+    "aliases": [
+      "Genstat_Wind",
+      "Type4_Wind"
+    ],
+    "label": "Static Generator — Type-4 Full-Converter Wind",
+    "category": "Static Load / IBR",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">GEN</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Wind</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_IEEET1",
+    "aliases": [
+      "IEEET1",
+      "avr_IEEET1"
+    ],
+    "label": "IEEE Type 1 DC Commutator Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEEET1</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_ST1A",
+    "aliases": [
+      "ST1A",
+      "ESST1A",
+      "avr_ST1A"
+    ],
+    "label": "IEEE ST1A Potential-Source Static Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ST1A</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_ST4B",
+    "aliases": [
+      "ST4B",
+      "ESST4B",
+      "avr_ST4B"
+    ],
+    "label": "IEEE ST4B Dual-PI Static Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ST4B</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_EXAC1",
+    "aliases": [
+      "EXAC1",
+      "AC1A",
+      "avr_EXAC1"
+    ],
+    "label": "IEEE AC1A Brushless Alternator Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">EXAC1</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_EXDC1",
+    "aliases": [
+      "EXDC1",
+      "DC1A",
+      "avr_EXDC1"
+    ],
+    "label": "IEEE DC1A DC Commutator Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">EXDC1</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_SEXS",
+    "aliases": [
+      "SEXS",
+      "avr_SEXS"
+    ],
+    "label": "Simplified Excitation System (SEXS)",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SEXS</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_TGOV1",
+    "aliases": [
+      "TGOV1",
+      "pcu_TGOV1"
+    ],
+    "label": "Steam Turbine-Governor (TGOV1)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TGOV1</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_HYGOV",
+    "aliases": [
+      "HYGOV",
+      "pcu_HYGOV"
+    ],
+    "label": "Hydro Turbine-Governor (HYGOV)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HYGOV</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_GGOV1",
+    "aliases": [
+      "GGOV1",
+      "pcu_GGOV1"
+    ],
+    "label": "General-Purpose Gas/Thermal Governor (GGOV1)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">GGOV1</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_IEESGO",
+    "aliases": [
+      "IEESGO",
+      "pcu_IEESGO"
+    ],
+    "label": "IEEE Standard Steam Governor (IEESGO)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEESGO</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:pss_PSS2A",
+    "aliases": [
+      "PSS2A",
+      "IEEE_PSS2A"
+    ],
+    "label": "IEEE PSS2A Dual-Input Power System Stabilizer",
+    "category": "Stabilizer (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PSS2A</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:pss_PSS2B",
+    "aliases": [
+      "PSS2B",
+      "IEEE_PSS2B"
+    ],
+    "label": "IEEE PSS2B Dual-Input Power System Stabilizer",
+    "category": "Stabilizer (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PSS2B</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:pss_IEEEST",
+    "aliases": [
+      "IEEEST",
+      "IEEE_ST"
+    ],
+    "label": "IEEE Type IEEEST Stabilizer",
+    "category": "Stabilizer (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEEEST</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_REGC_A",
+    "aliases": [
+      "REGC_A",
+      "regc_a"
+    ],
+    "label": "WECC REGC_A Renewable Energy Generator/Converter",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REGC_A</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_REEC_A",
+    "aliases": [
+      "REEC_A",
+      "reec_a"
+    ],
+    "label": "WECC REEC_A Renewable Electrical Control",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REEC_A</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_REPC_A",
+    "aliases": [
+      "REPC_A",
+      "repc_a"
+    ],
+    "label": "WECC REPC_A Renewable Plant Controller",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REPC_A</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_DER_A",
+    "aliases": [
+      "DER_A",
+      "der_a"
+    ],
+    "label": "WECC DER_A Distributed Energy Resource Aggregate",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DER_A</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:svc_IEEE",
+    "aliases": [
+      "SVC_IEEE",
+      "SVSMO1"
+    ],
+    "label": "IEEE Static Var Compensator (SVC)",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEEE</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_TOC_IEC",
+    "aliases": [
+      "TOC_IEC",
+      "RelToc_IEC",
+      "ANSI_51_IEC"
+    ],
+    "label": "IEC 60255 Inverse-Time Overcurrent Relay (51)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TOC_IEC</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_TOC_IEEE",
+    "aliases": [
+      "TOC_IEEE",
+      "RelToc_IEEE",
+      "ANSI_51_IEEE"
+    ],
+    "label": "IEEE C37.112 Inverse-Time Overcurrent Relay (51)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TOC_IEEE</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_DIST_21",
+    "aliases": [
+      "DIST_21",
+      "RelDis_21",
+      "ANSI_21"
+    ],
+    "label": "Mho / Quadrilateral Distance Relay (ANSI 21)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIST_21</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_DIFF_87",
+    "aliases": [
+      "DIFF_87",
+      "RelDiff_87",
+      "ANSI_87"
+    ],
+    "label": "Percentage-Restrained Differential Relay (ANSI 87)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIFF_87</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_UFLS_81",
+    "aliases": [
+      "UFLS_81",
+      "RelFmeas_81",
+      "ANSI_81"
+    ],
+    "label": "Under-Frequency Load Shedding Relay (ANSI 81U)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">UFLS_81</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_OHL_10kV",
+    "aliases": [
+      "OHL_10kV",
+      "TypLne.OHL10"
+    ],
+    "label": "10 kV Overhead Line (ACSR 95/15)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OHL_10kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_OHL_33kV",
+    "aliases": [
+      "OHL_33kV",
+      "TypLne.OHL33"
+    ],
+    "label": "33 kV Overhead Line (ACSR 150/25)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OHL_33kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_Cable_04kV",
+    "aliases": [
+      "Cable_04kV",
+      "NAYY_4x150"
+    ],
+    "label": "0.4 kV LV Underground Cable (NAYY 4x150 mm2 Al)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Cable_04kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_Cable_10kV",
+    "aliases": [
+      "Cable_10kV",
+      "NA2XS2Y_10kV"
+    ],
+    "label": "10 kV XLPE Underground Cable (150 mm2 Al)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Cable_10kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypLne_Cable_33kV",
+    "aliases": [
+      "Cable_33kV",
+      "XLPE_33kV"
+    ],
+    "label": "33 kV XLPE Underground Cable (300 mm2 Al)",
+    "category": "Transmission Line / Cable",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">LNE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Cable_33kV</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypTr2_20_04kV",
+    "aliases": [
+      "Tr2_20_04kV",
+      "TypTr2.20_04"
+    ],
+    "label": "2-Winding Distribution Transformer 20/0.4 kV (0.63 MVA)",
+    "category": "Transformer",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRF</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">20_04kV</text></svg>",
+    "ports": [
+      {
+        "name": "hv",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "lv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypTr2_33_11kV",
+    "aliases": [
+      "Tr2_33_11kV",
+      "TypTr2.33_11"
+    ],
+    "label": "2-Winding Primary Transformer 33/11 kV (20 MVA)",
+    "category": "Transformer",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRF</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">33_11kV</text></svg>",
+    "ports": [
+      {
+        "name": "hv",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "lv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:TypTr2_132_33kV",
+    "aliases": [
+      "Tr2_132_33kV",
+      "TypTr2.132_33"
+    ],
+    "label": "2-Winding Grid Transformer 132/33 kV (90 MVA)",
+    "category": "Transformer",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRF</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">132_33kV</text></svg>",
+    "ports": [
+      {
+        "name": "hv",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "lv",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_IEEEX1",
+    "aliases": [
+      "IEEEX1",
+      "avr_IEEEX1"
+    ],
+    "label": "IEEE 1979 Type DC1 Exciter (IEEEX1)",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEEEX1</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_AC4A",
+    "aliases": [
+      "AC4A",
+      "EXAC4",
+      "avr_AC4A"
+    ],
+    "label": "IEEE Type AC4A High-Initial-Response AC Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AC4A</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_AC5A",
+    "aliases": [
+      "AC5A",
+      "EXAC5A",
+      "avr_AC5A"
+    ],
+    "label": "IEEE Type AC5A Simplified Brushless Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AC5A</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_AC7B",
+    "aliases": [
+      "AC7B",
+      "EXAC7B",
+      "avr_AC7B"
+    ],
+    "label": "IEEE Type AC7B PID Brushless Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AC7B</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_ST2A",
+    "aliases": [
+      "ST2A",
+      "EXST2",
+      "avr_ST2A"
+    ],
+    "label": "IEEE Type ST2A Compound-Source Static Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ST2A</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:vco_ST3A",
+    "aliases": [
+      "ST3A",
+      "ESST3A",
+      "avr_ST3A"
+    ],
+    "label": "IEEE Type ST3A Compound-Source Controlled Exciter",
+    "category": "Exciter (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">VCO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ST3A</text></svg>",
+    "ports": [
+      {
+        "name": "ut",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "ve",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_GAST",
+    "aliases": [
+      "GAST",
+      "pcu_GAST"
+    ],
+    "label": "Gas Turbine-Governor (GAST)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">GAST</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_IEEEG1",
+    "aliases": [
+      "IEEEG1",
+      "pcu_IEEEG1"
+    ],
+    "label": "IEEE Steam Turbine-Governor (IEEEG1)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEEEG1</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_IEEEG3",
+    "aliases": [
+      "IEEEG3",
+      "pcu_IEEEG3"
+    ],
+    "label": "IEEE Hydro Turbine-Governor (IEEEG3)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEEEG3</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:gov_PIDGOV",
+    "aliases": [
+      "PIDGOV",
+      "pcu_PIDGOV"
+    ],
+    "label": "PID Hydro Turbine-Governor (PIDGOV)",
+    "category": "Governor (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PIDGOV</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pt",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:pss_PSS1A",
+    "aliases": [
+      "PSS1A",
+      "IEEE_PSS1A"
+    ],
+    "label": "IEEE Type PSS1A Single-Input Stabilizer",
+    "category": "Stabilizer (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PSS1A</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:pss_PSS3B",
+    "aliases": [
+      "PSS3B",
+      "IEEE_PSS3B"
+    ],
+    "label": "IEEE Type PSS3B Dual-Input Stabilizer",
+    "category": "Stabilizer (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PSS3B</text></svg>",
+    "ports": [
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "upss",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_REGC_B",
+    "aliases": [
+      "REGC_B",
+      "regc_b"
+    ],
+    "label": "WECC REGC_B Voltage-Source Renewable Converter",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REGC_B</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_REEC_B",
+    "aliases": [
+      "REEC_B",
+      "reec_b"
+    ],
+    "label": "WECC REEC_B Solar PV Electrical Control",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REEC_B</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_REEC_C",
+    "aliases": [
+      "REEC_C",
+      "reec_c"
+    ],
+    "label": "WECC REEC_C Battery Storage Electrical Control",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REEC_C</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:wecc_REPC_B",
+    "aliases": [
+      "REPC_B",
+      "repc_b"
+    ],
+    "label": "WECC REPC_B Multi-Unit Renewable Plant Controller",
+    "category": "Renewable / FACTS (DSL)",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#134e4a\" stroke=\"#5eead4\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#5eead4\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#5eead4\">DSL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REPC_B</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_DIR_67",
+    "aliases": [
+      "DIR_67",
+      "RelDir_67",
+      "ANSI_67"
+    ],
+    "label": "Directional Overcurrent Relay (ANSI 67)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIR_67</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_RECL_79",
+    "aliases": [
+      "RECL_79",
+      "RelRecl_79",
+      "ANSI_79"
+    ],
+    "label": "Auto-Reclosing Relay (ANSI 79)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RECL_79</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerfactory:rel_UVLS_27",
+    "aliases": [
+      "UVLS_27",
+      "RelUmeas_27",
+      "ANSI_27"
+    ],
+    "label": "Under-Voltage Load Shedding Relay (ANSI 27)",
+    "category": "Protection Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#451a03\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">REL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">UVLS_27</text></svg>",
+    "ports": [
+      {
+        "name": "ct_vt",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  }
+]

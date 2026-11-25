@@ -1,0 +1,11 @@
+{
+  "id": "sbol-02-iptg-inducible-laci-cassette",
+  "lang": "sbol",
+  "subFormats": ["sbol3-xml"],
+  "difficulty": 2,
+  "title": "IPTG-Inducible LacI Promoter-RBS-CDS-Terminator",
+  "description": "Regulated transcriptional unit pairing a LacI-repressible pLac promoter with an RFP reporter CDS and an explicit SBO repression interaction.",
+  "category": "Synthetic Biology",
+  "tags": ["sbol", "sbol3", "inducible", "laci", "promoter"],
+  "activeFile": "laci_inducible.sbol"
+}

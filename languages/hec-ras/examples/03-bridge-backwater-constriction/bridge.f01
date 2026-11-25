@@ -1,0 +1,9 @@
+Flow Title=50-Year Bridge Backwater Design Flow
+Boundary for River Reach & Node=CedarCreek,BridgeReach,600
+Boundary Type=Flow Hydrograph
+Hydrograph Data= 2
+0, 280.0  24, 280.0
+
+Boundary for River Reach & Node=CedarCreek,BridgeReach,0
+Boundary Type=Normal Depth
+Friction Slope=0.0020

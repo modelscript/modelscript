@@ -1,0 +1,1453 @@
+[
+  {
+    "name": "ADVAN1",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN1",
+    "exports": [
+      "CL",
+      "V",
+      "F1",
+      "ALAG1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment Linear IV Model (ADVAN1)",
+      "category": "Compartmental ADVAN",
+      "domain": "pharmacometrics",
+      "description": "Closed-form one-compartment linear pharmacokinetic model for IV bolus or zero-order infusion: C(t) = (F1*D/V)*exp(-k*t).",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 1); Rowland & Tozer (4th ed., Ch. 3); FDA PopPK Guidance",
+      "aliases": [
+        "advan1",
+        "one_cpt_iv",
+        "1cpt_iv"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Total systemic clearance"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "L",
+          "description": "Central compartment volume of distribution"
+        },
+        {
+          "key": "F1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction for compartment 1"
+        },
+        {
+          "key": "ALAG1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time for compartment 1"
+        }
+      ],
+      "wasmKernel": "ADVAN1",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "ADVAN2",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN2",
+    "exports": [
+      "CL",
+      "V",
+      "KA",
+      "F1",
+      "ALAG1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment First-Order Oral Model (ADVAN2)",
+      "category": "Compartmental ADVAN",
+      "domain": "pharmacometrics",
+      "description": "Closed-form one-compartment linear PK model with first-order depot absorption (Bateman equation): C(t) = (F1*D*ka/(V*(ka-k)))*(exp(-k*t) - exp(-ka*t)).",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 1); Rowland & Tozer (4th ed., Ch. 7); Gabrielsson & Weiner (5th ed.)",
+      "aliases": [
+        "advan2",
+        "one_cpt_oral",
+        "1cpt_oral",
+        "bateman"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Apparent systemic clearance (CL/F)"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "L",
+          "description": "Apparent central volume of distribution (V/F)"
+        },
+        {
+          "key": "KA",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "1/h",
+          "description": "First-order absorption rate constant"
+        },
+        {
+          "key": "F1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction for depot compartment"
+        },
+        {
+          "key": "ALAG1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Absorption lag time"
+        }
+      ],
+      "wasmKernel": "ADVAN2",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "ADVAN3",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN3",
+    "exports": [
+      "CL",
+      "V1",
+      "Q",
+      "V2",
+      "F1",
+      "ALAG1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Compartment Linear IV Model (ADVAN3)",
+      "category": "Compartmental ADVAN",
+      "domain": "pharmacometrics",
+      "description": "Closed-form two-compartment mammillary linear PK model for IV administration with biexponential disposition (alpha, beta).",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 2); Rowland & Tozer (4th ed., Ch. 19); Gabrielsson & Weiner (5th ed.)",
+      "aliases": [
+        "advan3",
+        "two_cpt_iv",
+        "2cpt_iv"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Systemic clearance from central compartment"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central compartment volume of distribution"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L/h",
+          "description": "Inter-compartmental distributional clearance"
+        },
+        {
+          "key": "V2",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "L",
+          "description": "Peripheral compartment volume of distribution"
+        },
+        {
+          "key": "F1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        },
+        {
+          "key": "ALAG1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time for compartment 1"
+        }
+      ],
+      "wasmKernel": "ADVAN3",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ADVAN4",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN4",
+    "exports": [
+      "CL",
+      "V2",
+      "Q",
+      "V3",
+      "KA",
+      "F1",
+      "ALAG1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Compartment First-Order Oral Model (ADVAN4)",
+      "category": "Compartmental ADVAN",
+      "domain": "pharmacometrics",
+      "description": "Closed-form two-compartment linear PK model with first-order depot absorption (triexponential central concentration profile).",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 2); Gabrielsson & Weiner, PK/PD Data Analysis (5th ed., PK05)",
+      "aliases": [
+        "advan4",
+        "two_cpt_oral",
+        "2cpt_oral"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Apparent systemic clearance"
+        },
+        {
+          "key": "V2",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Apparent central compartment volume"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L/h",
+          "description": "Apparent inter-compartmental clearance"
+        },
+        {
+          "key": "V3",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "L",
+          "description": "Apparent peripheral compartment volume"
+        },
+        {
+          "key": "KA",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "1/h",
+          "description": "First-order absorption rate constant"
+        },
+        {
+          "key": "F1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Depot bioavailability fraction"
+        },
+        {
+          "key": "ALAG1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Absorption lag time"
+        }
+      ],
+      "wasmKernel": "ADVAN4",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "ADVAN10",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN10",
+    "exports": [
+      "VM",
+      "KM",
+      "V",
+      "F1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment Michaelis-Menten Model (ADVAN10)",
+      "category": "Compartmental ADVAN",
+      "domain": "pharmacometrics",
+      "description": "One-compartment nonlinear PK model with saturable Michaelis-Menten elimination: dA/dt = -Vmax * C / (Km + C), solved via Heun RK2.",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 7); Rowland & Tozer (4th ed., Ch. 17); Gabrielsson & Weiner (PK15)",
+      "aliases": [
+        "advan10",
+        "michaelis_menten",
+        "mm_1cpt"
+      ],
+      "parameters": [
+        {
+          "key": "VM",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "mg/h",
+          "description": "Maximum elimination rate (Vmax)"
+        },
+        {
+          "key": "KM",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mg/L",
+          "description": "Michaelis constant (concentration at half Vmax)"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "F1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        }
+      ],
+      "wasmKernel": "ADVAN10",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "ADVAN11",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN11",
+    "exports": [
+      "CL",
+      "V1",
+      "Q2",
+      "V2",
+      "Q3",
+      "V3",
+      "F1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Compartment Linear IV Model (ADVAN11)",
+      "category": "Compartmental ADVAN",
+      "domain": "pharmacometrics",
+      "description": "Closed-form three-compartment mammillary linear PK model for IV administration with exact cubic triexponential disposition.",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 2); Rowland & Tozer (4th ed.); FDA PopPK Guidance",
+      "aliases": [
+        "advan11",
+        "three_cpt_iv",
+        "3cpt_iv"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "L",
+          "description": "Central compartment volume"
+        },
+        {
+          "key": "Q2",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L/h",
+          "description": "Shallow peripheral inter-compartmental clearance"
+        },
+        {
+          "key": "V2",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "L",
+          "description": "Shallow peripheral compartment volume"
+        },
+        {
+          "key": "Q3",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "L/h",
+          "description": "Deep peripheral inter-compartmental clearance"
+        },
+        {
+          "key": "V3",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "L",
+          "description": "Deep peripheral compartment volume"
+        },
+        {
+          "key": "F1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        }
+      ],
+      "wasmKernel": "ADVAN11",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "ADVAN12",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN12",
+    "exports": [
+      "CL",
+      "V2",
+      "Q3",
+      "V3",
+      "Q4",
+      "V4",
+      "KA",
+      "F1",
+      "ALAG1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Compartment First-Order Oral Model (ADVAN12)",
+      "category": "Compartmental ADVAN",
+      "domain": "pharmacometrics",
+      "description": "Closed-form three-compartment mammillary linear PK model with first-order depot absorption (tetraexponential disposition).",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 2); Gabrielsson & Weiner, PK/PD Data Analysis (5th ed.)",
+      "aliases": [
+        "advan12",
+        "three_cpt_oral",
+        "3cpt_oral"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Apparent systemic clearance"
+        },
+        {
+          "key": "V2",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "L",
+          "description": "Apparent central compartment volume"
+        },
+        {
+          "key": "Q3",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L/h",
+          "description": "Apparent shallow peripheral clearance"
+        },
+        {
+          "key": "V3",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "L",
+          "description": "Apparent shallow peripheral volume"
+        },
+        {
+          "key": "Q4",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "L/h",
+          "description": "Apparent deep peripheral clearance"
+        },
+        {
+          "key": "V4",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "L",
+          "description": "Apparent deep peripheral volume"
+        },
+        {
+          "key": "KA",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "1/h",
+          "description": "First-order absorption rate constant"
+        },
+        {
+          "key": "F1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Depot bioavailability fraction"
+        },
+        {
+          "key": "ALAG1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Absorption lag time"
+        }
+      ],
+      "wasmKernel": "ADVAN12",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "ADVAN5",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN5",
+    "exports": [
+      "K10",
+      "K12",
+      "K21",
+      "V1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General Linear Compartmental Model (ADVAN5)",
+      "category": "General ODE ADVAN",
+      "domain": "pharmacometrics",
+      "description": "General linear compartmental system specified via $MODEL and micro-rate constants Kij, evaluated via matrix-exponential / RK solver.",
+      "provenance": "Gibaldi & Perrier (2nd ed., Appendix B); Beal & Sheiner PREDPP General Linear Model Specification",
+      "aliases": [
+        "advan5",
+        "general_linear"
+      ],
+      "parameters": [
+        {
+          "key": "K10",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Elimination rate constant from central compartment"
+        },
+        {
+          "key": "K12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Transfer rate constant from compartment 1 to 2"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Transfer rate constant from compartment 2 to 1"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central compartment scaling volume"
+        }
+      ],
+      "wasmKernel": "ADVAN5",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "ADVAN6",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN6",
+    "exports": [
+      "K10",
+      "K12",
+      "K21",
+      "V1",
+      "TOL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General Nonlinear ODE Model — Non-Stiff (ADVAN6)",
+      "category": "General ODE ADVAN",
+      "domain": "pharmacometrics",
+      "description": "General nonlinear ODE solver for non-stiff $DES systems (Runge-Kutta / DVERK class integration with TOL control).",
+      "provenance": "Hull et al. (DVERK Runge-Kutta); Gabrielsson & Weiner (5th ed.); FDA PopPK Guidance",
+      "aliases": [
+        "advan6",
+        "general_nonlinear_dverk",
+        "dverk"
+      ],
+      "parameters": [
+        {
+          "key": "K10",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Linear elimination rate constant"
+        },
+        {
+          "key": "K12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Transfer rate constant 1 -> 2"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Transfer rate constant 2 -> 1"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume"
+        },
+        {
+          "key": "TOL",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "digits",
+          "description": "Relative integration tolerance (10^-TOL)"
+        }
+      ],
+      "wasmKernel": "ADVAN6",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "ADVAN7",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN7",
+    "exports": [
+      "K10",
+      "K12",
+      "K21",
+      "V1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General Linear Model — Real Eigenvalues (ADVAN7)",
+      "category": "General ODE ADVAN",
+      "domain": "pharmacometrics",
+      "description": "General linear compartmental model optimized for real-eigenvalue mammillary/catenary systems with zero oscillatory modes.",
+      "provenance": "Gibaldi & Perrier (2nd ed.); Beal & Sheiner PREDPP General Linear Real-Eigenvalue Specification",
+      "aliases": [
+        "advan7",
+        "general_linear_real"
+      ],
+      "parameters": [
+        {
+          "key": "K10",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Elimination rate constant"
+        },
+        {
+          "key": "K12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Transfer rate constant 1 -> 2"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Transfer rate constant 2 -> 1"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume"
+        }
+      ],
+      "wasmKernel": "ADVAN7",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "ADVAN8",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN8",
+    "exports": [
+      "K10",
+      "K12",
+      "K21",
+      "V1",
+      "TOL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General Nonlinear ODE Model — Stiff (ADVAN8)",
+      "category": "General ODE ADVAN",
+      "domain": "pharmacometrics",
+      "description": "General nonlinear stiff ODE solver (Gear BDF / DGEAR class) for multi-timescale $DES PK/PD and receptor-binding dynamics.",
+      "provenance": "Gear (1971) Numerical Initial Value Problems in ODEs; Gabrielsson & Weiner (5th ed.)",
+      "aliases": [
+        "advan8",
+        "general_nonlinear_stiff",
+        "dgear"
+      ],
+      "parameters": [
+        {
+          "key": "K10",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Elimination rate constant"
+        },
+        {
+          "key": "K12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Transfer rate constant 1 -> 2"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Transfer rate constant 2 -> 1"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume"
+        },
+        {
+          "key": "TOL",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "digits",
+          "description": "Relative integration tolerance (10^-TOL)"
+        }
+      ],
+      "wasmKernel": "ADVAN8",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "ADVAN9",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN9",
+    "exports": [
+      "K10",
+      "K12",
+      "K21",
+      "V1",
+      "TOL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General Nonlinear DAE/ODE Model — LSODI (ADVAN9)",
+      "category": "General ODE ADVAN",
+      "domain": "pharmacometrics",
+      "description": "General nonlinear differential-algebraic equation (DAE) and stiff ODE solver (Hindmarsh LSODI / equilibrium $AES support).",
+      "provenance": "Hindmarsh (1983) ODEPACK LSODI; FDA PopPK Guidance",
+      "aliases": [
+        "advan9",
+        "general_dae_lsodi",
+        "lsodi"
+      ],
+      "parameters": [
+        {
+          "key": "K10",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Elimination rate constant"
+        },
+        {
+          "key": "K12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Transfer rate constant 1 -> 2"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Transfer rate constant 2 -> 1"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume"
+        },
+        {
+          "key": "TOL",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "digits",
+          "description": "Relative integration tolerance (10^-TOL)"
+        }
+      ],
+      "wasmKernel": "ADVAN9",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "ADVAN13",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ADVAN13",
+    "exports": [
+      "K10",
+      "K12",
+      "K21",
+      "V1",
+      "TOL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "General Nonlinear ODE Model — LSODA (ADVAN13)",
+      "category": "General ODE ADVAN",
+      "domain": "pharmacometrics",
+      "description": "General nonlinear ODE solver with automatic Adams/BDF stiffness switching (Petzold LSODA) for arbitrary $DES PK/PD systems.",
+      "provenance": "Petzold (1983) Automatic Selection of Methods for Solving Stiff and Nonstiff ODEs (LSODA); FDA PopPK Guidance",
+      "aliases": [
+        "advan13",
+        "lsoda",
+        "general_nonlinear_lsoda"
+      ],
+      "parameters": [
+        {
+          "key": "K10",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Elimination rate constant"
+        },
+        {
+          "key": "K12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Transfer rate constant 1 -> 2"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Transfer rate constant 2 -> 1"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume"
+        },
+        {
+          "key": "TOL",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "digits",
+          "description": "Relative integration tolerance (10^-TOL)"
+        }
+      ],
+      "wasmKernel": "ADVAN13",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "TRANS1",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:TRANS1",
+    "exports": [
+      "K",
+      "K12",
+      "K21"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Micro-Rate Constant Translator (TRANS1)",
+      "category": "Parameterization TRANS",
+      "domain": "pharmacometrics",
+      "description": "Identity parameterization passing native micro-rate constants (K, K12, K21, K13, K31, KA) directly to ADVAN subroutines.",
+      "provenance": "Gibaldi & Perrier (2nd ed., Ch. 2); Beal & Sheiner PREDPP TRANS1 Specification",
+      "aliases": [
+        "trans1",
+        "micro_rates"
+      ],
+      "parameters": [
+        {
+          "key": "K",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Elimination rate constant"
+        },
+        {
+          "key": "K12",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Central-to-peripheral rate constant"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Peripheral-to-central rate constant"
+        }
+      ],
+      "wasmKernel": "TRANS1",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "TRANS2",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:TRANS2",
+    "exports": [
+      "CL",
+      "V"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment CL/V Translator (TRANS2)",
+      "category": "Parameterization TRANS",
+      "domain": "pharmacometrics",
+      "description": "Translates physiological clearance and volume (CL, V) into 1-compartment elimination micro-rate K = CL / V (for ADVAN1/ADVAN2).",
+      "provenance": "Rowland & Tozer (4th ed., Ch. 3); FDA PopPK Guidance; Beal & Sheiner PREDPP TRANS2",
+      "aliases": [
+        "trans2",
+        "cl_v"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "L",
+          "description": "Volume of distribution"
+        }
+      ],
+      "wasmKernel": "TRANS2",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "TRANS3",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:TRANS3",
+    "exports": [
+      "CL",
+      "V",
+      "Q",
+      "VSS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Compartment CL/V/Q/VSS Translator (TRANS3)",
+      "category": "Parameterization TRANS",
+      "domain": "pharmacometrics",
+      "description": "Translates (CL, V, Q, VSS) into 2-compartment micro-rates: K = CL/V, K12 = Q/V, K21 = Q/(VSS - V) (for ADVAN3/ADVAN4).",
+      "provenance": "Gibaldi & Perrier (2nd ed., Ch. 2); Rowland & Tozer (4th ed., Ch. 19); PREDPP TRANS3",
+      "aliases": [
+        "trans3",
+        "cl_v_q_vss"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L/h",
+          "description": "Inter-compartmental clearance"
+        },
+        {
+          "key": "VSS",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "L",
+          "description": "Volume of distribution at steady state (V1 + V2)"
+        }
+      ],
+      "wasmKernel": "TRANS3",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "TRANS4",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:TRANS4",
+    "exports": [
+      "CL",
+      "V1",
+      "Q",
+      "V2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2/3-Compartment CL/V/Q Translator (TRANS4)",
+      "category": "Parameterization TRANS",
+      "domain": "pharmacometrics",
+      "description": "Translates physiological clearances and compartment volumes (CL, V1, Q, V2, [Q3, V3]) into micro-rates for ADVAN3/4/11/12.",
+      "provenance": "Rowland & Tozer (4th ed., Ch. 19); Gabrielsson & Weiner (5th ed.); FDA PopPK Guidance",
+      "aliases": [
+        "trans4",
+        "cl_v1_q_v2"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L/h",
+          "description": "Inter-compartmental clearance"
+        },
+        {
+          "key": "V2",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "L",
+          "description": "Peripheral volume of distribution"
+        }
+      ],
+      "wasmKernel": "TRANS4",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "TRANS5",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:TRANS5",
+    "exports": [
+      "AOB",
+      "ALPHA",
+      "BETA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Compartment AOB/ALPHA/BETA Translator (TRANS5)",
+      "category": "Parameterization TRANS",
+      "domain": "pharmacometrics",
+      "description": "Translates biexponential macro-constants (AOB = A/B, ALPHA, BETA) into 2-compartment micro-rates K21, K, K12.",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 2); PREDPP TRANS5 Specification",
+      "aliases": [
+        "trans5",
+        "aob_alpha_beta"
+      ],
+      "parameters": [
+        {
+          "key": "AOB",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Ratio of macro-coefficients A/B"
+        },
+        {
+          "key": "ALPHA",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1/h",
+          "description": "Fast distribution hybrid rate constant"
+        },
+        {
+          "key": "BETA",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "1/h",
+          "description": "Terminal elimination hybrid rate constant"
+        }
+      ],
+      "wasmKernel": "TRANS5",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "TRANS6",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:TRANS6",
+    "exports": [
+      "ALPHA",
+      "BETA",
+      "K21"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2/3-Compartment Hybrid Rate Translator (TRANS6)",
+      "category": "Parameterization TRANS",
+      "domain": "pharmacometrics",
+      "description": "Translates hybrid rate constants (ALPHA, BETA, K21, [GAMMA, K31]) into compartmental micro-rates K = (ALPHA*BETA)/K21 and K12.",
+      "provenance": "Gibaldi & Perrier, Pharmacokinetics (2nd ed., Ch. 2); PREDPP TRANS6 Specification",
+      "aliases": [
+        "trans6",
+        "alpha_beta_k21"
+      ],
+      "parameters": [
+        {
+          "key": "ALPHA",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1/h",
+          "description": "Fast hybrid rate constant"
+        },
+        {
+          "key": "BETA",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "1/h",
+          "description": "Slow hybrid rate constant"
+        },
+        {
+          "key": "K21",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "Peripheral-to-central rate constant"
+        }
+      ],
+      "wasmKernel": "TRANS6",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "PRED_EMAX",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:PRED_EMAX",
+    "exports": [
+      "E0",
+      "EMAX",
+      "EC50",
+      "GAMMA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Direct Hill / Sigmoidal Emax PD Model",
+      "category": "PK/PD Model",
+      "domain": "pharmacometrics",
+      "description": "Direct concentration-effect sigmoidal Emax (Hill) pharmacodynamic model: E = E0 + Emax * C^gamma / (EC50^gamma + C^gamma).",
+      "provenance": "Gabrielsson & Weiner, PK/PD Data Analysis (5th ed., PD01/PD03); Rowland & Tozer (4th ed., Ch. 21); FDA PopPK Guidance",
+      "aliases": [
+        "pred_emax",
+        "emax",
+        "hill_emax",
+        "sigmoidal_emax"
+      ],
+      "parameters": [
+        {
+          "key": "E0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "units",
+          "description": "Baseline pharmacodynamic effect"
+        },
+        {
+          "key": "EMAX",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "units",
+          "description": "Maximum drug-induced effect"
+        },
+        {
+          "key": "EC50",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mg/L",
+          "description": "Concentration producing 50% of Emax"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Hill sigmoidicity exponent"
+        }
+      ],
+      "wasmKernel": "PRED_EMAX",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "PRED_INDIRECT_RESP",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:PRED_INDIRECT_RESP",
+    "exports": [
+      "KIN",
+      "KOUT",
+      "IMAX",
+      "IC50",
+      "GAMMA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Indirect Response Turnover PK/PD Model",
+      "category": "PK/PD Model",
+      "domain": "pharmacometrics",
+      "description": "Indirect pharmacodynamic response turnover model (Type I inhibition of Kin): dR/dt = Kin * (1 - Imax*C^g/(IC50^g + C^g)) - Kout*R.",
+      "provenance": "Dayneka, Garg & Jusko (1993) J. Pharmacokinet. Biopharm. 21(4):457-478; Gabrielsson & Weiner (5th ed., PD22)",
+      "aliases": [
+        "pred_indirect_resp",
+        "indirect_response",
+        "idr_type1",
+        "jusko_idr"
+      ],
+      "parameters": [
+        {
+          "key": "KIN",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "units/h",
+          "description": "Zero-order response production rate constant"
+        },
+        {
+          "key": "KOUT",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "First-order response dissipation rate constant"
+        },
+        {
+          "key": "IMAX",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "1",
+          "description": "Maximum fractional inhibition (0..1)"
+        },
+        {
+          "key": "IC50",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mg/L",
+          "description": "Concentration producing 50% of Imax"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Hill exponent"
+        }
+      ],
+      "wasmKernel": "PRED_INDIRECT_RESP",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "PRED_TMDD",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:PRED_TMDD",
+    "exports": [
+      "CL",
+      "V",
+      "R0",
+      "KINT",
+      "KSS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Target-Mediated Drug Disposition (TMDD)",
+      "category": "PK/PD Model",
+      "domain": "pharmacometrics",
+      "description": "Quasi-steady-state (QSS) Target-Mediated Drug Disposition model for biologics/mAbs combining linear clearance and saturable receptor internalization.",
+      "provenance": "Mager & Jusko (2001) J. Pharmacokinet. Pharmacodyn. 28(6):507-532; Gibiansky et al. (2008) QSS TMDD",
+      "aliases": [
+        "pred_tmdd",
+        "tmdd",
+        "tmdd_qss"
+      ],
+      "parameters": [
+        {
+          "key": "CL",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "L/h",
+          "description": "Linear non-specific clearance"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "R0",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mg/L",
+          "description": "Baseline target receptor concentration"
+        },
+        {
+          "key": "KINT",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Drug-receptor complex internalization rate"
+        },
+        {
+          "key": "KSS",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "mg/L",
+          "description": "Quasi-steady-state dissociation constant (KD + KINT/KON)"
+        }
+      ],
+      "wasmKernel": "PRED_TMDD",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "ERROR_PROP",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ERROR_PROP",
+    "exports": [
+      "SIGMA_PROP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Proportional Residual Error Model",
+      "category": "Residual Error",
+      "domain": "pharmacometrics",
+      "description": "Proportional (constant CV) residual unexplained variability block for $ERROR: Y = IPRED * (1 + EPS(1)).",
+      "provenance": "FDA Population Pharmacokinetics Guidance for Industry (2022); Gabrielsson & Weiner (5th ed.)",
+      "aliases": [
+        "error_prop",
+        "proportional_error",
+        "ruv_prop"
+      ],
+      "parameters": [
+        {
+          "key": "SIGMA_PROP",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "CV",
+          "description": "Proportional residual error standard deviation (CV)"
+        }
+      ],
+      "wasmKernel": "ERROR_PROP",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "ERROR_ADD",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ERROR_ADD",
+    "exports": [
+      "SIGMA_ADD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Additive Residual Error Model",
+      "category": "Residual Error",
+      "domain": "pharmacometrics",
+      "description": "Additive (homoscedastic) residual unexplained variability block for $ERROR: Y = IPRED + EPS(1).",
+      "provenance": "FDA Population Pharmacokinetics Guidance for Industry (2022); Gabrielsson & Weiner (5th ed.)",
+      "aliases": [
+        "error_add",
+        "additive_error",
+        "ruv_add"
+      ],
+      "parameters": [
+        {
+          "key": "SIGMA_ADD",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "mg/L",
+          "description": "Additive residual error standard deviation"
+        }
+      ],
+      "wasmKernel": "ERROR_ADD",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "ERROR_COMB",
+    "kind": "nmtran_subroutine",
+    "namePath": "nmtran:ERROR_COMB",
+    "exports": [
+      "SIGMA_PROP",
+      "SIGMA_ADD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Combined Additive + Proportional Error Model",
+      "category": "Residual Error",
+      "domain": "pharmacometrics",
+      "description": "Combined proportional and additive residual error block for $ERROR: Y = IPRED * (1 + EPS(1)) + EPS(2).",
+      "provenance": "FDA Population Pharmacokinetics Guidance for Industry (2022); Gabrielsson & Weiner (5th ed.)",
+      "aliases": [
+        "error_comb",
+        "combined_error",
+        "ruv_comb"
+      ],
+      "parameters": [
+        {
+          "key": "SIGMA_PROP",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "CV",
+          "description": "Proportional residual error standard deviation"
+        },
+        {
+          "key": "SIGMA_ADD",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "mg/L",
+          "description": "Additive residual error standard deviation"
+        }
+      ],
+      "wasmKernel": "ERROR_COMB",
+      "archetypeId": 43
+    }
+  }
+]

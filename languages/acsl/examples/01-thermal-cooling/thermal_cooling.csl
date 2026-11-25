@@ -1,0 +1,25 @@
+PROGRAM THERMAL_COOLING
+  ! First-order lumped-capacitance convective cooling of an aluminum billet
+  INITIAL
+    CONSTANT tau = 12.5      ! Thermal time constant (s)
+    CONSTANT tamb = 293.15   ! Ambient bath temperature (K)
+    CONSTANT temp0 = 473.15  ! Initial billet temperature (K)
+    CINTERVAL cint = 1.0
+    MAXTERVAL maxt = 0.25
+    ALGORITHM ialg = 5
+  END
+
+  DYNAMIC
+    DERIVATIVE
+      dtemp = -(temp - tamb) / tau
+      temp = INTEG(dtemp, temp0)
+      heat_loss = (temp - tamb) / tau
+    END
+
+    TERMT(t .GE. 60.0, 'Cooling transient complete')
+  END
+
+  TERMINAL
+    final_delta_t = temp - tamb
+  END
+END

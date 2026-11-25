@@ -554,7 +554,9 @@ export class BillingRepository extends BaseRepository {
         try {
           this.releaseUserEscrow(row.user_id, row.job_id, "Server shutdown recovery");
           releasedCount++;
-        } catch {}
+        } catch {
+          // Continue releasing remaining stale escrows if one row was already settled
+        }
       }
       this.run(
         `UPDATE jobs SET status = 'CANCELLED', completed_at = datetime('now') WHERE status IN ('RUNNING', 'QUEUED', 'PENDING')`,

@@ -10,7 +10,7 @@ declare module "virtual:modelscript-language-ui" {
     viewType: string;
     title: string;
     shortTitle?: string;
-    targets: ("vscode" | "morsel" | "artifact")[];
+    targets: ("vscode" | "ansatz" | "artifact")[];
     artifactViewTypes: string[];
   }
 
@@ -37,7 +37,7 @@ declare module "virtual:modelscript-language-ui" {
     tooltip?: string;
     icon?: string;
     views: ("diagram" | "icon" | "3d" | "simulation" | "inspector" | "code" | "*")[];
-    targets: ("vscode" | "morsel" | "artifact")[];
+    targets: ("vscode" | "ansatz" | "artifact")[];
     placement: "primary" | "overflow";
     order: number;
     kind: "action" | "toggle";
@@ -50,7 +50,7 @@ declare module "virtual:modelscript-language-ui" {
   export type LanguagePanelLoader = () => Promise<{ default: React.ComponentType<LanguagePanelProps> }>;
 
   export const LANGUAGE_PANEL_META: LanguagePanelMetaEntry[];
-  export const MORSEL_PANEL_LOADERS: Record<string, LanguagePanelLoader>;
+  export const ANSATZ_PANEL_LOADERS: Record<string, LanguagePanelLoader>;
   export const ARTIFACT_PANEL_LOADERS: Record<string, LanguagePanelLoader>;
   export const LANGUAGE_STENCILS: Record<string, LanguageStencilEntry[]>;
   export const LANGUAGE_SIMULATION_CARDS: LanguageSimulationCardEntry[];

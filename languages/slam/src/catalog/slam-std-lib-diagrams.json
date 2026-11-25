@@ -1,0 +1,389 @@
+[
+  {
+    "namePath": "SLAM.CREATE",
+    "aliases": [
+      "ARRIVAL",
+      "SOURCE"
+    ],
+    "label": "CREATE — Entity Arrival Generator",
+    "category": "Entity Flow",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CREATE</text></svg>",
+    "ports": [
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.QUEUE",
+    "aliases": [
+      "QNODE",
+      "BUFFER"
+    ],
+    "label": "QUEUE — Entity Waiting File",
+    "category": "Entity Flow",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">QUEUE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.ACTIVITY",
+    "aliases": [
+      "ACT",
+      "BRANCH",
+      "SERVICE"
+    ],
+    "label": "ACTIVITY — Timed Branch / Server",
+    "category": "Entity Flow",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACTIVITY</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.ASSIGN",
+    "aliases": [
+      "SET"
+    ],
+    "label": "ASSIGN — State & Attribute Assignment",
+    "category": "Statistics & Control",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">STAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ASSIGN</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.AWAIT",
+    "aliases": [
+      "SEIZE",
+      "WAIT"
+    ],
+    "label": "AWAIT — Resource / Gate Acquisition",
+    "category": "Resources & Gates",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AWAIT</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.FREE",
+    "aliases": [
+      "RELEASE"
+    ],
+    "label": "FREE — Resource Release",
+    "category": "Resources & Gates",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FREE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.RESOURCE",
+    "aliases": [
+      "RES"
+    ],
+    "label": "RESOURCE — Shared Capacity Pool",
+    "category": "Resources & Gates",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RESOURCE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.GATE",
+    "aliases": [
+      "VALVE_GATE"
+    ],
+    "label": "GATE — Binary Flow Gate",
+    "category": "Resources & Gates",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">GATE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.OPEN",
+    "aliases": [
+      "GATE_OPEN"
+    ],
+    "label": "OPEN — Open Gate Control",
+    "category": "Resources & Gates",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OPEN</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.CLOSE",
+    "aliases": [
+      "GATE_CLOSE"
+    ],
+    "label": "CLOSE — Close Gate Control",
+    "category": "Resources & Gates",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CLOSE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.COLCT",
+    "aliases": [
+      "COLLECT",
+      "TALLY"
+    ],
+    "label": "COLCT — Observation Statistics Collector",
+    "category": "Statistics & Control",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">STAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">COLCT</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.DETECT",
+    "aliases": [
+      "THRESHOLD",
+      "STATE_EVENT"
+    ],
+    "label": "DETECT — Continuous State Threshold Event",
+    "category": "Continuous & Threshold",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">CONT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DETECT</text></svg>",
+    "ports": [
+      {
+        "name": "state_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trigger_out",
+        "kind": "entity",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.TERMINATE",
+    "aliases": [
+      "TERM",
+      "SINK"
+    ],
+    "label": "TERMINATE — Entity Sink & Run Stop",
+    "category": "Entity Flow",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">TERMINATE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "entity",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SLAM.CONTINUOUS",
+    "aliases": [
+      "ODE",
+      "STATE_BLOCK"
+    ],
+    "label": "CONTINUOUS — RK4 ODE State Integrator",
+    "category": "Continuous & Threshold",
+    "domain": "systems",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">CONT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">CONTINUOUS</text></svg>",
+    "ports": [
+      {
+        "name": "rate_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

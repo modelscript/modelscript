@@ -402,7 +402,7 @@ const { targets: languageWasmTargets, manifest: languagesManifest } = discoverLa
 /**
  * Discovers declarative `language({ ui: { panels, stencils, simulationCards } })`
  * contributions across `languages/*` and exposes them via `virtual:modelscript-language-ui`
- * as lazy-loaded `import(...)` factories for Morsel and Ansatz Artifact viewers.
+ * as lazy-loaded `import(...)` factories for Ansatz and Ansatz Artifact viewers.
  */
 function modelscriptLanguageUiPlugin(): Plugin {
   const virtualId = "virtual:modelscript-language-ui";
@@ -422,9 +422,9 @@ function modelscriptLanguageUiPlugin(): Plugin {
         const discovered = await discoverWorkspaceLanguages(languagesRoot);
 
         const panelMetaEntries: string[] = [];
-        const morselLoaderEntries: string[] = [];
+        const ansatzLoaderEntries: string[] = [];
         const artifactLoaderEntries: string[] = [];
-        const seenMorselKeys = new Set<string>();
+        const seenAnsatzKeys = new Set<string>();
         const seenArtifactKeys = new Set<string>();
 
         for (const panel of discovered.ui.panels) {
@@ -446,11 +446,11 @@ function modelscriptLanguageUiPlugin(): Plugin {
             }),
           );
 
-          if (panel.targets.includes("morsel")) {
+          if (panel.targets.includes("ansatz")) {
             for (const key of [panel.languageId, `${panel.languageId}:${panel.id}`]) {
-              if (!seenMorselKeys.has(key)) {
-                seenMorselKeys.add(key);
-                morselLoaderEntries.push(`${JSON.stringify(key)}: ${loaderExpr}`);
+              if (!seenAnsatzKeys.has(key)) {
+                seenAnsatzKeys.add(key);
+                ansatzLoaderEntries.push(`${JSON.stringify(key)}: ${loaderExpr}`);
               }
             }
           }
@@ -477,7 +477,7 @@ function modelscriptLanguageUiPlugin(): Plugin {
 
         return `
 export const LANGUAGE_PANEL_META = [${panelMetaEntries.join(",\n")}];
-export const MORSEL_PANEL_LOADERS = {\n  ${morselLoaderEntries.join(",\n  ")}\n};
+export const ANSATZ_PANEL_LOADERS = {\n  ${ansatzLoaderEntries.join(",\n  ")}\n};
 export const ARTIFACT_PANEL_LOADERS = {\n  ${artifactLoaderEntries.join(",\n  ")}\n};
 export const LANGUAGE_STENCILS = ${JSON.stringify(discovered.ui.stencilsByLanguage, null, 2)};
 export const LANGUAGE_SIMULATION_CARDS = [${simCardEntries.join(",\n")}];
@@ -487,7 +487,7 @@ export const LANGUAGE_TOOLBAR_BUTTONS = ${JSON.stringify(discovered.ui.toolbarBu
         console.warn("[modelscript-language-ui] Discovery fallback (empty registry):", err);
         return `
 export const LANGUAGE_PANEL_META = [];
-export const MORSEL_PANEL_LOADERS = {};
+export const ANSATZ_PANEL_LOADERS = {};
 export const ARTIFACT_PANEL_LOADERS = {};
 export const LANGUAGE_STENCILS = {};
 export const LANGUAGE_SIMULATION_CARDS = [];

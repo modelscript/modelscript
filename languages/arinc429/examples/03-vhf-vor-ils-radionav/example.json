@@ -1,0 +1,11 @@
+{
+  "id": "arinc429-03-vhf-vor-ils-radionav",
+  "lang": "arinc429",
+  "subFormats": ["arinc429-low"],
+  "difficulty": 3,
+  "title": "Dual-Channel VHF, VOR & ILS Radio Navigation Bus",
+  "description": "Mixed BCD and BNR ARINC 429 radio navigation bus encoding tuned ILS/VOR frequency (034), VHF comm frequency (035), localizer deviation (173), and glideslope deviation (174).",
+  "category": "Radio Navigation",
+  "tags": ["arinc429", "ils", "vor", "bcd", "bnr"],
+  "activeFile": "ils_radionav.a429"
+}

@@ -1,0 +1,17 @@
+@prefix req: <http://modelscript.dev/ontology/req#> .
+@prefix arch: <http://modelscript.dev/ontology/arch#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+req:REQ_BRAKE_01 a req:SafetyRequirement ;
+  rdfs:label "Emergency Braking Deceleration >= 8.5 m/s^2" .
+
+req:REQ_THERM_02 a req:SafetyRequirement ;
+  rdfs:label "Battery Cell Peak Temperature <= 55 C" .
+
+req:TC_BRAKE_HIL a req:VerificationTest ;
+  req:verifies req:REQ_BRAKE_01 ;
+  req:testsComponent arch:BrakeActuatorUnit .
+
+req:TC_THERM_CHAMBER a req:VerificationTest ;
+  req:verifies req:REQ_THERM_02 ;
+  req:testsComponent arch:BatteryCoolingLoop .

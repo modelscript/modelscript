@@ -1,0 +1,12 @@
+{
+  "id": "trasys-01-parallel-plates-view-factor",
+  "lang": "trasys",
+  "subFormats": ["trasys"],
+  "difficulty": 1,
+  "title": "Two Parallel Radiating Plates View Factor (F12)",
+  "description": "Classical analytical benchmark of two facing 1 m x 1 m parallel square plates separated by 1 m for Monte Carlo form-factor (FFCAL) and RADK verification.",
+  "category": "Spacecraft Radiation Analysis",
+  "tags": ["trasys", "view-factor", "ffcal", "radiation"],
+  "activeFile": "parallel_plates.tra",
+  "isDefaultStarter": true
+}

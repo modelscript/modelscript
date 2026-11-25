@@ -1,0 +1,4 @@
+route_id,agency_id,route_short_name,route_long_name,route_type
+R_METRO,BAY_MULTI,M1,Blue Line Heavy Metro,1
+R_TRAM,BAY_MULTI,F,Historic Waterfront Tram,0
+R_FERRY,BAY_MULTI,BAY1,Electric Bay Catamaran Ferry,4

@@ -1,0 +1,30 @@
+2D Enhanced Geothermal Reservoir Injector-Producer Doublet
+ROCKS
+GRANI    2680.0      0.04 2.0E-15 2.0E-15 1.0E-15       3.0     850.0
+FRACZ    2650.0      0.15 2.5E-13 2.5E-13 8.0E-14       2.7     880.0
+ELEME
+G1  1FRACZ 4.0E+04
+G1  2FRACZ 4.0E+04
+G1  3FRACZ 4.0E+04
+G2  1GRANI 4.0E+04
+G2  2GRANI 4.0E+04
+G2  3GRANI 4.0E+04
+CONNE
+G1  1G1  2 75.0 75.0 8.0E+02       0.0
+G1  2G1  3 75.0 75.0 8.0E+02       0.0
+G2  1G2  2 75.0 75.0 8.0E+02       0.0
+G2  2G2  3 75.0 75.0 8.0E+02       0.0
+G1  1G2  1 40.0 40.0 1.2E+03       0.0
+G1  2G2  2 40.0 40.0 1.2E+03       0.0
+G1  3G2  3 40.0 40.0 1.2E+03       0.0
+GENER
+G1  1INJ_W MASS       45.0    2.9E+05
+G1  3PRD_W MASS      -45.0    9.8E+05
+INCON
+G1  1        2.4E+07       210.0
+G1  2        2.4E+07       215.0
+G1  3        2.4E+07       220.0
+G2  1        2.4E+07       212.0
+G2  2        2.4E+07       218.0
+G2  3        2.4E+07       222.0
+ENDCY

@@ -1,0 +1,11 @@
+{
+  "id": "ampl-04-portfolio-markowitz-qp",
+  "lang": "ampl",
+  "subFormats": ["mod", "dat"],
+  "difficulty": 4,
+  "title": "Markowitz Mean-Variance Portfolio QP",
+  "description": "Convex quadratic program allocating capital across asset classes to minimize portfolio variance while achieving a target expected return.",
+  "category": "Nonlinear & Quadratic Programming",
+  "tags": ["ampl", "qp", "nlp", "portfolio", "multi-file"],
+  "activeFile": "portfolio.mod"
+}

@@ -1,0 +1,26 @@
+-- RFC 1155 Structure of Management Information (SMI) Subset
+RFC1155-SMI { iso(1) org(3) dod(6) internet(1) mgmt(2) 1 }
+DEFINITIONS EXPLICIT TAGS ::= BEGIN
+
+EXPORTS ObjectName, ObjectSyntax, NetworkAddress, Counter, Gauge, TimeTicks;
+
+ObjectName ::= OBJECT IDENTIFIER
+
+NetworkAddress ::= CHOICE {
+  internet [0] OCTET STRING (SIZE (4))
+}
+
+Counter ::= INTEGER (0..4294967295)
+Gauge ::= INTEGER (0..4294967295)
+TimeTicks ::= INTEGER (0..4294967295)
+
+ObjectSyntax ::= CHOICE {
+  number    [0] INTEGER,
+  string    [1] OCTET STRING,
+  object    [2] OBJECT IDENTIFIER,
+  empty     [3] NULL,
+  counter   [4] Counter,
+  timeticks [5] TimeTicks
+}
+
+END

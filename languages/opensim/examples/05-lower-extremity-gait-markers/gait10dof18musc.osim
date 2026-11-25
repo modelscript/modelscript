@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSimDocument Version="40000">
+  <Model name="gait10dof18musc">
+    <gravity>0 -9.80665 0</gravity>
+    <BodySet>
+      <objects>
+        <Body name="pelvis">
+          <mass>11.777</mass>
+          <mass_center>-0.0707 0 0</mass_center>
+          <inertia>0.1028 0.0871 0.0579 0 0 0</inertia>
+        </Body>
+        <Body name="torso">
+          <mass>34.237</mass>
+          <mass_center>-0.0300 0.3200 0</mass_center>
+          <inertia>1.4745 0.7555 1.4314 0 0 0</inertia>
+        </Body>
+        <Body name="femur_r">
+          <mass>9.301</mass>
+          <mass_center>0 -0.1700 0</mass_center>
+          <inertia>0.1339 0.0351 0.1412 0 0 0</inertia>
+        </Body>
+        <Body name="tibia_r">
+          <mass>3.708</mass>
+          <mass_center>0 -0.1867 0</mass_center>
+          <inertia>0.0504 0.0051 0.0511 0 0 0</inertia>
+        </Body>
+        <Body name="calcn_r">
+          <mass>1.250</mass>
+          <mass_center>0.100 0.030 0</mass_center>
+          <inertia>0.0014 0.0039 0.0041 0 0 0</inertia>
+        </Body>
+        <Body name="femur_l">
+          <mass>9.301</mass>
+          <mass_center>0 -0.1700 0</mass_center>
+          <inertia>0.1339 0.0351 0.1412 0 0 0</inertia>
+        </Body>
+        <Body name="tibia_l">
+          <mass>3.708</mass>
+          <mass_center>0 -0.1867 0</mass_center>
+          <inertia>0.0504 0.0051 0.0511 0 0 0</inertia>
+        </Body>
+        <Body name="calcn_l">
+          <mass>1.250</mass>
+          <mass_center>0.100 0.030 0</mass_center>
+          <inertia>0.0014 0.0039 0.0041 0 0 0</inertia>
+        </Body>
+      </objects>
+    </BodySet>
+    <JointSet>
+      <objects>
+        <PlanarJoint name="ground_pelvis">
+          <socket_parent_frame>/ground</socket_parent_frame>
+          <socket_child_frame>/bodyset/pelvis</socket_child_frame>
+          <location_in_parent>0 0.95 0</location_in_parent>
+          <coordinates>
+            <Coordinate name="pelvis_tilt">
+              <motion_type>rotational</motion_type>
+              <default_value>-0.06</default_value>
+              <range>-1.5708 1.5708</range>
+            </Coordinate>
+            <Coordinate name="pelvis_tx">
+              <motion_type>translational</motion_type>
+              <default_value>0.0</default_value>
+              <range>-5.0 25.0</range>
+            </Coordinate>
+            <Coordinate name="pelvis_ty">
+              <motion_type>translational</motion_type>
+              <default_value>0.94</default_value>
+              <range>0.2 1.8</range>
+            </Coordinate>
+          </coordinates>
+        </PlanarJoint>
+        <PinJoint name="back">
+          <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+          <socket_child_frame>/bodyset/torso</socket_child_frame>
+          <location_in_parent>-0.1007 0.0815 0</location_in_parent>
+          <coordinates>
+            <Coordinate name="lumbar_extension">
+              <motion_type>rotational</motion_type>
+              <default_value>-0.03</default_value>
+              <range>-1.5708 1.5708</range>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+        <PinJoint name="hip_r">
+          <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+          <socket_child_frame>/bodyset/femur_r</socket_child_frame>
+          <location_in_parent>-0.0707 -0.0661 0.0835</location_in_parent>
+          <coordinates>
+            <Coordinate name="hip_flexion_r">
+              <motion_type>rotational</motion_type>
+              <default_value>0.30</default_value>
+              <range>-0.5236 2.0944</range>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+        <PinJoint name="knee_r">
+          <socket_parent_frame>/bodyset/femur_r</socket_parent_frame>
+          <socket_child_frame>/bodyset/tibia_r</socket_child_frame>
+          <location_in_parent>0 -0.400 0</location_in_parent>
+          <coordinates>
+            <Coordinate name="knee_angle_r">
+              <motion_type>rotational</motion_type>
+              <default_value>-0.15</default_value>
+              <range>-2.0944 0.1745</range>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+        <PinJoint name="ankle_r">
+          <socket_parent_frame>/bodyset/tibia_r</socket_parent_frame>
+          <socket_child_frame>/bodyset/calcn_r</socket_child_frame>
+          <location_in_parent>0 -0.430 0</location_in_parent>
+          <coordinates>
+            <Coordinate name="ankle_angle_r">
+              <motion_type>rotational</motion_type>
+              <default_value>0.02</default_value>
+              <range>-1.5708 1.5708</range>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+        <PinJoint name="hip_l">
+          <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+          <socket_child_frame>/bodyset/femur_l</socket_child_frame>
+          <location_in_parent>-0.0707 -0.0661 -0.0835</location_in_parent>
+          <coordinates>
+            <Coordinate name="hip_flexion_l">
+              <motion_type>rotational</motion_type>
+              <default_value>-0.18</default_value>
+              <range>-0.5236 2.0944</range>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+        <PinJoint name="knee_l">
+          <socket_parent_frame>/bodyset/femur_l</socket_parent_frame>
+          <socket_child_frame>/bodyset/tibia_l</socket_child_frame>
+          <location_in_parent>0 -0.400 0</location_in_parent>
+          <coordinates>
+            <Coordinate name="knee_angle_l">
+              <motion_type>rotational</motion_type>
+              <default_value>-0.20</default_value>
+              <range>-2.0944 0.1745</range>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+        <PinJoint name="ankle_l">
+          <socket_parent_frame>/bodyset/tibia_l</socket_parent_frame>
+          <socket_child_frame>/bodyset/calcn_l</socket_child_frame>
+          <location_in_parent>0 -0.430 0</location_in_parent>
+          <coordinates>
+            <Coordinate name="ankle_angle_l">
+              <motion_type>rotational</motion_type>
+              <default_value>-0.08</default_value>
+              <range>-1.5708 1.5708</range>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+      </objects>
+    </JointSet>
+    <ForceSet>
+      <objects>
+        <Thelen2003Muscle name="hamstrings_r">
+          <max_isometric_force>2594.0</max_isometric_force>
+          <optimal_fiber_length>0.080</optimal_fiber_length>
+          <tendon_slack_length>0.359</tendon_slack_length>
+          <pennation_angle_at_optimal>0.2618</pennation_angle_at_optimal>
+          <activation_time_constant>0.010</activation_time_constant>
+          <deactivation_time_constant>0.040</deactivation_time_constant>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="ham_r_P1">
+                  <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+                  <location>-0.125 -0.102 0.069</location>
+                </PathPoint>
+                <PathPoint name="ham_r_P2">
+                  <socket_parent_frame>/bodyset/tibia_r</socket_parent_frame>
+                  <location>-0.024 -0.054 -0.018</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+        <Thelen2003Muscle name="rect_fem_r">
+          <max_isometric_force>1169.0</max_isometric_force>
+          <optimal_fiber_length>0.084</optimal_fiber_length>
+          <tendon_slack_length>0.346</tendon_slack_length>
+          <pennation_angle_at_optimal>0.0873</pennation_angle_at_optimal>
+          <activation_time_constant>0.010</activation_time_constant>
+          <deactivation_time_constant>0.040</deactivation_time_constant>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="rf_r_P1">
+                  <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+                  <location>-0.029 -0.031 0.097</location>
+                </PathPoint>
+                <PathPoint name="rf_r_P2">
+                  <socket_parent_frame>/bodyset/tibia_r</socket_parent_frame>
+                  <location>0.039 -0.065 0.004</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+        <Thelen2003Muscle name="gastroc_r">
+          <max_isometric_force>1558.0</max_isometric_force>
+          <optimal_fiber_length>0.045</optimal_fiber_length>
+          <tendon_slack_length>0.408</tendon_slack_length>
+          <pennation_angle_at_optimal>0.2967</pennation_angle_at_optimal>
+          <activation_time_constant>0.010</activation_time_constant>
+          <deactivation_time_constant>0.040</deactivation_time_constant>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="gas_r_P1">
+                  <socket_parent_frame>/bodyset/femur_r</socket_parent_frame>
+                  <location>-0.019 -0.392 0.023</location>
+                </PathPoint>
+                <PathPoint name="gas_r_P2">
+                  <socket_parent_frame>/bodyset/calcn_r</socket_parent_frame>
+                  <location>0.004 0.031 -0.005</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+        <Thelen2003Muscle name="soleus_r">
+          <max_isometric_force>3549.0</max_isometric_force>
+          <optimal_fiber_length>0.050</optimal_fiber_length>
+          <tendon_slack_length>0.250</tendon_slack_length>
+          <pennation_angle_at_optimal>0.4363</pennation_angle_at_optimal>
+          <activation_time_constant>0.012</activation_time_constant>
+          <deactivation_time_constant>0.045</deactivation_time_constant>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="sol_r_P1">
+                  <socket_parent_frame>/bodyset/tibia_r</socket_parent_frame>
+                  <location>-0.002 -0.153 0.007</location>
+                </PathPoint>
+                <PathPoint name="sol_r_P2">
+                  <socket_parent_frame>/bodyset/calcn_r</socket_parent_frame>
+                  <location>0.004 0.031 -0.005</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+        <Thelen2003Muscle name="tib_ant_r">
+          <max_isometric_force>905.0</max_isometric_force>
+          <optimal_fiber_length>0.098</optimal_fiber_length>
+          <tendon_slack_length>0.223</tendon_slack_length>
+          <pennation_angle_at_optimal>0.0873</pennation_angle_at_optimal>
+          <activation_time_constant>0.010</activation_time_constant>
+          <deactivation_time_constant>0.040</deactivation_time_constant>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="ta_r_P1">
+                  <socket_parent_frame>/bodyset/tibia_r</socket_parent_frame>
+                  <location>0.018 -0.162 0.012</location>
+                </PathPoint>
+                <PathPoint name="ta_r_P2">
+                  <socket_parent_frame>/bodyset/calcn_r</socket_parent_frame>
+                  <location>0.116 0.018 -0.030</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+        <Thelen2003Muscle name="hamstrings_l">
+          <max_isometric_force>2594.0</max_isometric_force>
+          <optimal_fiber_length>0.080</optimal_fiber_length>
+          <tendon_slack_length>0.359</tendon_slack_length>
+          <pennation_angle_at_optimal>0.2618</pennation_angle_at_optimal>
+          <activation_time_constant>0.010</activation_time_constant>
+          <deactivation_time_constant>0.040</deactivation_time_constant>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="ham_l_P1">
+                  <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+                  <location>-0.125 -0.102 -0.069</location>
+                </PathPoint>
+                <PathPoint name="ham_l_P2">
+                  <socket_parent_frame>/bodyset/tibia_l</socket_parent_frame>
+                  <location>-0.024 -0.054 0.018</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+        <Thelen2003Muscle name="soleus_l">
+          <max_isometric_force>3549.0</max_isometric_force>
+          <optimal_fiber_length>0.050</optimal_fiber_length>
+          <tendon_slack_length>0.250</tendon_slack_length>
+          <pennation_angle_at_optimal>0.4363</pennation_angle_at_optimal>
+          <activation_time_constant>0.012</activation_time_constant>
+          <deactivation_time_constant>0.045</deactivation_time_constant>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="sol_l_P1">
+                  <socket_parent_frame>/bodyset/tibia_l</socket_parent_frame>
+                  <location>-0.002 -0.153 -0.007</location>
+                </PathPoint>
+                <PathPoint name="sol_l_P2">
+                  <socket_parent_frame>/bodyset/calcn_l</socket_parent_frame>
+                  <location>0.004 0.031 0.005</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+      </objects>
+    </ForceSet>
+    <MarkerSet>
+      <objects>
+        <Marker name="R.ASIS">
+          <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+          <location>0.002 0.030 0.128</location>
+        </Marker>
+        <Marker name="L.ASIS">
+          <socket_parent_frame>/bodyset/pelvis</socket_parent_frame>
+          <location>0.002 0.030 -0.128</location>
+        </Marker>
+        <Marker name="R.Knee.Lat">
+          <socket_parent_frame>/bodyset/femur_r</socket_parent_frame>
+          <location>0.004 -0.398 0.055</location>
+        </Marker>
+        <Marker name="R.Ankle.Lat">
+          <socket_parent_frame>/bodyset/tibia_r</socket_parent_frame>
+          <location>-0.004 -0.425 0.042</location>
+        </Marker>
+        <Marker name="R.Heel">
+          <socket_parent_frame>/bodyset/calcn_r</socket_parent_frame>
+          <location>-0.015 0.025 0.000</location>
+        </Marker>
+      </objects>
+    </MarkerSet>
+  </Model>
+</OpenSimDocument>

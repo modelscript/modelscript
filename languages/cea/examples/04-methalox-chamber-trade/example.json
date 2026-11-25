@@ -1,0 +1,11 @@
+{
+  "id": "cea-04-methalox-chamber-trade",
+  "lang": "cea",
+  "subFormats": ["cea2", "rocket", "trade-study"],
+  "difficulty": 4,
+  "title": "LOX/CH4 Methalox Chamber Pressure and Area Ratio Trade",
+  "description": "Reusable booster LOX/liquid-methane rocket propulsion parametric trade across chamber pressures (100, 200, 300 bar), O/F ratios, and nozzle area ratios.",
+  "category": "Rocket Propulsion",
+  "tags": ["cea", "methalox", "rocket", "trade-study"],
+  "activeFile": "methalox_trade.cea"
+}

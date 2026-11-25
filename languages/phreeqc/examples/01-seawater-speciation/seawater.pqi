@@ -1,0 +1,16 @@
+TITLE Standard Seawater Aqueous Speciation at 25 C
+# Major ion composition of standard mean ocean water (SMOW)
+SOLUTION 1 Standard Seawater
+    temp      25.0
+    pH        8.1
+    pe        8.45
+    units     mmol/kgw
+    Na        468.0
+    Mg        53.2
+    Ca        10.3
+    K         10.2
+    Cl        546.0
+    S(6)      28.2
+    C(4)      2.3
+
+END

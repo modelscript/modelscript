@@ -1,0 +1,11 @@
+{
+  "id": "ibis-02-lvds-differential-pair",
+  "lang": "ibis",
+  "subFormats": ["ibs"],
+  "difficulty": 2,
+  "title": "LVDS 1.8V Differential Driver & Receiver Pair",
+  "description": "High-speed LVDS differential transmitter and receiver IBIS model with 100 ohm differential load ramp characterization and matched pin parasitics.",
+  "category": "High-Speed Differential I/O",
+  "tags": ["ibis", "lvds", "differential", "transceiver"],
+  "activeFile": "lvds_pair.ibs"
+}

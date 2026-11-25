@@ -1,0 +1,12 @@
+{
+  "id": "topas-01-proton-bragg-peak",
+  "lang": "topas",
+  "subFormats": ["topas"],
+  "difficulty": 1,
+  "title": "150 MeV Proton Bragg Peak in Water Phantom",
+  "description": "Monoenergetic 150 MeV clinical proton beam impinging on a 30x30x40 cm Geant4 G4_WATER phantom with a DoseToWater depth-dose Bragg peak scorer.",
+  "category": "Medical Physics & Monte Carlo",
+  "tags": ["topas", "proton-therapy", "bragg-peak", "geant4"],
+  "activeFile": "bragg_peak.topas",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "esl-01-rl-circuit",
+    "lang": "esl",
+    "subFormats": ["esl"],
+    "difficulty": 1,
+    "title": "Linear RL Circuit Transient",
+    "description": "First-order inductive-resistive electrical step response modeled in ESA ESL using prime derivative notation and constant parameters.",
+    "category": "Electrical Circuits",
+    "tags": ["esl", "rl-circuit", "first-order", "ode"],
+    "activeFile": "rl_circuit.esl",
+    "fileNames": ["rl_circuit.esl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "-- ESA ESL Linear Series RL Circuit Step Transient\nMODEL RLCircuit\n  CONSTANT REAL: R = 12.0;      -- Resistance (Ohm)\n  CONSTANT REAL: L = 0.08;      -- Inductance (H)\n  CONSTANT REAL: VIN = 24.0;    -- Step supply voltage (V)\n  REAL: i_curr, v_ind, power_r;\nINITIAL\n  i_curr = 0.0;\nDYNAMIC\n  i_curr' = (VIN - R * i_curr) / L;\n  v_ind = VIN - R * i_curr;\n  power_r = R * i_curr ** 2;\nTERMINAL\n  v_ind = 0.0;\nEND MODEL RLCircuit\n"
+  },
+  {
+    "id": "esl-02-bouncing-ball",
+    "lang": "esl",
+    "subFormats": ["esl"],
+    "difficulty": 2,
+    "title": "Bouncing Ball with Discontinuity WHEN Re-Initialization",
+    "description": "Hybrid continuous-discrete elastic bouncing ball under gravity using an ESA ESL WHEN zero-crossing block to re-initialize velocity upon ground impact.",
+    "category": "Hybrid Systems",
+    "tags": ["esl", "bouncing-ball", "when", "hybrid", "discontinuity"],
+    "activeFile": "bouncing_ball.esl",
+    "fileNames": ["bouncing_ball.esl"],
+    "fileCount": 1,
+    "code": "-- ESA ESL Hybrid Bouncing Ball with Coefficient of Restitution\nMODEL BouncingBall\n  CONSTANT REAL: g = 9.80665;   -- Gravitational acceleration (m/s^2)\n  CONSTANT REAL: e = 0.82;      -- Coefficient of restitution\n  REAL: y, v;\n  INTEGER: bounces = 0;\nINITIAL\n  y = 5.0;\n  v = 0.0;\nDYNAMIC\n  y' = v;\n  v' = -g;\n  WHEN y <= 0.0 AND v < 0.0 THEN\n    v := -e * v;\n    y := 0.0;\n    bounces := bounces + 1;\n  END_WHEN\nEND MODEL BouncingBall\n"
+  },
+  {
+    "id": "esl-03-thermostat-hysteresis",
+    "lang": "esl",
+    "subFormats": ["esl"],
+    "difficulty": 3,
+    "title": "Thermostat Hysteresis Room Heating",
+    "description": "Thermal room heating plant coupled to a reusable ESL SUBMODEL controller with deadband hysteresis switching via WHEN discontinuity events.",
+    "category": "Thermal Control",
+    "tags": ["esl", "thermostat", "hysteresis", "submodel", "when"],
+    "activeFile": "thermostat.esl",
+    "fileNames": ["thermostat.esl"],
+    "fileCount": 1,
+    "code": "-- ESA ESL Thermostat-Controlled Room Heating with Hysteresis Submodel\nSTUDY RoomHeatingStudy\n  SUBMODEL HeaterPower(IN REAL: cmd; IN REAL: p_max; OUT REAL: q_heat)\n  DYNAMIC\n    q_heat = cmd * p_max;\n  END SUBMODEL HeaterPower\n\n  MODEL ThermalRoom\n    CONSTANT REAL: C_TH = 18000.0;  -- Room thermal capacitance (J/K)\n    CONSTANT REAL: G_LOSS = 45.0;   -- Wall conductance (W/K)\n    CONSTANT REAL: T_AMB = 5.0;     -- Outdoor temperature (C)\n    CONSTANT REAL: P_MAX = 2500.0;  -- Heater rated power (W)\n    CONSTANT REAL: T_LOW = 19.5;    -- Lower hysteresis threshold (C)\n    CONSTANT REAL: T_HIGH = 21.5;   -- Upper hysteresis threshold (C)\n    REAL: temp, q_heat, heater_cmd;\n  INITIAL\n    temp = 16.0;\n    heater_cmd = 1.0;\n  DYNAMIC\n    HeaterPower(heater_cmd, P_MAX, q_heat);\n    temp' = (q_heat - G_LOSS * (temp - T_AMB)) / C_TH;\n    WHEN temp >= T_HIGH THEN\n      heater_cmd := 0.0;\n    END_WHEN\n    WHEN temp <= T_LOW THEN\n      heater_cmd := 1.0;\n    END_WHEN\n  END MODEL ThermalRoom\nEND STUDY RoomHeatingStudy\n"
+  },
+  {
+    "id": "esl-04-satellite-eclipse",
+    "lang": "esl",
+    "subFormats": ["esl"],
+    "difficulty": 4,
+    "title": "Satellite Solar Array Eclipse Battery Cycling",
+    "description": "Low-Earth-orbit spacecraft electrical power subsystem modeling orbital sunlit/eclipse switching, battery state-of-charge dynamics, and thermal bus balance.",
+    "category": "Spacecraft Power",
+    "tags": ["esl", "satellite", "eclipse", "battery", "package"],
+    "activeFile": "satellite_eclipse.esl",
+    "fileNames": ["satellite_eclipse.esl"],
+    "fileCount": 1,
+    "code": "-- ESA ESL LEO Satellite Solar Array Eclipse & Battery SOC Cycling\nSTUDY LeoPowerStudy\n  PACKAGE OrbitParams\n    CONSTANT REAL: P_SOLAR = 480.0;  -- Illuminated solar array power (W)\n    CONSTANT REAL: P_LOAD = 260.0;   -- Nominal bus payload power (W)\n    CONSTANT REAL: E_CAP = 360000.0; -- Battery energy capacity (J)\n    CONSTANT REAL: ETA_CHG = 0.92;   -- Charge efficiency\n    CONSTANT REAL: OMEGA_O = 0.0011; -- Orbital angular rate (rad/s)\n  END PACKAGE OrbitParams\n\n  MODEL PowerBus\n    CONSTANT REAL: P_SOLAR = 480.0;\n    CONSTANT REAL: P_LOAD = 260.0;\n    CONSTANT REAL: E_CAP = 360000.0;\n    CONSTANT REAL: ETA_CHG = 0.92;\n    CONSTANT REAL: OMEGA_O = 0.0011;\n    REAL: phase, soc, p_net, sunlit;\n  INITIAL\n    phase = 0.0;\n    soc = 0.85;\n    sunlit = 1.0;\n  DYNAMIC\n    phase' = OMEGA_O;\n    IF sunlit > 0.5 THEN\n      p_net = ETA_CHG * (P_SOLAR - P_LOAD);\n    ELSE\n      p_net = -P_LOAD;\n    END_IF\n    soc' = p_net / E_CAP;\n    WHEN phase >= 3.8 THEN\n      sunlit := 0.0;\n    END_WHEN\n    WHEN phase >= 6.28318 THEN\n      phase := 0.0;\n      sunlit := 1.0;\n    END_WHEN\n  END MODEL PowerBus\nEND STUDY LeoPowerStudy\n"
+  },
+  {
+    "id": "esl-05-electro-hydraulic",
+    "lang": "esl",
+    "subFormats": ["esl"],
+    "difficulty": 5,
+    "title": "Modular Electro-Hydraulic Actuator",
+    "description": "Multi-file ESA ESL electro-hydraulic flight-control actuator combining a proportional spool-valve submodel, hydraulic chamber compressibility, and piston load dynamics.",
+    "category": "Fluid Power & Aerospace",
+    "tags": ["esl", "hydraulic", "actuator", "submodel", "multi-file"],
+    "activeFile": "system.esl",
+    "fileNames": ["system.esl", "valve_submodel.esl"],
+    "fileCount": 2,
+    "code": "-- ESA ESL Modular Electro-Hydraulic Flight Control Actuator Study\nSTUDY ElectroHydraulicStudy\n  PACKAGE HydraulicConstants\n    CONSTANT REAL: P_SUPPLY = 21.0e6; -- Supply pressure (Pa)\n    CONSTANT REAL: BETA_OIL = 1.4e9;  -- Hydraulic bulk modulus (Pa)\n    CONSTANT REAL: A_PISTON = 0.002;  -- Piston area (m^2)\n    CONSTANT REAL: V_CHAMBER = 0.0008;-- Effective chamber volume (m^3)\n  END PACKAGE HydraulicConstants\n\n  SUBMODEL ServoValve(IN REAL: cmd; IN REAL: kv; OUT REAL: q_flow)\n  DYNAMIC\n    q_flow = kv * cmd;\n  END SUBMODEL ServoValve\n\n  MODEL ActuatorSystem\n    CONSTANT REAL: KV = 0.0018;\n    CONSTANT REAL: KP = 14.0;\n    CONSTANT REAL: KD = 0.35;\n    CONSTANT REAL: BETA_OIL = 1.4e9;\n    CONSTANT REAL: A_PISTON = 0.002;\n    CONSTANT REAL: V_CHAMBER = 0.0008;\n    CONSTANT REAL: MASS = 12.0;\n    CONSTANT REAL: DAMP = 65.0;\n    CONSTANT REAL: X_REF = 0.05;\n    REAL: x_pos, v_pos, delta_p, cmd, q_flow;\n  INITIAL\n    x_pos = 0.0;\n    v_pos = 0.0;\n    delta_p = 0.0;\n  DYNAMIC\n    cmd = KP * (X_REF - x_pos) - KD * v_pos;\n    ServoValve(cmd, KV, q_flow);\n    delta_p' = (BETA_OIL / V_CHAMBER) * (q_flow - A_PISTON * v_pos);\n    x_pos' = v_pos;\n    v_pos' = (A_PISTON * delta_p - DAMP * v_pos) / MASS;\n    WHEN x_pos >= 0.095 THEN\n      x_pos := 0.095;\n      v_pos := 0.0;\n    END_WHEN\n  END MODEL ActuatorSystem\nEND STUDY ElectroHydraulicStudy\n",
+    "files": {
+      "system.esl": "-- ESA ESL Modular Electro-Hydraulic Flight Control Actuator Study\nSTUDY ElectroHydraulicStudy\n  PACKAGE HydraulicConstants\n    CONSTANT REAL: P_SUPPLY = 21.0e6; -- Supply pressure (Pa)\n    CONSTANT REAL: BETA_OIL = 1.4e9;  -- Hydraulic bulk modulus (Pa)\n    CONSTANT REAL: A_PISTON = 0.002;  -- Piston area (m^2)\n    CONSTANT REAL: V_CHAMBER = 0.0008;-- Effective chamber volume (m^3)\n  END PACKAGE HydraulicConstants\n\n  SUBMODEL ServoValve(IN REAL: cmd; IN REAL: kv; OUT REAL: q_flow)\n  DYNAMIC\n    q_flow = kv * cmd;\n  END SUBMODEL ServoValve\n\n  MODEL ActuatorSystem\n    CONSTANT REAL: KV = 0.0018;\n    CONSTANT REAL: KP = 14.0;\n    CONSTANT REAL: KD = 0.35;\n    CONSTANT REAL: BETA_OIL = 1.4e9;\n    CONSTANT REAL: A_PISTON = 0.002;\n    CONSTANT REAL: V_CHAMBER = 0.0008;\n    CONSTANT REAL: MASS = 12.0;\n    CONSTANT REAL: DAMP = 65.0;\n    CONSTANT REAL: X_REF = 0.05;\n    REAL: x_pos, v_pos, delta_p, cmd, q_flow;\n  INITIAL\n    x_pos = 0.0;\n    v_pos = 0.0;\n    delta_p = 0.0;\n  DYNAMIC\n    cmd = KP * (X_REF - x_pos) - KD * v_pos;\n    ServoValve(cmd, KV, q_flow);\n    delta_p' = (BETA_OIL / V_CHAMBER) * (q_flow - A_PISTON * v_pos);\n    x_pos' = v_pos;\n    v_pos' = (A_PISTON * delta_p - DAMP * v_pos) / MASS;\n    WHEN x_pos >= 0.095 THEN\n      x_pos := 0.095;\n      v_pos := 0.0;\n    END_WHEN\n  END MODEL ActuatorSystem\nEND STUDY ElectroHydraulicStudy\n",
+      "valve_submodel.esl": "-- Companion Reusable Spool-Valve Submodel Module for Electro-Hydraulic Actuator\nSTUDY ValveLibrary\n  SUBMODEL ProportionalSpoolValve(IN REAL: u_err; IN REAL: tau_v; IN REAL: kv; OUT REAL: q_out)\n    REAL: x_spool;\n  DYNAMIC\n    x_spool' = (u_err - x_spool) / tau_v;\n    q_out = kv * x_spool;\n  END SUBMODEL ProportionalSpoolValve\nEND STUDY ValveLibrary\n"
+    }
+  }
+]

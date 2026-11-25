@@ -587,7 +587,7 @@ export const Owl2Panel: React.FC<LanguagePanelProps> = ({
     }
   }, [model, selectedClassIri, selectedPropIri, selectedIndIri]);
 
-  // Listen to Morsel toolbar actions so clicking "Reasoner" or "SPARQL Query" activates the right tab
+  // Listen to Ansatz toolbar actions so clicking "Reasoner" or "SPARQL Query" activates the right tab
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handler = (ev: Event) => {
@@ -600,8 +600,8 @@ export const Owl2Panel: React.FC<LanguagePanelProps> = ({
         setActiveTab("query");
       }
     };
-    window.addEventListener("morsel:toolbar-action-result", handler);
-    return () => window.removeEventListener("morsel:toolbar-action-result", handler);
+    window.addEventListener("ansatz:toolbar-action-result", handler);
+    return () => window.removeEventListener("ansatz:toolbar-action-result", handler);
   }, []);
 
   const title =
@@ -743,9 +743,9 @@ export const Owl2Panel: React.FC<LanguagePanelProps> = ({
                 Export SVG
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "owl2", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "owl2", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

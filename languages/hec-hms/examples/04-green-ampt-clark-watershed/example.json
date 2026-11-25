@@ -1,0 +1,11 @@
+{
+  "id": "hec-hms-04-green-ampt-clark-watershed",
+  "lang": "hec-hms",
+  "subFormats": ["hms", "basin", "met", "control"],
+  "difficulty": 4,
+  "title": "Green-Ampt Infiltration & Clark Unit Hydrograph Watershed",
+  "description": "Three-subbasin mixed forest-agricultural watershed pairing physically based Green-Ampt infiltration, Clark unit hydrograph transform, and multi-reach Muskingum routing.",
+  "category": "Watershed Hydrology",
+  "tags": ["hec-hms", "green-ampt", "clark-uh", "muskingum", "multi-file"],
+  "activeFile": "clark.basin"
+}

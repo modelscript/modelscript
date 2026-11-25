@@ -1,0 +1,11 @@
+{
+  "id": "automationml-03-assembly-cell-role-lib",
+  "lang": "automationml",
+  "subFormats": ["aml", "caex"],
+  "difficulty": 3,
+  "title": "Assembly Cell Referencing External Standard RoleClassLib",
+  "description": "Multi-file IEC 62714 AutomationML assembly cell topology linking via ExternalReference to a companion AutomationMLBaseRoleClassLib library defining PPR (Product-Process-Resource) role classes.",
+  "category": "Modular Plant Engineering",
+  "tags": ["automationml", "caex", "role-class-lib", "ppr", "multi-file"],
+  "activeFile": "cell.aml"
+}

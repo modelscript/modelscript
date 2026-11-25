@@ -1,0 +1,15 @@
+# Custom Geothermal Mineral Thermodynamic Database
+PHASES
+Quartz
+    SiO2 + 2 H2O = H4SiO4
+    log_k       -3.98
+    delta_h     5.99 kcal
+SiO2(a)
+    SiO2 + 2 H2O = H4SiO4
+    log_k       -2.71
+    delta_h     3.34 kcal
+Calcite
+    CaCO3 = CO3-2 + Ca+2
+    log_k       -8.48
+    delta_h     -2.297 kcal
+END

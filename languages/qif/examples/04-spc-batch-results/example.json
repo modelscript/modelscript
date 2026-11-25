@@ -1,0 +1,11 @@
+{
+  "id": "qif-04-spc-batch-results",
+  "lang": "qif",
+  "subFormats": ["qif"],
+  "difficulty": 4,
+  "title": "Statistical Process Control (Cp/Cpk) Batch Results",
+  "description": "QIF 3.0 production inspection batch recording multi-serial CMM actual measurements for statistical process capability analysis (Cp/Cpk).",
+  "category": "Quality Engineering & SPC",
+  "tags": ["qif", "spc", "cpk", "production-batch", "results"],
+  "activeFile": "spc_batch.qif"
+}

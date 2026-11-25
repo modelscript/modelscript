@@ -1,0 +1,73 @@
+[
+  {
+    "id": "segy-01-ricker-wavelet-zero-offset",
+    "lang": "segy",
+    "subFormats": ["sgy"],
+    "difficulty": 1,
+    "title": "Single Ricker Wavelet Zero-Offset Seismic Trace",
+    "description": "SEG-Y Rev 1.0 textual reel header specification for a zero-offset synthetic 30 Hz Ricker wavelet seismic trace sampled at 2 ms (2000 us) in IEEE 32-bit floating-point format.",
+    "category": "Seismic & Subsurface Geophysics",
+    "tags": ["segy", "ricker-wavelet", "zero-offset", "geophysics"],
+    "activeFile": "ricker_zero_offset.sgy",
+    "fileNames": ["ricker_zero_offset.sgy"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "C 1 CLIENT: ANSATZ GEOPHYSICS LAB             COMPANY: SYNTHETIC SEISMIC\nC 2 LINE: ZERO-OFFSET-01                      AREA: CALIBRATION TEST BENCH\nC 3 SURVEY: 1D ZERO-OFFSET RICKER WAVELET     DATE: 2026-01-15\nC 4 INSTRUMENT: SYNTHETIC ACOUSTIC MODELER    SAMPLE INTERVAL: 2000 US (2 MS)\nC 5 TRACE LENGTH: 1000 MS                     SAMPLES PER TRACE: 501\nC 6 FORMAT: 5 (IEEE 32-BIT FLOATING POINT)    MEASUREMENT SYSTEM: METERS\nC 7 WAVELET: ZERO-PHASE RICKER                DOMINANT FREQUENCY: 30 HZ\nC 8 REFLECTOR DEPTH: 750 M                    VELOCITY: 2500 M/S\nC 9 TWO-WAY TRAVEL TIME (TWT): 600 MS         REFLECTION COEFF: +0.25\nC10 TRACES IN FILE: 1                         FOLD: 1\nC11 POLARITY: SEG NORMAL (PEAK = POSITIVE RC)\nC12 DATUM ELEVATION: 0.0 M MSL\nC13 PROCESSING: NONE (RAW SYNTHETIC ZERO-OFFSET TRACE)\nC14 COORDINATE REFERENCE SYSTEM: LOCAL CARTESIAN (METERS)\nC15 INLINE RANGE: 1 - 1                       CROSSLINE RANGE: 1 - 1\nC16 SOURCE TYPE: IMPULSIVE EXPLOSIVE POINT    RECEIVER: VERTICAL GEOPHONE\nC17\nC18\nC19\nC20\nC21\nC22\nC23\nC24\nC25\nC26\nC27\nC28\nC29\nC30\nC31\nC32\nC33\nC34\nC35\nC36\nC37\nC38\nC39 SEG Y REV1\nC40 END TEXTUAL HEADER\n"
+  },
+  {
+    "id": "segy-02-two-layer-acoustic-reflector",
+    "lang": "segy",
+    "subFormats": ["sgy"],
+    "difficulty": 2,
+    "title": "Horizontal Two-Layer Acoustic Reflector 2D Section",
+    "description": "SEG-Y Rev 1.0 textual reel header for a 5-trace flat-horizon acoustic reflection survey imaging a sandstone-over-limestone interface (Vp1=2200 m/s, Vp2=3800 m/s) at 1100 m depth.",
+    "category": "Seismic & Subsurface Geophysics",
+    "tags": ["segy", "acoustic-reflector", "2d-seismic", "stratigraphy"],
+    "activeFile": "two_layer.sgy",
+    "fileNames": ["two_layer.sgy"],
+    "fileCount": 1,
+    "code": "C 1 CLIENT: MIDCONTINENT EXPLORATION          COMPANY: ANSATZ SEISMIC\nC 2 LINE: FLAT-HORIZON-2D-02                  AREA: PERMIAN SHELF BENCHMARK\nC 3 SURVEY: 2D POST-STACK ACOUSTIC SECTION    DATE: 2026-02-01\nC 4 SAMPLE INTERVAL: 2000 US (2 MS)           TRACE LENGTH: 2000 MS\nC 5 SAMPLES PER TRACE: 1001                   TRACES IN FILE: 5\nC 6 FORMAT: 5 (IEEE 32-BIT FLOATING POINT)    MEASUREMENT SYSTEM: METERS\nC 7 RECEIVER GROUP SPACING: 25.0 M            CDP SPACING: 12.5 M\nC 8 LAYER 1: SANDSTONE VP=2200 M/S RHO=2.20 G/CC  DEPTH 0-1100 M\nC 9 LAYER 2: LIMESTONE VP=3800 M/S RHO=2.60 G/CC  DEPTH >1100 M\nC10 ACOUSTIC IMPEDANCE CONTRAST: RC = +0.343  TWT = 1000 MS\nC11 WAVELET: 25 HZ ZERO-PHASE RICKER          POLARITY: SEG NORMAL\nC12 PROCESSING SEQUENCE:\nC13   1. GEOMETRY ASSIGNMENT (CDP 101 - 105)\nC14   2. SPHERICAL DIVERGENCE GAIN CORRECTION\nC15   3. BANDPASS FILTER 8-12-60-80 HZ\nC16   4. ZERO-OFFSET POST-STACK OUTPUT\nC17 BYTE LOCATIONS (TRACE HEADER):\nC18   BYTES 21-24: CDP NUMBER    BYTES 73-76: SOURCE X (SCALED -100)\nC19   BYTES 81-84: GROUP X       BYTES 181-184: CDP X\nC20\nC21\nC22\nC23\nC24\nC25\nC26\nC27\nC28\nC29\nC30\nC31\nC32\nC33\nC34\nC35\nC36\nC37\nC38\nC39 SEG Y REV1\nC40 END TEXTUAL HEADER\n"
+  },
+  {
+    "id": "segy-03-cmp-hyperbolic-moveout",
+    "lang": "segy",
+    "subFormats": ["sgy"],
+    "difficulty": 3,
+    "title": "Common-Midpoint (CMP) Hyperbolic Moveout Gather",
+    "description": "Pre-stack Common-Midpoint (CMP) 24-fold seismic gather header documenting source-receiver offsets from 100 m to 2400 m, RMS velocity profile for Normal Moveout (NMO) correction, and stretch mute limits.",
+    "category": "Seismic & Subsurface Geophysics",
+    "tags": ["segy", "cmp-gather", "nmo", "velocity-analysis"],
+    "activeFile": "cmp_nmo.sgy",
+    "fileNames": ["cmp_nmo.sgy"],
+    "fileCount": 1,
+    "code": "C 1 CLIENT: OFFSHORE NORTH SEA CONSORTIUM       COMPANY: ANSATZ MARINE\nC 2 LINE: NS-2026-CMP-450                     AREA: VIKING GRABEN\nC 3 SURVEY: PRE-STACK CMP GATHER (NMO TEST)   DATE: 2026-02-14\nC 4 SAMPLE INTERVAL: 4000 US (4 MS)           TRACE LENGTH: 4000 MS\nC 5 SAMPLES PER TRACE: 1001                   TRACES PER GATHER: 24\nC 6 FORMAT: 5 (IEEE 32-BIT FLOATING POINT)    MEASUREMENT SYSTEM: METERS\nC 7 SORT ORDER: CMP ENSEMBLE, OFFSET ASCENDING\nC 8 OFFSET RANGE: 100 M TO 2400 M             OFFSET INCREMENT: 100 M\nC 9 VELOCITY FUNCTION VRMS(T0):\nC10   T0 =  500 MS : VRMS = 1650 M/S  (WATER BOTTOM + SHALLOW CLASTICS)\nC11   T0 = 1200 MS : VRMS = 2150 M/S  (TERTIARY SHALE)\nC12   T0 = 2000 MS : VRMS = 2780 M/S  (TOP CHALK REFLECTOR)\nC13   T0 = 2850 MS : VRMS = 3420 M/S  (BASE CRETACEOUS UNCONFORMITY)\nC14 NMO EQUATION: T(X) = SQRT(T0^2 + X^2 / VRMS^2)\nC15 STRETCH MUTE LIMIT: 30 PERCENT            WATER DEPTH: 145 M\nC16 SOURCE: 3600 CU IN AIRGUN ARRAY AT 6 M    STREAMER DEPTH: 8 M\nC17 PROCESSING:\nC18   1. DE-SIGNATURE AND ZERO-PHASING\nC19   2. SWELL NOISE ATTENUATION (2 HZ LOW-CUT)\nC20   3. SURFACE-RELATED MULTIPLE ELIMINATION (SRME)\nC21   4. OUTPUT PRE-NMO CMP GATHER FOR SEMBLANCE VELOCITY ANALYSIS\nC22\nC23\nC24\nC25\nC26\nC27\nC28\nC29\nC30\nC31\nC32\nC33\nC34\nC35\nC36\nC37\nC38\nC39 SEG Y REV1\nC40 END TEXTUAL HEADER\n"
+  },
+  {
+    "id": "segy-04-dipping-fault-salt-dome",
+    "lang": "segy",
+    "subFormats": ["sgy"],
+    "difficulty": 4,
+    "title": "Dipping Fault and Salt Dome Pre-Stack Depth Migrated 2D Line",
+    "description": "SEG-Y Rev 1.0 header for a deepwater Gulf of Mexico 2D Pre-Stack Depth Migrated (PSDM) seismic line imaging a 4500 m/s halite salt diapir flank and normal growth faults.",
+    "category": "Seismic & Subsurface Geophysics",
+    "tags": ["segy", "salt-dome", "psdm", "structural-geology"],
+    "activeFile": "salt_dome_2d.sgy",
+    "fileNames": ["salt_dome_2d.sgy"],
+    "fileCount": 1,
+    "code": "C 1 CLIENT: DEEPWATER GULF ENERGY             COMPANY: ANSATZ IMAGING\nC 2 LINE: GOM-PSDM-LINE-404                   AREA: GREEN CANYON BLOCK 640\nC 3 SURVEY: 2D KIRCHHOFF PSDM DEPTH SECTION   DATE: 2026-03-01\nC 4 SAMPLE INTERVAL: 5000 US (5 M DEPTH STEP) DEPTH RANGE: 0 - 8000 M TVDSS\nC 5 SAMPLES PER TRACE: 1601                   TOTAL TRACES: 401 (CDP 100-500)\nC 6 FORMAT: 5 (IEEE 32-BIT FLOATING POINT)    MEASUREMENT SYSTEM: METERS\nC 7 CDP SPACING: 12.5 M                       LINE LENGTH: 5000 M\nC 8 GEOLOGICAL MODEL FEATURES:\nC 9   - WATER COLUMN: 0 - 1200 M (VP = 1500 M/S)\nC10   - PLIO-PLEISTOCENE SEDIMENTS: VP = 1800 - 3100 M/S\nC11   - ALLOCHTHONOUS SALT DIAPIR: VP = 4500 M/S, RHO = 2.16 G/CC\nC12   - SUBSALT MIOCENE TURBIDITES: DIPPING 22 DEG AGAINST SALT FLANK\nC13   - LISTRIC NORMAL GROWTH FAULT AT CDP 280 - 340\nC14 MIGRATION ALGORITHM: ANISOTROPIC TTI KIRCHHOFF PSDM (APERTURE 6000 M)\nC15 MAXIMUM MIGRATION DIP: 75 DEGREES         EPSILON: 0.08  DELTA: 0.04\nC16 COORDINATE SYSTEM: NAD27 / UTM ZONE 15N (EPSG:26715)\nC17 TRACE HEADER MAPPING:\nC18   BYTES 181-184: CDP EASTING (M)          BYTES 185-188: CDP NORTHING (M)\nC19   BYTES 189-192: INLINE NUMBER            BYTES 193-196: CROSSLINE NUMBER\nC20 QC STATUS: SALT TOP/BASE PICKED, RESIDUAL MOVEOUT < 1.5 PERCENT\nC21\nC22\nC23\nC24\nC25\nC26\nC27\nC28\nC29\nC30\nC31\nC32\nC33\nC34\nC35\nC36\nC37\nC38\nC39 SEG Y REV1\nC40 END TEXTUAL HEADER\n"
+  },
+  {
+    "id": "segy-05-avo-gas-sand-gather",
+    "lang": "segy",
+    "subFormats": ["sgy"],
+    "difficulty": 5,
+    "title": "Multi-Offset Class III AVO Gas-Sand Bright-Spot Gather",
+    "description": "True-amplitude pre-stack angle gather SEG-Y Rev 1.0 header for quantitative Shuey/Zoeppritz AVO inversion of a Class III bright-spot gas reservoir (Vp/Vs = 1.62) over incidence angles 0 to 42 degrees.",
+    "category": "Seismic & Subsurface Geophysics",
+    "tags": ["segy", "avo", "bright-spot", "rock-physics"],
+    "activeFile": "avo_bright_spot.sgy",
+    "fileNames": ["avo_bright_spot.sgy"],
+    "fileCount": 1,
+    "code": "C 1 CLIENT: ATLANTIC MARGIN RESERVOIR GROUP   COMPANY: ANSATZ ROCK PHYSICS\nC 2 LINE: AVO-ANGLE-GATHER-3D-IL1240          AREA: OFFSHORE NOVA SCOTIA\nC 3 SURVEY: TRUE-AMPLITUDE AVO ANGLE GATHER   DATE: 2026-03-18\nC 4 SAMPLE INTERVAL: 2000 US (2 MS)           TRACE LENGTH: 3000 MS\nC 5 SAMPLES PER TRACE: 1501                   ANGLE STACKS: 15 (0 TO 42 DEG)\nC 6 FORMAT: 5 (IEEE 32-BIT FLOATING POINT)    MEASUREMENT SYSTEM: METERS\nC 7 AMPLITUDE PRESERVATION: TRUE-AMPLITUDE (NO AGC, SURFACE-CONSISTENT GAIN)\nC 8 TARGET RESERVOIR: CLASS III GAS SAND BRIGHT SPOT AT TWT = 1840 MS\nC 9 OVERLYING SHALE:  VP=2650 M/S  VS=1150 M/S  RHO=2.34 G/CC  VP/VS=2.30\nC10 GAS-BEARING SAND: VP=2180 M/S  VS=1345 M/S  RHO=2.04 G/CC  VP/VS=1.62\nC11 BRINE-FILLED LEG: VP=2720 M/S  VS=1310 M/S  RHO=2.24 G/CC  VP/VS=2.08\nC12 SHUEY TWO-TERM AVO SIGNATURE (TOP GAS SAND):\nC13   INTERCEPT R0 = -0.165 (STRONG NEGATIVE TROUGH)\nC14   GRADIENT  G  = -0.242 (AMPLITUDE BRIGHTENING WITH ANGLE)\nC15 ANGLE TRACE INCREMENT: 3 DEGREES (0, 3, 6, ..., 42 DEG)\nC16 WELL TIE CALIBRATION: EXPLORATION WELL NS-4X (CORRELATION R = 0.89)\nC17 PROCESSING FOR QUANTITATIVE INTERPRETATION (QI):\nC18   1. DE-GHOSTING (BROADBAND 4 - 95 HZ)\nC19   2. Q-COMPENSATION (Q = 120)\nC20   3. 3D ANISOTROPIC PRESTACK TIME MIGRATION (PSTM)\nC21   4. RADON DEMULTIPLE + RESIDUAL NMO TRIM STATICS\nC22   5. OFFSET-TO-ANGLE TRANSFORMATION VIA RAY TRACING\nC23 BYTE 37-40: INCIDENCE ANGLE (DEGREES * 100)\nC24\nC25\nC26\nC27\nC28\nC29\nC30\nC31\nC32\nC33\nC34\nC35\nC36\nC37\nC38\nC39 SEG Y REV1\nC40 END TEXTUAL HEADER\n"
+  }
+]

@@ -5,7 +5,7 @@
  *
  * Defines the unified data contracts for projecting formal verification results
  * (continuous reachability flowpipes, dynamic clearance vectors, barrier certificates,
- * and counterexample assemblies) into 3D viewports across Morsel, VS Code, and Artifact Viewers.
+ * and counterexample assemblies) into 3D viewports across Ansatz, VS Code, and Artifact Viewers.
  */
 
 import type { DynamicClearanceReport } from "./dynamic-clearance.js";
@@ -170,31 +170,37 @@ export function toVerification3DOverlay(report: DynamicClearanceReport): Verific
 }
 
 export interface SpatialOracleIntegrityReport {
-  stresses?: Record<
-    string,
-    {
-      maxVonMisesPa: number;
-      allowableYieldStressPa: number;
-      marginOfSafety: number;
-      status: "SAT" | "UNSAT";
-    }
-  > | undefined;
-  deflections?: Record<
-    string,
-    {
-      maxDisplacementMeters: number;
-      allowableDisplacementMeters: number;
-      status: "SAT" | "UNSAT";
-    }
-  > | undefined;
-  solids?: Record<
-    string,
-    {
-      isWatertight: boolean;
-      volumeM3: number;
-      status: "SAT" | "UNSAT";
-    }
-  > | undefined;
+  stresses?:
+    | Record<
+        string,
+        {
+          maxVonMisesPa: number;
+          allowableYieldStressPa: number;
+          marginOfSafety: number;
+          status: "SAT" | "UNSAT";
+        }
+      >
+    | undefined;
+  deflections?:
+    | Record<
+        string,
+        {
+          maxDisplacementMeters: number;
+          allowableDisplacementMeters: number;
+          status: "SAT" | "UNSAT";
+        }
+      >
+    | undefined;
+  solids?:
+    | Record<
+        string,
+        {
+          isWatertight: boolean;
+          volumeM3: number;
+          status: "SAT" | "UNSAT";
+        }
+      >
+    | undefined;
 }
 
 /**

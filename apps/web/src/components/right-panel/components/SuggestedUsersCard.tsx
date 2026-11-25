@@ -3,13 +3,14 @@
 import { Text } from "@primer/react";
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import type { SocialUserRecord } from "../../../api/social";
 import Box from "../../Box";
 import FollowButton from "../../FollowButton";
 import ProfileHoverCard from "../../ProfileHoverCard";
 import { Avatar, Card, CardHeader, CardTitle, PanelList, ProfileNameLink, TrendingItem } from "../styles";
 
 export interface SuggestedUsersCardProps {
-  suggestions: any[];
+  suggestions: SocialUserRecord[];
   currentUsername?: string | undefined;
 }
 
@@ -27,7 +28,7 @@ export const SuggestedUsersCard: React.FC<SuggestedUsersCardProps> = ({ suggesti
           <TrendingItem key={u.id} onClick={() => navigate(`/@${u.username}`)}>
             <ProfileHoverCard username={u.username}>
               <ProfileNameLink to={`/@${u.username}`} style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-                <Avatar $url={u.avatar_url} $letter={u.username.charAt(0).toUpperCase()} />
+                <Avatar $url={u.avatar_url ?? undefined} $letter={u.username.charAt(0).toUpperCase()} />
               </ProfileNameLink>
             </ProfileHoverCard>
             <Box flex={1} minWidth={0} display="flex" flexDirection="column" alignItems="flex-start">

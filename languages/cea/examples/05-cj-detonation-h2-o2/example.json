@@ -1,0 +1,11 @@
+{
+  "id": "cea-05-cj-detonation-h2-o2",
+  "lang": "cea",
+  "subFormats": ["cea2", "detonation"],
+  "difficulty": 5,
+  "title": "Chapman-Jouguet Detonation of Stoichiometric H2-O2-N2",
+  "description": "Chapman-Jouguet detonation wave velocity, pressure ratio, and post-detonation equilibrium state for stoichiometric hydrogen-oxygen diluted with nitrogen.",
+  "category": "Detonation & Shock Physics",
+  "tags": ["cea", "detonation", "chapman-jouguet", "shock"],
+  "activeFile": "h2_o2_det.cea"
+}

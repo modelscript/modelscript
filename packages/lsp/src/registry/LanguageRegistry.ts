@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { LanguageAction, LanguageOptions, WritebackConfig, WritebackHandler } from "@modelscript/dsl";
-import type { QueryEngine } from "@modelscript/runtime";
+import type {
+  LanguageAction,
+  LanguageIndexingConfig,
+  LanguageOptions,
+  WritebackConfig,
+  WritebackHandler,
+} from "@modelscript/dsl";
+import type { Tree } from "@modelscript/dsl/utils";
+import type { LanguageDefinitionLike, QueryEngine } from "@modelscript/runtime";
 import type {
   CodeAction,
   CodeLens,
@@ -18,6 +25,12 @@ import type {
   TextEdit,
   WorkspaceEdit,
 } from "vscode-languageserver";
+import type { CstTreeLike } from "../utils/ast-utils.js";
+
+/** Helper for bivariant function callbacks under strictFunctionTypes. */
+type BivariantCallback<Args extends unknown[], Return> = {
+  bivarianceHack(...args: Args): Return;
+}["bivarianceHack"];
 
 /** Minimal document shape accepted by plugin custom handlers (compatible with TextDocument and raw strings). */
 export type PluginDocumentLike =
@@ -30,6 +43,196 @@ export type PluginDocumentLike =
       positionAt?: (offset: number) => Position;
       offsetAt?: (position: Position) => number;
     };
+
+/** Structural symbol shape returned by custom language symbol handlers. */
+export interface PluginDocumentSymbolLike {
+  name?: string | undefined;
+  detail?: unknown;
+  kind?: unknown;
+  range?: Range | undefined;
+  selectionRange?: Range | undefined;
+  children?: PluginDocumentSymbolLike[] | unknown[] | undefined;
+}
+
+/** Folding range shape returned by custom language plugins or WASM facades. */
+export interface PluginFoldingRangeLike {
+  startLine: number;
+  endLine: number;
+  startCharacter?: number | undefined;
+  endCharacter?: number | undefined;
+  kind?: "comment" | "imports" | "region" | undefined;
+  defaultCollapsed?: boolean | undefined;
+  collapsedText?: string | undefined;
+}
+
+/** CodeLens result returned by a plugin custom codeLens handler. */
+export type PluginCodeLensResult = CodeLens[] | { lenses: CodeLens[]; appendUniversal?: boolean | undefined };
+
+/** Minimal formatting options shape (compatible with LSP FormattingOptions). */
+export interface PluginFormattingOptions {
+  tabSize?: number | undefined;
+  insertSpaces?: boolean | undefined;
+  [key: string]: unknown;
+}
+
+/** Structural interface for a custom JSON-RPC protocol handler. */
+export type PluginProtocolHandler = BivariantCallback<[context: unknown, params: unknown], Promise<unknown> | unknown>;
+
+/** Structural interface for a domain action execution handler. */
+export type PluginActionHandler = BivariantCallback<[context: unknown, inputs: unknown], Promise<unknown> | unknown>;
+
+/** Structural interface for a WASM GLR parser instance attached to a language plugin. */
+export interface WasmParserInstance {
+  parse(
+    input: string,
+    oldTree?: unknown,
+    startIndex?: number,
+    oldEndIndex?: number,
+    newEndIndex?: number,
+    uri?: string,
+  ): CstTreeLike | Tree | null;
+  setLanguage?(language: unknown): void;
+  getLanguage?(): unknown;
+}
+
+/** Structural interface for a WASM LspFacade instance attached to a language plugin. */
+export interface WasmFacadeInstance {
+  exports?: { lsp_clearDocuments?: () => void; [key: string]: unknown } | undefined;
+  syntaxNames?: string[] | undefined;
+  fieldNames?: Record<string, number> | undefined;
+  lastAstRoot?: number;
+  getDocumentRoot?(uriOrFileId?: string | number | undefined): number;
+  loadSource?(source: string): void;
+  getHover?(rootPtr: number, offset: number): string | null | undefined;
+  getCompletions?(offset: number, text: string): CompletionItem[] | null | undefined;
+  getDefinition?(
+    rootPtr: number,
+    offset: number,
+  ):
+    | {
+        fileId?: number;
+        start?: number;
+        end?: number;
+        startOffset?: number;
+        startIndex?: number;
+        endOffset?: number;
+        endIndex?: number;
+      }
+    | null
+    | undefined;
+  getDocumentSymbols?(rootPtr: number): unknown[] | null | undefined;
+  getFoldingRanges?(rootPtr: number):
+    | Array<{
+        startLine?: number;
+        endLine?: number;
+        start?: { line: number; character?: number };
+        end?: { line: number; character?: number };
+        kind?: "comment" | "imports" | "region";
+        defaultCollapsed?: boolean;
+        collapsedText?: string;
+      }>
+    | null
+    | undefined;
+  formatDocument?(rootPtr: number, arg?: boolean | number): string | TextEdit[] | null | undefined;
+  getDiagnostics?(rootPtr: number, rangeStart?: number, rangeEnd?: number, sourceCode?: string): unknown[];
+}
+
+/** Structural interface for a symbol index returned by a workspace index. */
+export interface SymbolIndexLike {
+  symbols: Map<number, unknown>;
+  byName?: Map<string, number[]>;
+  childrenOf?: Map<number | null, number[]>;
+}
+
+/** Structural interface for a multi-file workspace symbol index attached to a language plugin. */
+export interface WorkspaceIndexLike {
+  readonly fileCount?: number | undefined;
+  register?(uri: string, rootOrGetter: unknown): unknown;
+  unregister?(uri: string): void;
+  has?(uri: string): boolean;
+  markDirty?(uri: string): void;
+  reindexDocument?(uri: string, rootOrGetter?: unknown, editRanges?: unknown, totalDelta?: number): unknown;
+  takeGlobalChangedIds?(): Set<number>;
+  takeGlobalChangedNames?(): Set<string>;
+  getFileIndex?(uri: string): SymbolIndexLike | undefined;
+  getIndex?(options?: { eager?: boolean }): SymbolIndexLike;
+  getIndexAsync?(): Promise<SymbolIndexLike>;
+  symbols?: Map<number, unknown>;
+}
+
+/** Structural interface for Monaco Monarch tokenizer definitions. */
+export interface MonarchLanguageDef {
+  keywords?: string[] | undefined;
+  typeKeywords?: string[] | undefined;
+  operators?: string[] | undefined;
+  tokenizer?: Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
+/** Structural symbol metadata entry inside a language definition. */
+export interface PluginSymbolConfigLike {
+  kind?: string | undefined;
+  name?: string | undefined;
+  exports?: string | string[] | undefined;
+  inherits?: string | string[] | undefined;
+  attributes?: Record<string, string> | undefined;
+  icon?: string | undefined;
+  group?: string | undefined;
+  treeVisible?: boolean | undefined;
+}
+
+/** Structural error code descriptor inside a language definition. */
+export interface PluginErrorCodeEntryLike {
+  code?: number | undefined;
+  rule?: string | undefined;
+  severity?: string | undefined;
+  message?: unknown;
+}
+
+/** Structural language definition accepted by LanguagePlugin (compatible with LanguageOptions and lightweight descriptors). */
+export interface LanguageDefLike {
+  name?: string | undefined;
+  maturity?: "stable" | "beta" | "experimental" | string | undefined;
+  rules?: Record<string, BivariantCallback<[d: Record<string, unknown>], unknown> | undefined> | undefined;
+  keywords?: string[] | undefined;
+  symbols?: Record<string, PluginSymbolConfigLike | undefined> | undefined;
+  graphics?: Record<string, unknown> | undefined;
+  visual?:
+    | {
+        entities?: Record<string, unknown> | undefined;
+        connections?: Record<string, unknown> | undefined;
+      }
+    | undefined;
+  actions?: LanguageAction[] | undefined;
+  actionHandlers?: Record<string, PluginActionHandler> | undefined;
+  lints?: Record<string, unknown> | undefined;
+  errorCodes?: Record<string | number, PluginErrorCodeEntryLike | undefined> | Record<string, unknown> | undefined;
+  writeback?: WritebackConfig | WritebackHandler | undefined;
+  diagram?: unknown;
+  polyglot?: LanguageDefinitionLike["polyglot"];
+  grammar?: { xmlRules?: unknown } | undefined;
+  indexing?: LanguageIndexingConfig | undefined;
+  lsp?:
+    | {
+        fileExtension?: string | undefined;
+        fileExtensions?: string[] | undefined;
+        folding?:
+          | Array<
+              | string
+              | {
+                  rule?: string | undefined;
+                  kind?: "comment" | "imports" | "region" | undefined;
+                  defaultCollapsed?: boolean | undefined;
+                  collapsedText?: string | undefined;
+                }
+            >
+          | undefined;
+        outline?: string[] | undefined;
+        semanticTags?: Record<string, number | undefined> | undefined;
+        handlers?: Record<string, PluginProtocolHandler> | undefined;
+      }
+    | undefined;
+}
 
 export interface PluginCodeLensContext {
   uri: string;
@@ -49,54 +252,76 @@ export interface PluginFormatContext {
 }
 
 export interface PluginCustomHandlers {
-  validate?: ((doc: any, cstTree?: any) => Promise<Diagnostic[] | any[]> | Diagnostic[] | any[]) | undefined;
-  postValidate?: ((doc: any, context: any, diagnostics: Diagnostic[]) => Promise<void> | void) | undefined;
-  complete?: ((offset: number, text: string, uri?: string) => CompletionItem[] | any[]) | undefined;
-  hover?: ((offset: number, text: string, uri?: string) => Hover | any | null) | undefined;
-  definition?: ((offset: number, text: string, uri?: string) => Location | Location[] | any | null) | undefined;
-  typeDefinition?: ((offset: number, text: string, uri?: string) => Location | Location[] | any | null) | undefined;
-  references?: ((offset: number, text: string, uri?: string) => Location[] | any[]) | undefined;
-  symbols?: ((tree: any, text?: string, uri?: string) => DocumentSymbol[] | any[]) | undefined;
-  folding?: ((tree: any, text?: string, uri?: string) => any[]) | undefined;
+  validate?:
+    | BivariantCallback<
+        [doc: PluginDocumentLike, cstTree?: unknown],
+        Promise<Diagnostic[] | readonly unknown[]> | Diagnostic[] | readonly unknown[]
+      >
+    | undefined;
+  postValidate?:
+    | BivariantCallback<[doc: PluginDocumentLike, context: unknown, diagnostics: Diagnostic[]], Promise<void> | void>
+    | undefined;
+  complete?: BivariantCallback<[offset: number, text: string, uri?: string], CompletionItem[]> | undefined;
+  hover?: BivariantCallback<[offset: number, text: string, uri?: string], Hover | null | undefined> | undefined;
+  definition?:
+    | BivariantCallback<[offset: number, text: string, uri?: string], Location | Location[] | null | undefined>
+    | undefined;
+  typeDefinition?:
+    | BivariantCallback<[offset: number, text: string, uri?: string], Location | Location[] | null | undefined>
+    | undefined;
+  references?: BivariantCallback<[offset: number, text: string, uri?: string], Location[]> | undefined;
+  symbols?:
+    | BivariantCallback<[tree: unknown, text?: string, uri?: string], DocumentSymbol[] | PluginDocumentSymbolLike[]>
+    | undefined;
+  folding?: BivariantCallback<[tree: unknown, text?: string, uri?: string], PluginFoldingRangeLike[]> | undefined;
   codeActions?:
-    ((doc: any, range: any, diagnostics: any[]) => Promise<CodeAction[] | any[]> | CodeAction[] | any[]) | undefined;
-  inlayHints?: ((doc: any, range?: any) => Promise<InlayHint[] | any[]> | InlayHint[] | any[]) | undefined;
+    | BivariantCallback<
+        [doc: PluginDocumentLike, range: Range, diagnostics: Diagnostic[]],
+        Promise<CodeAction[]> | CodeAction[]
+      >
+    | undefined;
+  inlayHints?:
+    BivariantCallback<[doc: PluginDocumentLike, range?: Range], Promise<InlayHint[]> | InlayHint[]> | undefined;
   codeLens?:
-    | ((
-        doc: any,
-        context?: PluginCodeLensContext,
-      ) =>
-        | Promise<CodeLens[] | { lenses: CodeLens[]; appendUniversal?: boolean } | any>
-        | CodeLens[]
-        | { lenses: CodeLens[]; appendUniversal?: boolean }
-        | any)
+    | BivariantCallback<
+        [doc: PluginDocumentLike, context?: PluginCodeLensContext],
+        Promise<PluginCodeLensResult> | PluginCodeLensResult
+      >
     | undefined;
   rename?:
-    | ((
-        doc: any,
-        position: any,
-        newName: string,
-      ) => Promise<WorkspaceEdit | null | undefined> | WorkspaceEdit | null | undefined)
+    | BivariantCallback<
+        [doc: PluginDocumentLike, position: Position, newName: string],
+        Promise<WorkspaceEdit | null | undefined> | WorkspaceEdit | null | undefined
+      >
     | undefined;
-  semanticTokens?: ((doc: any, tree?: any) => Promise<number[]> | number[]) | undefined;
+  semanticTokens?:
+    BivariantCallback<[doc: PluginDocumentLike, tree?: unknown], Promise<number[]> | number[]> | undefined;
   format?:
-    | ((doc: any, options?: any, context?: PluginFormatContext) => Promise<TextEdit[] | any[]> | TextEdit[] | any[])
+    | BivariantCallback<
+        [doc: PluginDocumentLike, options?: unknown, context?: PluginFormatContext],
+        Promise<TextEdit[]> | TextEdit[]
+      >
     | undefined;
   rangeFormat?:
-    | ((
-        doc: any,
-        range: any,
-        options?: any,
-        context?: PluginFormatContext,
-      ) => Promise<TextEdit[] | any[]> | TextEdit[] | any[])
+    | BivariantCallback<
+        [doc: PluginDocumentLike, range: Range, options?: unknown, context?: PluginFormatContext],
+        Promise<TextEdit[]> | TextEdit[]
+      >
     | undefined;
-  buildDiagram?: ((text: string, params: any) => Promise<unknown> | unknown) | undefined;
+  buildDiagram?: BivariantCallback<[text: string, params: unknown], Promise<unknown> | unknown> | undefined;
   signatureHelp?:
-    ((doc: any, position: any) => Promise<SignatureHelp | any | null> | SignatureHelp | any | null) | undefined;
-  analyzeBlt?: ((doc: any) => Promise<any | null> | any | null) | undefined;
-  getDiagramData?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
-  applyDiagramEdits?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
-  getComponentProperties?: ((doc: any, params?: any) => Promise<any | null> | any | null) | undefined;
+    | BivariantCallback<
+        [doc: PluginDocumentLike, position: Position],
+        Promise<SignatureHelp | null | undefined> | SignatureHelp | null | undefined
+      >
+    | undefined;
+  analyzeBlt?: BivariantCallback<[doc: PluginDocumentLike], Promise<unknown> | unknown> | undefined;
+  getDiagramData?:
+    BivariantCallback<[doc: PluginDocumentLike, params?: unknown], Promise<unknown> | unknown> | undefined;
+  applyDiagramEdits?:
+    BivariantCallback<[doc: PluginDocumentLike, params?: unknown], Promise<unknown> | unknown> | undefined;
+  getComponentProperties?:
+    BivariantCallback<[doc: PluginDocumentLike, params?: unknown], Promise<unknown> | unknown> | undefined;
 }
 
 /**
@@ -109,16 +334,16 @@ export interface LanguagePlugin {
   name: string;
   /** Recognized file extensions including dot (e.g. [".mo", ".mos"]) */
   extensions: string[];
-  /** Tree-sitter / WASM parser instance */
-  parser?: any;
+  /** Native WASM GLR parser instance */
+  parser?: WasmParserInstance | null | undefined;
   /** WASM LspFacade providing instant symbols, completions, folding, and AST queries */
-  facade?: any;
+  facade?: WasmFacadeInstance | null | undefined;
   /** Monaco Monarch token definition rules for client-side syntax highlighting */
-  monarch?: any;
+  monarch?: MonarchLanguageDef | undefined;
   /** TextMate grammar JSON structure */
-  textmate?: any;
+  textmate?: Record<string, unknown> | undefined;
   /** Workspace index instance for multi-file cross-referencing */
-  workspaceIndex?: any;
+  workspaceIndex?: WorkspaceIndexLike | undefined;
   /** Salsa QueryEngine for memoized semantic queries */
   queryEngine?: QueryEngine | undefined;
   /** Dynamic LSP capability registrations (client/registerCapability disposables) */
@@ -130,23 +355,24 @@ export interface LanguagePlugin {
   /** Custom language-specific handler overrides */
   customHandlers?: PluginCustomHandlers | undefined;
   /** Full language definition options from @modelscript/dsl */
-  languageDef?: LanguageOptions | any;
+  languageDef?: (LanguageOptions & LanguageDefLike) | LanguageDefLike | undefined;
   /** First-class declarative language actions (commands, toolbar buttons, LLM tools) */
   actions?: LanguageAction[] | undefined;
   /** Custom JSON-RPC request and notification handlers */
-  handlers?: Record<string, (context: any, params: any) => Promise<any> | any> | undefined;
+  handlers?: Record<string, PluginProtocolHandler> | undefined;
   /** Domain action execution handlers (decoupled from AST grammar) */
-  actionHandlers?: Record<string, (context: any, inputs: any) => Promise<any> | any> | undefined;
+  actionHandlers?: Record<string, PluginActionHandler> | undefined;
   /** Optional source text preprocessor hook (e.g. keyword aliases) */
   preprocessText?: ((text: string) => string) | undefined;
   /** Factory for creating a Salsa QueryEngine for this language */
-  createQueryEngine?: ((unifiedIndex: any, cstTreeWrapper: any) => QueryEngine) | undefined;
+  createQueryEngine?: BivariantCallback<[unifiedIndex: unknown, cstTreeWrapper?: unknown], QueryEngine> | undefined;
   /** Optional typed Nelson-Oppen theory constraint extractor for digital thread verification */
-  extractTheoryConstraints?: ((text: string, uri?: string, symbolIndex?: any) => Promise<any> | any) | undefined;
+  extractTheoryConstraints?:
+    BivariantCallback<[text: string, uri?: string, symbolIndex?: unknown], Promise<unknown> | unknown> | undefined;
   /** Diagram backend instance */
-  diagramBackend?: any;
+  diagramBackend?: unknown;
   /** Annotation evaluator class or constructor */
-  annotationEvaluator?: any;
+  annotationEvaluator?: unknown;
   /** Bi-directional parameter writeback handler or configuration */
   writeback?: WritebackConfig | WritebackHandler | undefined;
   /** Language maturity tier */
@@ -456,7 +682,9 @@ export class LanguageRegistry {
         if (!desc || desc.writable || typeof desc.set === "function") {
           try {
             plugin.parser = existing.parser;
-          } catch {}
+          } catch {
+            // Plugin object may be frozen or define a read-only getter for parser.
+          }
         }
       }
       if (!plugin.facade && existing.facade) {
@@ -464,7 +692,9 @@ export class LanguageRegistry {
         if (!desc || desc.writable || typeof desc.set === "function") {
           try {
             plugin.facade = existing.facade;
-          } catch {}
+          } catch {
+            // Plugin object may be frozen or define a read-only getter for facade.
+          }
         }
       }
       if (!plugin.workspaceIndex && existing.workspaceIndex) {
@@ -524,7 +754,9 @@ export class LanguageRegistry {
       for (const d of plugin.disposables) {
         try {
           d.dispose();
-        } catch {}
+        } catch {
+          // Best-effort capability disposal during plugin unregistration.
+        }
       }
       plugin.disposables = [];
     }
@@ -552,7 +784,9 @@ export class LanguageRegistry {
     if (plugin.facade?.exports?.lsp_clearDocuments) {
       try {
         plugin.facade.exports.lsp_clearDocuments();
-      } catch {}
+      } catch {
+        // Best-effort linear memory cleanup on unregistration.
+      }
     }
 
     this.plugins.delete(normId);
@@ -666,7 +900,10 @@ export class LanguageRegistry {
     ]);
 
     if (!text && sniffExtensions.has(ext)) {
-      const openDoc = this.documentsStore?.get?.(uri) ?? (globalThis as any).documents?.get?.(uri);
+      const globalDocs = (
+        globalThis as { documents?: { get?: (targetUri: string) => { getText?: () => string } | undefined } }
+      ).documents;
+      const openDoc = this.documentsStore?.get?.(uri) ?? globalDocs?.get?.(uri);
       if (openDoc && typeof openDoc.getText === "function") {
         text = openDoc.getText();
       }
@@ -762,7 +999,7 @@ export class LanguageRegistry {
   /**
    * Retrieves a custom protocol handler for a given URI and method name.
    */
-  getHandlerForUri(uri: string, method: string): ((context: any, params: any) => Promise<any> | any) | undefined {
+  getHandlerForUri(uri: string, method: string): PluginProtocolHandler | undefined {
     const plugin = this.getPluginForUri(uri);
     return plugin?.handlers?.[method] ?? plugin?.languageDef?.lsp?.handlers?.[method];
   }
@@ -770,21 +1007,21 @@ export class LanguageRegistry {
   /**
    * Resolves the WASM parser instance for a given file URI.
    */
-  getParserForUri(uri: string): any | undefined {
+  getParserForUri(uri: string): WasmParserInstance | null | undefined {
     return this.getPluginForUri(uri)?.parser;
   }
 
   /**
    * Resolves the WASM LspFacade instance for a given file URI.
    */
-  getFacadeForUri(uri: string): any | undefined {
+  getFacadeForUri(uri: string): WasmFacadeInstance | null | undefined {
     return this.getPluginForUri(uri)?.facade;
   }
 
   /**
    * Resolves the WorkspaceIndex for a given file URI.
    */
-  getWorkspaceIndexForUri(uri: string): any | undefined {
+  getWorkspaceIndexForUri(uri: string): WorkspaceIndexLike | undefined {
     return this.getPluginForUri(uri)?.workspaceIndex;
   }
 

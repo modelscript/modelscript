@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @modelscript/usd — OpenUSD (.usda) 3D Scenegraph Tessellator for Morsel & CAD Viewers.
+ * @modelscript/usd — OpenUSD (.usda) 3D Scenegraph Tessellator for Ansatz & CAD Viewers.
  *
  * Converts parsed UsdStage prims (Mesh, Cube, Sphere, Cylinder, Cone, Capsule, Xform)
  * into browser-ready triangulated ProceduralMeshData + CadComponent descriptors.
@@ -537,7 +537,7 @@ function buildGeometryForPrim(prim: UsdPrim, startTimeCode: number): RawGeometry
 
 /**
  * Parse an ASCII OpenUSD (.usda) document and tessellate all geometric prims
- * into CadComponent descriptors ready for the Morsel 3D CadViewer.
+ * into CadComponent descriptors ready for the Ansatz 3D CadViewer.
  */
 export function extractUsdCadComponents(content: string): UsdCadComponent[] {
   if (!content || !content.trim()) return [];

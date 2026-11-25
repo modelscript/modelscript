@@ -1,0 +1,11 @@
+{
+  "id": "chemkin-03-methane-skeletal-combustion",
+  "lang": "chemkin",
+  "subFormats": ["inp", "dat"],
+  "difficulty": 3,
+  "title": "Methane-Air Skeletal Combustion Mechanism",
+  "description": "Four-step Jones-Lindstedt skeletal methane-air combustion mechanism covering fuel partial oxidation, steam reforming, water-gas shift, and hydrogen oxidation with full NASA-7 thermodynamics.",
+  "category": "Combustion & Chemical Kinetics",
+  "tags": ["chemkin", "methane", "skeletal-mechanism", "multi-file"],
+  "activeFile": "ch4_chem.inp"
+}

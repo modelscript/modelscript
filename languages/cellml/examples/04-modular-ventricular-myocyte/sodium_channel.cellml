@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model name="cardiac_sodium_channel_module" xmlns="http://www.cellml.org/cellml/1.1#">
+  <units name="millisecond">
+    <unit units="second" prefix="milli"/>
+  </units>
+  <units name="per_millisecond">
+    <unit units="second" prefix="milli" exponent="-1"/>
+  </units>
+  <units name="millivolt">
+    <unit units="volt" prefix="milli"/>
+  </units>
+  <units name="millisiemens_per_cmsq">
+    <unit units="siemens" prefix="milli"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="microampere_per_cmsq">
+    <unit units="ampere" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+
+  <component name="sodium_channel">
+    <variable name="time" units="millisecond" public_interface="in"/>
+    <variable name="V" units="millivolt" public_interface="in"/>
+    <variable name="g_Na" units="millisiemens_per_cmsq" initial_value="16.0"/>
+    <variable name="E_Na" units="millivolt" initial_value="54.4"/>
+    <variable name="m" units="dimensionless" initial_value="0.0017"/>
+    <variable name="alpha_m" units="per_millisecond"/>
+    <variable name="beta_m" units="per_millisecond"/>
+    <variable name="i_Na" units="microampere_per_cmsq" public_interface="out"/>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <eq/>
+        <ci>alpha_m</ci>
+        <apply>
+          <divide/>
+          <apply><times/><cn>0.32</cn><apply><plus/><ci>V</ci><cn>47.13</cn></apply></apply>
+          <apply><minus/><cn>1.0</cn><apply><exp/><apply><times/><cn>-0.1</cn><apply><plus/><ci>V</ci><cn>47.13</cn></apply></apply></apply></apply>
+        </apply>
+      </apply>
+      <apply>
+        <eq/>
+        <ci>beta_m</ci>
+        <apply><times/><cn>0.08</cn><apply><exp/><apply><divide/><apply><minus/><ci>V</ci></apply><cn>11.0</cn></apply></apply></apply>
+      </apply>
+      <apply>
+        <eq/>
+        <apply><diff/><bvar><ci>time</ci></bvar><ci>m</ci></apply>
+        <apply><minus/><apply><times/><ci>alpha_m</ci><apply><minus/><cn>1.0</cn><ci>m</ci></apply></apply><apply><times/><ci>beta_m</ci><ci>m</ci></apply></apply>
+      </apply>
+      <apply>
+        <eq/>
+        <ci>i_Na</ci>
+        <apply><times/><ci>g_Na</ci><apply><power/><ci>m</ci><cn>3</cn></apply><apply><minus/><ci>V</ci><ci>E_Na</ci></apply></apply>
+      </apply>
+    </math>
+  </component>
+</model>

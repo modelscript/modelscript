@@ -14,7 +14,9 @@ import { Html, useProgress } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { type ColormapPreset, computeScaledScalar, createColormapTexture } from "../../util/colormap";
+import { getErrorMessage } from "../../util/error";
 import { type VtuField, type VtuParseResult, parseVtu } from "../../util/vtu-parser";
 import Box from "../Box";
 import Spinner from "../Spinner";
@@ -76,7 +78,7 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
   const [clipOffset, setClipOffset] = useState<number>(0);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
   const [probeData, setProbeData] = useState<{ point: [number, number, number]; value: number } | null>(null);
-  const orbitControlsRef = useRef<any>(null);
+  const orbitControlsRef = useRef<OrbitControlsImpl | null>(null);
 
   const isThumbnail = new URLSearchParams(window.location.search).get("thumbnail") === "true";
 
@@ -141,13 +143,13 @@ export const SimulationResultViewer: React.FC<SimulationResultViewerProps> = ({
         if (scalarFields.length > 0) {
           setActiveField(scalarFields[0]!.name);
         }
-      } catch (err: any) {
-        if (active) setError(err.message || "Failed to parse simulation data");
+      } catch (err: unknown) {
+        if (active) setError(getErrorMessage(err, "Failed to parse simulation data"));
       } finally {
         if (active) {
           setLoading(false);
           readyTimer = setTimeout(() => {
-            (window as any).__ARTIFACT_READY = true;
+            window.__ARTIFACT_READY = true;
           }, 1500);
         }
       }

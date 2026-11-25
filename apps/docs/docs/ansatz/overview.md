@@ -1,9 +1,9 @@
 ---
-title: "Ansatz Platform Overview"
+title: "Ansatz Network Overview"
 description: "Ansatz (ansatz.social) is a federated engineering network and cloud computational platform powered by ModelScript. It extends the local ModelScript compiler and numerical solvers into a collaborati..."
 ---
 
-# Ansatz Platform Overview
+# Ansatz Network Overview
 
 **Ansatz** (`ansatz.social`) is a federated engineering network and cloud computational platform powered by **ModelScript**. It extends the local ModelScript compiler and numerical solvers into a collaborative, web-native environment for systems engineers, dynamicists, researchers, and CAE practitioners.
 
@@ -29,7 +29,7 @@ The monorepo maintains a clear boundary between the engine and the platform:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        Ansatz Platform (apps/)                         │
+│                        Ansatz Network (apps/)                         │
 │   • apps/web: React 19 SPA (ansatz.social, /editor, /references)       │
 │   • apps/api: Express, GraphQL, SPARQL, Git Smart HTTP, ActivityPub   │
 ├────────────────────────────────────────────────────────────────────────┤
@@ -52,9 +52,9 @@ The ModelScript engine is designed to be completely headless and can run inside 
 
 | Surface                  | Route               | Description                                                                                       |
 | :----------------------- | :------------------ | :------------------------------------------------------------------------------------------------ |
-| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts, reproducible simulation models, and discussion threads.            |
-| **Ansatz**               | `/editor`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.            |
-| **Ansatz Studio**        | `/studio`           | Web-native engineering IDE workbench with LSP intelligence and DAP simulation debugger.           |
+| **Home & Feeds**         | `/home`, `/explore` | ActivityPub engineering posts on Ansatz Network, reproducible simulation models, and discussions. |
+| **Ansatz Editor**        | `/editor`           | Dual-pane Monaco editor and live simulation canvas powered by client-side WebAssembly.            |
+| **Ansatz Studio**        | `/studio`           | VS Code Web & desktop extension workbench with LSP intelligence and DAP simulation debugger.      |
 | **Scholarly References** | `/references`       | OpenAlex / DOI / BibTeX citation manager and literature-to-model traceability graph.              |
 | **Package Registry**     | `/packages`         | Search, publish, and inspect versioned engineering libraries with dependency trees.               |
 | **Digital Thread**       | `/thread`           | Visual hypergraph explorer tracing requirements and Triple Graph Grammar correspondences.         |

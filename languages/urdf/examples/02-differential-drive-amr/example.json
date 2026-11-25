@@ -1,0 +1,11 @@
+{
+  "id": "urdf-02-differential-drive-amr",
+  "lang": "urdf",
+  "subFormats": ["urdf"],
+  "difficulty": 2,
+  "title": "Differential-Drive Mobile AMR with LiDAR",
+  "description": "Warehouse autonomous mobile robot (AMR) featuring a rectangular chassis, left and right continuous drive wheels, rear passive caster, and top-mounted 2D planar LiDAR scanner.",
+  "category": "Mobile Robotics",
+  "tags": ["amr", "differential-drive", "lidar", "mobile-robot"],
+  "activeFile": "mobile_amr.urdf"
+}

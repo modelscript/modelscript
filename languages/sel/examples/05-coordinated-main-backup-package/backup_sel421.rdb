@@ -1,0 +1,40 @@
+{
+  "relayType": "SEL-421",
+  "relayId": "SUB_EAST_BACKUP_421",
+  "terminalId": "BUS_TIE_BACKUP_BREAKER",
+  "activeGroup": 1,
+  "frequencyHz": 60.0,
+  "phaseRotation": "ABC",
+  "ratios": {
+    "ctRatioPhase": 240,
+    "ctRatioGround": 240,
+    "ptRatioPhase": 1200,
+    "ptRatioNeutral": 1200
+  },
+  "groups": {
+    "1": {
+      "groupId": 1,
+      "phaseOvercurrent": {
+        "inst50P1P": 18.0,
+        "time51P1P": 5.5,
+        "curve51P1C": "U3",
+        "timeDial51P1TD": 3.5
+      },
+      "distance": {
+        "zone1Reach": 3.5,
+        "zone2Reach": 6.2,
+        "zone3Reach": 11.0,
+        "zone1DelayCycles": 0,
+        "zone2DelayCycles": 20,
+        "zone3DelayCycles": 60
+      },
+      "equations": {
+        "SV01": "Z1P OR Z2P",
+        "SV02": "IN103 AND 50P1P",
+        "TRIP": "SV01 OR SV02 OR 51P1T",
+        "OUT101": "TRIP"
+      }
+    }
+  },
+  "globalEquations": {}
+}

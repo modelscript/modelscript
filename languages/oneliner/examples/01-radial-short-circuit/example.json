@@ -1,0 +1,12 @@
+{
+  "id": "oneliner-01-radial-short-circuit",
+  "lang": "oneliner",
+  "subFormats": ["dxt"],
+  "difficulty": 1,
+  "title": "2-Bus Radial Three-Phase Short-Circuit Study",
+  "description": "Minimal 115 kV radial source and overhead transmission line modeled in ASPEN OneLiner DXT format for bolted three-phase and single-line-to-ground fault analysis.",
+  "category": "Power System Protection",
+  "tags": ["oneliner", "short-circuit", "radial", "115kv", "protection"],
+  "activeFile": "radial_sc.dxt",
+  "isDefaultStarter": true
+}

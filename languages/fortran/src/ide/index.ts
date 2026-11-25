@@ -5,7 +5,7 @@
  *
  * Provides:
  * - TextMate grammar definition (`.tmLanguage.json`) for VS Code and text editor highlighters.
- * - Monaco Monarch tokens provider for browser-based IDEs and playgrounds.
+ * - Monaco Monarch tokens provider for browser-based IDEs and Ansatz Editor environments.
  * - Language configuration (bracket matching, auto-closing pairs, comment tokens, folding markers).
  */
 

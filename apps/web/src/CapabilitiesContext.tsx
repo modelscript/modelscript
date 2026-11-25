@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api from "./api/client";
+import { getApiErrorStatus } from "./util/error";
 
 export interface InstanceCapabilities {
   userInvites: boolean;
@@ -81,8 +82,9 @@ export const CapabilitiesProvider: React.FC<{ children: React.ReactNode }> = ({ 
           if (data.capabilities) setCapabilities((prev) => ({ ...prev, ...data.capabilities }));
         }
         break;
-      } catch (err: any) {
-        if (attempt < 2 && (err?.response?.status === 502 || err?.response?.status === 503 || !err?.response)) {
+      } catch (err: unknown) {
+        const status = getApiErrorStatus(err);
+        if (attempt < 2 && (status === 502 || status === 503 || status === undefined)) {
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
           continue;
         }

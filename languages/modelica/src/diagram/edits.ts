@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Diagram-to-code edit computation.
-// Ported from morsel's morsel.tsx (getPlacementEdit, getConnectEdits,
+// Ported from ansatz's ansatz.tsx (getPlacementEdit, getConnectEdits,
 // handleEdgeDelete, handleComponentsDelete) to produce LSP TextEdit arrays.
 
-type ModelicaClassInstance = any;
 import { CstUnparser } from "@modelscript/dsl";
+import type { SyntaxNode as DslSyntaxNode } from "@modelscript/dsl/utils";
 import { Position, Range, TextEdit } from "vscode-languageserver";
 
 import type { EdgeUpdate as EdgeItem, PlacementItem } from "@modelscript/diagram/protocol";
@@ -28,6 +28,77 @@ import {
   type ScannedComponentDecl,
   type ScannedConnectStmt,
 } from "./scanner.js";
+import type { IDiagram, IPlacement, ModelicaClassInstance, ModelicaComponentInstance } from "./types.js";
+
+interface EditableSourceRange {
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+  startRow?: number | undefined;
+  startCol?: number | undefined;
+  endRow?: number | undefined;
+  endCol?: number | undefined;
+}
+
+interface EditableModArgument {
+  name?: { parts?: Array<{ text?: string | undefined }> | undefined } | undefined;
+  modification?: EditableSyntaxNode | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+  sourceRange?: EditableSourceRange | undefined;
+}
+
+interface EditableClassModification extends EditableSyntaxNode {
+  modificationArguments?: EditableModArgument[] | undefined;
+}
+
+interface EditableSyntaxNode {
+  type?: string | undefined;
+  text?: string | undefined;
+  name?: string | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+  sourceRange?: EditableSourceRange | undefined;
+  parent?: EditableSyntaxNode | null | undefined;
+  children?: EditableSyntaxNode[] | undefined;
+  tree?: { sourceCode?: string | undefined } | undefined;
+  annotationClause?: EditableSyntaxNode | undefined;
+  declaration?: EditableSyntaxNode | undefined;
+  identifier?: EditableSyntaxNode | undefined;
+  modification?: (EditableSyntaxNode & { classModification?: EditableClassModification | undefined }) | undefined;
+  arraySubscripts?: EditableSyntaxNode | undefined;
+  description?: EditableSyntaxNode | undefined;
+}
+
+interface ConnectEquationLike {
+  lhs?: string | undefined;
+  rhs?: string | undefined;
+  cstNode?: EditableSyntaxNode | undefined;
+  ast?: EditableSyntaxNode | undefined;
+  componentReference1?:
+    { parts?: Array<{ identifier?: { text: string } | undefined; text?: string | undefined }> | undefined } | undefined;
+  componentReference2?:
+    { parts?: Array<{ identifier?: { text: string } | undefined; text?: string | undefined }> | undefined } | undefined;
+}
+
+function asSyntaxNode(node: EditableSyntaxNode | null | undefined): SyntaxNode | null | undefined {
+  return node as SyntaxNode | null | undefined;
+}
+
+function asUnparserNode(node: EditableSyntaxNode): DslSyntaxNode {
+  return node as unknown as DslSyntaxNode;
+}
+
+function getAstNodeFromInstance(
+  inst: ModelicaClassInstance | ModelicaComponentInstance | null | undefined,
+): EditableSyntaxNode | undefined {
+  if (!inst) return undefined;
+  return (inst["cstNode"] ?? inst["abstractSyntaxNode"]) as EditableSyntaxNode | undefined;
+}
+
+function getConnectEquationsList(classInstance: ModelicaClassInstance | null | undefined): ConnectEquationLike[] {
+  const raw = classInstance?.["connectEquations"];
+  return Array.isArray(raw) ? (raw as ConnectEquationLike[]) : [];
+}
 
 export {
   buildFallbackClassInstance,
@@ -161,16 +232,21 @@ function matchesModificationArgHead(headSlice: string, paramName: string): boole
   return isAsciiWhitespaceCode(headSlice.charCodeAt(end)) || ch === "=" || ch === "(" || ch === "[";
 }
 
-function findDescendantModification(node: any, name: string): any {
+function findDescendantModification(
+  node: EditableSyntaxNode | null | undefined,
+  name: string,
+): EditableSyntaxNode | null {
   if (!node) return null;
+  const sn = asSyntaxNode(node);
+  const cstWithKind = Cst as { kind?: (n: SyntaxNode | null | undefined) => string | undefined };
   const isModificationNode =
-    Cst.ElementModification.is(node) ||
-    Cst.Argument.is(node) ||
+    Cst.ElementModification.is(sn) ||
+    Cst.Argument.is(sn) ||
     node.type === "element_modification" ||
     node.type === "argument" ||
     node.type === "named_argument" ||
-    (typeof (Cst as any).kind === "function" &&
-      ((Cst as any).kind(node) === "element_modification" || (Cst as any).kind(node) === "argument"));
+    (typeof cstWithKind.kind === "function" &&
+      (cstWithKind.kind(sn) === "element_modification" || cstWithKind.kind(sn) === "argument"));
 
   const trimmedNodeText = node.text?.trimStart() ?? "";
   const boundaryChar = trimmedNodeText.charCodeAt(name.length);
@@ -181,7 +257,8 @@ function findDescendantModification(node: any, name: string): any {
         boundaryChar === 40 || // '('
         boundaryChar === 61)) || // '='
     node.children?.some(
-      (c: any) => (Cst.Identifier.is(c) || c.type === "identifier" || c.name === name) && c.text?.trim() === name,
+      (c) =>
+        (Cst.Identifier.is(asSyntaxNode(c)) || c.type === "identifier" || c.name === name) && c.text?.trim() === name,
     );
 
   if (isModificationNode && matchesName) {
@@ -198,7 +275,9 @@ function findDescendantModification(node: any, name: string): any {
   return null;
 }
 
-function getNodeRange(node: any): { startLine: number; startCol: number; endLine: number; endCol: number } | null {
+function getNodeRange(
+  node: EditableSyntaxNode | EditableModArgument | null | undefined,
+): { startLine: number; startCol: number; endLine: number; endCol: number } | null {
   if (!node) return null;
   if (node.startPosition && node.endPosition) {
     return {
@@ -220,11 +299,14 @@ function getNodeRange(node: any): { startLine: number; startCol: number; endLine
   return null;
 }
 
-function getConnectEquationStatementNode(connectEq: any): any {
+function getConnectEquationStatementNode(connectEq: ConnectEquationLike | null | undefined): EditableSyntaxNode | null {
   const rawNode = connectEq?.cstNode ?? connectEq?.ast;
   if (!rawNode) return null;
   const parent = rawNode.parent;
-  if (parent && (Cst.SomeEquation.is(parent) || parent.type === "some_equation" || parent.type === "SomeEquation")) {
+  if (
+    parent &&
+    (Cst.SomeEquation.is(asSyntaxNode(parent)) || parent.type === "some_equation" || parent.type === "SomeEquation")
+  ) {
     return parent;
   }
   return rawNode;
@@ -353,12 +435,12 @@ function updateLineAnnotationText(
   return `Line(${newPointsCore}, ${innerContent})`;
 }
 
-function getAnnotationClauseNode(node: any): any {
+function getAnnotationClauseNode(node: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null {
   if (!node) return null;
   if (node.annotationClause) return node.annotationClause;
-  const findAnn = (n: any): any => {
+  const findAnn = (n: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null => {
     if (!n) return null;
-    if (Cst.AnnotationClause.is(n)) return n;
+    if (Cst.AnnotationClause.is(asSyntaxNode(n))) return n;
     for (const ch of n.children || []) {
       const res = findAnn(ch);
       if (res) return res;
@@ -368,16 +450,16 @@ function getAnnotationClauseNode(node: any): any {
   return findAnn(node);
 }
 
-function getDeclarationIdentNodeFromDecl(decl: any): any {
+function getDeclarationIdentNodeFromDecl(decl: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null {
   if (!decl) return null;
   if (decl.identifier) return decl.identifier;
-  if (Cst.Declaration.is(decl)) {
-    const cstName = Cst.Declaration.name(decl);
+  if (Cst.Declaration.is(asSyntaxNode(decl))) {
+    const cstName = Cst.Declaration.name(asSyntaxNode(decl));
     if (cstName) return cstName;
   }
-  const findIdent = (n: any): any => {
+  const findIdent = (n: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null => {
     if (!n) return null;
-    if (Cst.Identifier.is(n)) return n;
+    if (Cst.Identifier.is(asSyntaxNode(n))) return n;
     for (const ch of n.children || []) {
       const res = findIdent(ch);
       if (res) return res;
@@ -387,19 +469,22 @@ function getDeclarationIdentNodeFromDecl(decl: any): any {
   return findIdent(decl);
 }
 
-function getDeclarationNode(node: any, componentName?: string): any {
+function getDeclarationNode(
+  node: EditableSyntaxNode | null | undefined,
+  componentName?: string,
+): EditableSyntaxNode | null {
   if (!node) return null;
   if (!componentName) {
     if (node.declaration) return node.declaration;
-    if (Cst.ComponentDeclaration.is(node)) {
-      const cstDecl = Cst.ComponentDeclaration.declaration(node);
+    if (Cst.ComponentDeclaration.is(asSyntaxNode(node))) {
+      const cstDecl = Cst.ComponentDeclaration.declaration(asSyntaxNode(node));
       if (cstDecl) return cstDecl;
     }
   }
-  const decls: any[] = [];
-  const collectDecls = (n: any) => {
+  const decls: EditableSyntaxNode[] = [];
+  const collectDecls = (n: EditableSyntaxNode | null | undefined) => {
     if (!n) return;
-    if (Cst.Declaration.is(n)) {
+    if (Cst.Declaration.is(asSyntaxNode(n))) {
       decls.push(n);
       return;
     }
@@ -419,7 +504,10 @@ function getDeclarationNode(node: any, componentName?: string): any {
   return decls[0] ?? null;
 }
 
-function getDeclarationIdentNode(node: any, componentName?: string): any {
+function getDeclarationIdentNode(
+  node: EditableSyntaxNode | null | undefined,
+  componentName?: string,
+): EditableSyntaxNode | null {
   if (!node) return null;
   if (componentName) {
     const decl = getDeclarationNode(node, componentName);
@@ -432,17 +520,17 @@ function getDeclarationIdentNode(node: any, componentName?: string): any {
   return getDeclarationIdentNodeFromDecl(decl);
 }
 
-function getModificationNode(node: any): any {
+function getModificationNode(node: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null {
   if (!node) return null;
   const decl = getDeclarationNode(node) ?? node;
   if (decl.modification) return decl.modification;
-  if (Cst.Declaration.is(decl)) {
-    const cstMod = Cst.Declaration.modification(decl);
+  if (Cst.Declaration.is(asSyntaxNode(decl))) {
+    const cstMod = Cst.Declaration.modification(asSyntaxNode(decl));
     if (cstMod) return cstMod;
   }
-  const findMod = (n: any): any => {
+  const findMod = (n: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null => {
     if (!n) return null;
-    if (Cst.Modification.is(n)) return n;
+    if (Cst.Modification.is(asSyntaxNode(n))) return n;
     for (const ch of n.children || []) {
       const res = findMod(ch);
       if (res) return res;
@@ -452,17 +540,17 @@ function getModificationNode(node: any): any {
   return findMod(decl);
 }
 
-function getSubscriptsNode(node: any): any {
+function getSubscriptsNode(node: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null {
   if (!node) return null;
   const decl = getDeclarationNode(node) ?? node;
   if (decl.arraySubscripts) return decl.arraySubscripts;
-  if (Cst.Declaration.is(decl)) {
-    const cstSubs = Cst.Declaration.arraySubscripts(decl);
+  if (Cst.Declaration.is(asSyntaxNode(decl))) {
+    const cstSubs = Cst.Declaration.arraySubscripts(asSyntaxNode(decl));
     if (cstSubs) return cstSubs;
   }
-  const findSub = (n: any): any => {
+  const findSub = (n: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null => {
     if (!n) return null;
-    if (Cst.ArraySubscripts.is(n)) return n;
+    if (Cst.ArraySubscripts.is(asSyntaxNode(n))) return n;
     for (const ch of n.children || []) {
       const res = findSub(ch);
       if (res) return res;
@@ -573,7 +661,7 @@ function applyScannedPlacementEdit(
 }
 
 function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance, item: PlacementItem): TextEdit | null {
-  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === item.name);
+  const component = Array.from(classInstance?.components ?? []).find((c) => c.name === item.name);
   const isIconLayer = Boolean((item as PlacementItem & { isIconLayer?: boolean }).isIconLayer);
   const transformKey: "transformation" | "iconTransformation" = isIconLayer ? "iconTransformation" : "transformation";
 
@@ -585,8 +673,8 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   let existingWidth = 20;
   let existingHeight = 20;
 
-  const placement: any =
-    typeof (component as any)?.annotation === "function" ? (component as any).annotation("Placement") : null;
+  const placement: IPlacement | null =
+    typeof component?.annotation === "function" ? (component.annotation("Placement") as IPlacement | null) : null;
   const layerTrans = isIconLayer ? placement?.iconTransformation : placement?.transformation;
   const extent = layerTrans?.extent ?? placement?.transformation?.extent;
   if (Array.isArray(layerTrans?.origin) && layerTrans.origin.length >= 2) {
@@ -613,7 +701,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const h = Math.round(safeH);
   const originX = Number.isFinite(item.x) ? Math.round(item.x + safeW / 2) : Math.round(existingOriginX);
   const originY = Number.isFinite(item.y) ? Math.round(-(item.y + safeH / 2)) : Math.round(existingOriginY);
-  const existingRot = Number.isFinite(Number(layerTrans?.rotation)) ? Number(layerTrans.rotation) : 0;
+  const existingRot = Number.isFinite(Number(layerTrans?.rotation)) ? Number(layerTrans?.rotation) : 0;
   const r = Number.isFinite(item.rotation) ? Math.round(-(item.rotation ?? 0)) : Math.round(existingRot);
   const rotationPart = r !== 0 ? `, rotation=${r}` : "";
 
@@ -625,7 +713,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
   const newTransformCall = `${transformKey}(${newTransformationCore})`;
   const newPlacement = `Placement(${newTransformCall})`;
 
-  const abstractNode = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
+  const abstractNode = getAstNodeFromInstance(component);
   const compRange = getNodeRange(abstractNode);
 
   if (compRange) {
@@ -649,7 +737,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
               ? patchExistingPlacementCall(rawExistingPl, transformKey, newTransformCall)
               : newPlacement;
             const patchRes = CstUnparser.patchAndUnparse({
-              target: placementNode,
+              target: asUnparserNode(placementNode),
               replaceText: patchedPlacement,
             });
             const actualSlice = getTextInRange(
@@ -677,7 +765,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
             }
           }
 
-          const classModNode = annotationClause.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c));
+          const classModNode = annotationClause.children?.find((c) => Cst.ClassModification.is(asSyntaxNode(c)));
           if (classModNode && classModNode.children && classModNode.children.length > 0) {
             const cmRange = getNodeRange(classModNode);
             const cmSlice = cmRange
@@ -688,7 +776,7 @@ function getPlacementEdit(lines: string[], classInstance: ModelicaClassInstance,
               !findKeywordCallOpenParen(maskModelicaCommentsAndStrings(cmSlice), "Placement")
             ) {
               const patchRes = CstUnparser.patchAndUnparse({
-                target: classModNode,
+                target: asUnparserNode(classModNode),
                 insertChildren: [
                   {
                     content: newPlacement,
@@ -756,9 +844,9 @@ function getPlacementEditIfMissing(
   classInstance: ModelicaClassInstance,
   item: PlacementItem,
 ): TextEdit | null {
-  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === item.name);
+  const component = Array.from(classInstance?.components ?? []).find((c) => c.name === item.name);
   if (component) {
-    const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+    const abstractNode = getAstNodeFromInstance(component);
     const annotationClause = getAnnotationClauseNode(abstractNode);
     if (annotationClause) {
       const placementNode = findDescendantModification(annotationClause, "Placement");
@@ -832,7 +920,7 @@ export function computeConnectInsert(
       : ` annotation(Line(color=${colorStr}))`;
   const connectEq = `  connect(${source}, ${target})${annotation};\n`;
 
-  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
+  const astNode = getAstNodeFromInstance(classInstance);
   const classRange = getNodeRange(astNode);
   const modelStartLine = classRange ? classRange.startLine : undefined;
 
@@ -926,25 +1014,11 @@ export function computeConnectInsert(
 
 // ── Remove connect equation ──
 
-function getConnectEndpoints(ce: any): { source: string; target: string } {
+function getConnectEndpoints(ce: ConnectEquationLike): { source: string; target: string } {
   const source =
-    ce.lhs ??
-    ce.componentReference1?.parts
-      ?.map(
-        (c: { identifier?: { text: string } | undefined; text?: string | undefined }) =>
-          c.identifier?.text ?? c.text ?? "",
-      )
-      ?.join(".") ??
-    "";
+    ce.lhs ?? ce.componentReference1?.parts?.map((c) => c.identifier?.text ?? c.text ?? "")?.join(".") ?? "";
   const target =
-    ce.rhs ??
-    ce.componentReference2?.parts
-      ?.map(
-        (c: { identifier?: { text: string } | undefined; text?: string | undefined }) =>
-          c.identifier?.text ?? c.text ?? "",
-      )
-      ?.join(".") ??
-    "";
+    ce.rhs ?? ce.componentReference2?.parts?.map((c) => c.identifier?.text ?? c.text ?? "")?.join(".") ?? "";
   return { source, target };
 }
 
@@ -983,8 +1057,8 @@ export function computeConnectRemove(
 ): TextEdit[] {
   const lines = docText.split("\n");
 
-  const connectEqs = Array.from(classInstance?.connectEquations ?? []);
-  const connectEq: any = findBestConnectMatch(connectEqs, getConnectEndpoints, source, target);
+  const connectEqs = getConnectEquationsList(classInstance);
+  const connectEq = findBestConnectMatch(connectEqs, getConnectEndpoints, source, target);
 
   if (connectEq) {
     const eqNode = getConnectEquationStatementNode(connectEq);
@@ -1097,7 +1171,7 @@ export function computeComponentsDelete(
   }
 
   // Fallback for synthetic mock ASTs without full Modelica class wrapper
-  Array.from(classInstance?.connectEquations ?? []).forEach((ce: any) => {
+  getConnectEquationsList(classInstance).forEach((ce) => {
     const { source: c1, target: c2 } = getConnectEndpoints(ce);
     const involvesComponent = [...nameSet].some(
       (name) => c1 === name || c1.startsWith(`${name}.`) || c2 === name || c2.startsWith(`${name}.`),
@@ -1111,13 +1185,13 @@ export function computeComponentsDelete(
   });
 
   for (const name of names) {
-    const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === name);
+    const component = Array.from(classInstance?.components ?? []).find((c) => c.name === name);
     if (!component) continue;
 
-    const compNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
-    const isDeclLike = (n: any) =>
-      Cst.ComponentDeclaration.is(n) ||
-      Cst.Declaration.is(n) ||
+    const compNode = getAstNodeFromInstance(component);
+    const isDeclLike = (n: EditableSyntaxNode | null | undefined): boolean =>
+      Cst.ComponentDeclaration.is(asSyntaxNode(n)) ||
+      Cst.Declaration.is(asSyntaxNode(n)) ||
       n?.type === "component_declaration" ||
       n?.type === "declaration";
 
@@ -1125,14 +1199,14 @@ export function computeComponentsDelete(
     if (isDeclLike(compNode) && compNode?.parent) {
       const siblingDecls = (compNode.parent.children || []).filter(isDeclLike);
       if (siblingDecls.length > 1) {
-        const allDeleted = siblingDecls.every((s: any) => {
+        const allDeleted = siblingDecls.every((s) => {
           const id = getDeclarationIdentNode(s)?.text?.trim();
           return id ? nameSet.has(id) : false;
         });
         if (!allDeleted) {
           const patchRes = CstUnparser.patchAndUnparse({
-            target: compNode.parent,
-            deleteChildren: [compNode],
+            target: asUnparserNode(compNode.parent),
+            deleteChildren: [asUnparserNode(compNode)],
           });
           edits.push(
             TextEdit.replace(
@@ -1149,14 +1223,15 @@ export function computeComponentsDelete(
         }
         if (
           compNode.parent.parent &&
-          (Cst.ComponentClause?.is?.(compNode.parent.parent) || compNode.parent.parent.type === "component_clause")
+          (Cst.ComponentClause?.is?.(asSyntaxNode(compNode.parent.parent)) ||
+            compNode.parent.parent.type === "component_clause")
         ) {
           targetDeleteNode = compNode.parent.parent;
         }
       }
     } else if (compNode) {
-      const nestedDecls: any[] = [];
-      const collectDecls = (n: any) => {
+      const nestedDecls: EditableSyntaxNode[] = [];
+      const collectDecls = (n: EditableSyntaxNode | null | undefined) => {
         if (!n) return;
         if (isDeclLike(n)) {
           nestedDecls.push(n);
@@ -1173,8 +1248,8 @@ export function computeComponentsDelete(
         });
         if (matchedDecl && matchedDecl.parent && !allDeleted) {
           const patchRes = CstUnparser.patchAndUnparse({
-            target: matchedDecl.parent,
-            deleteChildren: [matchedDecl],
+            target: asUnparserNode(matchedDecl.parent),
+            deleteChildren: [asUnparserNode(matchedDecl)],
           });
           edits.push(
             TextEdit.replace(
@@ -1246,7 +1321,7 @@ export function computeEdgePointEdits(
 ): TextEdit[] {
   const edits: TextEdit[] = [];
   const seen = new Set<string>();
-  const usedCstConnects = new Set<any>();
+  const usedCstConnects = new Set<ConnectEquationLike>();
   const usedScannedConnects = new Set<ScannedConnectStmt>();
 
   const docText = lines.join("\n");
@@ -1258,7 +1333,7 @@ export function computeEdgePointEdits(
     return cachedLayout;
   };
 
-  const connectEqs = Array.from(classInstance?.connectEquations ?? []);
+  const connectEqs = getConnectEquationsList(classInstance);
 
   for (const edge of edges) {
     const pointsStr = `{${edge.points.map((p) => `{${p.x},${p.y}}`).join(", ")}}`;
@@ -1267,13 +1342,7 @@ export function computeEdgePointEdits(
     const colorCore = `color={${inferredColor[0]}, ${inferredColor[1]}, ${inferredColor[2]}}`;
     const defaultLineAnnotation = `Line(${newPointsCore}, ${colorCore})`;
 
-    const connectEq: any = findBestConnectMatch(
-      connectEqs,
-      getConnectEndpoints,
-      edge.source,
-      edge.target,
-      usedCstConnects,
-    );
+    const connectEq = findBestConnectMatch(connectEqs, getConnectEndpoints, edge.source, edge.target, usedCstConnects);
     if (connectEq) {
       usedCstConnects.add(connectEq);
     }
@@ -1314,7 +1383,7 @@ export function computeEdgePointEdits(
                 const existingLineText = sliceInDoc || lineNode.text || null;
                 const updatedLineAnnotation = updateLineAnnotationText(existingLineText, newPointsCore, colorCore);
                 const patchRes = CstUnparser.patchAndUnparse({
-                  target: lineNode,
+                  target: asUnparserNode(lineNode),
                   replaceText: updatedLineAnnotation,
                 });
                 edits.push(
@@ -1333,7 +1402,7 @@ export function computeEdgePointEdits(
             }
 
             if (!handledViaCst) {
-              const classModNode = annotationClause.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c));
+              const classModNode = annotationClause.children?.find((c) => Cst.ClassModification.is(asSyntaxNode(c)));
               if (classModNode && classModNode.children && classModNode.children.length > 0) {
                 const cmRange = getNodeRange(classModNode);
                 const cmSlice = cmRange
@@ -1344,7 +1413,7 @@ export function computeEdgePointEdits(
                   !findKeywordCallOpenParen(maskModelicaCommentsAndStrings(cmSlice), "Line")
                 ) {
                   const patchRes = CstUnparser.patchAndUnparse({
-                    target: classModNode,
+                    target: asUnparserNode(classModNode),
                     insertChildren: [
                       {
                         content: defaultLineAnnotation,
@@ -1814,8 +1883,7 @@ export function computeNameEdit(
 ): TextEdit[] {
   if (!oldName || !newName || oldName === newName) return [];
 
-  const effectiveDocText =
-    docText ?? ((classInstance as any)?.cstNode?.tree as { sourceCode?: string } | undefined)?.sourceCode ?? undefined;
+  const effectiveDocText = docText ?? getAstNodeFromInstance(classInstance)?.tree?.sourceCode ?? undefined;
 
   if (effectiveDocText) {
     const layout = scanModelicaClassLayout(effectiveDocText, classInstance?.name);
@@ -1872,10 +1940,10 @@ export function computeNameEdit(
     }
   }
 
-  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === oldName);
+  const component = Array.from(classInstance?.components ?? []).find((c) => c.name === oldName);
   if (!component) return [];
 
-  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+  const abstractNode = getAstNodeFromInstance(component);
   const identNode = getDeclarationIdentNode(abstractNode);
   const identRange = getNodeRange(identNode);
   if (identRange) {
@@ -1889,9 +1957,10 @@ export function computeNameEdit(
   return [];
 }
 
-function findDescriptionStringNode(node: any): any {
+function findDescriptionStringNode(node: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null {
   if (!node) return null;
-  const isString = (n: any) => Cst.DescriptionString.is(n) || Cst.StringLiteral.is(n);
+  const isString = (n: EditableSyntaxNode | null | undefined): boolean =>
+    Cst.DescriptionString.is(asSyntaxNode(n)) || Cst.StringLiteral.is(asSyntaxNode(n));
 
   if (isString(node)) return node;
 
@@ -1903,8 +1972,10 @@ function findDescriptionStringNode(node: any): any {
   // If there is a description node, search within it (specifically avoiding annotation_clause)
   const descNode =
     node.description ??
-    (Cst.ComponentDeclaration.is(node) ? Cst.ComponentDeclaration.description(node) : null) ??
-    (node.children || []).find((c: SyntaxNode) => Cst.Description.is(c));
+    (Cst.ComponentDeclaration.is(asSyntaxNode(node))
+      ? Cst.ComponentDeclaration.description(asSyntaxNode(node))
+      : null) ??
+    (node.children || []).find((c) => Cst.Description.is(asSyntaxNode(c)));
   if (descNode) {
     if (isString(descNode)) return descNode;
     for (const child of descNode.children || []) {
@@ -1922,10 +1993,10 @@ export function computeDescriptionEdit(
   newDescription: string,
 ): TextEdit[] {
   const escapedDescription = newDescription.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
-  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === componentName);
+  const component = Array.from(classInstance?.components ?? []).find((c) => c.name === componentName);
 
   if (component) {
-    const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+    const abstractNode = getAstNodeFromInstance(component);
     const descriptionNode = findDescriptionStringNode(abstractNode);
     const descRange = getNodeRange(descriptionNode);
 
@@ -2002,7 +2073,7 @@ export function computeDescriptionEdit(
 
   // Fallback for synthetic mock AST nodes without class wrapper
   if (component && newDescription !== "") {
-    const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+    const abstractNode = getAstNodeFromInstance(component);
     const declNode = getDeclarationNode(abstractNode);
     const modificationNode = getModificationNode(declNode ?? abstractNode);
     const subscriptsNode = getSubscriptsNode(declNode ?? abstractNode);
@@ -2024,15 +2095,23 @@ export function computeDescriptionEdit(
   return [];
 }
 
+interface MatchedArgumentNodes {
+  argumentNode: EditableSyntaxNode;
+  elementModNode: EditableSyntaxNode;
+  valueModNode: EditableSyntaxNode | null | undefined;
+  ownerContainer: EditableSyntaxNode;
+  matchedName: string;
+}
+
 function findArgumentByName(
-  classModOrArgList: any,
+  classModOrArgList: EditableSyntaxNode | null | undefined,
   name: string,
-): { argumentNode: any; elementModNode: any; valueModNode: any; ownerContainer: any; matchedName: string } | null {
+): MatchedArgumentNodes | null {
   if (!classModOrArgList) return null;
-  const findArgs = (node: any): any[] => {
-    const results: any[] = [];
+  const findArgs = (node: EditableSyntaxNode | null | undefined): EditableSyntaxNode[] => {
+    const results: EditableSyntaxNode[] = [];
     if (!node) return results;
-    if (Cst.Argument.is(node)) {
+    if (Cst.Argument.is(asSyntaxNode(node))) {
       results.push(node);
       return results;
     }
@@ -2044,9 +2123,9 @@ function findArgumentByName(
 
   const args = findArgs(classModOrArgList);
   for (const arg of args) {
-    const findElemMod = (n: any): any => {
+    const findElemMod = (n: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null => {
       if (!n) return null;
-      if (Cst.ElementModification.is(n)) return n;
+      if (Cst.ElementModification.is(asSyntaxNode(n))) return n;
       for (const ch of n.children || []) {
         const found = findElemMod(ch);
         if (found) return found;
@@ -2056,25 +2135,31 @@ function findArgumentByName(
     const elemMod = findElemMod(arg);
     if (!elemMod) continue;
 
-    const findName = (n: any): any => {
+    const findName = (n: EditableSyntaxNode | null | undefined): EditableSyntaxNode | null => {
       if (!n) return null;
-      if (Cst.Name.is(n) || n.type === "name") return n;
-      if (Cst.Identifier.is(n)) return n;
+      if (Cst.Name.is(asSyntaxNode(n)) || n.type === "name") return n;
+      if (Cst.Identifier.is(asSyntaxNode(n))) return n;
       for (const ch of n.children || []) {
-        if (Cst.Modification.is(ch) || Cst.ClassModification.is(ch)) continue;
+        if (Cst.Modification.is(asSyntaxNode(ch)) || Cst.ClassModification.is(asSyntaxNode(ch))) continue;
         const found = findName(ch);
         if (found) return found;
       }
       return null;
     };
     const nameNode =
-      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ?? findName(elemMod);
+      (Cst.ElementModification.is(asSyntaxNode(elemMod))
+        ? Cst.ElementModification.name(asSyntaxNode(elemMod))
+        : null) ?? findName(elemMod);
     const argName = nameNode?.text ? stripWhitespaceAroundDots(nameNode.text.trim()) : "";
     if (!argName) continue;
 
     const valueModNode =
-      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
-      (elemMod.children || []).find((c: SyntaxNode) => Cst.Modification.is(c) || Cst.ClassModification.is(c));
+      (Cst.ElementModification.is(asSyntaxNode(elemMod))
+        ? Cst.ElementModification.modification(asSyntaxNode(elemMod))
+        : null) ??
+      (elemMod.children || []).find(
+        (c) => Cst.Modification.is(asSyntaxNode(c)) || Cst.ClassModification.is(asSyntaxNode(c)),
+      );
 
     if (argName === name) {
       return {
@@ -2089,10 +2174,12 @@ function findArgumentByName(
     if (name.startsWith(`${argName}.`) && valueModNode) {
       const rest = name.slice(argName.length + 1);
       const nestedCm =
-        (Cst.ClassModification.is(valueModNode) ? valueModNode : null) ??
-        valueModNode.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c) || c.type === "class_modification");
+        (Cst.ClassModification.is(asSyntaxNode(valueModNode)) ? valueModNode : null) ??
+        valueModNode.children?.find(
+          (c) => Cst.ClassModification.is(asSyntaxNode(c)) || c.type === "class_modification",
+        );
       if (nestedCm) {
-        const nestedArgList = nestedCm.children?.find((c: SyntaxNode) => Cst.ArgumentList.is(c)) ?? nestedCm;
+        const nestedArgList = nestedCm.children?.find((c) => Cst.ArgumentList.is(asSyntaxNode(c))) ?? nestedCm;
         const nestedMatch = findArgumentByName(nestedArgList, rest);
         if (nestedMatch) return nestedMatch;
       }
@@ -2103,41 +2190,47 @@ function findArgumentByName(
 }
 
 function findNestedModificationContainer(
-  classModOrArgList: any,
+  classModOrArgList: EditableSyntaxNode | null | undefined,
   name: string,
-): { containerNode: any; leafName: string } | null {
+): { containerNode: EditableSyntaxNode; leafName: string } | null {
   if (!classModOrArgList || !name.includes(".")) return null;
   for (const arg of getAllArgumentNodes(classModOrArgList)) {
     const elemMod =
-      (arg.children || []).find((c: SyntaxNode) => Cst.ElementModification.is(c)) ??
-      (Cst.ElementModification.is(arg) ? arg : null);
+      (arg.children || []).find((c) => Cst.ElementModification.is(asSyntaxNode(c))) ??
+      (Cst.ElementModification.is(asSyntaxNode(arg)) ? arg : null);
     if (!elemMod) continue;
     const nameNode =
-      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ??
-      (elemMod.children || []).find((c: SyntaxNode) => Cst.Name.is(c) || Cst.Identifier.is(c));
+      (Cst.ElementModification.is(asSyntaxNode(elemMod))
+        ? Cst.ElementModification.name(asSyntaxNode(elemMod))
+        : null) ??
+      (elemMod.children || []).find((c) => Cst.Name.is(asSyntaxNode(c)) || Cst.Identifier.is(asSyntaxNode(c)));
     const argName = nameNode?.text ? stripWhitespaceAroundDots(nameNode.text.trim()) : "";
     if (!argName || !name.startsWith(`${argName}.`)) continue;
     const rest = name.slice(argName.length + 1);
     const valueModNode =
-      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
-      (elemMod.children || []).find((c: SyntaxNode) => Cst.Modification.is(c) || Cst.ClassModification.is(c));
+      (Cst.ElementModification.is(asSyntaxNode(elemMod))
+        ? Cst.ElementModification.modification(asSyntaxNode(elemMod))
+        : null) ??
+      (elemMod.children || []).find(
+        (c) => Cst.Modification.is(asSyntaxNode(c)) || Cst.ClassModification.is(asSyntaxNode(c)),
+      );
     const nestedCm =
-      (Cst.ClassModification.is(valueModNode) ? valueModNode : null) ??
-      valueModNode?.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c) || c.type === "class_modification");
+      (Cst.ClassModification.is(asSyntaxNode(valueModNode)) ? valueModNode : null) ??
+      valueModNode?.children?.find((c) => Cst.ClassModification.is(asSyntaxNode(c)) || c.type === "class_modification");
     if (nestedCm) {
-      const nestedArgList = nestedCm.children?.find((c: SyntaxNode) => Cst.ArgumentList.is(c)) ?? nestedCm;
+      const nestedArgList = nestedCm.children?.find((c) => Cst.ArgumentList.is(asSyntaxNode(c))) ?? nestedCm;
       return findNestedModificationContainer(nestedArgList, rest) ?? { containerNode: nestedArgList, leafName: rest };
     }
   }
   return null;
 }
 
-function getAllArgumentNodes(classModOrArgList: any): any[] {
+function getAllArgumentNodes(classModOrArgList: EditableSyntaxNode | null | undefined): EditableSyntaxNode[] {
   if (!classModOrArgList) return [];
-  const results: any[] = [];
-  const walk = (node: any) => {
+  const results: EditableSyntaxNode[] = [];
+  const walk = (node: EditableSyntaxNode | null | undefined) => {
     if (!node) return;
-    if (Cst.Argument.is(node)) {
+    if (Cst.Argument.is(asSyntaxNode(node))) {
       results.push(node);
       return;
     }
@@ -2296,7 +2389,7 @@ function computeScannedParameterEdit(
   parameterName: string,
   newValue: string,
 ): TextEdit[] {
-  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
+  const astNode = getAstNodeFromInstance(classInstance);
   const classRange = getNodeRange(astNode);
   const layout = scanModelicaClassLayout(docText, classInstance?.name, classRange?.startLine);
   if (!layout) return [];
@@ -2334,14 +2427,14 @@ export function computeParameterEdit(
   docText?: string,
 ): TextEdit[] {
   const docLines = docText !== undefined ? docText.split("\n") : null;
-  const component = Array.from(classInstance?.components ?? []).find((c: any) => c.name === componentName);
+  const component = Array.from(classInstance?.components ?? []).find((c) => c.name === componentName);
   if (!component) {
     return docText !== undefined
       ? computeScannedParameterEdit(docText, classInstance, componentName, parameterName, newValue)
       : [];
   }
 
-  const abstractNode = (component as any).cstNode ?? (component as any).abstractSyntaxNode;
+  const abstractNode = getAstNodeFromInstance(component);
   if (!abstractNode) {
     return docText !== undefined
       ? computeScannedParameterEdit(docText, classInstance, componentName, parameterName, newValue)
@@ -2372,12 +2465,12 @@ export function computeParameterEdit(
   // 1. Check for real CST structure (nodes with children / startPosition)
   const modNode = getModificationNode(declNode);
   const classModNode = modNode
-    ? (modNode.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c)) ??
-      (Cst.ClassModification.is(modNode) ? modNode : null))
+    ? (modNode.children?.find((c) => Cst.ClassModification.is(asSyntaxNode(c))) ??
+      (Cst.ClassModification.is(asSyntaxNode(modNode)) ? modNode : null))
     : null;
 
   if (classModNode && classModNode.children && classModNode.children.length > 0) {
-    const argListNode = classModNode.children?.find((c: SyntaxNode) => Cst.ArgumentList.is(c));
+    const argListNode = classModNode.children?.find((c) => Cst.ArgumentList.is(asSyntaxNode(c)));
     const containerNode = argListNode ?? classModNode;
     const existingArg = findArgumentByName(containerNode, parameterName);
 
@@ -2390,7 +2483,7 @@ export function computeParameterEdit(
           const target =
             targetContainer === containerNode ? (modNode ?? classModNode) : (targetContainer.parent ?? targetContainer);
           const patchRes = CstUnparser.patchAndUnparse({
-            target,
+            target: asUnparserNode(target),
             replaceText: "",
           });
           return [
@@ -2408,8 +2501,8 @@ export function computeParameterEdit(
 
         // Multiple arguments: delete this argument from its argument_list
         const patchRes = CstUnparser.patchAndUnparse({
-          target: targetContainer,
-          deleteChildren: [existingArg.argumentNode],
+          target: asUnparserNode(targetContainer),
+          deleteChildren: [asUnparserNode(existingArg.argumentNode)],
         });
         return [
           TextEdit.replace(
@@ -2428,8 +2521,8 @@ export function computeParameterEdit(
       if (existingArg.valueModNode) {
         const vm = existingArg.valueModNode;
         const nestedCm =
-          (Cst.ClassModification.is(vm) || vm.type === "class_modification" ? vm : null) ??
-          vm.children?.find((c: SyntaxNode) => Cst.ClassModification.is(c) || c.type === "class_modification");
+          (Cst.ClassModification.is(asSyntaxNode(vm)) || vm.type === "class_modification" ? vm : null) ??
+          vm.children?.find((c) => Cst.ClassModification.is(asSyntaxNode(c)) || c.type === "class_modification");
         if (nestedCm) {
           const vmRange = getNodeRange(vm);
           const cmRange = getNodeRange(nestedCm);
@@ -2460,7 +2553,7 @@ export function computeParameterEdit(
           modStr.startsWith("=") && modStr.length > 1 && isAsciiWhitespaceCode(modStr.charCodeAt(1));
         const newModText = hasSpaceAfterEq ? `= ${newValue}` : `=${newValue}`;
         const patchRes = CstUnparser.patchAndUnparse({
-          target: vm,
+          target: asUnparserNode(vm),
           replaceText: newModText,
         });
         return [
@@ -2480,7 +2573,7 @@ export function computeParameterEdit(
           return [TextEdit.insert(Position.create(emRange.endLine, emRange.endCol), ` = ${newValue}`)];
         }
         const patchRes = CstUnparser.patchAndUnparse({
-          target: existingArg.elementModNode,
+          target: asUnparserNode(existingArg.elementModNode),
           replaceText: `${existingArg.matchedName || parameterName} = ${newValue}`,
         });
         return [
@@ -2502,7 +2595,7 @@ export function computeParameterEdit(
       const insertContainer = nestedTarget ? nestedTarget.containerNode : containerNode;
       const insertName = nestedTarget ? nestedTarget.leafName : parameterName;
       const patchRes = CstUnparser.patchAndUnparse({
-        target: insertContainer,
+        target: asUnparserNode(insertContainer),
         insertChildren: [
           {
             content: `${insertName} = ${newValue}`,
@@ -2526,32 +2619,35 @@ export function computeParameterEdit(
   }
 
   // 2. Legacy mock AST fallback (e.g. unit tests with modification.classModification.modificationArguments)
-  if (declNode.modification?.classModification?.modificationArguments) {
-    const classMod = declNode.modification.classModification;
+  const legacyClassMod = declNode.modification?.classModification;
+  const legacyModArgs = legacyClassMod?.modificationArguments;
+  if (legacyClassMod && legacyModArgs) {
+    const classMod = legacyClassMod;
+    const modArgs = legacyModArgs;
 
-    const argIndex = classMod.modificationArguments.findIndex((arg: any) => {
-      if (!arg.name) return false;
+    const argIndex = modArgs.findIndex((arg) => {
+      if (!arg.name?.parts) return false;
 
-      const nameText = arg.name.parts.map((p: any) => p.text).join(".");
+      const nameText = arg.name.parts.map((p) => p.text ?? "").join(".");
       return nameText === parameterName;
     });
 
     if (argIndex !== -1) {
-      const existingArg = classMod.modificationArguments[argIndex];
+      const existingArg = modArgs[argIndex]!;
       const argRange = getNodeRange(existingArg);
       if (shouldRemove) {
-        let startLine = argRange?.startLine ?? existingArg.startPosition.row;
-        let startCol = argRange?.startCol ?? existingArg.startPosition.column;
-        let endLine = argRange?.endLine ?? existingArg.endPosition.row;
-        let endCol = argRange?.endCol ?? existingArg.endPosition.column;
+        let startLine = argRange?.startLine ?? existingArg.startPosition?.row ?? 0;
+        let startCol = argRange?.startCol ?? existingArg.startPosition?.column ?? 0;
+        let endLine = argRange?.endLine ?? existingArg.endPosition?.row ?? 0;
+        let endCol = argRange?.endCol ?? existingArg.endPosition?.column ?? 0;
 
-        const nextArg = classMod.modificationArguments[argIndex + 1];
+        const nextArg = modArgs[argIndex + 1];
         const nextRange = getNodeRange(nextArg);
         if (nextRange) {
           endLine = nextRange.startLine;
           endCol = nextRange.startCol;
         } else if (argIndex > 0) {
-          const prevArg = classMod.modificationArguments[argIndex - 1];
+          const prevArg = modArgs[argIndex - 1];
           const prevRange = getNodeRange(prevArg);
           if (prevRange) {
             startLine = prevRange.endLine;
@@ -2594,10 +2690,10 @@ export function computeParameterEdit(
     } else {
       // Add new argument to existing modification
       if (shouldRemove) return [];
-      const hasArgs = classMod.modificationArguments.length > 0;
+      const hasArgs = modArgs.length > 0;
       const modRange = getNodeRange(classMod);
-      const endLine = modRange?.endLine ?? classMod.endPosition.row;
-      const endCol = modRange?.endCol ?? classMod.endPosition.column;
+      const endLine = modRange?.endLine ?? classMod.endPosition?.row ?? 0;
+      const endCol = modRange?.endCol ?? classMod.endPosition?.column ?? 0;
       return [
         TextEdit.insert({ line: endLine, character: endCol - 1 }, `${hasArgs ? ", " : ""}${parameterName}=${newValue}`),
       ];
@@ -2669,7 +2765,7 @@ export function computeComponentInsert(
   const componentDecl = `  ${className} ${componentName} ${annotation};\n`;
 
   const lines = docText.split("\n");
-  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
+  const astNode = getAstNodeFromInstance(classInstance);
   const classRange = getNodeRange(astNode);
   const modelStartLine = classRange ? classRange.startLine : 0;
 
@@ -2747,15 +2843,15 @@ export function computeCoordinateSystemEdits(
   options: CoordinateSystemEditOptions,
 ): TextEdit[] {
   const lines = docText.split("\n");
-  const astNode = (classInstance as any)?.cstNode ?? (classInstance as any)?.abstractSyntaxNode;
+  const astNode = getAstNodeFromInstance(classInstance);
   const classRange = getNodeRange(astNode);
 
   // Build the new coordinateSystem(...) arguments string
   const formatCoordSys = (existing?: {
-    extent?: [[number, number], [number, number]];
-    grid?: [number, number];
-    preserveAspectRatio?: boolean;
-    initialScale?: number;
+    extent?: [[number, number], [number, number]] | undefined;
+    grid?: [number, number] | undefined;
+    preserveAspectRatio?: boolean | undefined;
+    initialScale?: number | undefined;
   }) => {
     const preserveAspectRatio =
       options.preserveAspectRatio !== undefined ? options.preserveAspectRatio : (existing?.preserveAspectRatio ?? true);
@@ -2783,8 +2879,8 @@ export function computeCoordinateSystemEdits(
     return `coordinateSystem(${parts.join(", ")})`;
   };
 
-  const existingDiagram: any =
-    typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
+  const existingDiagram: IDiagram | null =
+    typeof classInstance?.annotation === "function" ? (classInstance.annotation("Diagram") as IDiagram | null) : null;
   const existingCoordSys = existingDiagram?.coordinateSystem;
   const newCoordSysCall = formatCoordSys(existingCoordSys);
 

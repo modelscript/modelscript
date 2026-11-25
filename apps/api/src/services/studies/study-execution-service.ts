@@ -281,7 +281,9 @@ export function normalizeRowToStudyDefinition(row: ScriptTemplateRow): StudyDefi
     if (row.config) {
       parsedConfig = JSON.parse(row.config) as Record<string, unknown>;
     }
-  } catch {}
+  } catch {
+    // Fall back to empty config when stored study config JSON is malformed
+  }
 
   if (builtin) {
     return {
@@ -1800,10 +1802,14 @@ export function executeStudyRun(
           if (fs.statSync(full).mtimeMs < cutoff) {
             fs.rmSync(full, { recursive: true, force: true });
           }
-        } catch {}
+        } catch {
+          // Ignore individual stale run directory cleanup failures
+        }
       }
     }
-  } catch {}
+  } catch {
+    // Best-effort sweep of expired study temporary directories
+  }
   const resultDir = path.join(os.tmpdir(), `msx-study-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   fs.mkdirSync(resultDir, { recursive: true });
   const logPath = path.join(resultDir, "study.log");
@@ -2118,7 +2124,9 @@ export function getLinkedPackageStudies(
     let meta: Record<string, unknown> = {};
     try {
       if (j.metadata) meta = JSON.parse(j.metadata) as Record<string, unknown>;
-    } catch {}
+    } catch {
+      // Default to empty metadata if stored job metadata JSON is malformed
+    }
 
     const explicitlyPublished = Boolean(
       meta["linkToPackage"] || meta["saveInstanceToPackage"] || meta["isPublic"] === true,

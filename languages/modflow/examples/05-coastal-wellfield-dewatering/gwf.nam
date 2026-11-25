@@ -1,0 +1,15 @@
+# MODFLOW 6 Regional 3-Layer Coastal GWF Name File
+BEGIN OPTIONS
+  SAVE_FLOWS
+END OPTIONS
+
+BEGIN PACKAGES
+  DIS6 gwf.dis
+  NPF6 gwf.npf
+  STO6 gwf.sto
+  IC6  gwf.ic
+  CHD6 gwf.chd
+  WEL6 gwf.wel
+  RIV6 gwf.riv
+  OC6  gwf.oc
+END PACKAGES

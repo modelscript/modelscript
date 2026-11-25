@@ -2,7 +2,7 @@
 
 import { Color, ColorInformation, ColorPresentation, Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import type { SyntaxNode } from "../utils/cst-facade.js";
+import type { SyntaxNode, Tree } from "../utils/cst-facade.js";
 import { isDigitCode, skipWs } from "../utils/lexical-utils.js";
 
 const COLOR_FIELDS = new Set(["color", "lineColor", "fillColor", "textColor"]);
@@ -47,7 +47,7 @@ function parseRgbTupleFromExpr(exprNode: SyntaxNode): [number, number, number] |
 export function registerColorProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  getDocumentTree: (uri: string) => any,
+  getDocumentTree: (uri: string) => Tree | null | undefined,
   isParserReady: () => boolean,
 ) {
   connection.onDocumentColor((params): ColorInformation[] => {
@@ -68,32 +68,33 @@ export function registerColorProvider(
           node.childForFieldName?.("name") ||
           node.childForFieldName?.("identifier") ||
           node.children?.find(
-            (c: any) => c.type === "name" || c.type === "identifier" || c.type === "component_reference",
+            (c: SyntaxNode) => c.type === "name" || c.type === "identifier" || c.type === "component_reference",
           );
         const name = nameNode?.text?.trim();
         if (name && COLOR_FIELDS.has(name)) {
-          let exprNode: any = null;
+          let exprNode: SyntaxNode | null | undefined = null;
           if (isElemMod) {
             const modNode =
-              node.childForFieldName?.("modification") ?? node.children?.find((c: any) => c.type === "modification");
+              node.childForFieldName?.("modification") ??
+              node.children?.find((c: SyntaxNode) => c.type === "modification");
             const modExpr =
               modNode?.childForFieldName?.("modificationExpression") ??
-              modNode?.children?.find((c: any) => c.type === "modification_expression");
+              modNode?.children?.find((c: SyntaxNode) => c.type === "modification_expression");
             exprNode =
               modExpr?.childForFieldName?.("expression") ??
-              modExpr?.children?.find((c: any) => c.type === "expression") ??
-              modNode?.children?.find((c: any) => c.type === "expression");
+              modExpr?.children?.find((c: SyntaxNode) => c.type === "expression") ??
+              modNode?.children?.find((c: SyntaxNode) => c.type === "expression");
           } else {
             const argNode =
               node.childForFieldName?.("argument") ??
-              node.children?.find((c: any) => c.type === "function_argument" || c.type === "argument");
+              node.children?.find((c: SyntaxNode) => c.type === "function_argument" || c.type === "argument");
             exprNode =
               argNode?.childForFieldName?.("expression") ??
-              argNode?.children?.find((c: any) => c.type === "expression") ??
+              argNode?.children?.find((c: SyntaxNode) => c.type === "expression") ??
               argNode;
           }
           if (!exprNode) {
-            exprNode = node.children?.find((c: any) => c.type === "expression" || c.type === "primary");
+            exprNode = node.children?.find((c: SyntaxNode) => c.type === "expression" || c.type === "primary");
           }
 
           if (exprNode) {

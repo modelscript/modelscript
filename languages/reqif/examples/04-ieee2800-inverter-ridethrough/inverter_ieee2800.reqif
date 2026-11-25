@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<REQ-IF xmlns="http://www.omg.org/spec/ReqIF/20110401/reqif.xsd">
+  <THE-HEADER>
+    <REQ-IF-HEADER IDENTIFIER="HDR-2800-01">
+      <CREATION-TIME>2026-11-01T12:00:00Z</CREATION-TIME>
+      <REQ-IF-VERSION>1.0</REQ-IF-VERSION>
+      <TITLE>IEEE 2800-2022 Inverter-Based Resource Ride-Through Compliance Matrix</TITLE>
+      <COMMENT>Transmission-connected IBR dynamic performance requirements</COMMENT>
+    </REQ-IF-HEADER>
+  </THE-HEADER>
+  <CORE-CONTENT>
+    <REQ-IF-CONTENT>
+      <DATATYPES>
+        <DATATYPE-DEFINITION-STRING IDENTIFIER="DT-STR" LONG-NAME="String" />
+        <DATATYPE-DEFINITION-REAL IDENTIFIER="DT-REAL" LONG-NAME="Real" />
+      </DATATYPES>
+      <SPEC-TYPES>
+        <SPEC-OBJECT-TYPE IDENTIFIER="ST-GRID" LONG-NAME="Grid Code Requirement">
+          <SPEC-ATTRIBUTES>
+            <ATTRIBUTE-DEFINITION-STRING IDENTIFIER="AD-DESC" LONG-NAME="Description" IS-MANDATORY="true">
+              <TYPE><DATATYPE-DEFINITION-STRING-REF>DT-STR</DATATYPE-DEFINITION-STRING-REF></TYPE>
+            </ATTRIBUTE-DEFINITION-STRING>
+          </SPEC-ATTRIBUTES>
+        </SPEC-OBJECT-TYPE>
+      </SPEC-TYPES>
+      <SPEC-OBJECTS>
+        <SPEC-OBJECT IDENTIFIER="IBR-LVRT-01" LONG-NAME="Low-Voltage Ride-Through Duration">
+          <TYPE><SPEC-OBJECT-TYPE-REF>ST-GRID</SPEC-OBJECT-TYPE-REF></TYPE>
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING>
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-DESC</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+              <THE-VALUE>Inverter shall ride through terminal voltage sag down to 0.10 pu for duration &gt;= 0.32 s.</THE-VALUE>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="IBR-HVRT-02" LONG-NAME="High-Voltage Ride-Through Margin">
+          <TYPE><SPEC-OBJECT-TYPE-REF>ST-GRID</SPEC-OBJECT-TYPE-REF></TYPE>
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING>
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-DESC</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+              <THE-VALUE>Inverter shall remain connected at 1.20 pu overvoltage for duration &gt;= 0.20 s.</THE-VALUE>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="IBR-FRT-03" LONG-NAME="Continuous Frequency Operating Band">
+          <TYPE><SPEC-OBJECT-TYPE-REF>ST-GRID</SPEC-OBJECT-TYPE-REF></TYPE>
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING>
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-DESC</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+              <THE-VALUE>Continuous operation shall be maintained for grid frequency &gt;= 58.8 Hz.</THE-VALUE>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="IBR-FFR-04" LONG-NAME="Fast Frequency Response Reaction Time">
+          <TYPE><SPEC-OBJECT-TYPE-REF>ST-GRID</SPEC-OBJECT-TYPE-REF></TYPE>
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING>
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-DESC</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+              <THE-VALUE>Active power step response reaction time must be &lt;= 0.5 s following frequency excursion.</THE-VALUE>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+        <SPEC-OBJECT IDENTIFIER="IBR-THD-05" LONG-NAME="Total Harmonic Current Distortion">
+          <TYPE><SPEC-OBJECT-TYPE-REF>ST-GRID</SPEC-OBJECT-TYPE-REF></TYPE>
+          <VALUES>
+            <ATTRIBUTE-VALUE-STRING>
+              <DEFINITION><ATTRIBUTE-DEFINITION-STRING-REF>AD-DESC</ATTRIBUTE-DEFINITION-STRING-REF></DEFINITION>
+              <THE-VALUE>Injected current total rated-current distortion must be &lt;= 5.0 percent at point of interconnection.</THE-VALUE>
+            </ATTRIBUTE-VALUE-STRING>
+          </VALUES>
+        </SPEC-OBJECT>
+      </SPEC-OBJECTS>
+      <SPEC-RELATIONS>
+        <SPEC-RELATION IDENTIFIER="REL-2800-01" LONG-NAME="supports">
+          <SOURCE><SPEC-OBJECT-REF>IBR-FFR-04</SPEC-OBJECT-REF></SOURCE>
+          <TARGET><SPEC-OBJECT-REF>IBR-FRT-03</SPEC-OBJECT-REF></TARGET>
+        </SPEC-RELATION>
+      </SPEC-RELATIONS>
+      <SPECIFICATIONS>
+        <SPECIFICATION IDENTIFIER="SPEC-2800" LONG-NAME="IEEE 2800 IBR Compliance">
+          <CHILDREN>
+            <SPEC-HIERARCHY IDENTIFIER="H-LVRT"><OBJECT><SPEC-OBJECT-REF>IBR-LVRT-01</SPEC-OBJECT-REF></OBJECT></SPEC-HIERARCHY>
+            <SPEC-HIERARCHY IDENTIFIER="H-HVRT"><OBJECT><SPEC-OBJECT-REF>IBR-HVRT-02</SPEC-OBJECT-REF></OBJECT></SPEC-HIERARCHY>
+            <SPEC-HIERARCHY IDENTIFIER="H-FRT">
+              <OBJECT><SPEC-OBJECT-REF>IBR-FRT-03</SPEC-OBJECT-REF></OBJECT>
+              <CHILDREN>
+                <SPEC-HIERARCHY IDENTIFIER="H-FFR"><OBJECT><SPEC-OBJECT-REF>IBR-FFR-04</SPEC-OBJECT-REF></OBJECT></SPEC-HIERARCHY>
+              </CHILDREN>
+            </SPEC-HIERARCHY>
+            <SPEC-HIERARCHY IDENTIFIER="H-THD"><OBJECT><SPEC-OBJECT-REF>IBR-THD-05</SPEC-OBJECT-REF></OBJECT></SPEC-HIERARCHY>
+          </CHILDREN>
+        </SPECIFICATION>
+      </SPECIFICATIONS>
+    </REQ-IF-CONTENT>
+  </CORE-CONTENT>
+</REQ-IF>

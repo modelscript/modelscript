@@ -1,0 +1,31 @@
+MODEL: HydraulicServoActuator
+TITLE: "Hydraulic Actuator Servo Valve Position Control Loop"
+
+COMPONENTS:
+  UG01 TYPE=GP/UG TITLE="Position Command" X=100 Y=200
+    PORTS: OUT=output
+    XP: POS_CMD=0.05
+    FORTRAN:
+      OUT = 0.05
+    ENDFORTRAN
+
+  SJ01 TYPE=GP/SJ TITLE="Position Error Sum" X=250 Y=200
+    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0
+
+  LA01 TYPE=GP/LA TITLE="Servo Lead-Lag Compensator" X=420 Y=200
+    XP: TAU1=0.04, TAU2=0.015, GAIN=3.2
+    S0: S1=0.0
+
+  LM01 TYPE=GP/LM TITLE="Spool Valve Flow Limiter" X=590 Y=200
+    XP: UL=0.8, LL=-0.8
+
+  IN01 TYPE=GP/IN TITLE="Hydraulic Piston Integrator" X=760 Y=200
+    XP: GAIN=8.5, UL=0.15, LL=-0.15
+    S0: S1=0.0
+
+CONNECTIONS:
+  UG01.OUT -> SJ01.IN1
+  SJ01.OUT -> LA01.IN
+  LA01.OUT -> LM01.IN
+  LM01.OUT -> IN01.IN
+  IN01.OUT -> SJ01.IN2

@@ -14,7 +14,7 @@ export interface PostDetailThreadViewProps {
   post: PostItem;
   parents: PostItem[];
   replies: PostItem[];
-  user: any;
+  user: unknown;
   mainPostRef?: React.RefObject<HTMLDivElement | null> | undefined;
   parentsContainerRef?: React.RefObject<HTMLDivElement | null> | undefined;
   activeBotTyping?: ActiveBotTypingState | null | undefined;

@@ -61,7 +61,9 @@ export function createZipArchive(targetZipPath: string, files: Record<string, st
   } finally {
     try {
       fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch {}
+    } catch {
+      // Best-effort cleanup of temporary packaging directory
+    }
   }
 }
 
@@ -145,7 +147,9 @@ export function generateAasxPackage(opts: {
         2,
       ),
     });
-  } catch {}
+  } catch {
+    // Best-effort packaging of release bundle; fileSizeBytes reflects outcome
+  }
 
   const fileSizeBytes = fs.existsSync(targetZipPath) ? fs.statSync(targetZipPath).size : undefined;
 
@@ -207,7 +211,9 @@ export function generateDdpContainer(opts: {
         2,
       ),
     });
-  } catch {}
+  } catch {
+    // Best-effort packaging of release bundle; fileSizeBytes reflects outcome
+  }
 
   const fileSizeBytes = fs.existsSync(targetZipPath) ? fs.statSync(targetZipPath).size : undefined;
 

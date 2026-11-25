@@ -63,16 +63,14 @@ export class ArenaVariable {
 
   /** Variable binding expression, if explicitly set. */
   get bindingExpr(): ArenaExpr | null {
-    const exprId = (this.arena as any).getVarExpression ? (this.arena as any).getVarExpression(this.id) : -1;
+    const exprId = this.arena.getVarExpression(this.id);
     return typeof exprId === "number" && exprId >= 0 ? new ArenaExpr(this.arena, exprId) : null;
   }
 
   /** Sets or updates the variable's binding expression. */
   setBinding(expr: ArenaExpr | number): void {
     const exprId = typeof expr === "number" ? expr : expr.id;
-    if ((this.arena as any).setVarExpression) {
-      (this.arena as any).setVarExpression(this.id, exprId);
-    }
+    this.arena.setVarExpression(this.id, exprId);
   }
 
   /** Creates a symbolic `ArenaExpr` referencing this variable. */

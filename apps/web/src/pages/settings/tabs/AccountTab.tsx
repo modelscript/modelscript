@@ -18,7 +18,9 @@ import { useAuth } from "../../../AuthContext";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { safeCssImageUrl } from "../../../util/url";
+import type { TabType } from "../../SettingsPage";
 import {
   DangerButton,
   DetailIcon,
@@ -35,7 +37,7 @@ import {
 
 export interface AccountTabProps {
   subView: "account" | "accountInfo" | "changePassword" | "main";
-  onNavigate: (tab: any) => void;
+  onNavigate: (tab: TabType) => void;
   onBack?: (() => void) | undefined;
 }
 
@@ -134,8 +136,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
     try {
       await updateAccount({ password });
       setAccountInfoMode("form");
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Incorrect password");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Incorrect password"));
     } finally {
       setLoading(false);
     }
@@ -148,8 +150,7 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
       const res = await resendVerificationEmail(user.email);
       toast.success(res?.message || `Verification link sent to ${user.email}.`);
     } catch (err: unknown) {
-      const errObj = err as { response?: { data?: { error?: string } } };
-      toast.error(errObj.response?.data?.error || "Failed to resend verification email.");
+      toast.error(getApiErrorMessage(err, "Failed to resend verification email."));
     } finally {
       setResendingVerification(false);
     }
@@ -174,8 +175,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
           ? "Account updated! A verification link has been sent to your new email address."
           : "Account updated successfully!",
       );
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Update failed");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Update failed"));
     } finally {
       setLoading(false);
     }
@@ -214,8 +215,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
       setOldPassword("");
       setNewPassword("");
       setNewPasswordConfirm("");
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Password update failed");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Password update failed"));
     } finally {
       setLoading(false);
     }
@@ -229,8 +230,8 @@ export const AccountTab: React.FC<AccountTabProps> = ({ subView, onNavigate, onB
         updateToken(res.token);
       }
       toast.success("All other active sessions have been revoked.");
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || "Failed to revoke sessions.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to revoke sessions."));
     } finally {
       setIsRevokingSessions(false);
     }

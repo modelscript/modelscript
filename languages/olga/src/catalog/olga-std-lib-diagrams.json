@@ -1,0 +1,642 @@
+[
+  {
+    "namePath": "olga:VALVE",
+    "aliases": [
+      "valve",
+      "CONTROL_VALVE",
+      "CHECKVALVE"
+    ],
+    "label": "Pipeline Control Valve",
+    "category": "Flow Control",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VLV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">VALVE</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "opening",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "olga:CHOKE",
+    "aliases": [
+      "choke",
+      "HYDROVALVE",
+      "PERKINS_CHOKE"
+    ],
+    "label": "Multiphase Production Choke",
+    "category": "Flow Control",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">VLV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CHOKE</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "opening",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "olga:PUMP",
+    "aliases": [
+      "pump",
+      "ESP",
+      "CENTRIFUGAL_PUMP"
+    ],
+    "label": "Multiphase Booster Pump",
+    "category": "Rotating Machinery",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">MCH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PUMP</text></svg>",
+    "ports": [
+      {
+        "name": "suction",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "discharge",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "olga:COMPRESSOR",
+    "aliases": [
+      "compressor",
+      "GAS_COMPRESSOR"
+    ],
+    "label": "Polytropic Gas Compressor",
+    "category": "Rotating Machinery",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">MCH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">COMPRESS</text></svg>",
+    "ports": [
+      {
+        "name": "suction",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "discharge",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "speed",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "olga:SEPARATOR",
+    "aliases": [
+      "separator",
+      "FLASH_SEPARATOR",
+      "SLUG_CATCHER"
+    ],
+    "label": "Multiphase Gravity Separator",
+    "category": "Process Equipment",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">EQP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SEPARATO</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "thermal",
+        "kind": "thermal",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "olga:HEATEXCHANGER",
+    "aliases": [
+      "heatexchanger",
+      "HEAT_EXCHANGER",
+      "COOLER",
+      "HEATER"
+    ],
+    "label": "Pipeline Heat Exchanger",
+    "category": "Process Equipment",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">EQP</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HEATEXCH</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 16
+      },
+      {
+        "name": "thermal",
+        "kind": "thermal",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "olga:WELL",
+    "aliases": [
+      "well",
+      "IPR",
+      "VOGEL_WELL"
+    ],
+    "label": "Production Wellbore IPR",
+    "category": "Boundary & Well",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">BND</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WELL</text></svg>",
+    "ports": [
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:SOURCE",
+    "aliases": [
+      "source",
+      "MASS_SOURCE",
+      "INLET_SOURCE"
+    ],
+    "label": "Multiphase Mass Source",
+    "category": "Boundary & Well",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">BND</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SOURCE</text></svg>",
+    "ports": [
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:LEAK",
+    "aliases": [
+      "leak",
+      "RUPTURE",
+      "ORIFICE_LEAK"
+    ],
+    "label": "Pipeline Leak / Rupture",
+    "category": "Integrity & Control",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">CTL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">LEAK</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:PIG",
+    "aliases": [
+      "pig",
+      "PIG_TRACKER",
+      "SPHERE_PIG"
+    ],
+    "label": "Pipeline Inspection / Cleaning Pig",
+    "category": "Integrity & Control",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">CTL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PIG</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:PID_CONTROLLER",
+    "aliases": [
+      "pid_controller",
+      "CONTROLLER",
+      "ANTI_SLUG_PID"
+    ],
+    "label": "PID Process / Anti-Slug Controller",
+    "category": "Integrity & Control",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">CTL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PID_CONT</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:ESD_VALVE",
+    "aliases": [
+      "esd_valve",
+      "ESDV",
+      "SHUTDOWN_VALVE"
+    ],
+    "label": "Emergency Shutdown (ESD) Valve",
+    "category": "Integrity & Control",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">CTL</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ESD_VALV</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:FLOW_DRIFT_FLUX",
+    "aliases": [
+      "flow_drift_flux",
+      "DRIFT_FLUX",
+      "ZUBER_FINDLAY"
+    ],
+    "label": "Zuber-Findlay Drift-Flux Kernel",
+    "category": "Multiphase Flow",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DRIFT_FL</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:FLOW_BEGGS_BRILL",
+    "aliases": [
+      "flow_beggs_brill",
+      "BEGGS_BRILL"
+    ],
+    "label": "Beggs-Brill Two-Phase Flow Kernel",
+    "category": "Multiphase Flow",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BEGGS_BR</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:FLOW_TAITEL_DUKLER",
+    "aliases": [
+      "flow_taitel_dukler",
+      "TAITEL_DUKLER"
+    ],
+    "label": "Taitel-Dukler Mechanistic Flow Kernel",
+    "category": "Multiphase Flow",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TAITEL_D</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:PVT_BLACK_OIL",
+    "aliases": [
+      "pvt_black_oil",
+      "BLACK_OIL",
+      "STANDING_PVT"
+    ],
+    "label": "Standing Black-Oil PVT Kernel",
+    "category": "PVT & Flow Assurance",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PVT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BLACK_OI</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:PVT_COMPOSITIONAL_PR",
+    "aliases": [
+      "pvt_compositional_pr",
+      "PENG_ROBINSON",
+      "PR_EOS"
+    ],
+    "label": "Peng-Robinson Compositional EOS",
+    "category": "PVT & Flow Assurance",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PVT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">COMPOSIT</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:PVT_HYDRATE_CURVE",
+    "aliases": [
+      "pvt_hydrate_curve",
+      "HYDRATE_CURVE",
+      "SLOAN_HYDRATE"
+    ],
+    "label": "Gas Hydrate Equilibrium Curve",
+    "category": "PVT & Flow Assurance",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PVT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HYDRATE_</text></svg>",
+    "ports": [
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "props_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:WALL_INSULATED",
+    "aliases": [
+      "wall_insulated",
+      "INSULATED_PIPE",
+      "PIPE_WALL"
+    ],
+    "label": "Insulated Subsea Pipe Wall",
+    "category": "Thermal Wall",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">THM</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">INSULATE</text></svg>",
+    "ports": [
+      {
+        "name": "fluid",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ambient",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "olga:WALL_BURIED",
+    "aliases": [
+      "wall_buried",
+      "BURIED_PIPE",
+      "SOIL_WALL"
+    ],
+    "label": "Buried Pipeline Thermal Wall",
+    "category": "Thermal Wall",
+    "domain": "fluid",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">THM</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BURIED</text></svg>",
+    "ports": [
+      {
+        "name": "fluid",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ambient",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

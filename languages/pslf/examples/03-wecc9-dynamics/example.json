@@ -1,0 +1,11 @@
+{
+  "id": "pslf-03-wecc9-dynamics",
+  "lang": "pslf",
+  "subFormats": ["epc", "dyd"],
+  "difficulty": 3,
+  "title": "WECC 9-Bus Power Flow + Dynamic Models",
+  "description": "Multi-file GE PSLF workspace combining the WSCC 9-bus EPC power flow with GENTPF/GENCLS synchronous generators, EXST1 exciters, and IEEEGO governors.",
+  "category": "Transient Stability",
+  "tags": ["pslf", "epc", "dyd", "dynamics", "multi-file"],
+  "activeFile": "wecc9.epc"
+}

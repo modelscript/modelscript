@@ -1,0 +1,11 @@
+{
+  "id": "endf6-03-b10-thermal-absorber",
+  "lang": "endf6",
+  "subFormats": ["endf-6"],
+  "difficulty": 3,
+  "title": "Boron-10 Thermal Neutron (n,alpha) 1/v Absorber Library",
+  "description": "Evaluated ENDF-6 tape for B-10 (MAT=525) featuring log-log (INT=5) 1/v (n,alpha) absorption cross section (MT=107, 3840 b at 0.0253 eV) with elastic and total reactions.",
+  "category": "Neutron Physics",
+  "tags": ["endf6", "boron-10", "absorber", "n-alpha", "log-log"],
+  "activeFile": "b10_absorber.endf"
+}

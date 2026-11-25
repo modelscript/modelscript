@@ -1,0 +1,11 @@
+{
+  "id": "pslf-05-wecc-renewable-ibr",
+  "lang": "pslf",
+  "subFormats": ["epc", "dyd"],
+  "difficulty": 5,
+  "title": "WECC Renewable IBR Plant (REGCA1/REECA1) Stability Study",
+  "description": "Utility-scale 200 MW solar+BESS inverter-based resource connected to a 230 kV transmission grid with WECC 2nd-generation REGCA1 and REECA1 dynamic models.",
+  "category": "Inverter-Based Resources",
+  "tags": ["pslf", "wecc", "regca1", "reeca1", "ibr", "multi-file"],
+  "activeFile": "ibr_plant.epc"
+}

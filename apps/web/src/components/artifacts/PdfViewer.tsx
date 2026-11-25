@@ -7,8 +7,27 @@ import styled from "styled-components";
 import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 
+export interface PdfViewerConfig {
+  url?: string | undefined;
+  src?: string | undefined;
+  pdfUrl?: string | undefined;
+  fileUrl?: string | undefined;
+  title?: string | undefined;
+  filename?: string | undefined;
+  thumbnailUrl?: string | undefined;
+  thumbnail_url?: string | undefined;
+  pageCount?: number | undefined;
+  fileSize?: number | undefined;
+  size?: number | undefined;
+  pdfTitle?: string | undefined;
+  pdfAuthor?: string | undefined;
+  standalone?: boolean | undefined;
+  metadata?: PdfDynamicMeta | undefined;
+  [key: string]: unknown;
+}
+
 interface PdfViewerProps {
-  viewConfig: any;
+  viewConfig?: PdfViewerConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 

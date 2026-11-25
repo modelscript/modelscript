@@ -1,0 +1,25 @@
+Meteorology: Spring_RainOnSnow
+  Unit System: Metric
+  Precipitation Method: Gage Weights
+  Snowmelt Method: Temperature Index
+End:
+
+Subbasin: Alpine Headwaters
+  Gage: AlpineSNOTEL
+  Depth: 190.0
+End:
+
+Subbasin: East Glacier Fork
+  Gage: AlpineSNOTEL
+  Depth: 175.0
+End:
+
+Subbasin: West Foothills
+  Gage: FoothillGage
+  Depth: 145.0
+End:
+
+Subbasin: Coastal Plain
+  Gage: CoastalGage
+  Depth: 120.0
+End:

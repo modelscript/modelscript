@@ -1,0 +1,11 @@
+{
+  "id": "cyme-05-multi-feeder-tie-reconfig",
+  "lang": "cyme",
+  "subFormats": ["sxst", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Feeder Substation with Tie Switch Reconfiguration",
+  "description": "Dual-feeder 12.47 kV distribution substation with normally-open tie switch for FLISR load transfer paired with a companion 24-hour feeder load allocation CSV curve.",
+  "category": "Distribution Power Systems",
+  "tags": ["cyme", "flisr", "tie-switch", "multi-feeder", "multi-file"],
+  "activeFile": "substation.sxst"
+}

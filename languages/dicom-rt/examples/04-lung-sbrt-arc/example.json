@@ -1,0 +1,11 @@
+{
+  "id": "dicom-rt-04-lung-sbrt-arc",
+  "lang": "dicom-rt",
+  "subFormats": ["rtplan", "dcm.json"],
+  "difficulty": 4,
+  "title": "Lung SBRT Stereotactic Arc Plan with Spinal Cord OAR",
+  "description": "Hypofractionated 6 MV FFF lung SBRT VMAT arc plan delivering 54 Gy in 3 fractions to a peripheral lung PTV while respecting RTOG 0236 spinal cord and ipsilateral lung dose constraints.",
+  "category": "Radiation Oncology & Dosimetry",
+  "tags": ["dicom-rt", "sbrt", "vmat", "lung", "multi-file"],
+  "activeFile": "sbrt.rtplan"
+}

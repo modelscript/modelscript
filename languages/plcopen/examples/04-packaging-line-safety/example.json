@@ -1,0 +1,12 @@
+{
+  "id": "plcopen-04-packaging-line-safety",
+  "lang": "plcopen",
+  "subFormats": ["st"],
+  "difficulty": 4,
+  "title": "Packaging Line State Machine with Safety Interlocks",
+  "description": "Multi-file IEC 61131-3 PackML-style state machine for a carton packaging line paired with a dedicated safety-gate and E-stop interlock function block library.",
+  "category": "Machine Safety & PackML",
+  "tags": ["plcopen", "packml", "state-machine", "safety", "multi-file"],
+  "activeFile": "main.st",
+  "fileOrder": ["main.st", "safety_fb.st"]
+}

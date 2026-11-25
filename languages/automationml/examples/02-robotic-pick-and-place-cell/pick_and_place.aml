@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="pick_and_place.aml" SchemaVersion="2.15">
+  <InstanceHierarchy Name="PickAndPlaceCell">
+    <Version>1.0.0</Version>
+    <InternalElement Name="RobotArm01" ID="rob-01" RefBaseSystemUnitPath="WorkcellUnits/SixAxisRobot">
+      <Attribute Name="payloadKg" AttributeDataType="xs:double" Unit="kg"><Value>10.0</Value></Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>1.20</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>0.80</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.00</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>45</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="toolFlange" ID="rob-01-flange" RefBaseClassPath="WorkcellInterfaces/AttachmentInterface" />
+      <ExternalInterface Name="cycleStart" ID="rob-01-start" RefBaseClassPath="WorkcellInterfaces/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="cycleDone" ID="rob-01-done" RefBaseClassPath="WorkcellInterfaces/SignalInterface" Direction="Out" DataType="BOOL" />
+      <RoleRequirements RefBaseRoleClassPath="WorkcellRoles/RobotResource" />
+    </InternalElement>
+    <InternalElement Name="VacuumGripper01" ID="grip-01" RefBaseSystemUnitPath="WorkcellUnits/GripperUnit">
+      <ExternalInterface Name="mountBase" ID="grip-01-mount" RefBaseClassPath="WorkcellInterfaces/AttachmentInterface" />
+      <ExternalInterface Name="suctionCmd" ID="grip-01-cmd" RefBaseClassPath="WorkcellInterfaces/SignalInterface" Direction="In" DataType="BOOL" />
+      <RoleRequirements RefBaseRoleClassPath="WorkcellRoles/EndEffector" />
+    </InternalElement>
+    <InternalElement Name="CellController" ID="ctrl-01" PPRCategory="Resource">
+      <ExternalInterface Name="cmdRobotStart" ID="ctrl-01-rstart" RefBaseClassPath="WorkcellInterfaces/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="fbRobotDone" ID="ctrl-01-rdone" RefBaseClassPath="WorkcellInterfaces/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="cmdSuction" ID="ctrl-01-suc" RefBaseClassPath="WorkcellInterfaces/SignalInterface" Direction="Out" DataType="BOOL" />
+      <InternalLink Name="Link_FlangeAttach" RefPartnerSideA="rob-01:toolFlange" RefPartnerSideB="grip-01:mountBase" />
+      <InternalLink Name="Link_RobotStart" RefPartnerSideA="ctrl-01:cmdRobotStart" RefPartnerSideB="rob-01:cycleStart" />
+      <InternalLink Name="Link_RobotDone" RefPartnerSideA="rob-01:cycleDone" RefPartnerSideB="ctrl-01:fbRobotDone" />
+      <InternalLink Name="Link_GripperSuction" RefPartnerSideA="ctrl-01:cmdSuction" RefPartnerSideB="grip-01:suctionCmd" />
+    </InternalElement>
+  </InstanceHierarchy>
+  <InterfaceClassLib Name="WorkcellInterfaces">
+    <InterfaceClass Name="SignalInterface" />
+    <InterfaceClass Name="AttachmentInterface" />
+  </InterfaceClassLib>
+  <RoleClassLib Name="WorkcellRoles">
+    <RoleClass Name="RobotResource" />
+    <RoleClass Name="EndEffector" />
+  </RoleClassLib>
+  <SystemUnitClassLib Name="WorkcellUnits">
+    <SystemUnitClass Name="SixAxisRobot">
+      <SupportedRoleClass RefRoleClassPath="WorkcellRoles/RobotResource" />
+    </SystemUnitClass>
+    <SystemUnitClass Name="GripperUnit">
+      <SupportedRoleClass RefRoleClassPath="WorkcellRoles/EndEffector" />
+    </SystemUnitClass>
+  </SystemUnitClassLib>
+</CAEXFile>

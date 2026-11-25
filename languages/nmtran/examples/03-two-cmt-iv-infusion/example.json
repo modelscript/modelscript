@@ -1,0 +1,12 @@
+{
+  "id": "nmtran-03-two-cmt-iv-infusion",
+  "lang": "nmtran",
+  "subFormats": ["nmtran"],
+  "difficulty": 3,
+  "title": "Two-Compartment IV Infusion Population PK",
+  "description": "Two-compartment linear pharmacokinetic model (ADVAN3 TRANS4) with constant-rate intravenous infusion, inter-compartmental clearance Q, and combined error model.",
+  "category": "Pharmacometrics",
+  "tags": ["nmtran", "two-compartment", "infusion", "advan3", "multi-file"],
+  "activeFile": "pk_2cmt.ctl",
+  "fileOrder": ["pk_2cmt.ctl", "infusion.csv"]
+}

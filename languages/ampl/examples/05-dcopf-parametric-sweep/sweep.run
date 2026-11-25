@@ -1,0 +1,7 @@
+model dcopf.mod;
+data ieee14.dat;
+solve;
+display Dispatch_Cost, Pg, Flow;
+let load_scale := 1.15;
+solve;
+display Dispatch_Cost, Pg;

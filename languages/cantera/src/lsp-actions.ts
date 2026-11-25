@@ -4,7 +4,16 @@ export const extractCanteraTheoryConstraints = async (text: string) => {
   const { parseCantera } = await import("./index.js");
   const doc = parseCantera(text);
   const ns = `Cantera::${doc.mechanism?.name || "Mechanism"}`;
-  const parameters: any[] = [];
+  const parameters: Array<{
+    name: string;
+    fqn: string;
+    value: number;
+    rawValueText: string;
+    unit: string;
+    line: number;
+    startCol: number;
+    endCol: number;
+  }> = [];
   parameters.push({
     name: "speciesCount",
     fqn: `${ns}::speciesCount`,

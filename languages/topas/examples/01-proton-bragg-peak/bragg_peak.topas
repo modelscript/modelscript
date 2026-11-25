@@ -1,0 +1,25 @@
+# TOPAS 150 MeV Proton Therapy Bragg Peak in Water Phantom
+s:Ge/World/Material = "G4_AIR"
+d:Ge/World/HLX = 1.0 m
+d:Ge/World/HLY = 1.0 m
+d:Ge/World/HLZ = 1.0 m
+
+s:Ge/WaterPhantom/Type = "TsBox"
+s:Ge/WaterPhantom/Parent = "World"
+s:Ge/WaterPhantom/Material = "G4_WATER"
+d:Ge/WaterPhantom/HLX = 15.0 cm
+d:Ge/WaterPhantom/HLY = 15.0 cm
+d:Ge/WaterPhantom/HLZ = 20.0 cm
+d:Ge/WaterPhantom/TransZ = 200.0 mm
+
+s:So/ProtonBeam/Type = "Beam"
+s:So/ProtonBeam/Component = "BeamPosition"
+s:So/ProtonBeam/BeamParticle = "proton"
+d:So/ProtonBeam/BeamEnergy = 150.0 MeV
+u:So/ProtonBeam/BeamEnergySpread = 0.5
+i:So/ProtonBeam/NumberOfHistoriesInRun = 50000
+
+s:Sc/BraggPeakDose/Quantity = "DoseToWater"
+s:Sc/BraggPeakDose/Component = "WaterPhantom"
+i:Sc/BraggPeakDose/ZBins = 200
+b:Sc/BraggPeakDose/OutputToConsole = "True"

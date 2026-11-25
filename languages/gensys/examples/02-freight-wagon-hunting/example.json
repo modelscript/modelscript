@@ -1,0 +1,11 @@
+{
+  "id": "gensys-02-freight-wagon-hunting",
+  "lang": "gensys",
+  "subFormats": ["tsimf"],
+  "difficulty": 2,
+  "title": "Two-Axle Freight Wagon Tangent Track Hunting",
+  "description": "Two-axle UIC freight wagon with tare carbody inertia, leaf-spring primary suspension couplings, and standard S1002 wheelsets for tangent-track critical hunting speed analysis.",
+  "category": "Rail Vehicle Dynamics",
+  "tags": ["freight-wagon", "hunting", "two-axle", "rail"],
+  "activeFile": "freight_wagon.tsimf"
+}

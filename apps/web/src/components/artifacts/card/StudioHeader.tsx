@@ -50,9 +50,9 @@ const StudioHeaderBar = styled(Box)`
 `;
 
 export interface StudioHeaderProps {
-  artifact: any;
+  artifact: import("./types").ArtifactCardRecord;
   artifactId: number;
-  viewConfig: any;
+  viewConfig: import("./types").ArtifactViewConfig;
   resolvedForkedFromId: number | string | null;
   paramDeltaCount: number | null;
   copiedLink: boolean;

@@ -24,7 +24,7 @@ describe("NetCDF Classic CDL @modelscript/dsl Grammar & WASM GLR Parser", () => 
     const panel = netcdfLanguage.ui?.panels?.[0];
     assert.ok(panel, "Should register NetcdfPanel in ui.panels");
     assert.strictEqual(panel.entry, "./src/ui/NetcdfPanel.tsx");
-    assert.deepStrictEqual(panel.targets, ["vscode", "morsel", "artifact"]);
+    assert.deepStrictEqual(panel.targets, ["vscode", "ansatz", "artifact"]);
   });
 
   it("compiles netcdfLanguage into WebAssembly GLR parse tables & AssemblyScript kernel", () => {

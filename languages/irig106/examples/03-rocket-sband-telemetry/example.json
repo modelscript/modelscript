@@ -1,0 +1,11 @@
+{
+  "id": "irig106-03-rocket-sband-telemetry",
+  "lang": "irig106",
+  "subFormats": ["tmats-ch9"],
+  "difficulty": 3,
+  "title": "Launch Vehicle S-Band PCM/FM Telemetry & Bit-Packed Discretes",
+  "description": "Launch vehicle S-band RF telemetry TMATS package combining T-1 transmitter RF parameters, M-1 multiplexer routing, high-rate IMU words, and non-overlapping bit-packed staging discretes.",
+  "category": "Launch Vehicle Telemetry",
+  "tags": ["irig106", "tmats", "s-band", "rocket", "bit-packed"],
+  "activeFile": "rocket_sband.tmats"
+}

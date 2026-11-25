@@ -37,7 +37,7 @@ The CLI parser (`apps/cli/src/main.ts`) intercepts global execution flags prior 
 | Variable                                     | Default                  | Description                                                                                                                                                                                    |
 | :------------------------------------------- | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NO_COLOR`                                   | Unset                    | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                                               |
-| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000`  | Base URL for the Ansatz Platform, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                  |
+| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000`  | Base URL for the Ansatz Network, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                   |
 | `ANSATZ_API_TOKEN` / `MODELSCRIPT_API_TOKEN` | Unset                    | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `ANSATZ_TOKEN` or `MODELSCRIPT_TOKEN`).   |
 | `MSX_EDITION`                                | `ee`                     | Runtime edition selector (`ee` for Enterprise Edition, `ce` for pure `AGPL-3.0-or-later` Community Edition). Setting `MSX_EDITION=ce` disables all `@modelscript/ee` commands and subsystems.  |
 | `MSX_LICENSE_KEY`                            | Unset                    | Offline Ed25519-signed Enterprise license token (`msx_lic_<payload>.<sig>`) unlocking Enterprise CLI commands (`cloud`, `hil`, `attest`, `digital-twin`, `compliance`, `oslc`, `sysmlv2-api`). |
@@ -61,7 +61,7 @@ When `--daemon` is passed, `msx` connects to the local Unix domain socket (`~/.m
 
 ## Complete Command Reference by Category
 
-The `msx` CLI registers **146 commands** organized across **169 documented engineering formats** (96 Beta, 72 Alpha, 1 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
+The `msx` CLI registers **146 commands** organized across **169 documented engineering formats** (119 Beta, 47 Alpha, 3 Pre-Alpha) and six functional domains. See [CLI Commands](./commands.md) for exhaustive flag tables and examples for every command.
 
 ### 1. Compilation, Simulation & Optimization
 
@@ -208,7 +208,7 @@ The `msx` CLI registers **146 commands** organized across **169 documented engin
 | [`init-kernel`](./commands.md#init-kernel) | —       | Scaffold a SysML v2 + AssemblyScript or TypeScript capability kernel package.                                |
 | [`language`](./commands.md#language)       | `lang`  | List, dynamically register, or unregister custom language plugins in the workspace registry.                 |
 | [`lsp`](./commands.md#lsp)                 | —       | Launch the multi-language ModelScript Language Server Protocol (LSP) server over `stdio` or TCP/IPC sockets. |
-| [`playground`](./commands.md#playground)   | —       | Start a local interactive web playground server for testing grammars, CSTs, and DAE compilation.             |
+| [`ansatz`](./commands.md#ansatz)           | —       | Start a local interactive web ansatz server for testing grammars, CSTs, and DAE compilation.                 |
 | [`sandbox`](./commands.md#sandbox)         | —       | Execute untrusted scripts or models inside a resource-capped, capability-isolated WebAssembly sandbox.       |
 
 ### 6. Package Registry, ALM Sync, Cloud HPC & Hub Administration

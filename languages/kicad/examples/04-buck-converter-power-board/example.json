@@ -1,0 +1,11 @@
+{
+  "id": "kicad-04-buck-converter-power-board",
+  "lang": "kicad",
+  "subFormats": ["kicad_pcb", "kicad_sch", "kicad_pro"],
+  "difficulty": 4,
+  "title": "5V-to-3.3V Synchronous Buck Converter Power Board",
+  "description": "High-current synchronous step-down DC-DC converter KiCad 8 project with compact switching-node copper routing, power inductor, input/output ceramic bulk capacitors, and synchronized schematic.",
+  "category": "ECAD & PCB Layout",
+  "tags": ["kicad", "buck-converter", "power-electronics", "pcb", "multi-file"],
+  "activeFile": "buck.kicad_pcb"
+}

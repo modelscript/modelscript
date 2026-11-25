@@ -129,7 +129,9 @@ export function ensureSpaceGitVaultInitialized(opts: SpaceGitVaultInitOptions): 
           message: "feat: initialize Space Git Vault with starter domain models and README",
           files: starterFiles,
         });
-      } catch {}
+      } catch {
+        // Starter commit is best-effort when initializing a bare vault
+      }
     }
 
     // Write .ansatz/space.json metadata inside bare repo directory for fast inspection
@@ -248,7 +250,9 @@ export function commitFilesToBareGitVault(opts: SpaceGitCommitOptions): string |
         if (/^[a-f0-9]{40}$/.test(baseOut)) {
           parentSha = baseOut;
         }
-      } catch {}
+      } catch {
+        // Branch ref does not exist yet; create an initial root commit
+      }
     }
 
     if (parentSha) {
@@ -257,7 +261,9 @@ export function commitFilesToBareGitVault(opts: SpaceGitCommitOptions): string |
           env: envWithIndex,
           stdio: "ignore",
         });
-      } catch {}
+      } catch {
+        // Proceed with an empty index if parent tree cannot be loaded
+      }
     }
 
     const fileEntries: [string, string][] = Array.isArray(opts.files)
@@ -313,7 +319,9 @@ export function commitFilesToBareGitVault(opts: SpaceGitCommitOptions): string |
           env,
           stdio: "ignore",
         });
-      } catch {}
+      } catch {
+        // HEAD symbolic-ref update is best-effort
+      }
     } else {
       try {
         execFileSync("git", ["-C", opts.repoPath, "rev-parse", "HEAD"], {
@@ -327,7 +335,9 @@ export function commitFilesToBareGitVault(opts: SpaceGitCommitOptions): string |
             env,
             stdio: "ignore",
           });
-        } catch {}
+        } catch {
+          // HEAD symbolic-ref update is best-effort
+        }
       }
     }
 
@@ -339,7 +349,9 @@ export function commitFilesToBareGitVault(opts: SpaceGitCommitOptions): string |
       if (fs.existsSync(tempIdx)) {
         fs.unlinkSync(tempIdx);
       }
-    } catch {}
+    } catch {
+      // Best-effort cleanup of temporary git index file
+    }
   }
 }
 

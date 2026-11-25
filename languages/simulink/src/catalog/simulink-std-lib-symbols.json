@@ -1,0 +1,3656 @@
+[
+  {
+    "name": "Integrator",
+    "kind": "simulink_block",
+    "namePath": "simulink:Integrator",
+    "exports": [
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Continuous-Time Integrator (1/s)",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Continuous-time integration dx/dt = u with optional saturation limits.",
+      "provenance": "Classical Control Theory (Laplace 1/s)",
+      "aliases": [
+        "simulink/Continuous/Integrator"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state x(0)"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "",
+          "description": "Upper state saturation limit"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "",
+          "description": "Lower state saturation limit"
+        }
+      ],
+      "wasmKernel": "Integrator",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "IntegratorLimited",
+    "kind": "simulink_block",
+    "namePath": "simulink:IntegratorLimited",
+    "exports": [
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Limited Continuous Integrator",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Continuous-time integrator with clamping anti-windup bounds.",
+      "provenance": "Classical Control Theory (Clamped Integrator)",
+      "aliases": [
+        "simulink/Continuous/Integrator Limited"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper limit"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower limit"
+        }
+      ],
+      "wasmKernel": "IntegratorLimited",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "Derivative",
+    "kind": "simulink_block",
+    "namePath": "simulink:Derivative",
+    "exports": [
+      "LinearizationTimeConstant"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Filtered Continuous Derivative",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Numerical time derivative du/dt with optional high-frequency filter.",
+      "provenance": "Numerical Analysis (Backward Difference / Filtered Derivative)",
+      "aliases": [
+        "simulink/Continuous/Derivative"
+      ],
+      "parameters": [
+        {
+          "key": "LinearizationTimeConstant",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Filter time constant"
+        }
+      ],
+      "wasmKernel": "Derivative",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "TransferFcn",
+    "kind": "simulink_block",
+    "namePath": "simulink:TransferFcn",
+    "exports": [
+      "Num0",
+      "Num1",
+      "Den0",
+      "Den1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Transfer Function H(s)",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Rational Laplace transfer function (b0*s + b1) / (a0*s + a1).",
+      "provenance": "Linear Systems & Control Theory (Rational Transfer Function)",
+      "aliases": [
+        "simulink/Continuous/Transfer Fcn"
+      ],
+      "parameters": [
+        {
+          "key": "Num0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Numerator s^1 coefficient"
+        },
+        {
+          "key": "Num1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Numerator s^0 coefficient"
+        },
+        {
+          "key": "Den0",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Denominator s^1 coefficient"
+        },
+        {
+          "key": "Den1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Denominator s^0 coefficient"
+        }
+      ],
+      "wasmKernel": "TransferFcn",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ZeroPole",
+    "kind": "simulink_block",
+    "namePath": "simulink:ZeroPole",
+    "exports": [
+      "Num0",
+      "Num1",
+      "Den0",
+      "Den1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zero-Pole-Gain Transfer Function",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Factorized zero-pole-gain linear transfer function.",
+      "provenance": "Linear Systems & Control Theory (Zero-Pole-Gain Form)",
+      "aliases": [
+        "simulink/Continuous/Zero-Pole"
+      ],
+      "parameters": [
+        {
+          "key": "Num0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Equivalent numerator s^1"
+        },
+        {
+          "key": "Num1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Equivalent numerator s^0"
+        },
+        {
+          "key": "Den0",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Equivalent denominator s^1"
+        },
+        {
+          "key": "Den1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Equivalent denominator s^0"
+        }
+      ],
+      "wasmKernel": "ZeroPole",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "StateSpace",
+    "kind": "simulink_block",
+    "namePath": "simulink:StateSpace",
+    "exports": [
+      "A",
+      "B",
+      "C",
+      "D",
+      "X0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear State-Space (A, B, C, D)",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Continuous-time linear state-space system dx/dt = A*x + B*u, y = C*x + D*u.",
+      "provenance": "Modern Control Theory (State-Space Representation)",
+      "aliases": [
+        "simulink/Continuous/State-Space"
+      ],
+      "parameters": [
+        {
+          "key": "A",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "State matrix A (scalar/1x1 default)"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Input matrix B"
+        },
+        {
+          "key": "C",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Output matrix C"
+        },
+        {
+          "key": "D",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Feedthrough matrix D"
+        },
+        {
+          "key": "X0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        }
+      ],
+      "wasmKernel": "StateSpace",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "PID",
+    "kind": "simulink_block",
+    "namePath": "simulink:PID",
+    "exports": [
+      "P",
+      "I",
+      "D",
+      "N",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PID Controller (with Filtered Derivative & Anti-Windup)",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Parallel PID controller P + I/s + D*N/(1 + N/s) with output clamping.",
+      "provenance": "Astrom & Hagglund PID Control Theory",
+      "aliases": [
+        "simulink/Continuous/PID Controller",
+        "PIDController"
+      ],
+      "parameters": [
+        {
+          "key": "P",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Proportional gain"
+        },
+        {
+          "key": "I",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/s",
+          "description": "Integral gain"
+        },
+        {
+          "key": "D",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Derivative gain"
+        },
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "rad/s",
+          "description": "Derivative filter coefficient"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "",
+          "description": "Output upper limit"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "",
+          "description": "Output lower limit"
+        }
+      ],
+      "wasmKernel": "PID",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "UnitDelay",
+    "kind": "simulink_block",
+    "namePath": "simulink:UnitDelay",
+    "exports": [
+      "InitialCondition",
+      "SampleTime"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Unit Delay (1/z)",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Holds and delays input signal by one sample period.",
+      "provenance": "Discrete-Time Signal Processing (Z-Transform 1/z)",
+      "aliases": [
+        "simulink/Discrete/Unit Delay"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial output value"
+        },
+        {
+          "key": "SampleTime",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "s",
+          "description": "Sample period (-1 = inherited)"
+        }
+      ],
+      "wasmKernel": "UnitDelay",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "Memory",
+    "kind": "simulink_block",
+    "namePath": "simulink:Memory",
+    "exports": [
+      "InitialCondition"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "One-Step Memory",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Outputs the input value from the previous integration step.",
+      "provenance": "Discrete-Time Signal Processing",
+      "aliases": [
+        "simulink/Discrete/Memory"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial output"
+        }
+      ],
+      "wasmKernel": "Memory",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "ZeroOrderHold",
+    "kind": "simulink_block",
+    "namePath": "simulink:ZeroOrderHold",
+    "exports": [
+      "InitialCondition",
+      "SampleTime"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zero-Order Hold (ZOH)",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Samples and holds continuous input over discrete sample period Ts.",
+      "provenance": "Digital Control Systems (Zero-Order Hold)",
+      "aliases": [
+        "simulink/Discrete/Zero-Order Hold"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial held value"
+        },
+        {
+          "key": "SampleTime",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Sample period Ts"
+        }
+      ],
+      "wasmKernel": "ZeroOrderHold",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "DiscreteIntegrator",
+    "kind": "simulink_block",
+    "namePath": "simulink:DiscreteIntegrator",
+    "exports": [
+      "gainval",
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discrete-Time Integrator",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Forward-Euler discrete accumulator y[k] = y[k-1] + K * Ts * u[k-1].",
+      "provenance": "Digital Control Systems (Discrete Accumulator)",
+      "aliases": [
+        "simulink/Discrete/Discrete-Time Integrator"
+      ],
+      "parameters": [
+        {
+          "key": "gainval",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Integrator gain"
+        },
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "",
+          "description": "Upper limit"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "",
+          "description": "Lower limit"
+        }
+      ],
+      "wasmKernel": "DiscreteIntegrator",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "DiscreteFilter",
+    "kind": "simulink_block",
+    "namePath": "simulink:DiscreteFilter",
+    "exports": [
+      "b0",
+      "b1",
+      "a1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discrete IIR Filter H(z)",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "First-order discrete IIR filter (b0 + b1*z^-1) / (1 + a1*z^-1).",
+      "provenance": "Discrete-Time Signal Processing (IIR Difference Equation)",
+      "aliases": [
+        "simulink/Discrete/Discrete Filter",
+        "DiscreteTransferFcn"
+      ],
+      "parameters": [
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Numerator b0"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Numerator b1"
+        },
+        {
+          "key": "a1",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "",
+          "description": "Denominator a1"
+        }
+      ],
+      "wasmKernel": "DiscreteFilter",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "Gain",
+    "kind": "simulink_block",
+    "namePath": "simulink:Gain",
+    "exports": [
+      "Gain",
+      "Bias"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Scalar / Elementwise Gain (K)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Multiplies input signal by constant gain K.",
+      "provenance": "Elementary Algebra",
+      "aliases": [
+        "simulink/Math Operations/Gain"
+      ],
+      "parameters": [
+        {
+          "key": "Gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Multiplicative gain K"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Additive bias"
+        }
+      ],
+      "wasmKernel": "Gain",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "Bias",
+    "kind": "simulink_block",
+    "namePath": "simulink:Bias",
+    "exports": [
+      "Gain",
+      "Bias"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Additive Bias",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Adds constant bias offset to input signal.",
+      "provenance": "Elementary Algebra",
+      "aliases": [
+        "simulink/Math Operations/Bias"
+      ],
+      "parameters": [
+        {
+          "key": "Gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Unity gain"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Constant offset"
+        }
+      ],
+      "wasmKernel": "Bias",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "Sum",
+    "kind": "simulink_block",
+    "namePath": "simulink:Sum",
+    "exports": [
+      "Sign1",
+      "Sign2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sum / Add / Subtract",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Adds or subtracts input signals according to sign weights.",
+      "provenance": "Elementary Algebra",
+      "aliases": [
+        "simulink/Math Operations/Sum",
+        "Add",
+        "Subtract"
+      ],
+      "parameters": [
+        {
+          "key": "Sign1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Sign of input 1 (+1 or -1)"
+        },
+        {
+          "key": "Sign2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Sign of input 2 (+1 or -1)"
+        }
+      ],
+      "wasmKernel": "Sum",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "Product",
+    "kind": "simulink_block",
+    "namePath": "simulink:Product",
+    "exports": [
+      "Mode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Product / Divide",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Multiplies or divides input signals.",
+      "provenance": "Elementary Algebra",
+      "aliases": [
+        "simulink/Math Operations/Product",
+        "Divide"
+      ],
+      "parameters": [
+        {
+          "key": "Mode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "0 = multiply (u1*u2), 1 = divide (u1/u2)"
+        }
+      ],
+      "wasmKernel": "Product",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "Abs",
+    "kind": "simulink_block",
+    "namePath": "simulink:Abs",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Absolute Value |u|",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Outputs absolute value |u|.",
+      "provenance": "IEEE 754 Elementary Math",
+      "aliases": [
+        "simulink/Math Operations/Abs"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "0=abs, 1=sqrt, 2=sign, 3=sin, 4=cos, 5=exp, 6=log"
+        }
+      ],
+      "wasmKernel": "Abs",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "Sqrt",
+    "kind": "simulink_block",
+    "namePath": "simulink:Sqrt",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Square Root sqrt(u)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Outputs square root of non-negative input.",
+      "provenance": "IEEE 754 Elementary Math",
+      "aliases": [
+        "simulink/Math Operations/Sqrt"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "sqrt"
+        }
+      ],
+      "wasmKernel": "Sqrt",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "Signum",
+    "kind": "simulink_block",
+    "namePath": "simulink:Signum",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Signum sgn(u)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Outputs -1, 0, or +1 according to sign of input.",
+      "provenance": "Elementary Math",
+      "aliases": [
+        "simulink/Math Operations/Sign"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "sign"
+        }
+      ],
+      "wasmKernel": "Signum",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "Math",
+    "kind": "simulink_block",
+    "namePath": "simulink:Math",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Math Function (exp/log/pow/square)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Evaluates elementary mathematical functions.",
+      "provenance": "IEEE 754 Elementary Math",
+      "aliases": [
+        "simulink/Math Operations/Math Function"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "",
+          "description": "5=exp, 6=log, 7=square"
+        }
+      ],
+      "wasmKernel": "Math",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "Trigonometry",
+    "kind": "simulink_block",
+    "namePath": "simulink:Trigonometry",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Trigonometric Function (sin/cos/tan)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Evaluates trigonometric functions.",
+      "provenance": "IEEE 754 Elementary Math",
+      "aliases": [
+        "simulink/Math Operations/Trigonometric Function"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "",
+          "description": "3=sin, 4=cos"
+        }
+      ],
+      "wasmKernel": "Trigonometry",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "MinMax",
+    "kind": "simulink_block",
+    "namePath": "simulink:MinMax",
+    "exports": [
+      "Mode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Min / Max",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Outputs minimum or maximum of input signals.",
+      "provenance": "Elementary Math",
+      "aliases": [
+        "simulink/Math Operations/MinMax"
+      ],
+      "parameters": [
+        {
+          "key": "Mode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "0=min, 1=max"
+        }
+      ],
+      "wasmKernel": "MinMax",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "Saturate",
+    "kind": "simulink_block",
+    "namePath": "simulink:Saturate",
+    "exports": [
+      "UpperLimit",
+      "LowerLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Saturation Clamp",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Limits input signal between LowerLimit and UpperLimit.",
+      "provenance": "Nonlinear Control Theory (Saturation Element)",
+      "aliases": [
+        "simulink/Discontinuities/Saturation",
+        "Saturation"
+      ],
+      "parameters": [
+        {
+          "key": "UpperLimit",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Upper saturation bound"
+        },
+        {
+          "key": "LowerLimit",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "",
+          "description": "Lower saturation bound"
+        }
+      ],
+      "wasmKernel": "Saturate",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "DeadZone",
+    "kind": "simulink_block",
+    "namePath": "simulink:DeadZone",
+    "exports": [
+      "LowerValue",
+      "UpperValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dead Zone",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Outputs zero within [LowerValue, UpperValue] deadband.",
+      "provenance": "Nonlinear Control Theory (Dead-Zone Element)",
+      "aliases": [
+        "simulink/Discontinuities/Dead Zone"
+      ],
+      "parameters": [
+        {
+          "key": "LowerValue",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "",
+          "description": "Start of dead zone"
+        },
+        {
+          "key": "UpperValue",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "End of dead zone"
+        }
+      ],
+      "wasmKernel": "DeadZone",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "RateLimiter",
+    "kind": "simulink_block",
+    "namePath": "simulink:RateLimiter",
+    "exports": [
+      "RisingSlewLimit",
+      "FallingSlewLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Slew-Rate Limiter",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Limits rising and falling rate of change dy/dt.",
+      "provenance": "Nonlinear Control Theory (Rate Limiter)",
+      "aliases": [
+        "simulink/Discontinuities/Rate Limiter"
+      ],
+      "parameters": [
+        {
+          "key": "RisingSlewLimit",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/s",
+          "description": "Maximum rising slew rate"
+        },
+        {
+          "key": "FallingSlewLimit",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "1/s",
+          "description": "Maximum falling slew rate"
+        }
+      ],
+      "wasmKernel": "RateLimiter",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "Relay",
+    "kind": "simulink_block",
+    "namePath": "simulink:Relay",
+    "exports": [
+      "OnSwitchValue",
+      "OffSwitchValue",
+      "OnOutputValue",
+      "OffOutputValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hysteresis Relay",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Switches output between OffOutputValue and OnOutputValue with hysteresis.",
+      "provenance": "Nonlinear Control Theory (Hysteresis Relay)",
+      "aliases": [
+        "simulink/Discontinuities/Relay"
+      ],
+      "parameters": [
+        {
+          "key": "OnSwitchValue",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Switch-on threshold"
+        },
+        {
+          "key": "OffSwitchValue",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "",
+          "description": "Switch-off threshold"
+        },
+        {
+          "key": "OnOutputValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Output when ON"
+        },
+        {
+          "key": "OffOutputValue",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Output when OFF"
+        }
+      ],
+      "wasmKernel": "Relay",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "Quantizer",
+    "kind": "simulink_block",
+    "namePath": "simulink:Quantizer",
+    "exports": [
+      "QuantizationInterval"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Uniform Quantizer",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Discretizes input to multiples of QuantizationInterval.",
+      "provenance": "Digital Signal Processing (Uniform Quantization)",
+      "aliases": [
+        "simulink/Discontinuities/Quantizer"
+      ],
+      "parameters": [
+        {
+          "key": "QuantizationInterval",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Quantization step size q"
+        }
+      ],
+      "wasmKernel": "Quantizer",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "RelationalOperator",
+    "kind": "simulink_block",
+    "namePath": "simulink:RelationalOperator",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Relational Operator (==, ~=, <, <=, >=, >)",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Compares two signals and outputs 1.0 (true) or 0.0 (false).",
+      "provenance": "Boolean Algebra",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Relational Operator",
+        "CompareToConstant"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "",
+          "description": "0:==, 1:~=, 2:<, 3:<=, 4:>=, 5:>"
+        }
+      ],
+      "wasmKernel": "RelationalOperator",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "LogicalOperator",
+    "kind": "simulink_block",
+    "namePath": "simulink:LogicalOperator",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Logical Operator (AND/OR/XOR/NOT)",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Performs boolean logic on signal inputs.",
+      "provenance": "Boolean Algebra",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Logical Operator"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "0:AND, 1:OR, 2:XOR, 3:NOT"
+        }
+      ],
+      "wasmKernel": "LogicalOperator",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "Switch",
+    "kind": "simulink_block",
+    "namePath": "simulink:Switch",
+    "exports": [
+      "Threshold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Conditional Signal Switch",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Passes input 1 when control input u2 >= Threshold, else passes input 3.",
+      "provenance": "Signal Flow Routing",
+      "aliases": [
+        "simulink/Signal Routing/Switch",
+        "MultiportSwitch"
+      ],
+      "parameters": [
+        {
+          "key": "Threshold",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Switching threshold on control port"
+        }
+      ],
+      "wasmKernel": "Switch",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "Mux",
+    "kind": "simulink_block",
+    "namePath": "simulink:Mux",
+    "exports": [
+      "Inputs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Signal Multiplexer / Bus Creator",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Combines multiple scalar signals into a vector or bus.",
+      "provenance": "Signal Flow Routing",
+      "aliases": [
+        "simulink/Signal Routing/Mux",
+        "BusCreator"
+      ],
+      "parameters": [
+        {
+          "key": "Inputs",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Number of input ports"
+        }
+      ],
+      "wasmKernel": "Mux",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Demux",
+    "kind": "simulink_block",
+    "namePath": "simulink:Demux",
+    "exports": [
+      "Outputs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Signal Demultiplexer / Bus Selector",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Extracts scalar elements from a vector or bus signal.",
+      "provenance": "Signal Flow Routing",
+      "aliases": [
+        "simulink/Signal Routing/Demux",
+        "BusSelector"
+      ],
+      "parameters": [
+        {
+          "key": "Outputs",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Number of output ports"
+        }
+      ],
+      "wasmKernel": "Demux",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Lookup_nD",
+    "kind": "simulink_block",
+    "namePath": "simulink:Lookup_nD",
+    "exports": [
+      "x0",
+      "x1",
+      "x2",
+      "y0",
+      "y1",
+      "y2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-D / 2-D / n-D Linear Lookup Table",
+      "category": "Lookup Tables",
+      "domain": "control",
+      "description": "Binary-search piecewise-linear 1-D (up to 32 breakpoints) and 2-D bilinear table interpolation.",
+      "provenance": "Numerical Analysis (Piecewise Linear Interpolation)",
+      "aliases": [
+        "simulink/Lookup Tables/1-D Lookup Table",
+        "simulink/Lookup Tables/2-D Lookup Table",
+        "Lookup2D",
+        "Prelookup",
+        "Interpolation_nD"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Breakpoint 0"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Breakpoint 1"
+        },
+        {
+          "key": "x2",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Breakpoint 2"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Table value 0"
+        },
+        {
+          "key": "y1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Table value 1"
+        },
+        {
+          "key": "y2",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "",
+          "description": "Table value 2"
+        }
+      ],
+      "wasmKernel": "Lookup_nD",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "Constant",
+    "kind": "simulink_block",
+    "namePath": "simulink:Constant",
+    "exports": [
+      "Value"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Constant Signal",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Outputs a constant scalar value.",
+      "provenance": "Signal Generation",
+      "aliases": [
+        "simulink/Sources/Constant",
+        "Ground"
+      ],
+      "parameters": [
+        {
+          "key": "Value",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Constant output value"
+        }
+      ],
+      "wasmKernel": "Constant",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "Step",
+    "kind": "simulink_block",
+    "namePath": "simulink:Step",
+    "exports": [
+      "Time",
+      "Before",
+      "After"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Step Source",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Steps from Before to After at t >= Time.",
+      "provenance": "Heaviside Step Function",
+      "aliases": [
+        "simulink/Sources/Step"
+      ],
+      "parameters": [
+        {
+          "key": "Time",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Step time"
+        },
+        {
+          "key": "Before",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial value"
+        },
+        {
+          "key": "After",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Final value"
+        }
+      ],
+      "wasmKernel": "Step",
+      "archetypeId": 71
+    }
+  },
+  {
+    "name": "Sin",
+    "kind": "simulink_block",
+    "namePath": "simulink:Sin",
+    "exports": [
+      "Amplitude",
+      "Bias",
+      "Frequency",
+      "Phase"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sine Wave Source",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Outputs Amplitude * sin(Frequency * t + Phase) + Bias.",
+      "provenance": "Elementary Trigonometry",
+      "aliases": [
+        "Sine",
+        "simulink/Sources/Sine Wave"
+      ],
+      "parameters": [
+        {
+          "key": "Amplitude",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Peak amplitude"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "DC bias"
+        },
+        {
+          "key": "Frequency",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "rad/s",
+          "description": "Angular frequency"
+        },
+        {
+          "key": "Phase",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Phase offset"
+        }
+      ],
+      "wasmKernel": "Sin",
+      "archetypeId": 72
+    }
+  },
+  {
+    "name": "Ramp",
+    "kind": "simulink_block",
+    "namePath": "simulink:Ramp",
+    "exports": [
+      "slope",
+      "start",
+      "X0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ramp Source",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Outputs linear ramp Slope * max(0, t - start) + X0.",
+      "provenance": "Elementary Signal Generation",
+      "aliases": [
+        "simulink/Sources/Ramp"
+      ],
+      "parameters": [
+        {
+          "key": "slope",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/s",
+          "description": "Ramp slope"
+        },
+        {
+          "key": "start",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Ramp start time"
+        },
+        {
+          "key": "X0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial output"
+        }
+      ],
+      "wasmKernel": "Ramp",
+      "archetypeId": 73
+    }
+  },
+  {
+    "name": "Clock",
+    "kind": "simulink_block",
+    "namePath": "simulink:Clock",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Simulation Clock (t)",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Outputs current simulation time t.",
+      "provenance": "Time-Domain Simulation",
+      "aliases": [
+        "simulink/Sources/Clock"
+      ],
+      "parameters": [],
+      "wasmKernel": "Clock",
+      "archetypeId": 74
+    }
+  },
+  {
+    "name": "PulseGenerator",
+    "kind": "simulink_block",
+    "namePath": "simulink:PulseGenerator",
+    "exports": [
+      "Amplitude",
+      "Period",
+      "PulseWidth",
+      "PhaseDelay"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Square Pulse Generator",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Generates periodic square pulses with configurable period and duty cycle.",
+      "provenance": "Signal Generation",
+      "aliases": [
+        "simulink/Sources/Pulse Generator"
+      ],
+      "parameters": [
+        {
+          "key": "Amplitude",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Pulse amplitude"
+        },
+        {
+          "key": "Period",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Pulse period"
+        },
+        {
+          "key": "PulseWidth",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "%",
+          "description": "Duty cycle percentage"
+        },
+        {
+          "key": "PhaseDelay",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Phase delay"
+        }
+      ],
+      "wasmKernel": "PulseGenerator",
+      "archetypeId": 75
+    }
+  },
+  {
+    "name": "Inport",
+    "kind": "simulink_block",
+    "namePath": "simulink:Inport",
+    "exports": [
+      "Port"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Subsystem Input Port",
+      "category": "Sinks & Ports",
+      "domain": "control",
+      "description": "External input interface port for a model or subsystem.",
+      "provenance": "Hierarchical Block Diagrams",
+      "aliases": [
+        "simulink/Sources/In1"
+      ],
+      "parameters": [
+        {
+          "key": "Port",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Port index"
+        }
+      ],
+      "wasmKernel": "Inport",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Outport",
+    "kind": "simulink_block",
+    "namePath": "simulink:Outport",
+    "exports": [
+      "Port"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Subsystem Output Port",
+      "category": "Sinks & Ports",
+      "domain": "control",
+      "description": "External output interface port for a model or subsystem.",
+      "provenance": "Hierarchical Block Diagrams",
+      "aliases": [
+        "simulink/Sinks/Out1"
+      ],
+      "parameters": [
+        {
+          "key": "Port",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Port index"
+        }
+      ],
+      "wasmKernel": "Outport",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Scope",
+    "kind": "simulink_block",
+    "namePath": "simulink:Scope",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Signal Scope / Recorder",
+      "category": "Sinks & Ports",
+      "domain": "control",
+      "description": "Records time-series signals for visualization and export.",
+      "provenance": "Simulation Instrumentation",
+      "aliases": [
+        "simulink/Sinks/Scope",
+        "Display",
+        "ToWorkspace"
+      ],
+      "parameters": [],
+      "wasmKernel": "Scope",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Terminator",
+    "kind": "simulink_block",
+    "namePath": "simulink:Terminator",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Signal Terminator",
+      "category": "Sinks & Ports",
+      "domain": "control",
+      "description": "Terminates an unconnected output signal.",
+      "provenance": "Signal Flow Routing",
+      "aliases": [
+        "simulink/Sinks/Terminator"
+      ],
+      "parameters": [],
+      "wasmKernel": "Terminator",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "SubSystem",
+    "kind": "simulink_block",
+    "namePath": "simulink:SubSystem",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Hierarchical Subsystem",
+      "category": "Subsystems & Stateflow",
+      "domain": "control",
+      "description": "Encapsulates a nested block diagram with Inport/Outport interfaces.",
+      "provenance": "Hierarchical Block Diagrams",
+      "aliases": [
+        "simulink/Ports & Subsystems/Subsystem",
+        "EnabledSubsystem",
+        "TriggeredSubsystem"
+      ],
+      "parameters": [],
+      "wasmKernel": "SubSystem",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "S-Function",
+    "kind": "simulink_block",
+    "namePath": "simulink:S-Function",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "User-Defined S-Function",
+      "category": "Subsystems & Stateflow",
+      "domain": "control",
+      "description": "Extension point for custom AssemblyScript WASM or FMU co-simulation blocks.",
+      "provenance": "FMI 2.0/3.0 & WebAssembly Co-Simulation",
+      "aliases": [
+        "simulink/User-Defined Functions/S-Function"
+      ],
+      "parameters": [],
+      "wasmKernel": "S-Function",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Chart",
+    "kind": "simulink_block",
+    "namePath": "simulink:Chart",
+    "exports": [
+      "InitialState",
+      "NumTransitions"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Stateflow Finite-State Machine Chart",
+      "category": "Subsystems & Stateflow",
+      "domain": "control",
+      "description": "Cleanroom deterministic finite-state machine (FSM) transition evaluator with guard conditions and temporal after() logic.",
+      "provenance": "Harel Statecharts & Finite-State Machine Theory",
+      "aliases": [
+        "stateflow/Chart",
+        "StateflowChart"
+      ],
+      "parameters": [
+        {
+          "key": "InitialState",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial active state ID"
+        },
+        {
+          "key": "NumTransitions",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Number of encoded state transitions"
+        }
+      ],
+      "wasmKernel": "Chart",
+      "archetypeId": 80
+    }
+  },
+  {
+    "name": "SecondOrderIntegrator",
+    "kind": "simulink_block",
+    "namePath": "simulink:SecondOrderIntegrator",
+    "exports": [
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit",
+      "InitialConditionDXDT",
+      "UpperLimitDXDT",
+      "LowerLimitDXDT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Second-Order Continuous Integrator (1/s^2)",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Integrates acceleration input twice to produce position and velocity states with position/velocity saturation limits.",
+      "provenance": "Classical Mechanics & Control Theory (Double Integrator 1/s^2)",
+      "aliases": [
+        "simulink/Continuous/Integrator, Second-Order",
+        "Second-Order Integrator"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial position state x(0)"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "",
+          "description": "Upper position limit"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "",
+          "description": "Lower position limit"
+        },
+        {
+          "key": "InitialConditionDXDT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial velocity state dx/dt(0)"
+        },
+        {
+          "key": "UpperLimitDXDT",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "",
+          "description": "Upper velocity limit"
+        },
+        {
+          "key": "LowerLimitDXDT",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "",
+          "description": "Lower velocity limit"
+        }
+      ],
+      "wasmKernel": "SecondOrderIntegrator",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "TransportDelay",
+    "kind": "simulink_block",
+    "namePath": "simulink:TransportDelay",
+    "exports": [
+      "InitialOutput",
+      "DelayTime"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Continuous Transport Delay (e^-sT)",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Delays continuous input signal by a fixed transport time delay using a circular ring buffer with linear interpolation.",
+      "provenance": "Linear Systems Theory (Pure Time Delay e^-sT)",
+      "aliases": [
+        "simulink/Continuous/Transport Delay"
+      ],
+      "parameters": [
+        {
+          "key": "InitialOutput",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Output prior to delay time"
+        },
+        {
+          "key": "DelayTime",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Transport delay duration"
+        }
+      ],
+      "wasmKernel": "TransportDelay",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "VariableTransportDelay",
+    "kind": "simulink_block",
+    "namePath": "simulink:VariableTransportDelay",
+    "exports": [
+      "InitialOutput",
+      "MaximumDelay",
+      "IsVariable"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Variable Transport Delay",
+      "category": "Continuous",
+      "domain": "control",
+      "description": "Delays continuous input signal by a time-varying delay supplied on port 2.",
+      "provenance": "Process Control & Linear Systems (Variable Dead-Time)",
+      "aliases": [
+        "simulink/Continuous/Variable Transport Delay",
+        "VariableTimeDelay"
+      ],
+      "parameters": [
+        {
+          "key": "InitialOutput",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial delayed output"
+        },
+        {
+          "key": "MaximumDelay",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "s",
+          "description": "Maximum allowed transport delay"
+        },
+        {
+          "key": "IsVariable",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Variable delay mode flag (1 = read delay from u2)"
+        }
+      ],
+      "wasmKernel": "VariableTransportDelay",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "FirstOrderHold",
+    "kind": "simulink_block",
+    "namePath": "simulink:FirstOrderHold",
+    "exports": [
+      "InitialCondition",
+      "SampleTime"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "First-Order Hold (FOH)",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Reconstructs a continuous-time signal by linear extrapolation between samples.",
+      "provenance": "Digital Control Systems (First-Order Hold Reconstruction)",
+      "aliases": [
+        "simulink/Discrete/First-Order Hold"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial held value"
+        },
+        {
+          "key": "SampleTime",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Sample period Ts"
+        }
+      ],
+      "wasmKernel": "FirstOrderHold",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "DiscreteStateSpace",
+    "kind": "simulink_block",
+    "namePath": "simulink:DiscreteStateSpace",
+    "exports": [
+      "b0",
+      "b1",
+      "a1",
+      "SampleTime"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discrete State-Space (A, B, C, D)",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Discrete-time linear state-space system x[k+1] = A*x[k] + B*u[k], y[k] = C*x[k] + D*u[k].",
+      "provenance": "Digital Control Systems (Discrete State-Space Form)",
+      "aliases": [
+        "simulink/Discrete/Discrete State-Space"
+      ],
+      "parameters": [
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Feedthrough D"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Output gain C*B"
+        },
+        {
+          "key": "a1",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "",
+          "description": "Negative state transition -A"
+        },
+        {
+          "key": "SampleTime",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Sample period Ts"
+        }
+      ],
+      "wasmKernel": "DiscreteStateSpace",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "DiscreteZeroPole",
+    "kind": "simulink_block",
+    "namePath": "simulink:DiscreteZeroPole",
+    "exports": [
+      "b0",
+      "b1",
+      "a1",
+      "SampleTime"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discrete Zero-Pole-Gain H(z)",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Discrete-time transfer function specified in factored zero-pole-gain form.",
+      "provenance": "Discrete-Time Signal Processing (Z-Domain Zero-Pole Form)",
+      "aliases": [
+        "simulink/Discrete/Discrete Zero-Pole"
+      ],
+      "parameters": [
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Equivalent numerator b0"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Equivalent numerator b1"
+        },
+        {
+          "key": "a1",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "",
+          "description": "Equivalent denominator a1"
+        },
+        {
+          "key": "SampleTime",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Sample period Ts"
+        }
+      ],
+      "wasmKernel": "DiscreteZeroPole",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "Difference",
+    "kind": "simulink_block",
+    "namePath": "simulink:Difference",
+    "exports": [
+      "b0",
+      "b1",
+      "a1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discrete Backward Difference (u[k] - u[k-1])",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Outputs the difference between the current input and previous sample input.",
+      "provenance": "Discrete-Time Signal Processing (First Difference Operator)",
+      "aliases": [
+        "simulink/Discrete/Difference"
+      ],
+      "parameters": [
+        {
+          "key": "b0",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Current sample weight"
+        },
+        {
+          "key": "b1",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Previous sample weight"
+        },
+        {
+          "key": "a1",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Feedback weight"
+        }
+      ],
+      "wasmKernel": "Difference",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "TappedDelay",
+    "kind": "simulink_block",
+    "namePath": "simulink:TappedDelay",
+    "exports": [
+      "InitialCondition",
+      "NumDelays",
+      "SampleTime"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tapped Delay Line",
+      "category": "Discrete",
+      "domain": "control",
+      "description": "Delays an input signal by N sample periods and outputs all delayed taps.",
+      "provenance": "Digital Signal Processing (FIR Tapped Delay Line)",
+      "aliases": [
+        "simulink/Discrete/Tapped Delay"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial tap state"
+        },
+        {
+          "key": "NumDelays",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "",
+          "description": "Number of delay taps"
+        },
+        {
+          "key": "SampleTime",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "s",
+          "description": "Sample period (-1 = inherited)"
+        }
+      ],
+      "wasmKernel": "TappedDelay",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "DotProduct",
+    "kind": "simulink_block",
+    "namePath": "simulink:DotProduct",
+    "exports": [
+      "Mode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Vector Dot Product",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Computes inner (dot) product of two equal-length signal vectors.",
+      "provenance": "Linear Algebra (Euclidean Inner Product)",
+      "aliases": [
+        "simulink/Math Operations/Dot Product"
+      ],
+      "parameters": [
+        {
+          "key": "Mode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "0 = multiply/dot product"
+        }
+      ],
+      "wasmKernel": "DotProduct",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "Polynomial",
+    "kind": "simulink_block",
+    "namePath": "simulink:Polynomial",
+    "exports": [
+      "Gain",
+      "Bias"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Polynomial Evaluation P(u)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Evaluates a real polynomial on the input signal using Horner's method.",
+      "provenance": "Numerical Analysis (Horner Polynomial Evaluation)",
+      "aliases": [
+        "simulink/Math Operations/Polynomial"
+      ],
+      "parameters": [
+        {
+          "key": "Gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Linear coefficient c1"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Constant term c0"
+        }
+      ],
+      "wasmKernel": "Polynomial",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "Rounding",
+    "kind": "simulink_block",
+    "namePath": "simulink:Rounding",
+    "exports": [
+      "QuantizationInterval"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rounding Function (floor/ceil/round/fix)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Rounds input signal to nearest integer via floor, ceil, round, or fix.",
+      "provenance": "IEEE 754 Floating-Point Rounding Operations",
+      "aliases": [
+        "simulink/Math Operations/Rounding Function"
+      ],
+      "parameters": [
+        {
+          "key": "QuantizationInterval",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Unit rounding step"
+        }
+      ],
+      "wasmKernel": "Rounding",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "ReciprocalSqrt",
+    "kind": "simulink_block",
+    "namePath": "simulink:ReciprocalSqrt",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Reciprocal Square Root 1/sqrt(u)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Computes inverse square root 1/sqrt(u) for positive inputs.",
+      "provenance": "IEEE 754 Elementary Math",
+      "aliases": [
+        "simulink/Math Operations/Reciprocal Sqrt"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Square-root kernel"
+        }
+      ],
+      "wasmKernel": "ReciprocalSqrt",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "UnaryMinus",
+    "kind": "simulink_block",
+    "namePath": "simulink:UnaryMinus",
+    "exports": [
+      "Gain",
+      "Bias"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Unary Minus (-u)",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Negates the input signal (-u).",
+      "provenance": "Elementary Algebra",
+      "aliases": [
+        "simulink/Math Operations/Unary Minus"
+      ],
+      "parameters": [
+        {
+          "key": "Gain",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Negation gain (-1)"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Zero offset"
+        }
+      ],
+      "wasmKernel": "UnaryMinus",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "SliderGain",
+    "kind": "simulink_block",
+    "namePath": "simulink:SliderGain",
+    "exports": [
+      "Gain",
+      "Bias",
+      "Low",
+      "High"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Interactive Slider Gain",
+      "category": "Math Operations",
+      "domain": "control",
+      "description": "Tunable scalar gain constrained between Low and High slider bounds.",
+      "provenance": "Control Engineering Interactive Tuning",
+      "aliases": [
+        "simulink/Math Operations/Slider Gain"
+      ],
+      "parameters": [
+        {
+          "key": "Gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Current slider gain"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Zero offset"
+        },
+        {
+          "key": "Low",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Minimum slider bound"
+        },
+        {
+          "key": "High",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Maximum slider bound"
+        }
+      ],
+      "wasmKernel": "SliderGain",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "Backlash",
+    "kind": "simulink_block",
+    "namePath": "simulink:Backlash",
+    "exports": [
+      "LowerValue",
+      "UpperValue",
+      "InitialOutput"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Mechanical Backlash (Play)",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Models mechanical gear play / backlash deadband hysteresis where output lags input reversals.",
+      "provenance": "Nonlinear Control Theory (Backlash / Play Operator)",
+      "aliases": [
+        "simulink/Discontinuities/Backlash"
+      ],
+      "parameters": [
+        {
+          "key": "LowerValue",
+          "type": "real",
+          "defaultValue": -0.5,
+          "unit": "",
+          "description": "Lower deadband half-width"
+        },
+        {
+          "key": "UpperValue",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Upper deadband half-width"
+        },
+        {
+          "key": "InitialOutput",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial output position"
+        }
+      ],
+      "wasmKernel": "Backlash",
+      "archetypeId": 35
+    }
+  },
+  {
+    "name": "CoulombViscousFriction",
+    "kind": "simulink_block",
+    "namePath": "simulink:CoulombViscousFriction",
+    "exports": [
+      "LowerValue",
+      "UpperValue",
+      "Gain"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Coulomb & Viscous Friction",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Models dry Coulomb offset plus linear viscous damping friction.",
+      "provenance": "Classical Mechanics (Coulomb + Viscous Friction Law)",
+      "aliases": [
+        "simulink/Discontinuities/Coulomb & Viscous Friction"
+      ],
+      "parameters": [
+        {
+          "key": "LowerValue",
+          "type": "real",
+          "defaultValue": -0.1,
+          "unit": "",
+          "description": "Negative Coulomb stiction offset"
+        },
+        {
+          "key": "UpperValue",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "",
+          "description": "Positive Coulomb stiction offset"
+        },
+        {
+          "key": "Gain",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Viscous damping slope"
+        }
+      ],
+      "wasmKernel": "CoulombViscousFriction",
+      "archetypeId": 36
+    }
+  },
+  {
+    "name": "HitCrossing",
+    "kind": "simulink_block",
+    "namePath": "simulink:HitCrossing",
+    "exports": [
+      "Op",
+      "HitCrossingOffset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zero / Threshold Crossing Detector",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Detects when input crosses a specified HitCrossingOffset in the configured direction.",
+      "provenance": "Hybrid Systems & Event Detection",
+      "aliases": [
+        "simulink/Discontinuities/Hit Crossing"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Crossing comparison mode"
+        },
+        {
+          "key": "HitCrossingOffset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Crossing threshold offset"
+        }
+      ],
+      "wasmKernel": "HitCrossing",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "WrapToZero",
+    "kind": "simulink_block",
+    "namePath": "simulink:WrapToZero",
+    "exports": [
+      "UpperLimit",
+      "LowerLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wrap To Zero",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Outputs input when u <= Threshold and wraps back to zero when u > Threshold.",
+      "provenance": "Digital Control & Modular Arithmetic",
+      "aliases": [
+        "simulink/Discontinuities/Wrap To Zero"
+      ],
+      "parameters": [
+        {
+          "key": "UpperLimit",
+          "type": "real",
+          "defaultValue": 255,
+          "unit": "",
+          "description": "Wrap threshold"
+        },
+        {
+          "key": "LowerLimit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Reset value"
+        }
+      ],
+      "wasmKernel": "WrapToZero",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "SaturationDynamic",
+    "kind": "simulink_block",
+    "namePath": "simulink:SaturationDynamic",
+    "exports": [
+      "UpperLimit",
+      "LowerLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dynamic Saturation Clamp",
+      "category": "Discontinuities",
+      "domain": "control",
+      "description": "Clamps input signal u between dynamic upper and lower limit input ports.",
+      "provenance": "Nonlinear Control Theory (Time-Varying Saturation)",
+      "aliases": [
+        "simulink/Discontinuities/Saturation Dynamic"
+      ],
+      "parameters": [
+        {
+          "key": "UpperLimit",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Fallback upper limit"
+        },
+        {
+          "key": "LowerLimit",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Fallback lower limit"
+        }
+      ],
+      "wasmKernel": "SaturationDynamic",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "BitwiseOperator",
+    "kind": "simulink_block",
+    "namePath": "simulink:BitwiseOperator",
+    "exports": [
+      "Op",
+      "BitMask"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Bitwise Logical Operator (AND/OR/XOR/NAND/NOR/NOT)",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Performs bitwise logical operation on integer signal inputs or bitmask.",
+      "provenance": "Digital Logic & Computer Architecture",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Bitwise Operator"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "0:AND, 1:OR, 2:XOR, 3:NOT"
+        },
+        {
+          "key": "BitMask",
+          "type": "real",
+          "defaultValue": 255,
+          "unit": "",
+          "description": "Optional constant bitmask"
+        }
+      ],
+      "wasmKernel": "BitwiseOperator",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "BitShift",
+    "kind": "simulink_block",
+    "namePath": "simulink:BitShift",
+    "exports": [
+      "Gain",
+      "Bias"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Arithmetic Bit Shift",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Shifts bits or binary point left or right (power-of-two scaling).",
+      "provenance": "Fixed-Point Digital Signal Processing",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Shift Arithmetic"
+      ],
+      "parameters": [
+        {
+          "key": "Gain",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Effective power-of-two shift multiplier"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Zero offset"
+        }
+      ],
+      "wasmKernel": "BitShift",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "BitClear",
+    "kind": "simulink_block",
+    "namePath": "simulink:BitClear",
+    "exports": [
+      "Op",
+      "iBit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Bit Clear",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Clears a specified bit position of an integer signal to zero.",
+      "provenance": "Digital Logic & Embedded Control",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Bit Clear"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Bitwise AND clear operation"
+        },
+        {
+          "key": "iBit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Zero-based bit index to clear"
+        }
+      ],
+      "wasmKernel": "BitClear",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "BitSet",
+    "kind": "simulink_block",
+    "namePath": "simulink:BitSet",
+    "exports": [
+      "Op",
+      "iBit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Bit Set",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Sets a specified bit position of an integer signal to one.",
+      "provenance": "Digital Logic & Embedded Control",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Bit Set"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Bitwise OR set operation"
+        },
+        {
+          "key": "iBit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Zero-based bit index to set"
+        }
+      ],
+      "wasmKernel": "BitSet",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "CompareToZero",
+    "kind": "simulink_block",
+    "namePath": "simulink:CompareToZero",
+    "exports": [
+      "Op"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Compare To Zero",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Compares input signal against zero using a configurable relational operator.",
+      "provenance": "Boolean Algebra",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Compare To Zero"
+      ],
+      "parameters": [
+        {
+          "key": "Op",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "",
+          "description": "0:==, 1:~=, 2:<, 3:<=, 4:>=, 5:>"
+        }
+      ],
+      "wasmKernel": "CompareToZero",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "DetectChange",
+    "kind": "simulink_block",
+    "namePath": "simulink:DetectChange",
+    "exports": [
+      "vinit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Detect Signal Change",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Outputs true (1) when input differs from its previous sample value.",
+      "provenance": "Discrete Event & Edge Detection",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Detect Change"
+      ],
+      "parameters": [
+        {
+          "key": "vinit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial previous-step value"
+        }
+      ],
+      "wasmKernel": "DetectChange",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "DetectIncrease",
+    "kind": "simulink_block",
+    "namePath": "simulink:DetectIncrease",
+    "exports": [
+      "vinit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Detect Signal Increase",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Outputs true (1) when input is strictly greater than its previous value.",
+      "provenance": "Discrete Event & Rising-Edge Detection",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Detect Increase"
+      ],
+      "parameters": [
+        {
+          "key": "vinit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial previous-step value"
+        }
+      ],
+      "wasmKernel": "DetectIncrease",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "DetectDecrease",
+    "kind": "simulink_block",
+    "namePath": "simulink:DetectDecrease",
+    "exports": [
+      "vinit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Detect Signal Decrease",
+      "category": "Logic & Bit Operations",
+      "domain": "control",
+      "description": "Outputs true (1) when input is strictly less than its previous value.",
+      "provenance": "Discrete Event & Falling-Edge Detection",
+      "aliases": [
+        "simulink/Logic and Bit Operations/Detect Decrease"
+      ],
+      "parameters": [
+        {
+          "key": "vinit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial previous-step value"
+        }
+      ],
+      "wasmKernel": "DetectDecrease",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "DataTypeConversion",
+    "kind": "simulink_block",
+    "namePath": "simulink:DataTypeConversion",
+    "exports": [
+      "OutDataTypeStr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Data Type Conversion",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Converts signal between numeric data types (double, single, int, boolean).",
+      "provenance": "Numeric Type Systems & Embedded Code Generation",
+      "aliases": [
+        "simulink/Signal Attributes/Data Type Conversion"
+      ],
+      "parameters": [
+        {
+          "key": "OutDataTypeStr",
+          "type": "string",
+          "defaultValue": "double",
+          "unit": "",
+          "description": "Target output data type"
+        }
+      ],
+      "wasmKernel": "DataTypeConversion",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Selector",
+    "kind": "simulink_block",
+    "namePath": "simulink:Selector",
+    "exports": [
+      "Indices"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Vector / Matrix Selector",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Selects or reorders specified elements from an input vector or matrix.",
+      "provenance": "Array Indexing & Signal Flow Routing",
+      "aliases": [
+        "simulink/Signal Routing/Selector"
+      ],
+      "parameters": [
+        {
+          "key": "Indices",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Selected element index (1-based)"
+        }
+      ],
+      "wasmKernel": "Selector",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "Concatenate",
+    "kind": "simulink_block",
+    "namePath": "simulink:Concatenate",
+    "exports": [
+      "NumInputs"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Vector / Matrix Concatenate",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Concatenates multiple input signals along a specified dimension.",
+      "provenance": "Array & Signal Flow Routing",
+      "aliases": [
+        "simulink/Signal Routing/Vector Concatenate",
+        "MatrixConcatenate"
+      ],
+      "parameters": [
+        {
+          "key": "NumInputs",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Number of concatenated input ports"
+        }
+      ],
+      "wasmKernel": "Concatenate",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "ManualSwitch",
+    "kind": "simulink_block",
+    "namePath": "simulink:ManualSwitch",
+    "exports": [
+      "Threshold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Manual Two-Way Switch",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Toggle switch selecting between two input signals interactively.",
+      "provenance": "Signal Flow Routing",
+      "aliases": [
+        "simulink/Signal Routing/Manual Switch"
+      ],
+      "parameters": [
+        {
+          "key": "Threshold",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Active input selector (0 or 1)"
+        }
+      ],
+      "wasmKernel": "ManualSwitch",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "EnvironmentController",
+    "kind": "simulink_block",
+    "namePath": "simulink:EnvironmentController",
+    "exports": [
+      "Threshold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simulation / Codegen Environment Controller",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Routes simulation-only or real-time target signal branch based on build mode.",
+      "provenance": "Model-Based Design Variant Routing",
+      "aliases": [
+        "simulink/Signal Routing/Environment Controller"
+      ],
+      "parameters": [
+        {
+          "key": "Threshold",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "",
+          "description": "Environment branch selector"
+        }
+      ],
+      "wasmKernel": "EnvironmentController",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "IndexVector",
+    "kind": "simulink_block",
+    "namePath": "simulink:IndexVector",
+    "exports": [
+      "Threshold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Index Vector Multiplexer",
+      "category": "Signal Routing",
+      "domain": "control",
+      "description": "Selects an element from data input ports using a dynamic index signal.",
+      "provenance": "Signal Flow Routing",
+      "aliases": [
+        "simulink/Signal Routing/Index Vector"
+      ],
+      "parameters": [
+        {
+          "key": "Threshold",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Index threshold"
+        }
+      ],
+      "wasmKernel": "IndexVector",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "FromWorkspace",
+    "kind": "simulink_block",
+    "namePath": "simulink:FromWorkspace",
+    "exports": [
+      "Value"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "From Workspace Signal Replay",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Reads time-series stimulus data from workspace table or dataset.",
+      "provenance": "Time-Domain Simulation Stimulus",
+      "aliases": [
+        "simulink/Sources/From Workspace"
+      ],
+      "parameters": [
+        {
+          "key": "Value",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Default fallback signal value"
+        }
+      ],
+      "wasmKernel": "FromWorkspace",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "SignalBuilder",
+    "kind": "simulink_block",
+    "namePath": "simulink:SignalBuilder",
+    "exports": [
+      "x0",
+      "x1",
+      "x2",
+      "y0",
+      "y1",
+      "y2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Piecewise-Linear Signal Builder",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Generates piecewise-linear test waveforms over time breakpoints.",
+      "provenance": "Test Harness Waveform Generation",
+      "aliases": [
+        "simulink/Sources/Signal Builder",
+        "SignalEditor"
+      ],
+      "parameters": [
+        {
+          "key": "x0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Time breakpoint 0"
+        },
+        {
+          "key": "x1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Time breakpoint 1"
+        },
+        {
+          "key": "x2",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "s",
+          "description": "Time breakpoint 2"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Signal value 0"
+        },
+        {
+          "key": "y1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Signal value 1"
+        },
+        {
+          "key": "y2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Signal value 2"
+        }
+      ],
+      "wasmKernel": "SignalBuilder",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "Chirp",
+    "kind": "simulink_block",
+    "namePath": "simulink:Chirp",
+    "exports": [
+      "Amplitude",
+      "Bias",
+      "Frequency",
+      "Phase",
+      "TargetFreq"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Swept-Frequency Chirp Signal",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Generates a swept-frequency sinusoidal chirp for frequency-response testing.",
+      "provenance": "System Identification & Frequency-Response Analysis",
+      "aliases": [
+        "simulink/Sources/Chirp Signal"
+      ],
+      "parameters": [
+        {
+          "key": "Amplitude",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Chirp peak amplitude"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "DC offset"
+        },
+        {
+          "key": "Frequency",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "rad/s",
+          "description": "Initial angular frequency"
+        },
+        {
+          "key": "Phase",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Initial phase"
+        },
+        {
+          "key": "TargetFreq",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "rad/s",
+          "description": "Target sweep frequency"
+        }
+      ],
+      "wasmKernel": "Chirp",
+      "archetypeId": 72
+    }
+  },
+  {
+    "name": "UniformRandomNumber",
+    "kind": "simulink_block",
+    "namePath": "simulink:UniformRandomNumber",
+    "exports": [
+      "Value",
+      "Minimum",
+      "Maximum",
+      "Seed"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Uniform Random Number Source",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Generates uniformly distributed pseudo-random numbers within [Minimum, Maximum].",
+      "provenance": "Stochastic Simulation & Monte Carlo Methods",
+      "aliases": [
+        "simulink/Sources/Uniform Random Number",
+        "RandomNumber"
+      ],
+      "parameters": [
+        {
+          "key": "Value",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Mean / nominal output"
+        },
+        {
+          "key": "Minimum",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower uniform bound"
+        },
+        {
+          "key": "Maximum",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper uniform bound"
+        },
+        {
+          "key": "Seed",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "PRNG seed"
+        }
+      ],
+      "wasmKernel": "UniformRandomNumber",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "RepeatingSequence",
+    "kind": "simulink_block",
+    "namePath": "simulink:RepeatingSequence",
+    "exports": [
+      "Amplitude",
+      "Period",
+      "PulseWidth",
+      "PhaseDelay"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Repeating Periodic Sequence",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Outputs a repeating periodic waveform defined by time and value vectors.",
+      "provenance": "Periodic Signal Generation",
+      "aliases": [
+        "simulink/Sources/Repeating Sequence"
+      ],
+      "parameters": [
+        {
+          "key": "Amplitude",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Peak sequence amplitude"
+        },
+        {
+          "key": "Period",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "s",
+          "description": "Repetition period"
+        },
+        {
+          "key": "PulseWidth",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "%",
+          "description": "Duty cycle"
+        },
+        {
+          "key": "PhaseDelay",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Phase delay"
+        }
+      ],
+      "wasmKernel": "RepeatingSequence",
+      "archetypeId": 75
+    }
+  },
+  {
+    "name": "CounterFreeRunning",
+    "kind": "simulink_block",
+    "namePath": "simulink:CounterFreeRunning",
+    "exports": [
+      "gainval",
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Free-Running Digital Counter",
+      "category": "Sources",
+      "domain": "control",
+      "description": "Increments an integer counter each sample step and wraps at 2^NumBits - 1.",
+      "provenance": "Digital Logic & Discrete-Time Counters",
+      "aliases": [
+        "simulink/Sources/Counter Free-Running",
+        "CounterLimited"
+      ],
+      "parameters": [
+        {
+          "key": "gainval",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Increment per step"
+        },
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial count"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 65535,
+          "unit": "",
+          "description": "Counter wrap limit"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Counter lower bound"
+        }
+      ],
+      "wasmKernel": "CounterFreeRunning",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "SimscapeResistor",
+    "kind": "simulink_block",
+    "namePath": "simulink:SimscapeResistor",
+    "exports": [
+      "R",
+      "Bias"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simscape Electrical Resistor (V = R * I)",
+      "category": "Simscape",
+      "domain": "control",
+      "description": "Linear electrical resistor obeying Ohm's law v = R * i.",
+      "provenance": "Classical Circuit Theory (Ohm's Law)",
+      "aliases": [
+        "fl_lib/Electrical/Electrical Elements/Resistor",
+        "ee_lib/Passive/Resistor"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "Ohm",
+          "description": "Electrical resistance"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Offset voltage"
+        }
+      ],
+      "wasmKernel": "SimscapeResistor",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "SimscapeCapacitor",
+    "kind": "simulink_block",
+    "namePath": "simulink:SimscapeCapacitor",
+    "exports": [
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit",
+      "C"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simscape Electrical Capacitor (C * dv/dt = i)",
+      "category": "Simscape",
+      "domain": "control",
+      "description": "Linear electrical capacitor storing charge q = C * v.",
+      "provenance": "Classical Circuit Theory (Capacitor Constitutive Law)",
+      "aliases": [
+        "fl_lib/Electrical/Electrical Elements/Capacitor",
+        "ee_lib/Passive/Capacitor"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Initial capacitor voltage v(0)"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "V",
+          "description": "Upper voltage bound"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "V",
+          "description": "Lower voltage bound"
+        },
+        {
+          "key": "C",
+          "type": "real",
+          "defaultValue": 0.000001,
+          "unit": "F",
+          "description": "Capacitance"
+        }
+      ],
+      "wasmKernel": "SimscapeCapacitor",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SimscapeInductor",
+    "kind": "simulink_block",
+    "namePath": "simulink:SimscapeInductor",
+    "exports": [
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit",
+      "L"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simscape Electrical Inductor (L * di/dt = v)",
+      "category": "Simscape",
+      "domain": "control",
+      "description": "Linear electrical inductor storing magnetic flux phi = L * i.",
+      "provenance": "Classical Circuit Theory (Faraday-Lenz Inductance Law)",
+      "aliases": [
+        "fl_lib/Electrical/Electrical Elements/Inductor",
+        "ee_lib/Passive/Inductor"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "A",
+          "description": "Initial inductor current i(0)"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "A",
+          "description": "Upper current bound"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "A",
+          "description": "Lower current bound"
+        },
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "H",
+          "description": "Inductance"
+        }
+      ],
+      "wasmKernel": "SimscapeInductor",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SimscapeDamper",
+    "kind": "simulink_block",
+    "namePath": "simulink:SimscapeDamper",
+    "exports": [
+      "D",
+      "Bias"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simscape Translational Damper (F = D * v)",
+      "category": "Simscape",
+      "domain": "control",
+      "description": "Ideal mechanical viscous damper generating resistive force F = D * v.",
+      "provenance": "Classical Mechanics (Linear Viscous Damper)",
+      "aliases": [
+        "fl_lib/Mechanical/Translational Elements/Translational Damper"
+      ],
+      "parameters": [
+        {
+          "key": "D",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "N*s/m",
+          "description": "Damping coefficient"
+        },
+        {
+          "key": "Bias",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Zero force offset"
+        }
+      ],
+      "wasmKernel": "SimscapeDamper",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "SimscapeSpring",
+    "kind": "simulink_block",
+    "namePath": "simulink:SimscapeSpring",
+    "exports": [
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit",
+      "spr_rate"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simscape Translational Spring (dF/dt = k * v)",
+      "category": "Simscape",
+      "domain": "control",
+      "description": "Ideal Hookean mechanical translational spring with stiffness k.",
+      "provenance": "Classical Mechanics (Hooke's Law)",
+      "aliases": [
+        "fl_lib/Mechanical/Translational Elements/Translational Spring"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Initial spring deformation x(0)"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "m",
+          "description": "Upper travel limit"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "m",
+          "description": "Lower travel limit"
+        },
+        {
+          "key": "spr_rate",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "N/m",
+          "description": "Spring stiffness k"
+        }
+      ],
+      "wasmKernel": "SimscapeSpring",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SimscapeMass",
+    "kind": "simulink_block",
+    "namePath": "simulink:SimscapeMass",
+    "exports": [
+      "InitialCondition",
+      "UpperSaturationLimit",
+      "LowerSaturationLimit",
+      "mass"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simscape Translational Mass (m * dv/dt = F)",
+      "category": "Simscape",
+      "domain": "control",
+      "description": "Ideal translational inertial mass obeying Newton's second law F = m * dv/dt.",
+      "provenance": "Classical Mechanics (Newton's Second Law)",
+      "aliases": [
+        "fl_lib/Mechanical/Translational Elements/Mass"
+      ],
+      "parameters": [
+        {
+          "key": "InitialCondition",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m/s",
+          "description": "Initial velocity v(0)"
+        },
+        {
+          "key": "UpperSaturationLimit",
+          "type": "real",
+          "defaultValue": 1e+30,
+          "unit": "m/s",
+          "description": "Upper velocity bound"
+        },
+        {
+          "key": "LowerSaturationLimit",
+          "type": "real",
+          "defaultValue": -1e+30,
+          "unit": "m/s",
+          "description": "Lower velocity bound"
+        },
+        {
+          "key": "mass",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "kg",
+          "description": "Translational mass"
+        }
+      ],
+      "wasmKernel": "SimscapeMass",
+      "archetypeId": 1
+    }
+  }
+]

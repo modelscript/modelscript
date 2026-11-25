@@ -1,0 +1,12 @@
+{
+  "id": "sbol-03-genetic-not-gate",
+  "lang": "sbol",
+  "subFormats": ["sbol3-xml"],
+  "difficulty": 3,
+  "title": "Genetic NOT Gate with Standard Parts Library",
+  "description": "Transcriptional inverter (NOT gate) using TetR repression of a YFP reporter paired with a modular SBOL3 standard parts library file.",
+  "category": "Synthetic Biology",
+  "tags": ["sbol", "not-gate", "genetic-circuit", "multi-file"],
+  "activeFile": "not_gate.sbol",
+  "fileOrder": ["not_gate.sbol", "parts_library.sbol"]
+}

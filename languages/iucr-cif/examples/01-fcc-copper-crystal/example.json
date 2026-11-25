@@ -1,0 +1,12 @@
+{
+  "id": "iucr-cif-01-fcc-copper-crystal",
+  "lang": "iucr-cif",
+  "subFormats": ["cif-1.1"],
+  "difficulty": 1,
+  "title": "Face-Centered Cubic Copper Crystal Structure (Fm-3m)",
+  "description": "IUCr CIF 1.1 crystallographic structure of metallic FCC copper (a = 3.6149 A, space group Fm-3m #225) with explicit face-centering symmetry operations.",
+  "category": "Metallurgical Crystallography",
+  "tags": ["iucr-cif", "fcc", "copper", "cubic", "crystal"],
+  "activeFile": "copper_fcc.cif",
+  "isDefaultStarter": true
+}

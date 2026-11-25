@@ -1,0 +1,11 @@
+{
+  "id": "apdl-05-coupled-pressure-vessel",
+  "lang": "apdl",
+  "subFormats": ["apdl", "mac"],
+  "difficulty": 5,
+  "title": "Coupled Thermo-Structural Pressure Vessel with Macros",
+  "description": "Multi-file APDL workflow for an ASME SA-516 carbon-steel cylindrical pressure vessel under internal pressure and thermal gradient, pairing the master analysis deck with modular geometry and stress post-processing macros.",
+  "category": "Structural & Thermal FEA",
+  "tags": ["apdl", "pressure-vessel", "macro", "multi-file"],
+  "activeFile": "vessel.apdl"
+}

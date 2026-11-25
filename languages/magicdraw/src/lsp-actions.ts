@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * @modelscript/magicdraw — IDE & Morsel Action Handlers.
+ * @modelscript/magicdraw — IDE & Ansatz Action Handlers.
  */
 
 import { lowerMagicDrawParametricsToDae } from "./dae/parametric-to-dae.js";

@@ -1,0 +1,11 @@
+{
+  "id": "pypsa-04-sector-coupled-p2h-electrolyzer",
+  "lang": "pypsa",
+  "subFormats": ["pypsa", "csv"],
+  "difficulty": 4,
+  "title": "Sector-Coupled Power-to-Heat & Green Hydrogen Network",
+  "description": "Multi-carrier PyPSA energy network coupling electricity, district heating (heat pumps + thermal storage), and green hydrogen electrolysis via directional conversion links and companion demand CSV.",
+  "category": "Energy Systems Optimization",
+  "tags": ["pypsa", "sector-coupling", "hydrogen", "heat-pump", "multi-file"],
+  "activeFile": "sector.pypsa"
+}

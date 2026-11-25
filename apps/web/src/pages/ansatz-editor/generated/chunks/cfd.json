@@ -1,0 +1,97 @@
+[
+  {
+    "id": "cfd-01-channel-poiseuille-flow",
+    "lang": "cfd",
+    "subFormats": ["cfg", "su2"],
+    "difficulty": 1,
+    "title": "2D Channel Laminar Poiseuille Flow (SU2)",
+    "description": "Incompressible laminar Navier-Stokes SU2 configuration and companion 2D structured quad mesh for pressure-driven Poiseuille channel flow.",
+    "category": "Internal Laminar CFD",
+    "tags": ["cfd", "su2", "poiseuille", "laminar", "multi-file"],
+    "activeFile": "channel.cfg",
+    "fileNames": ["channel.cfg", "channel.su2"],
+    "fileCount": 2,
+    "isDefaultStarter": true,
+    "code": "% 2D Laminar Channel Poiseuille Flow (Re = 100)\nPHYSICAL_PROBLEM= NAVIER_STOKES\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= NONE\nMACH_NUMBER= 0.05\nREYNOLDS_NUMBER= 100.0\nFREESTREAM_DENSITY= 1.225\nFREESTREAM_VELOCITY= ( 1.5, 0.0, 0.0 )\nREF_AREA= 0.1\nREF_LENGTH= 0.1\nCFL_NUMBER= 2.0\nMESH_FILENAME= channel.su2\nMARKER_INLET= ( inlet, 288.15, 101350.0, 1.0, 0.0, 0.0 )\nMARKER_OUTLET= ( outlet, 101325.0 )\nMARKER_HEATFLUX= ( lower_wall, 0.0, upper_wall, 0.0 )\n",
+    "files": {
+      "channel.cfg": "% 2D Laminar Channel Poiseuille Flow (Re = 100)\nPHYSICAL_PROBLEM= NAVIER_STOKES\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= NONE\nMACH_NUMBER= 0.05\nREYNOLDS_NUMBER= 100.0\nFREESTREAM_DENSITY= 1.225\nFREESTREAM_VELOCITY= ( 1.5, 0.0, 0.0 )\nREF_AREA= 0.1\nREF_LENGTH= 0.1\nCFL_NUMBER= 2.0\nMESH_FILENAME= channel.su2\nMARKER_INLET= ( inlet, 288.15, 101350.0, 1.0, 0.0, 0.0 )\nMARKER_OUTLET= ( outlet, 101325.0 )\nMARKER_HEATFLUX= ( lower_wall, 0.0, upper_wall, 0.0 )\n",
+      "channel.su2": "NDIME= 2\nNELEM= 2\n9 0 1 4 3 0\n9 1 2 5 4 1\nNPOIN= 6\n0.0 0.0 0\n0.5 0.0 1\n1.0 0.0 2\n0.0 0.1 3\n0.5 0.1 4\n1.0 0.1 5\nNMARK= 4\nMARKER_TAG= inlet\nMARKER_ELEMS= 1\n3 0 3\nMARKER_TAG= outlet\nMARKER_ELEMS= 1\n3 2 5\nMARKER_TAG= lower_wall\nMARKER_ELEMS= 2\n3 0 1\n3 1 2\nMARKER_TAG= upper_wall\nMARKER_ELEMS= 2\n3 3 4\n3 4 5\n"
+    }
+  },
+  {
+    "id": "cfd-02-naca0012-euler-airfoil",
+    "lang": "cfd",
+    "subFormats": ["cfg", "su2"],
+    "difficulty": 2,
+    "title": "NACA 0012 Subsonic Inviscid Euler Airfoil",
+    "description": "External subsonic inviscid Euler SU2 aerodynamic setup for a NACA 0012 airfoil at Mach 0.30 and 2.5 deg angle of attack with companion .su2 mesh.",
+    "category": "External Aerodynamics",
+    "tags": ["cfd", "su2", "naca0012", "euler", "multi-file"],
+    "activeFile": "naca0012.cfg",
+    "fileNames": ["naca0012.cfg", "naca0012.su2"],
+    "fileCount": 2,
+    "code": "% NACA 0012 Subsonic Inviscid Euler Airfoil\nPHYSICAL_PROBLEM= EULER\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= NONE\nMACH_NUMBER= 0.30\nAOA= 2.5\nREYNOLDS_NUMBER= 1.0e6\nFREESTREAM_DENSITY= 1.225\nFREESTREAM_VELOCITY= ( 102.0, 4.45, 0.0 )\nREF_AREA= 1.0\nREF_LENGTH= 1.0\nCFL_NUMBER= 4.0\nMESH_FILENAME= naca0012.su2\nMARKER_EULER= ( airfoil )\nMARKER_FAR= ( farfield )\nMARKER_INLET= ( inlet, 288.15, 107850.0, 0.999, 0.0436, 0.0 )\nMARKER_OUTLET= ( outlet, 101325.0 )\n",
+    "files": {
+      "naca0012.cfg": "% NACA 0012 Subsonic Inviscid Euler Airfoil\nPHYSICAL_PROBLEM= EULER\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= NONE\nMACH_NUMBER= 0.30\nAOA= 2.5\nREYNOLDS_NUMBER= 1.0e6\nFREESTREAM_DENSITY= 1.225\nFREESTREAM_VELOCITY= ( 102.0, 4.45, 0.0 )\nREF_AREA= 1.0\nREF_LENGTH= 1.0\nCFL_NUMBER= 4.0\nMESH_FILENAME= naca0012.su2\nMARKER_EULER= ( airfoil )\nMARKER_FAR= ( farfield )\nMARKER_INLET= ( inlet, 288.15, 107850.0, 0.999, 0.0436, 0.0 )\nMARKER_OUTLET= ( outlet, 101325.0 )\n",
+      "naca0012.su2": "NDIME= 2\nNELEM= 4\n5 0 1 4 0\n5 1 2 4 1\n5 2 3 4 2\n5 3 0 4 3\nNPOIN= 5\n-5.0 -5.0 0\n 5.0 -5.0 1\n 5.0  5.0 2\n-5.0  5.0 3\n 0.5  0.0 4\nNMARK= 4\nMARKER_TAG= inlet\nMARKER_ELEMS= 1\n3 3 0\nMARKER_TAG= outlet\nMARKER_ELEMS= 1\n3 1 2\nMARKER_TAG= farfield\nMARKER_ELEMS= 2\n3 0 1\n3 2 3\nMARKER_TAG= airfoil\nMARKER_ELEMS= 1\n3 0 4\n"
+    }
+  },
+  {
+    "id": "cfd-03-rae2822-transonic-rans",
+    "lang": "cfd",
+    "subFormats": ["cfg", "su2"],
+    "difficulty": 3,
+    "title": "RAE 2822 Transonic RANS Airfoil (SST Turbulence)",
+    "description": "Transonic Reynolds-Averaged Navier-Stokes SU2 benchmark for the RAE 2822 supercritical airfoil at Mach 0.729 with Spalart-Allmaras turbulence and complete BCs.",
+    "category": "Transonic Aerodynamics",
+    "tags": ["cfd", "su2", "rans", "rae2822", "transonic", "multi-file"],
+    "activeFile": "rae2822.cfg",
+    "fileNames": ["rae2822.cfg", "rae2822.su2"],
+    "fileCount": 2,
+    "code": "% RAE 2822 Transonic Turbulent RANS Benchmark (Case 6)\nPHYSICAL_PROBLEM= NAVIER_STOKES\nSOLVER= RANS\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= SA\nMACH_NUMBER= 0.729\nAOA= 2.31\nREYNOLDS_NUMBER= 6.5e6\nFREESTREAM_DENSITY= 1.225\nFREESTREAM_VELOCITY= ( 248.0, 10.0, 0.0 )\nREF_AREA= 1.0\nREF_LENGTH= 1.0\nCFL_NUMBER= 3.0\nWALL_YPLUS= 0.85\nMESH_FILENAME= rae2822.su2\nMARKER_HEATFLUX= ( airfoil, 0.0 )\nMARKER_FAR= ( farfield )\nMARKER_INLET= ( inlet, 288.15, 144200.0, 0.9992, 0.0403, 0.0 )\nMARKER_OUTLET= ( outlet, 101325.0 )\n",
+    "files": {
+      "rae2822.cfg": "% RAE 2822 Transonic Turbulent RANS Benchmark (Case 6)\nPHYSICAL_PROBLEM= NAVIER_STOKES\nSOLVER= RANS\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= SA\nMACH_NUMBER= 0.729\nAOA= 2.31\nREYNOLDS_NUMBER= 6.5e6\nFREESTREAM_DENSITY= 1.225\nFREESTREAM_VELOCITY= ( 248.0, 10.0, 0.0 )\nREF_AREA= 1.0\nREF_LENGTH= 1.0\nCFL_NUMBER= 3.0\nWALL_YPLUS= 0.85\nMESH_FILENAME= rae2822.su2\nMARKER_HEATFLUX= ( airfoil, 0.0 )\nMARKER_FAR= ( farfield )\nMARKER_INLET= ( inlet, 288.15, 144200.0, 0.9992, 0.0403, 0.0 )\nMARKER_OUTLET= ( outlet, 101325.0 )\n",
+      "rae2822.su2": "NDIME= 2\nNELEM= 4\n5 0 1 4 0\n5 1 2 4 1\n5 2 3 4 2\n5 3 0 4 3\nNPOIN= 5\n-10.0 -10.0 0\n 10.0 -10.0 1\n 10.0  10.0 2\n-10.0  10.0 3\n  0.5   0.0 4\nNMARK= 4\nMARKER_TAG= inlet\nMARKER_ELEMS= 1\n3 3 0\nMARKER_TAG= outlet\nMARKER_ELEMS= 1\n3 1 2\nMARKER_TAG= farfield\nMARKER_ELEMS= 2\n3 0 1\n3 2 3\nMARKER_TAG= airfoil\nMARKER_ELEMS= 1\n3 0 4\n"
+    }
+  },
+  {
+    "id": "cfd-04-openfoam-lid-driven-cavity",
+    "lang": "cfd",
+    "subFormats": ["foam", "cfg", "su2"],
+    "difficulty": 4,
+    "title": "OpenFOAM & SU2 Lid-Driven Cavity Benchmark",
+    "description": "Multi-file lid-driven cavity benchmark pairing a complete OpenFOAM case (cavity.foam, 0/U, 0/p, constant/transportProperties) with a cross-verification SU2 configuration and mesh.",
+    "category": "OpenFOAM & SU2 CFD",
+    "tags": ["cfd", "openfoam", "cavity", "incompressible", "multi-file"],
+    "activeFile": "cavity_su2.cfg",
+    "fileNames": ["cavity_su2.cfg", "0/p", "0/U", "cavity_su2.su2", "cavity.foam", "constant/transportProperties"],
+    "fileCount": 6,
+    "code": "% Lid-Driven Cavity Re = 100 Cross-Verification Config (Paired with cavity.foam)\nPHYSICAL_PROBLEM= NAVIER_STOKES\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= NONE\nMACH_NUMBER= 0.02\nREYNOLDS_NUMBER= 100.0\nFREESTREAM_DENSITY= 1.0\nFREESTREAM_VELOCITY= ( 1.0, 0.0, 0.0 )\nREF_AREA= 0.1\nREF_LENGTH= 0.1\nCFL_NUMBER= 1.5\nMESH_FILENAME= cavity_su2.su2\nMARKER_INLET= ( movingWall, 288.15, 101325.0, 1.0, 0.0, 0.0 )\nMARKER_OUTLET= ( pressureRef, 101325.0 )\nMARKER_HEATFLUX= ( fixedWalls, 0.0 )\n",
+    "files": {
+      "cavity_su2.cfg": "% Lid-Driven Cavity Re = 100 Cross-Verification Config (Paired with cavity.foam)\nPHYSICAL_PROBLEM= NAVIER_STOKES\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= NONE\nMACH_NUMBER= 0.02\nREYNOLDS_NUMBER= 100.0\nFREESTREAM_DENSITY= 1.0\nFREESTREAM_VELOCITY= ( 1.0, 0.0, 0.0 )\nREF_AREA= 0.1\nREF_LENGTH= 0.1\nCFL_NUMBER= 1.5\nMESH_FILENAME= cavity_su2.su2\nMARKER_INLET= ( movingWall, 288.15, 101325.0, 1.0, 0.0, 0.0 )\nMARKER_OUTLET= ( pressureRef, 101325.0 )\nMARKER_HEATFLUX= ( fixedWalls, 0.0 )\n",
+      "0/p": "FoamFile\n{\n    version     2.0;\n    format      ascii;\n    class       volScalarField;\n    object      p;\n}\n\ndimensions      [0 2 -2 0 0 0 0];\ninternalField   uniform 0;\n\nboundaryField\n{\n    movingWall\n    {\n        type            zeroGradient;\n    }\n    fixedWalls\n    {\n        type            zeroGradient;\n    }\n    frontAndBack\n    {\n        type            empty;\n    }\n}\n",
+      "0/U": "FoamFile\n{\n    version     2.0;\n    format      ascii;\n    class       volVectorField;\n    object      U;\n}\n\ndimensions      [0 1 -1 0 0 0 0];\ninternalField   uniform (0 0 0);\n\nboundaryField\n{\n    movingWall\n    {\n        type            fixedValue;\n        value           uniform (1 0 0);\n    }\n    fixedWalls\n    {\n        type            noSlip;\n    }\n    frontAndBack\n    {\n        type            empty;\n    }\n}\n",
+      "cavity_su2.su2": "NDIME= 2\nNELEM= 4\n9 0 1 4 3 0\n9 1 2 5 4 1\n9 3 4 7 6 2\n9 4 5 8 7 3\nNPOIN= 9\n0.00 0.00 0\n0.05 0.00 1\n0.10 0.00 2\n0.00 0.05 3\n0.05 0.05 4\n0.10 0.05 5\n0.00 0.10 6\n0.05 0.10 7\n0.10 0.10 8\nNMARK= 3\nMARKER_TAG= movingWall\nMARKER_ELEMS= 2\n3 6 7\n3 7 8\nMARKER_TAG= pressureRef\nMARKER_ELEMS= 1\n3 0 1\nMARKER_TAG= fixedWalls\nMARKER_ELEMS= 5\n3 1 2\n3 2 5\n3 5 8\n3 0 3\n3 3 6\n",
+      "cavity.foam": "// OpenFOAM Lid-Driven Cavity Case Control Summary\napplication     icoFoam;\nstartFrom       startTime;\nstartTime       0;\nstopTime        0.5;\ndeltaT          0.005;\n\nboundaryField\n{\n    inlet\n    {\n        type            fixedValue;\n        value           uniform (1.0 0 0);\n    }\n    outlet\n    {\n        type            zeroGradient;\n    }\n    fixedWalls\n    {\n        type            noSlip;\n    }\n}\n",
+      "constant/transportProperties": "FoamFile\n{\n    version     2.0;\n    format      ascii;\n    class       dictionary;\n    location    \"constant\";\n    object      transportProperties;\n}\n\nnu              [0 2 -1 0 0 0 0] 0.01;\n"
+    }
+  },
+  {
+    "id": "cfd-05-supersonic-rocket-nozzle",
+    "lang": "cfd",
+    "subFormats": ["cfg", "su2"],
+    "difficulty": 5,
+    "title": "Converging-Diverging Supersonic Rocket Nozzle Flow",
+    "description": "Compressible de Laval converging-diverging rocket nozzle SU2 configuration and companion 2D nozzle mesh resolving choked throat and Mach 2.4 supersonic expansion.",
+    "category": "Compressible Propulsion CFD",
+    "tags": ["cfd", "su2", "supersonic", "rocket-nozzle", "multi-file"],
+    "activeFile": "nozzle.cfg",
+    "fileNames": ["nozzle.cfg", "nozzle_mesh.su2"],
+    "fileCount": 2,
+    "code": "% Converging-Diverging De Laval Supersonic Rocket Nozzle\nPHYSICAL_PROBLEM= NAVIER_STOKES\nSOLVER= RANS\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= SST\nMACH_NUMBER= 2.4\nREYNOLDS_NUMBER= 4.2e6\nFREESTREAM_DENSITY= 0.85\nFREESTREAM_VELOCITY= ( 820.0, 0.0, 0.0 )\nREF_AREA= 0.05\nREF_LENGTH= 0.25\nCFL_NUMBER= 1.5\nWALL_YPLUS= 1.0\nMESH_FILENAME= nozzle_mesh.su2\nMARKER_INLET= ( chamber_inlet, 3200.0, 4500000.0, 1.0, 0.0, 0.0 )\nMARKER_OUTLET= ( exit_plane, 101325.0 )\nMARKER_ISOTHERMAL= ( nozzle_wall, 950.0 )\nMARKER_SYM= ( symmetry_axis )\n",
+    "files": {
+      "nozzle.cfg": "% Converging-Diverging De Laval Supersonic Rocket Nozzle\nPHYSICAL_PROBLEM= NAVIER_STOKES\nSOLVER= RANS\nMATH_PROBLEM= DIRECT\nKIND_TURB_MODEL= SST\nMACH_NUMBER= 2.4\nREYNOLDS_NUMBER= 4.2e6\nFREESTREAM_DENSITY= 0.85\nFREESTREAM_VELOCITY= ( 820.0, 0.0, 0.0 )\nREF_AREA= 0.05\nREF_LENGTH= 0.25\nCFL_NUMBER= 1.5\nWALL_YPLUS= 1.0\nMESH_FILENAME= nozzle_mesh.su2\nMARKER_INLET= ( chamber_inlet, 3200.0, 4500000.0, 1.0, 0.0, 0.0 )\nMARKER_OUTLET= ( exit_plane, 101325.0 )\nMARKER_ISOTHERMAL= ( nozzle_wall, 950.0 )\nMARKER_SYM= ( symmetry_axis )\n",
+      "nozzle_mesh.su2": "NDIME= 2\nNELEM= 2\n9 0 1 4 3 0\n9 1 2 5 4 1\nNPOIN= 6\n0.00 0.00 0\n0.10 0.00 1\n0.35 0.00 2\n0.00 0.09 3\n0.10 0.04 4\n0.35 0.12 5\nNMARK= 4\nMARKER_TAG= chamber_inlet\nMARKER_ELEMS= 1\n3 0 3\nMARKER_TAG= exit_plane\nMARKER_ELEMS= 1\n3 2 5\nMARKER_TAG= symmetry_axis\nMARKER_ELEMS= 2\n3 0 1\n3 1 2\nMARKER_TAG= nozzle_wall\nMARKER_ELEMS= 2\n3 3 4\n3 4 5\n"
+    }
+  }
+]

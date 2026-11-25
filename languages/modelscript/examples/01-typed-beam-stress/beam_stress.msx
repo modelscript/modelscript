@@ -1,0 +1,28 @@
+struct BeamSection {
+  width: f64;
+  height: f64;
+  length: f64;
+  elasticModulus: f64;
+  yieldStrength: f64;
+}
+
+function secondMomentOfArea(sec: BeamSection): f64 {
+  return (sec.width * sec.height * sec.height * sec.height) / 12.0;
+}
+
+function maxBendingStress(sec: BeamSection, tipLoad: f64): f64 {
+  let moment: f64 = tipLoad * sec.length;
+  let inertia: f64 = secondMomentOfArea(sec);
+  let halfHeight: f64 = sec.height * 0.5;
+  return (moment * halfHeight) / inertia;
+}
+
+function tipDeflection(sec: BeamSection, tipLoad: f64): f64 {
+  let inertia: f64 = secondMomentOfArea(sec);
+  return (tipLoad * sec.length * sec.length * sec.length) / (3.0 * sec.elasticModulus * inertia);
+}
+
+function safetyFactor(sec: BeamSection, tipLoad: f64): f64 {
+  let sigmaMax: f64 = maxBendingStress(sec, tipLoad);
+  return sec.yieldStrength / sigmaMax;
+}

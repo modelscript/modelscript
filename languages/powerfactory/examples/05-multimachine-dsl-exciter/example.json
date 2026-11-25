@@ -1,0 +1,11 @@
+{
+  "id": "powerfactory-05-multimachine-dsl-exciter",
+  "lang": "powerfactory",
+  "subFormats": ["dgs", "dsl"],
+  "difficulty": 5,
+  "title": "Multi-Machine Transmission Network + DIgSILENT DSL AVR Exciter",
+  "description": "Multi-file DIgSILENT PowerFactory study pairing a 230/16.5 kV multi-machine network with a custom DSL ST1 automatic voltage regulator controller.",
+  "category": "Dynamic Control Systems",
+  "tags": ["powerfactory", "dsl", "exciter", "avr", "multi-file"],
+  "activeFile": "network.dgs"
+}

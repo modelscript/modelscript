@@ -1,0 +1,11 @@
+{
+  "id": "ocpp-05-fleet-depot-load-balancing",
+  "lang": "ocpp",
+  "subFormats": ["ocpp", "ocpp.json"],
+  "difficulty": 5,
+  "title": "Electric Bus Fleet Depot Load-Balancing Scenario",
+  "description": "Multi-file OCPP 2.0.1 fleet depot workspace combining 4-bay bus depot station topology with companion CSMS smart charging schedules.",
+  "category": "Fleet Depot Management",
+  "tags": ["ocpp", "fleet-depot", "load-balancing", "multi-file"],
+  "activeFile": "station_config.ocpp"
+}

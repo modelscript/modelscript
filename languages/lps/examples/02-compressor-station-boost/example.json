@@ -1,0 +1,11 @@
+{
+  "id": "lps-02-compressor-station-boost",
+  "lang": "lps",
+  "subFormats": ["lps"],
+  "difficulty": 2,
+  "title": "Compressor Station Pressure Boost Loop",
+  "description": "190 km regional natural gas trunkline with a mid-route centrifugal compressor station maintaining 82 bar discharge pressure across two high-pressure pipe segments.",
+  "category": "Pipeline Hydraulics",
+  "tags": ["lps", "compressor", "pressure-boost", "trunkline"],
+  "activeFile": "compressor_boost.lps"
+}

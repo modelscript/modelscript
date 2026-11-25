@@ -1,0 +1,7 @@
+! Feeder Trunk and Lateral Lines for IEEE 13-Bus Feeder
+New Line.L650_632 bus1=Bus650 bus2=Bus632 phases=3 linecode=OH601 length=0.61
+New Line.L632_671 bus1=Bus632 bus2=Bus671 phases=3 linecode=OH601 length=0.61
+New Line.L671_680 bus1=Bus671 bus2=Bus680 phases=3 linecode=OH601 length=0.30
+New Line.L632_633 bus1=Bus632 bus2=Bus633 phases=3 linecode=OH602 length=0.15
+New Line.L671_692 bus1=Bus671 bus2=Bus692 phases=3 linecode=UG606 length=0.15
+New Line.L692_675 bus1=Bus692 bus2=Bus675 phases=3 linecode=UG606 length=0.15

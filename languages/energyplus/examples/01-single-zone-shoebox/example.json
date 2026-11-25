@@ -1,0 +1,12 @@
+{
+  "id": "energyplus-01-single-zone-shoebox",
+  "lang": "energyplus",
+  "subFormats": ["idf"],
+  "difficulty": 1,
+  "title": "Single-Zone Shoebox Thermal Envelope",
+  "description": "Minimal single-zone rectangular shoebox building envelope with insulated masonry walls, flat roof, slab-on-grade floor, and ideal loads air system.",
+  "category": "Building Energy Modeling",
+  "tags": ["energyplus", "idf", "shoebox", "thermal-envelope"],
+  "activeFile": "shoebox.idf",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,6 @@
+! Spot Loads for IEEE 13-Bus Feeder
+New Load.Load632 bus1=Bus632 phases=3 kv=4.16 kw=400 kvar=200
+New Load.Load633 bus1=Bus633 phases=3 kv=4.16 kw=400 kvar=290
+New Load.Load671 bus1=Bus671 phases=3 kv=4.16 kw=1155 kvar=660
+New Load.Load675 bus1=Bus675 phases=3 kv=4.16 kw=843 kvar=462
+New Load.Load680 bus1=Bus680 phases=3 kv=4.16 kw=250 kvar=120

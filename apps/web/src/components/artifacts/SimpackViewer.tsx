@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { renderKinematicDiagramSvg, type KinematicBodyLike, type KinematicJointLike } from "@modelscript/diagram";
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CheckCircleIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
@@ -120,7 +120,12 @@ const ContentArea = styled.div<{ $padded?: boolean }>`
 `;
 
 function parseSimpackClient(deck: string) {
-  const bodies: { name: string; mass: number; position?: [number, number, number] }[] = [];
+  const bodies: {
+    name: string;
+    mass: number;
+    position?: [number, number, number];
+    cg?: [number, number, number];
+  }[] = [];
   const joints: { name: string; type: string; from: string; to: string }[] = [];
   const forces: { name: string; type: string; from: string; to: string }[] = [];
 
@@ -194,7 +199,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
 
   useEffect(() => {
     if (!isLoading && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [isLoading]);
 
@@ -227,7 +232,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
           ...resolvedJoints.map((j, i) => ({
             id: j.name || `J_${i + 1}`,
             name: j.name || `Joint ${i + 1}`,
-            type: (j.type as any) || "revolute",
+            type: (j.type as KinematicJointLike["type"]) || "revolute",
             fromBody: j.from || "Ground",
             toBody: j.to || resolvedBodies[i % resolvedBodies.length]!.name,
           })),
@@ -270,7 +275,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
     const posMap = new Map<string, [number, number, number]>();
 
     resolvedBodies.forEach((b, idx) => {
-      const rawCoords = (b as any).position || (b as any).cg;
+      const rawCoords = b.position || b.cg;
       const coords: [number, number, number] =
         Array.isArray(rawCoords) && rawCoords.length === 3
           ? [Number(rawCoords[0]), Number(rawCoords[1]), Number(rawCoords[2])]
@@ -302,10 +307,10 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
     return { nodes3D: nodes, links3D: links };
   }, [resolvedBodies, resolvedJoints]);
 
-  const handleOpenPlayground = () => {
-    const hash = compressMorselPayload({
+  const handleOpenAnsatzEditor = () => {
+    const hash = compressAnsatzPayload({
       v: 1,
-      lang: "simpack" as any,
+      lang: "simpack",
       code: rawDeck || `$ ${modelName}\n`,
       title: modelName,
     });
@@ -348,7 +353,7 @@ const SimpackViewer: React.FC<SimpackViewerProps> = ({ viewConfig, isFullScreen 
               size="small"
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
-              onClick={handleOpenPlayground}
+              onClick={handleOpenAnsatzEditor}
               title="Open in Ansatz"
             >
               Open in Ansatz

@@ -1,0 +1,7 @@
+# Alluvial Sand Hydraulic Properties
+BEGIN NPF6
+  K 18.0
+  K33 2.5
+  SS 1.5e-5
+  SY 0.22
+END NPF6

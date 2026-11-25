@@ -1,0 +1,12 @@
+{
+  "id": "irig106-01-basic-pcm-flight-test",
+  "lang": "irig106",
+  "subFormats": ["tmats-ch9"],
+  "difficulty": 1,
+  "title": "Basic 4-Channel PCM Flight-Test Telemetry Stream",
+  "description": "Clean IRIG-106 Chapter 9 TMATS setup defining a 128 kbps NRZ-L PCM stream with 32-bit minor frame sync pattern (FE6B2840), four 16-bit air-data words, and linear polynomial conversions.",
+  "category": "Flight Test Telemetry",
+  "tags": ["irig106", "tmats", "pcm", "flight-test"],
+  "activeFile": "basic_pcm.tmats",
+  "isDefaultStarter": true
+}

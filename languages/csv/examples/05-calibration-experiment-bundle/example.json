@@ -1,0 +1,11 @@
+{
+  "id": "csv-05-calibration-experiment-bundle",
+  "lang": "csv",
+  "subFormats": ["csv"],
+  "difficulty": 5,
+  "title": "Multi-Table Thermal Calibration Experiment Bundle",
+  "description": "Three-table engineering experiment dataset pairing transient thermal measurements, thermocouple calibration offsets, and operating point setpoints.",
+  "category": "Experimental Calibration",
+  "tags": ["csv", "calibration", "multi-table", "sensors", "multi-file"],
+  "activeFile": "measurements.csv"
+}

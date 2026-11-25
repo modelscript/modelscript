@@ -1,0 +1,11 @@
+{
+  "id": "spice-04-sallen-key-butterworth-filter",
+  "lang": "spice",
+  "subFormats": ["sp", "lib"],
+  "difficulty": 4,
+  "title": "2nd-Order Sallen-Key Active Butterworth Filter",
+  "description": "Unity-gain 10 kHz second-order Sallen-Key Butterworth low-pass filter using a macromodel op-amp subcircuit library.",
+  "category": "Active Filters",
+  "tags": ["spice", "sallen-key", "opamp", "subckt", "multi-file"],
+  "activeFile": "active_filter.sp"
+}

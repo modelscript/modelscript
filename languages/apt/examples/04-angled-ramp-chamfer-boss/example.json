@@ -1,0 +1,11 @@
+{
+  "id": "apt-04-angled-ramp-chamfer-boss",
+  "lang": "apt",
+  "subFormats": ["apt"],
+  "difficulty": 4,
+  "title": "Angled Ramp and Chamfered Boss Profile",
+  "description": "Machining of an aerospace actuator housing with an angled 45-degree chamfered boss and circular bearing seat using inclined planes, multi-line intersections, and tangent circular arcs.",
+  "category": "CAD/CAM & CNC",
+  "tags": ["apt", "chamfer", "boss", "contouring"],
+  "activeFile": "chamfer_boss.apt"
+}

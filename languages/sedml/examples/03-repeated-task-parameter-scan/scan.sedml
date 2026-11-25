@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model_osc" name="Lotka-Volterra Oscillator" language="urn:sedml:language:sbml" source="oscillator.sbml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim_osc" name="CVODE Integration" initialTime="0" outputStartTime="0" outputEndTime="40" numberOfSteps="200">
+      <algorithm kisaoID="KISAO:0000019" name="CVODE"/>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_base" name="Single Run" modelReference="model_osc" simulationReference="sim_osc"/>
+    <repeatedTask id="task_scan" name="Beta Parameter Scan" range="range_beta" resetModel="true">
+      <listOfRanges>
+        <uniformRange id="range_beta" start="0.01" end="0.05" numberOfSteps="4" type="linear"/>
+      </listOfRanges>
+      <listOfChanges>
+        <setValue modelReference="model_osc" target="/sbml:sbml/sbml:model/sbml:listOfParameters/sbml:parameter[@id='beta']/@value" range="range_beta">
+          <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>range_beta</ci></math>
+        </setValue>
+      </listOfChanges>
+      <listOfSubTasks>
+        <subTask order="1" task="task_base"/>
+      </listOfSubTasks>
+    </repeatedTask>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_time" name="Time">
+      <listOfVariables>
+        <variable id="t" symbol="urn:sedml:symbol:time" taskReference="task_scan"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>t</ci></math>
+    </dataGenerator>
+    <dataGenerator id="dg_prey" name="Prey Population">
+      <listOfVariables>
+        <variable id="Prey" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='Prey']" taskReference="task_scan"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>Prey</ci></math>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot_scan" name="Prey Oscillation Parameter Scan">
+      <listOfCurves>
+        <curve id="c_prey" xDataReference="dg_time" yDataReference="dg_prey"/>
+      </listOfCurves>
+    </plot2D>
+  </listOfOutputs>
+</sedML>

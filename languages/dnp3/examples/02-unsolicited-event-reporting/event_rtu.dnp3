@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DNP3DeviceProfile xmlns="http://www.dnp.org/DNP3/DeviceProfile/2010" id="EVENT_RTU_230KV">
+  <DeviceIdentity>
+    <Vendor>GE Vernova</Vendor>
+    <DeviceName>D20MX Substation Controller</DeviceName>
+    <Version>4.1.2</Version>
+  </DeviceIdentity>
+  <CommunicationSettings>
+    <OutstationAddress>204</OutstationAddress>
+    <MasterAddress>1</MasterAddress>
+  </CommunicationSettings>
+  <DNP3PointList>
+    <BinaryInputs>
+      <BinaryInput index="0" name="PROT_87T_DIFF_TRIP" class="1" normalState="0"/>
+      <BinaryInput index="1" name="PROT_51G_GROUND_TRIP" class="1" normalState="0"/>
+      <BinaryInput index="2" name="SF6_GAS_LOW_ALARM" class="1" normalState="0"/>
+      <BinaryInput index="3" name="DC_BATTERY_CHARGER_OK" class="2" normalState="1"/>
+      <BinaryInput index="4" name="PANEL_DOOR_INTRUSION" class="3" normalState="0"/>
+    </BinaryInputs>
+    <BinaryOutputs>
+      <BinaryOutput index="0" name="ALARM_ACK_RESET"/>
+      <BinaryOutput index="1" name="COOLING_FAN_STAGE1"/>
+    </BinaryOutputs>
+    <AnalogInputs>
+      <AnalogInput index="0" name="XFMR_TOP_OIL_TEMP_C" class="2" deadband="1.0" mult="0.1" offset="0.0" units="C" min="-20" max="120"/>
+      <AnalogInput index="1" name="XFMR_HOTSPOT_TEMP_C" class="2" deadband="1.0" mult="0.1" offset="0.0" units="C" min="-20" max="150"/>
+      <AnalogInput index="2" name="BUS_FREQ_HZ" class="2" deadband="0.02" mult="0.001" offset="60.0" units="Hz" min="57" max="63"/>
+      <AnalogInput index="3" name="DC_BUS_VOLTAGE_V" class="3" deadband="0.5" mult="0.01" offset="0.0" units="V" min="95" max="145"/>
+    </AnalogInputs>
+    <AnalogOutputs>
+      <AnalogOutput index="0" name="FAN_START_TEMP_C" units="C" min="50" max="85"/>
+    </AnalogOutputs>
+    <Counters>
+      <Counter index="0" name="MWH_DELIVERED" class="3" units="MWh"/>
+      <Counter index="1" name="MVARH_LAGGING" class="3" units="MVARh"/>
+    </Counters>
+  </DNP3PointList>
+</DNP3DeviceProfile>

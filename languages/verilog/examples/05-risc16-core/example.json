@@ -1,0 +1,11 @@
+{
+  "id": "verilog-05-risc16-core",
+  "lang": "verilog",
+  "subFormats": ["v", "vh"],
+  "difficulty": 5,
+  "title": "Single-Cycle 16-Bit RISC Core",
+  "description": "Multi-file single-cycle 16-bit RISC processor core integrating instruction decode and PC control (cpu_top.v), 16-bit ALU (alu.v), dual-port register file (regfile.v), ISA header (isa.vh), and testbench (tb_cpu.v).",
+  "category": "Computer Architecture",
+  "tags": ["verilog", "risc", "cpu", "alu", "multi-file"],
+  "activeFile": "cpu_top.v"
+}

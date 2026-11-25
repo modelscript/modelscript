@@ -1,0 +1,12 @@
+{
+  "id": "usd-01-rigid-cube-physics",
+  "lang": "usd",
+  "subFormats": ["usda"],
+  "difficulty": 1,
+  "title": "Rigid-Body Cube on Ground Plane (UsdPhysics)",
+  "description": "Minimal OpenUSD ASCII stage defining a dynamic UsdPhysics rigid-body cube with mass and inertia over a static collision ground plane.",
+  "category": "3D Physics Scene",
+  "tags": ["usd", "usda", "usdphysics", "rigid-body", "scene"],
+  "activeFile": "rigid_cube.usda",
+  "isDefaultStarter": true
+}

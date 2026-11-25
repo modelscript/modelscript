@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#" xml:base="http://modelscript.org/sbol/gfp#">
+  <sbol:Sequence displayId="seq_gfp_tu" encoding="IUPAC_DNA">
+    <sbol:elements>TTGACAAAGAGGAGAAATGAGCAAAGGAGAAGAACTTTTCACTGGAGTTTAAAGGTTTTTT</sbol:elements>
+  </sbol:Sequence>
+
+  <sbol:Component displayId="pJ23100" name="Constitutive Anderson Promoter" role="SO:0000167"/>
+  <sbol:Component displayId="rbs_B0034" name="Strong Bacterial RBS" role="SO:0000139"/>
+  <sbol:Component displayId="cds_GFP" name="Green Fluorescent Protein CDS" role="SO:0000316" initialConcentration="0.5" basalRate="0.2" maxExpressionRate="12.0" degradationRate="0.5"/>
+  <sbol:Component displayId="term_B0015" name="Double Terminator" role="SO:0000141"/>
+
+  <sbol:Component displayId="tu_GFP" name="Constitutive GFP Transcriptional Unit" role="SO:0000804" hasSequence="seq_gfp_tu">
+    <sbol:SubComponent displayId="sub_prom" instanceOf="pJ23100" start="1" end="6"/>
+    <sbol:SubComponent displayId="sub_rbs" instanceOf="rbs_B0034" start="7" end="16"/>
+    <sbol:SubComponent displayId="sub_cds" instanceOf="cds_GFP" start="17" end="52"/>
+    <sbol:SubComponent displayId="sub_term" instanceOf="term_B0015" start="53" end="61"/>
+  </sbol:Component>
+</rdf:RDF>

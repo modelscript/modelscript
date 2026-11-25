@@ -25,7 +25,7 @@ export const iucrCifLanguage = language({
         shortTitle: "CIF / XRD",
         selector: ["*.cif", "*.mcif", "*.star"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/IucrCifPanel.tsx",
         artifactViewTypes: ["iucr-cif", "cif", "star"],
       },

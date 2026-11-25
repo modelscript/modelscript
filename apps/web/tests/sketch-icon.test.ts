@@ -7,9 +7,9 @@ import { describe, it } from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
+  AnsatzIcon,
   AnsatzSketchIcon,
   DraftingTriangleIcon,
-  MorselIcon,
   PenIcon,
   SketchIcon,
 } from "../src/components/icons/AnsatzSketchIcon";
@@ -100,7 +100,7 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     assert.ok(helperHtml.includes('d="M3 21h18L3 3v18z"'), "DraftingTriangleIcon helper must render triangle geometry");
   });
 
-  it("renders AnsatzSketchIcon React component with pen mode and exports PenIcon / MorselIcon", () => {
+  it("renders AnsatzSketchIcon React component with pen mode and exports PenIcon / AnsatzIcon", () => {
     const html = renderToStaticMarkup(
       React.createElement(AnsatzSketchIcon, {
         size: 16,
@@ -118,20 +118,20 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       }),
     );
     assert.ok(helperHtml.includes("ansatz-sketch-pen"), "PenIcon helper must render pen geometry");
-    assert.strictEqual(MorselIcon, PenIcon, "MorselIcon must be an alias for PenIcon");
+    assert.strictEqual(AnsatzIcon, PenIcon, "AnsatzIcon must be an alias for PenIcon");
   });
 
   it("exports SketchIcon as an alias for AnsatzSketchIcon", () => {
     assert.strictEqual(SketchIcon, AnsatzSketchIcon, "SketchIcon must be an exact alias of AnsatzSketchIcon");
   });
 
-  it("verifies Caddyfile redirects morsel.modelscript.org to ansatz.social/morsel", () => {
+  it("verifies Caddyfile redirects ansatz.modelscript.org to ansatz.social/ansatz", () => {
     const caddyPath = path.resolve(import.meta.dirname, "../../../config/Caddyfile");
     const caddySrc = fs.readFileSync(caddyPath, "utf-8");
 
     assert.ok(
-      caddySrc.includes("morsel.modelscript.org {"),
-      "Caddyfile must define morsel.modelscript.org server block",
+      caddySrc.includes("ansatz.modelscript.org {"),
+      "Caddyfile must define ansatz.modelscript.org server block",
     );
     assert.ok(
       caddySrc.includes("redir @embed https://ansatz.social/embed/editor{?query} permanent"),
@@ -165,24 +165,24 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     const appSrc = fs.readFileSync(appPath, "utf-8");
 
     assert.ok(
-      appSrc.includes('<Route path="/editor" element={<PlaygroundPage />} />'),
-      "App.tsx must route /editor to PlaygroundPage",
+      appSrc.includes('<Route path="/editor" element={<AnsatzEditorPage />} />'),
+      "App.tsx must route /editor to AnsatzEditorPage",
     );
     assert.ok(
-      appSrc.includes('<Route path="/embed/editor" element={<EmbedPlaygroundPage />} />'),
-      "App.tsx must route /embed/editor to EmbedPlaygroundPage",
+      appSrc.includes('<Route path="/embed/editor" element={<EmbedAnsatzEditorPage />} />'),
+      "App.tsx must route /embed/editor to EmbedAnsatzEditorPage",
     );
     assert.ok(
-      appSrc.includes('<Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />'),
-      "App.tsx must redirect /morsel to /editor",
+      appSrc.includes('<Route path="/ansatz" element={<PreserveParamsNavigate to="/editor" />} />'),
+      "App.tsx must redirect /ansatz to /editor",
     );
     assert.ok(
       appSrc.includes('<Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />'),
       "App.tsx must redirect /sketch to /editor",
     );
     assert.ok(
-      appSrc.includes('<Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/editor" />} />'),
-      "App.tsx must redirect /embed/morsel to /embed/editor",
+      appSrc.includes('<Route path="/embed/ansatz" element={<PreserveParamsNavigate to="/embed/editor" />} />'),
+      "App.tsx must redirect /embed/ansatz to /embed/editor",
     );
     assert.ok(
       appSrc.includes('<Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/editor" />} />'),
@@ -198,18 +198,18 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
     );
   });
 
-  it("verifies Sidebar.tsx integrates MorselIcon in split button pointing to /editor and omits redundant top-left icon", () => {
+  it("verifies Sidebar.tsx integrates AnsatzIcon in split button pointing to /editor and omits redundant top-left icon", () => {
     const sidebarPath = path.resolve(import.meta.dirname, "../src/components/Sidebar.tsx");
     const sidebarSrc = fs.readFileSync(sidebarPath, "utf-8");
 
     assert.ok(sidebarSrc.includes('to="/editor"'), "Sidebar.tsx must link editor button to /editor");
     assert.ok(
-      sidebarSrc.includes("MorselIcon") || sidebarSrc.includes("AnsatzSketchIcon"),
-      "Sidebar.tsx must render MorselIcon or AnsatzSketchIcon",
+      sidebarSrc.includes("AnsatzIcon") || sidebarSrc.includes("AnsatzSketchIcon"),
+      "Sidebar.tsx must render AnsatzIcon or AnsatzSketchIcon",
     );
     assert.ok(sidebarSrc.includes('title="Ansatz"'), "Sidebar.tsx editor button must have title='Ansatz'");
     assert.ok(
-      !sidebarSrc.includes("<BrandSketchLink") && !sidebarSrc.includes("<BrandPlaygroundLink"),
+      !sidebarSrc.includes("<BrandSketchLink") && !sidebarSrc.includes("<BrandAnsatzLink"),
       "Sidebar.tsx must not render redundant BrandSketchLink in brand row",
     );
   });
@@ -297,7 +297,7 @@ describe("Ansatz Sketch Blueprint Icon & Routing Architecture", () => {
       const viewerPath = path.resolve(import.meta.dirname, "../src/components/artifacts", viewerFile);
       const viewerSrc = fs.readFileSync(viewerPath, "utf-8");
       assert.ok(viewerSrc.includes("DraftingTriangleIcon"), `${viewerFile} must import and use DraftingTriangleIcon`);
-      assert.ok(!viewerSrc.includes("Open in Playground"), `${viewerFile} must not contain 'Open in Playground'`);
+      assert.ok(!viewerSrc.includes("Open in Ansatz"), `${viewerFile} must not contain 'Open in Ansatz'`);
     }
   });
 });

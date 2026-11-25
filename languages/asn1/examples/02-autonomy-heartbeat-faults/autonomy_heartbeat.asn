@@ -1,0 +1,30 @@
+-- Autonomous Vehicle Health Heartbeat & Safety Fault Flags
+AutonomyHealth DEFINITIONS EXPLICIT TAGS ::= BEGIN
+
+DriveMode ::= ENUMERATED {
+  manual(0),
+  supervised(1),
+  autonomous(2),
+  minimalRiskManeuver(3),
+  emergencyStop(4)
+}
+
+FaultFlags ::= BIT STRING {
+  lidarDegraded(0),
+  radarTimeout(1),
+  gnssLost(2),
+  brakeActuatorFault(3),
+  steerActuatorFault(4),
+  thermalDerating(5)
+} (SIZE (8))
+
+HeartbeatFrame ::= SEQUENCE {
+  vehicleId     [0] IA5String (SIZE (4..16)),
+  sequenceNum   [1] INTEGER (0..4294967295),
+  mode          [2] DriveMode,
+  faults        [3] FaultFlags,
+  batteryPct    [4] INTEGER (0..100),
+  note          [5] UTF8String (SIZE (1..64)) OPTIONAL
+}
+
+END

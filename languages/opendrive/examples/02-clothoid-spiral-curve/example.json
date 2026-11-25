@@ -1,0 +1,11 @@
+{
+  "id": "opendrive-02-clothoid-spiral-curve",
+  "lang": "opendrive",
+  "subFormats": ["xodr"],
+  "difficulty": 2,
+  "title": "Clothoid Spiral Curve and Superelevation Transition",
+  "description": "G2-continuous highway horizontal alignment transitioning from a tangent entry through an Euler clothoid spiral into a constant-radius circular arc with lateral superelevation banking.",
+  "category": "Road Network Geometry",
+  "tags": ["clothoid", "spiral", "superelevation", "arc"],
+  "activeFile": "spiral_curve.xodr"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "dnp3-03-sbo-breaker-control",
+  "lang": "dnp3",
+  "subFormats": ["dnp3"],
+  "difficulty": 3,
+  "title": "Select-Before-Operate (SBO) Circuit Breaker Control",
+  "description": "High-security DNP3 bay controller profile implementing Select-Before-Operate CROB points, synchrocheck permissives, and remote/local interlock feedback for a 345 kV breaker-and-a-half bay.",
+  "category": "Power Systems SCADA",
+  "tags": ["dnp3", "sbo", "crob", "breaker-control", "interlock"],
+  "activeFile": "breaker_sbo.dnp3"
+}

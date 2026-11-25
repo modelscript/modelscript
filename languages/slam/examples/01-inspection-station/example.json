@@ -1,0 +1,12 @@
+{
+  "id": "slam-01-inspection-station",
+  "lang": "slam",
+  "subFormats": ["slam"],
+  "difficulty": 1,
+  "title": "Single-Server Inspection Station Network",
+  "description": "Basic Pritsker SLAM II single-server quality-control inspection station with exponential arrivals, FIFO queue, service activity, and system-time collection.",
+  "category": "Queueing Systems",
+  "tags": ["slam", "queue", "inspection", "network"],
+  "activeFile": "inspection.slam",
+  "isDefaultStarter": true
+}

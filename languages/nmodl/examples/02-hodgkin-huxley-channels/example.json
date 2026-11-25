@@ -1,0 +1,11 @@
+{
+  "id": "nmodl-02-hodgkin-huxley-channels",
+  "lang": "nmodl",
+  "subFormats": ["nmodl"],
+  "difficulty": 2,
+  "title": "Hodgkin-Huxley Voltage-Gated Na+/K+ Channels",
+  "description": "Classic squid giant axon Hodgkin-Huxley fast sodium (m^3 h), delayed rectifier potassium (n^4), and leak conductances for action potential generation.",
+  "category": "Computational Neuroscience",
+  "tags": ["nmodl", "hodgkin-huxley", "action-potential", "ion-channels"],
+  "activeFile": "hh.mod"
+}

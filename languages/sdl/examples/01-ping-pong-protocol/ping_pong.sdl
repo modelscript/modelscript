@@ -1,0 +1,51 @@
+/* CCITT SDL-88 Ping-Pong Request-Response Protocol */
+SYSTEM PingPongProtocol;
+  SIGNAL Ping, Pong;
+  CHANNEL C_Link
+    FROM ClientBlock TO ServerBlock WITH Ping;
+    FROM ServerBlock TO ClientBlock WITH Pong;
+  ENDCHANNEL C_Link;
+
+  BLOCK ClientBlock;
+    SIGNALROUTE SR_Client
+      FROM Client TO ENV WITH Ping;
+      FROM ENV TO Client WITH Pong;
+    CONNECT C_Link AND SR_Client;
+
+    PROCESS Client(1, 1);
+      TIMER T_Retry;
+      START;
+        OUTPUT Ping VIA SR_Client;
+        SET(NOW + 2.0, T_Retry);
+        NEXTSTATE WaitPong;
+      STATE WaitPong;
+        INPUT Pong;
+          RESET(T_Retry);
+          OUTPUT Ping VIA SR_Client;
+          SET(NOW + 2.0, T_Retry);
+          NEXTSTATE WaitPong;
+        INPUT T_Retry;
+          OUTPUT Ping VIA SR_Client;
+          SET(NOW + 2.0, T_Retry);
+          NEXTSTATE WaitPong;
+      ENDSTATE WaitPong;
+    ENDPROCESS Client;
+  ENDBLOCK ClientBlock;
+
+  BLOCK ServerBlock;
+    SIGNALROUTE SR_Server
+      FROM ENV TO Server WITH Ping;
+      FROM Server TO ENV WITH Pong;
+    CONNECT C_Link AND SR_Server;
+
+    PROCESS Server(1, 1);
+      START;
+        NEXTSTATE Ready;
+      STATE Ready;
+        INPUT Ping;
+          OUTPUT Pong VIA SR_Server;
+          NEXTSTATE Ready;
+      ENDSTATE Ready;
+    ENDPROCESS Server;
+  ENDBLOCK ServerBlock;
+ENDSYSTEM PingPongProtocol;

@@ -1,0 +1,11 @@
+{
+  "id": "fea-04-plate-hole-stress-concentration",
+  "lang": "fea",
+  "subFormats": ["inp"],
+  "difficulty": 4,
+  "title": "Plate with Circular Hole Stress Concentration",
+  "description": "Multi-file CalculiX structural analysis of a quarter-symmetry steel plate with a central hole using *INCLUDE companion mesh and material library files.",
+  "category": "Continuum Mechanics FEA",
+  "tags": ["fea", "calculix", "include", "stress-concentration", "multi-file"],
+  "activeFile": "plate_hole.inp"
+}

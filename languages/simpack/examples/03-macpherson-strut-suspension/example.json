@@ -1,0 +1,11 @@
+{
+  "id": "simpack-03-macpherson-strut-suspension",
+  "lang": "simpack",
+  "subFormats": ["spck"],
+  "difficulty": 3,
+  "title": "Automotive MacPherson Strut Suspension",
+  "description": "Front-corner MacPherson strut automotive suspension combining a sprung quarter-chassis, lower control arm, knuckle-strut assembly, rotating wheel-tire body, and compliant coilover spring-damper.",
+  "category": "Automotive Multibody",
+  "tags": ["macpherson", "suspension", "automotive", "strut"],
+  "activeFile": "macpherson_strut.spck"
+}

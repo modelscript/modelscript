@@ -1,0 +1,11 @@
+{
+  "id": "oneliner-05-distance-relay-zone-coordination",
+  "lang": "oneliner",
+  "subFormats": ["olx", "dxt"],
+  "difficulty": 5,
+  "title": "9-Bus Substation Distance Relay (21) Zone Coordination",
+  "description": "Multi-file 230 kV transmission protection study pairing a JSON OneLiner network topology (.olx) with a companion DXT relay curve and zone coordination database.",
+  "category": "Power System Protection",
+  "tags": ["oneliner", "distance-relay", "zone-coordination", "230kv", "multi-file"],
+  "activeFile": "grid_fault.olx"
+}

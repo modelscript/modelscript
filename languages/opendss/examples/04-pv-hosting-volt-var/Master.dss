@@ -1,0 +1,21 @@
+! 24-Hour PV Hosting Capacity & Volt-VAR Feeder
+Clear
+
+New Circuit.PVHostingFeeder basekv=69.0 pu=1.02 phases=3 bus1=SourceBus
+
+New LineCode.Main336 nphases=3 r1=0.180 x1=0.390 r0=0.450 x0=1.200 units=km
+New Transformer.Sub1 phases=3 windings=2 buses=[SourceBus, Sub12kV] kvs=[69, 12.47] kvas=[12000, 12000] %loadloss=0.45 xhl=6.0
+
+New Line.Seg1 bus1=Sub12kV bus2=NodeA phases=3 linecode=Main336 length=2.0
+New Line.Seg2 bus1=NodeA bus2=NodeB phases=3 linecode=Main336 length=2.5
+New Line.Seg3 bus1=NodeB bus2=NodeC phases=3 linecode=Main336 length=2.2
+
+New Load.ResA bus1=NodeA phases=3 kv=12.47 kw=1200 kvar=350
+New Load.ComB bus1=NodeB phases=3 kv=12.47 kw=1600 kvar=500
+New Load.IndC bus1=NodeC phases=3 kv=12.47 kw=1100 kvar=380
+
+Redirect sub/PVSystem.dss
+
+Set VoltageBases = [69, 12.47]
+CalcVoltageBases
+Solve

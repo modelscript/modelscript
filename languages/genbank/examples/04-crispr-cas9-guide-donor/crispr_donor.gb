@@ -1,0 +1,28 @@
+LOCUS       pCRISPR_HDR              254 bp    ds-DNA  linear   SYN 24-NOV-2026
+DEFINITION  CRISPR-Cas9 U6-sgRNA expression and HDR donor template construct.
+ACCESSION   pCRISPR_HDR
+VERSION     pCRISPR_HDR.1
+KEYWORDS    CRISPR; Cas9; sgRNA; homology-directed repair.
+SOURCE      synthetic DNA construct
+  ORGANISM  Homo sapiens
+FEATURES             Location/Qualifiers
+     promoter        1..30
+                     /label="U6_promoter"
+     misc_RNA        31..110
+                     /label="SpCas9_sgRNA_scaffold"
+     misc_feature    111..140
+                     /label="5prime_homology_arm"
+     CDS             141..224
+                     /gene="HBB_corrected"
+                     /product="Corrected beta-globin N-terminal exon"
+                     /codon_start=1
+                     /translation="MVHLTPEEKSAVTALWGKVNVDEVGGE"
+     misc_feature    225..254
+                     /label="3prime_homology_arm"
+ORIGIN
+        1 gagggcctat ttcccatgat tccttcatat gttttagagc tagaaatagc aagttaaaat
+       61 aaggctagtc cgttatcaac ttgaaaaagt ggcaccgagt cggtgctttt ccggaattcc
+      121 atgcatgcat gcatgcatgc atggtgcacc tgactcctga ggagaagtct gccgttactg
+      181 ccctgtgggg caaggtgaac gtggatgaag ttggtggtga ataaggatcc aagcttgcat
+      241 gcatgcatgc atgc
+//

@@ -1,0 +1,11 @@
+{
+  "id": "adams-02-slider-crank",
+  "lang": "adams",
+  "subFormats": ["adm"],
+  "difficulty": 2,
+  "title": "Slider-Crank Reciprocating Mechanism",
+  "description": "Single-cylinder reciprocating slider-crank mechanism with a constant-speed crank drive, spherical/universal connecting rod joints to prevent spatial overconstraint, and a translating piston.",
+  "category": "Multibody Dynamics",
+  "tags": ["slider-crank", "piston", "mechanism", "kinematics"],
+  "activeFile": "slider_crank.adm"
+}

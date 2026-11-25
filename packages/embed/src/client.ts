@@ -28,11 +28,11 @@ export interface EmbedOptions {
   theme?: "dark" | "light";
   /** Library dependencies */
   dependencies?: Record<string, string>;
-  /** Whether artifact is multi-file (routes to IDE instead of Playground) */
+  /** Whether artifact is multi-file (routes to IDE instead of Ansatz) */
   isMultiFile?: boolean;
   artifactId?: string | number;
-  /** Server-side stored morsel short ID for large models */
-  morselId?: string;
+  /** Server-side stored ansatz short ID for large models */
+  ansatzId?: string;
   /** Signed embed token for private intranet artifacts */
   embedToken?: string;
   /** Wheel / scroll zoom interception policy */
@@ -74,7 +74,7 @@ export class ModelScriptEmbed {
       ...(options.dependencies ? { dependencies: options.dependencies } : {}),
       ...(options.isMultiFile !== undefined ? { isMultiFile: options.isMultiFile } : {}),
       ...(options.artifactId ? { artifactId: options.artifactId } : {}),
-      ...(options.morselId ? { morselId: options.morselId } : {}),
+      ...(options.ansatzId ? { ansatzId: options.ansatzId } : {}),
       ...(options.embedToken ? { embedToken: options.embedToken } : {}),
     };
 
@@ -98,15 +98,15 @@ export class ModelScriptEmbed {
     }
 
     const queryParams = new URLSearchParams();
-    if (options.morselId) queryParams.set("morsel", options.morselId);
+    if (options.ansatzId) queryParams.set("ansatz", options.ansatzId);
     if (options.artifactId) queryParams.set("fromArtifact", String(options.artifactId));
     if (options.embedToken) queryParams.set("embed_token", options.embedToken);
     if (options.theme) queryParams.set("theme", options.theme);
     const qs = queryParams.toString();
 
-    const token = options.morselId && !options.code ? "" : compressEmbedPayload(payload);
+    const token = options.ansatzId && !options.code ? "" : compressEmbedPayload(payload);
     const hashPart = token ? `#m=${token}` : "";
-    const iframeSrc = `${origin}/embed/playground${qs ? `?${qs}` : ""}${hashPart}`;
+    const iframeSrc = `${origin}/embed/editor${qs ? `?${qs}` : ""}${hashPart}`;
 
     this.iframe = document.createElement("iframe");
     this.iframe.src = iframeSrc;
@@ -196,7 +196,7 @@ export class ModelScriptEmbed {
     }
   }
 
-  public getLaunchInfo(): { target: "playground" | "ide"; url: string } {
+  public getLaunchInfo(): { target: "ansatz" | "ide"; url: string } {
     const payload: UniversalEmbedPayload = {
       v: 1,
       lang: this.options.dialect,

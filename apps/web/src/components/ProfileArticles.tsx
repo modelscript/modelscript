@@ -230,13 +230,13 @@ const RowMeta = styled.div`
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function parseMetadata(raw: unknown): Record<string, any> {
+function parseMetadata(raw: unknown): Record<string, unknown> {
   if (!raw) return {};
-  if (typeof raw === "object") return raw as Record<string, any>;
+  if (typeof raw === "object") return raw as Record<string, unknown>;
   if (typeof raw === "string") {
     try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" ? parsed : {};
+      const parsed: unknown = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
     } catch {
       return {};
     }
@@ -255,12 +255,22 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-function toEntry(post: any): ArticleEntry | null {
-  if (!post || post.id == null) return null;
-  const nb = parseMetadata(post.metadata)["notebook"] ?? {};
-  const cells: any[] = Array.isArray(nb.cells) ? nb.cells : [];
-  const firstMarkdown = cells.find((c) => c?.type === "markdown" && typeof c.content === "string" && c.content.trim());
-  const body: string = firstMarkdown?.content ?? (typeof post.content === "string" ? post.content : "");
+function toEntry(post: unknown): ArticleEntry | null {
+  if (!post || typeof post !== "object") return null;
+  const postRec = post as Record<string, unknown>;
+  if (postRec.id == null) return null;
+  const rawNb = parseMetadata(postRec.metadata)["notebook"];
+  const nb: Record<string, unknown> = rawNb && typeof rawNb === "object" ? (rawNb as Record<string, unknown>) : {};
+  const cells: unknown[] = Array.isArray(nb.cells) ? nb.cells : [];
+  const firstMarkdown = cells.find(
+    (c): c is { type: string; content: string } =>
+      Boolean(c) &&
+      typeof c === "object" &&
+      (c as Record<string, unknown>).type === "markdown" &&
+      typeof (c as Record<string, unknown>).content === "string" &&
+      ((c as Record<string, unknown>).content as string).trim().length > 0,
+  );
+  const body: string = firstMarkdown?.content ?? (typeof postRec.content === "string" ? postRec.content : "");
   const headingMatch = body.match(/^#{1,3}\s+(.+)$/m);
 
   const title = (typeof nb.title === "string" && nb.title.trim()) || headingMatch?.[1]?.trim() || "Untitled article";
@@ -270,17 +280,20 @@ function toEntry(post: any): ArticleEntry | null {
   const topics: string[] = Array.isArray(nb.topics)
     ? nb.topics.filter((t: unknown): t is string => typeof t === "string" && t.trim().length > 0)
     : [];
-  const createdAt = new Date(post.created_at ?? post.createdAt ?? 0).getTime();
+  const rawCreatedAt = postRec.created_at ?? postRec.createdAt ?? 0;
+  const createdAt = new Date(
+    typeof rawCreatedAt === "string" || typeof rawCreatedAt === "number" ? rawCreatedAt : 0,
+  ).getTime();
 
   return {
-    id: String(post.id),
+    id: String(postRec.id),
     title,
     summary: summaryText,
     topics,
     series: typeof nb.series === "string" && nb.series.trim() ? nb.series.trim() : undefined,
     difficulty: typeof nb.difficulty === "string" && nb.difficulty ? nb.difficulty : undefined,
     readMinutes: Number.isFinite(Number(nb.estimatedReadMinutes)) ? Number(nb.estimatedReadMinutes) : undefined,
-    likes: Number(post.like_count) || 0,
+    likes: Number(postRec.like_count) || 0,
     createdAt: Number.isFinite(createdAt) ? createdAt : 0,
   };
 }

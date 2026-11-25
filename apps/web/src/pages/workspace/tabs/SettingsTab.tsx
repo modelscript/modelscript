@@ -13,6 +13,7 @@ import {
   type GitlabProject,
 } from "../../../api";
 import Box from "../../../components/Box";
+import { getApiErrorMessage } from "../../../util/error";
 import { StyledBox } from "../styles";
 import { normalizeWebhookEvents } from "../utils";
 
@@ -37,7 +38,14 @@ interface RepoWebhook {
   createdAt?: string;
 }
 
+interface ExtendedRepoFields {
+  socialPreviewUrl?: string | null | undefined;
+  pagesEnabled?: boolean | undefined;
+  pagesUrl?: string | null | undefined;
+}
+
 export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "github", onRepoUpdated }) => {
+  const extendedRepo = repo as GitlabProject & ExtendedRepoFields;
   const repoSlug = repo.path_with_namespace || repo.name || String(repo.id);
   const storageKey = `modelscript:repo-settings:${repoSlug}`;
   const [activeSection, setActiveSection] = useState<SettingsSection>("general");
@@ -46,7 +54,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [visibility, setVisibility] = useState(repo.visibility || "public");
-  const [socialPreviewUrl, setSocialPreviewUrl] = useState<string | null>((repo as any).socialPreviewUrl || null);
+  const [socialPreviewUrl, setSocialPreviewUrl] = useState<string | null>(extendedRepo.socialPreviewUrl || null);
   const [showVisibilityModal, setShowVisibilityModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -76,7 +84,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
 
   // Pages state
   const [pagesBranch, setPagesBranch] = useState(repo.default_branch || "main");
-  const [pagesEnabled, setPagesEnabled] = useState(Boolean((repo as any).pagesEnabled));
+  const [pagesEnabled, setPagesEnabled] = useState(Boolean(extendedRepo.pagesEnabled));
 
   const showSuccess = (msg = "Settings successfully saved.") => {
     setSaveError(null);
@@ -84,7 +92,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
     setTimeout(() => setSavedMessage(null), 3500);
   };
 
-  const persistLocalSettings = (patch: Record<string, any>) => {
+  const persistLocalSettings = (patch: Record<string, unknown>) => {
     try {
       const raw = localStorage.getItem(storageKey);
       const prev = raw ? JSON.parse(raw) : {};
@@ -166,13 +174,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
       onRepoUpdated?.(updates);
       showSuccess(successText);
     } catch (err: unknown) {
-      const apiErr = err as { response?: { data?: { error?: string; message?: string } }; message?: string };
-      setSaveError(
-        apiErr?.response?.data?.error ||
-          apiErr?.response?.data?.message ||
-          apiErr?.message ||
-          "Failed to save repository settings.",
-      );
+      setSaveError(getApiErrorMessage(err, "Failed to save repository settings."));
     }
   };
 
@@ -216,8 +218,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
     try {
       await deleteRepo(repoSlug);
       navigate("/repos");
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || "Failed to delete repository.");
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, "Failed to delete repository."));
     }
   };
 
@@ -255,8 +257,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
       persistLocalSettings({ webhooks: next });
       setNewWebhookUrl("");
       showSuccess("Webhook registered.");
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || "Failed to register webhook.");
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, "Failed to register webhook."));
     }
   };
 
@@ -268,14 +270,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({ repo, provider = "gith
       setWebhooks(next);
       persistLocalSettings({ webhooks: next });
       showSuccess("Webhook removed.");
-    } catch (err: any) {
-      setSaveError(err?.response?.data?.error || err?.message || "Failed to remove webhook.");
+    } catch (err: unknown) {
+      setSaveError(getApiErrorMessage(err, "Failed to remove webhook."));
     }
   };
 
   const publishedDocsUrl =
-    typeof (repo as any).pagesUrl === "string" && (repo as any).pagesUrl.trim().length > 0
-      ? (repo as any).pagesUrl.trim()
+    typeof extendedRepo.pagesUrl === "string" && extendedRepo.pagesUrl.trim().length > 0
+      ? extendedRepo.pagesUrl.trim()
       : null;
 
   return (

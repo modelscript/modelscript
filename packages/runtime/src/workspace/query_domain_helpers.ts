@@ -63,8 +63,8 @@ export function extractSymbolVarsAndEquations(
     for (const eq of queriedEqs) {
       if (typeof eq === "string") {
         equations.push(eq);
-      } else if (eq && typeof eq === "object" && typeof (eq as any).text === "string") {
-        equations.push((eq as any).text);
+      } else if (eq && typeof eq === "object" && typeof (eq as { text?: unknown }).text === "string") {
+        equations.push((eq as { text: string }).text);
       } else {
         equations.push(String(eq));
       }
@@ -72,7 +72,15 @@ export function extractSymbolVarsAndEquations(
   }
 
   // 3. Otherwise inspect CST nodes or structured equation sections
-  const cst = host.getCstNode(symbolId) as any;
+  interface CstLikeNode {
+    type?: unknown;
+    kind?: unknown;
+    ruleName?: unknown;
+    text?: unknown;
+    namedChildren?: unknown;
+    children?: unknown;
+  }
+  const cst = host.getCstNode(symbolId) as CstLikeNode | null;
   if (equations.length === 0 && cst) {
     const eqNodeKinds = new Set([
       "equation",
@@ -84,21 +92,22 @@ export function extractSymbolVarsAndEquations(
       "Equation",
       "Constraint",
     ]);
-    const visitNode = (node: any): void => {
+    const visitNode = (node: unknown): void => {
       if (!node || typeof node !== "object") return;
-      const kind = String(node.type ?? node.kind ?? node.ruleName ?? "");
+      const n = node as CstLikeNode;
+      const kind = String(n.type ?? n.kind ?? n.ruleName ?? "");
       if (kind === "initial_equation_section" || kind === "annotation" || kind === "comment") {
         return;
       }
       if (eqNodeKinds.has(kind)) {
-        if (typeof node.text === "string" && node.text.trim().length > 0) {
-          equations.push(node.text.trim());
+        if (typeof n.text === "string" && n.text.trim().length > 0) {
+          equations.push(n.text.trim());
         } else {
           equations.push(kind);
         }
         return;
       }
-      const nodeChildren = node.namedChildren ?? node.children;
+      const nodeChildren = n.namedChildren ?? n.children;
       if (Array.isArray(nodeChildren)) {
         for (const ch of nodeChildren) visitNode(ch);
       }

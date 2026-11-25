@@ -45,11 +45,11 @@ test("Adams LSP - contextual hover", () => {
   assert.ok(hoverJoint.contents.value.includes("REVOLUTE"));
 });
 
-test("Adams WASM GLR Parser & LSP - Morsel defaultCode and syntax error reporting", async () => {
+test("Adams WASM GLR Parser & LSP - Ansatz defaultCode and syntax error reporting", async () => {
   const { getAdamsWasmParser } = await import("../src/parser/wasm-loader.js");
   const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
 
-  const morselDefaultCode = `ADAMS/View Pendulum Dataset
+  const ansatzDefaultCode = `ADAMS/View Pendulum Dataset
 PART/1, GROUND
 PART/2, MASS = 2.5, CM = 20, IP = 0.1, 0.1, 0.1
 MARKER/10, PART = 1, QP = 0, 0, 0
@@ -59,11 +59,11 @@ ACCGRAV/JGRAV = -9.80665
 END
 `;
 
-  const tree = getAdamsWasmParser().parse(morselDefaultCode);
+  const tree = getAdamsWasmParser().parse(ansatzDefaultCode);
   assert.ok(tree?.rootNode);
   assert.equal(tree.rootNode.hasError, false);
   assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
-  assert.equal(validateAdams(morselDefaultCode).filter((d) => d.code === "M7300").length, 0);
+  assert.equal(validateAdams(ansatzDefaultCode).filter((d) => d.code === "M7300").length, 0);
 
   const brokenDeck = `PART/1, GROUND
 MOTION/1, JOINT = 1, FUNCTION = 30D * SIN(TIME

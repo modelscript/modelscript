@@ -1,0 +1,11 @@
+{
+  "id": "pdb-04-crambin-mini-protein-mmcif",
+  "lang": "pdb",
+  "subFormats": ["mmcif"],
+  "difficulty": 4,
+  "title": "Crambin-Class Mini-Protein Domain in mmCIF",
+  "description": "Ultra-high-resolution (0.83 A) Crambin-class 10-residue mini-protein domain encoded in macromolecular CIF (mmCIF) _atom_site loop format with crystallographic water.",
+  "category": "Structural Biology",
+  "tags": ["pdb", "mmcif", "crambin", "crystallography"],
+  "activeFile": "mini_protein.mmcif"
+}

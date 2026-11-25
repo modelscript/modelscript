@@ -1,0 +1,73 @@
+/* SDL-88 Alternating-Bit Reliable Data Link Protocol */
+SYSTEM AlternatingBitProtocol;
+  SIGNAL DataReq(Integer), Frame(Integer, Integer), Ack(Integer), DataInd(Integer);
+  CHANNEL C_Data
+    FROM SenderBlock TO ReceiverBlock WITH Frame;
+    FROM ReceiverBlock TO SenderBlock WITH Ack;
+  ENDCHANNEL C_Data;
+
+  BLOCK SenderBlock;
+    SIGNALROUTE SR_S
+      FROM Sender TO ENV WITH Frame;
+      FROM ENV TO Sender WITH Ack;
+    CONNECT C_Data AND SR_S;
+
+    PROCESS Sender(1, 1);
+      DCL seq Integer := 0;
+      DCL payload Integer := 0;
+      TIMER T_Retx;
+
+      START;
+        TASK seq := 0;
+        NEXTSTATE Idle;
+
+      STATE Idle;
+        INPUT DataReq(payload);
+          OUTPUT Frame(payload, seq) VIA SR_S;
+          SET(NOW + 1.5, T_Retx);
+          NEXTSTATE WaitAck;
+      ENDSTATE Idle;
+
+      STATE WaitAck;
+        INPUT Ack(seq);
+          RESET(T_Retx);
+          TASK seq := 1 - seq;
+          NEXTSTATE Idle;
+        INPUT T_Retx;
+          OUTPUT Frame(payload, seq) VIA SR_S;
+          SET(NOW + 1.5, T_Retx);
+          NEXTSTATE -;
+      ENDSTATE WaitAck;
+    ENDPROCESS Sender;
+  ENDBLOCK SenderBlock;
+
+  BLOCK ReceiverBlock;
+    SIGNALROUTE SR_R
+      FROM ENV TO Receiver WITH Frame;
+      FROM Receiver TO ENV WITH Ack;
+    CONNECT C_Data AND SR_R;
+
+    PROCESS Receiver(1, 1);
+      DCL expected Integer := 0;
+      DCL rxPayload Integer := 0;
+      DCL rxSeq Integer := 0;
+
+      START;
+        NEXTSTATE Ready;
+
+      STATE Ready;
+        INPUT Frame(rxPayload, rxSeq);
+          DECISION rxSeq = expected;
+            (TRUE):
+              OUTPUT DataInd(rxPayload) TO ENV;
+              OUTPUT Ack(rxSeq) VIA SR_R;
+              TASK expected := 1 - expected;
+              NEXTSTATE Ready;
+            ELSE:
+              OUTPUT Ack(rxSeq) VIA SR_R;
+              NEXTSTATE -;
+          ENDDECISION;
+      ENDSTATE Ready;
+    ENDPROCESS Receiver;
+  ENDBLOCK ReceiverBlock;
+ENDSYSTEM AlternatingBitProtocol;

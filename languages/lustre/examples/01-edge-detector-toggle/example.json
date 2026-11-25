@@ -1,0 +1,12 @@
+{
+  "id": "lustre-01-edge-detector-toggle",
+  "lang": "lustre",
+  "subFormats": ["lus"],
+  "difficulty": 1,
+  "title": "Edge Detector and Toggle Flip-Flop",
+  "description": "Synchronous dataflow rising-edge detector and T-type toggle flip-flop in Lustre using initialized pre-delay operators (-> and pre).",
+  "category": "Synchronous Digital Logic",
+  "tags": ["lustre", "edge-detector", "flip-flop", "synchronous"],
+  "activeFile": "edge_toggle.lus",
+  "isDefaultStarter": true
+}

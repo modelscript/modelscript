@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="assembly_cell_arm">
+  <link name="base_link">
+    <inertial>
+      <origin xyz="0 0 0.15" rpy="0 0 0" />
+      <mass value="28.0" />
+      <inertia ixx="0.45" ixy="0" ixz="0" iyy="0.45" iyz="0" izz="0.32" />
+    </inertial>
+    <visual>
+      <geometry><cylinder radius="0.18" length="0.30" /></geometry>
+    </visual>
+    <collision>
+      <geometry><cylinder radius="0.18" length="0.30" /></geometry>
+    </collision>
+  </link>
+  <link name="upper_arm">
+    <inertial>
+      <origin xyz="0 0 0.35" rpy="0 0 0" />
+      <mass value="12.5" />
+      <inertia ixx="0.22" ixy="0" ixz="0" iyy="0.22" iyz="0" izz="0.06" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0.35" rpy="0 0 0" />
+      <geometry><box size="0.12 0.12 0.70" /></geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.35" rpy="0 0 0" />
+      <geometry><box size="0.12 0.12 0.70" /></geometry>
+    </collision>
+  </link>
+  <joint name="shoulder_yaw" type="revolute">
+    <parent link="base_link" />
+    <child link="upper_arm" />
+    <origin xyz="0 0 0.30" rpy="0 0 0" />
+    <axis xyz="0 0 1" />
+    <limit lower="-3.14159" upper="3.14159" effort="180.0" velocity="2.5" />
+  </joint>
+</robot>

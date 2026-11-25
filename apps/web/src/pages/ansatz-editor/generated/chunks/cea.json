@@ -1,0 +1,73 @@
+[
+  {
+    "id": "cea-01-methane-air-adiabatic-flame",
+    "lang": "cea",
+    "subFormats": ["cea2", "hp-combustion"],
+    "difficulty": 1,
+    "title": "Stoichiometric Methane-Air Adiabatic Flame (HP)",
+    "description": "Constant-enthalpy, constant-pressure (hp) equilibrium combustion of stoichiometric methane and dry air at 1 atm and 298.15 K to determine adiabatic flame temperature.",
+    "category": "Combustion & Chemical Equilibrium",
+    "tags": ["cea", "methane", "adiabatic-flame", "hp-equilibrium"],
+    "activeFile": "ch4_air_hp.cea",
+    "fileNames": ["ch4_air_hp.cea"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# Stoichiometric Methane-Air Adiabatic Flame Temperature (HP Problem)\nproblem case=CH4_AIR_HP hp equilibrium\n  p,atm=1.0 phi=1.0\nreactants\n  fuel=CH4 wt%=100 t(k)=298.15\n  oxid=O2 wt%=23.2 t(k)=298.15\n  oxid=N2 wt%=76.8 t(k)=298.15\noutput siunits short trace=1e-5\nend\n"
+  },
+  {
+    "id": "cea-02-hydrogen-oxygen-phi-sweep",
+    "lang": "cea",
+    "subFormats": ["cea2", "hp-sweep"],
+    "difficulty": 2,
+    "title": "Hydrogen-Oxygen Combustion Equivalence-Ratio Sweep",
+    "description": "Parametric equivalence-ratio sweep (phi = 0.5 to 2.0) of gaseous H2/O2 combustion at 10 bar evaluating dissociation of OH, H, and O radicals.",
+    "category": "Combustion & Chemical Equilibrium",
+    "tags": ["cea", "hydrogen", "equivalence-ratio", "dissociation"],
+    "activeFile": "h2_o2_sweep.cea",
+    "fileNames": ["h2_o2_sweep.cea"],
+    "fileCount": 1,
+    "code": "# Gaseous Hydrogen-Oxygen Equivalence Ratio Sweep at 10 bar\nproblem case=H2_O2_SWEEP hp equilibrium\n  p,bar=10.0 phi=0.5,0.8,1.0,1.2,1.5,2.0\nreactants\n  fuel=H2 wt%=100 t(k)=298.15\n  oxid=O2 wt%=100 t(k)=298.15\nonly H2O H2 O2 OH H O HO2\noutput siunits short trace=1e-5\nend\n"
+  },
+  {
+    "id": "cea-03-ssme-lox-lh2-rocket",
+    "lang": "cea",
+    "subFormats": ["cea2", "rocket"],
+    "difficulty": 3,
+    "title": "SSME-Class LOX/LH2 Rocket Nozzle Equilibrium",
+    "description": "NASA RP-1311 RS-25 / SSME-class cryogenic LOX/LH2 rocket engine performance at 200 bar chamber pressure and 77.5:1 supersonic nozzle expansion ratio.",
+    "category": "Rocket Propulsion",
+    "tags": ["cea", "rocket", "lox-lh2", "ssme", "isp"],
+    "activeFile": "ssme_rocket.cea",
+    "fileNames": ["ssme_rocket.cea"],
+    "fileCount": 1,
+    "code": "# SSME-Class Cryogenic LOX/LH2 Rocket Engine Nozzle Equilibrium\nproblem case=SSME_LOX_LH2 rocket equilibrium\n  p,bar=200.0 o/f=6.0 supar=77.5\nreactants\n  fuel=H2(L) wt%=100 t(k)=20.27\n  oxid=O2(L) wt%=100 t(k)=90.17\noutput siunits short trace=1e-5\nend\n"
+  },
+  {
+    "id": "cea-04-methalox-chamber-trade",
+    "lang": "cea",
+    "subFormats": ["cea2", "rocket", "trade-study"],
+    "difficulty": 4,
+    "title": "LOX/CH4 Methalox Chamber Pressure and Area Ratio Trade",
+    "description": "Reusable booster LOX/liquid-methane rocket propulsion parametric trade across chamber pressures (100, 200, 300 bar), O/F ratios, and nozzle area ratios.",
+    "category": "Rocket Propulsion",
+    "tags": ["cea", "methalox", "rocket", "trade-study"],
+    "activeFile": "methalox_trade.cea",
+    "fileNames": ["methalox_trade.cea"],
+    "fileCount": 1,
+    "code": "# Reusable Booster LOX/CH4 (Methalox) Chamber Pressure and Area Ratio Trade\nproblem case=METHALOX_TRADE rocket equilibrium\n  p,bar=100.0,200.0,300.0 o/f=3.2,3.5,3.8 subar=2.5 supar=16.0,35.0,80.0\nreactants\n  fuel=CH4(L) wt%=100 t(k)=111.66\n  oxid=O2(L) wt%=100 t(k)=90.17\noutput siunits short trace=1e-5\nend\n"
+  },
+  {
+    "id": "cea-05-cj-detonation-h2-o2",
+    "lang": "cea",
+    "subFormats": ["cea2", "detonation"],
+    "difficulty": 5,
+    "title": "Chapman-Jouguet Detonation of Stoichiometric H2-O2-N2",
+    "description": "Chapman-Jouguet detonation wave velocity, pressure ratio, and post-detonation equilibrium state for stoichiometric hydrogen-oxygen diluted with nitrogen.",
+    "category": "Detonation & Shock Physics",
+    "tags": ["cea", "detonation", "chapman-jouguet", "shock"],
+    "activeFile": "h2_o2_det.cea",
+    "fileNames": ["h2_o2_det.cea"],
+    "fileCount": 1,
+    "code": "# Chapman-Jouguet Detonation of Stoichiometric H2/O2/N2 Mixture\nproblem case=CJ_DET_H2O2 det\n  p,bar=1.0,2.0,5.0 t,k=298.15\nreactants\n  fuel=H2 moles=2.0 t(k)=298.15\n  oxid=O2 moles=1.0 t(k)=298.15\n  oxid=N2 moles=1.0 t(k)=298.15\noutput siunits short trace=1e-5\nend\n"
+  }
+]

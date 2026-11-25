@@ -1,0 +1,82 @@
+!------------------------------------------------------------------
+! MSC Adams Dataset: Quarter-Car Double-Wishbone Suspension (SLA)
+! Spatial mobility: 4 moving bodies (24 DOF)
+! Joints: 3 REVOLUTE(15) + 2 SPHERICAL(6) = 21 => M = 3 DOF
+!------------------------------------------------------------------
+ADAMS/
+!
+!----------------------------------- PARTS ------------------------
+PART/1, GROUND
+!
+! Lower control arm (LCA)
+PART/2, MASS = 4.8 &
+  , CM = 201 &
+  , IP = 0.08, 0.10, 0.09
+!
+! Upper control arm (UCA)
+PART/3, MASS = 3.2 &
+  , CM = 301 &
+  , IP = 0.05, 0.06, 0.06
+!
+! Steering upright / knuckle
+PART/4, MASS = 8.5 &
+  , CM = 401 &
+  , IP = 0.12, 0.14, 0.10
+!
+! Wheel and tire assembly
+PART/5, MASS = 22.0 &
+  , CM = 501 &
+  , IP = 1.15, 1.85, 1.15
+!
+!---------------------------------- MARKERS -----------------------
+! Chassis hardpoints on Ground (Part 1)
+MARKER/101, PART = 1, QP = 0.0, 0.25, 0.22, REULER = 0.0, 0.0, 0.0
+MARKER/102, PART = 1, QP = 0.0, 0.30, 0.52, REULER = 0.0, 0.0, 0.0
+MARKER/103, PART = 1, QP = 0.0, 0.38, 0.72, REULER = 0.0, 0.0, 0.0
+MARKER/104, PART = 1, QP = -0.14, 0.32, 0.30, REULER = 0.0, 0.0, 0.0
+!
+! Lower control arm markers (Part 2)
+MARKER/201, PART = 2, QP = 0.0, 0.45, 0.21, REULER = 0.0, 0.0, 0.0
+MARKER/202, PART = 2, QP = 0.0, 0.25, 0.22, REULER = 0.0, 0.0, 0.0
+MARKER/203, PART = 2, QP = 0.0, 0.65, 0.20, REULER = 0.0, 0.0, 0.0
+MARKER/204, PART = 2, QP = 0.0, 0.52, 0.23, REULER = 0.0, 0.0, 0.0
+!
+! Upper control arm markers (Part 3)
+MARKER/301, PART = 3, QP = 0.0, 0.46, 0.51, REULER = 0.0, 0.0, 0.0
+MARKER/302, PART = 3, QP = 0.0, 0.30, 0.52, REULER = 0.0, 0.0, 0.0
+MARKER/303, PART = 3, QP = 0.0, 0.62, 0.50, REULER = 0.0, 0.0, 0.0
+!
+! Upright markers (Part 4)
+MARKER/401, PART = 4, QP = 0.0, 0.68, 0.34, REULER = 0.0, 0.0, 0.0
+MARKER/402, PART = 4, QP = 0.0, 0.65, 0.20, REULER = 0.0, 0.0, 0.0
+MARKER/403, PART = 4, QP = 0.0, 0.62, 0.50, REULER = 0.0, 0.0, 0.0
+MARKER/404, PART = 4, QP = 0.0, 0.75, 0.33, REULER = 0.0, 0.0, 0.0
+MARKER/405, PART = 4, QP = -0.14, 0.66, 0.30, REULER = 0.0, 0.0, 0.0
+!
+! Wheel hub markers (Part 5)
+MARKER/501, PART = 5, QP = 0.0, 0.75, 0.33, REULER = 0.0, 0.0, 0.0
+MARKER/502, PART = 5, QP = 0.0, 0.75, 0.33, REULER = 0.0, 0.0, 0.0
+!
+!----------------------------------- JOINTS -----------------------
+! Chassis-to-LCA and Chassis-to-UCA bushings (modeled as revolute pivots)
+JOINT/1, REVOLUTE, I = 101, J = 202
+JOINT/2, REVOLUTE, I = 102, J = 302
+!
+! Lower and upper ball joints
+JOINT/3, SPHERICAL, I = 203, J = 402
+JOINT/4, SPHERICAL, I = 303, J = 403
+!
+! Wheel spindle bearing
+JOINT/5, REVOLUTE, I = 404, J = 502
+!
+!----------------------------------- FORCES -----------------------
+! Coilover spring-damper strut
+SPRINGDAMPER/1, TRANSLATIONAL, I = 103, J = 204, K = 42000.0, C = 3200.0, LENGTH = 0.56
+!
+! Steering tie-rod compliance link
+SPRINGDAMPER/2, TRANSLATIONAL, I = 104, J = 405, K = 180000.0, C = 450.0, LENGTH = 0.34
+!
+!--------------------------- SIMULATION CONTROL -------------------
+ACCGRAV/KGRAV = -9.80665
+SIMULATE/DYNAMIC, END = 2.5, DTOUT = 0.005
+END

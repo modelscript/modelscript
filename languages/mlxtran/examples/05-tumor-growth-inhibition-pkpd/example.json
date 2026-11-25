@@ -1,0 +1,12 @@
+{
+  "id": "mlxtran-05-tumor-growth-inhibition-pkpd",
+  "lang": "mlxtran",
+  "subFormats": ["mlxtran"],
+  "difficulty": 5,
+  "title": "Tumor Growth Inhibition (TGI) Oncology PK/PD",
+  "description": "Simeoni-style oncology PK/PD model linking drug plasma exposure to proliferating tumor cells and transit-compartment apoptotic cell death.",
+  "category": "Oncology Pharmacometrics",
+  "tags": ["mlxtran", "oncology", "tgi", "pkpd", "multi-file"],
+  "activeFile": "tgi_pkpd.mlxtran",
+  "fileOrder": ["tgi_pkpd.mlxtran", "oncology_cohort.csv"]
+}

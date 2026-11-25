@@ -7,8 +7,19 @@ import styled from "styled-components";
 import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 
+export interface AudioViewerConfig {
+  url?: string | undefined;
+  src?: string | undefined;
+  title?: string | undefined;
+  peaks?: unknown[] | undefined;
+  sampleRate?: number | undefined;
+  channels?: number | undefined;
+  numberOfChannels?: number | undefined;
+  [key: string]: unknown;
+}
+
 interface AudioViewerProps {
-  viewConfig: any;
+  viewConfig?: AudioViewerConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 

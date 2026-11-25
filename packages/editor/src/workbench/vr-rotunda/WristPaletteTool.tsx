@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { SpatialDiagramSnapMode } from "./spatial-diagram-state.js";
 import { evaluateWristPalmVisibility } from "./wrist-palette-logic.js";
+import { pulseEventHaptic } from "./xr-handle.js";
 import type { RotundaCueKind } from "./xr-session.js";
 
 export interface WristPaletteToolProps {
@@ -221,6 +222,8 @@ export function WristPaletteTool({
     return { canvas: c, texture: t };
   }, []);
 
+  const lastWristPressRef = useRef<{ hit: WristBtnId | null; atMs: number }>({ hit: null, atMs: 0 });
+
   useEffect(() => {
     if (!canvas || !texture) return;
     paintWristCanvas(canvas, paletteOpen, canUndo, snapMode, isPlaying, hoveredBtn, dark);
@@ -308,11 +311,15 @@ export function WristPaletteTool({
 
   if (!visible || !texture) return null;
 
-  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     if (!e.uv) return;
     const hit = hitTestWristUv(e.uv);
     if (!hit) return;
+    const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (lastWristPressRef.current.hit === hit && nowMs - lastWristPressRef.current.atMs < 120) return;
+    lastWristPressRef.current = { hit, atMs: nowMs };
+    pulseEventHaptic(e, 0.1, 8);
     if (hit === "library") {
       onTogglePalette();
       onCue?.(paletteOpen ? "click" : "env");
@@ -356,7 +363,7 @@ export function WristPaletteTool({
           e.stopPropagation();
           setHoveredBtn(null);
         }}
-        onClick={handleClick}
+        onPointerDown={handlePointerDown}
       >
         <planeGeometry args={[WRIST_MESH_W, WRIST_MESH_H]} />
         <meshBasicMaterial ref={screenMatRef} map={texture} transparent toneMapped={false} />

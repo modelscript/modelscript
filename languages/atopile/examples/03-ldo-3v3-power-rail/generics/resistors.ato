@@ -1,0 +1,4 @@
+component Resistor:
+    signal p1
+    signal p2
+    resistance = 10kohm +/- 1%

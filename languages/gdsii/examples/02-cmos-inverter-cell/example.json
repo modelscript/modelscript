@@ -1,0 +1,11 @@
+{
+  "id": "gdsii-02-cmos-inverter-cell",
+  "lang": "gdsii",
+  "subFormats": ["gds"],
+  "difficulty": 2,
+  "title": "CMOS Inverter Standard Cell",
+  "description": "DRC-clean static CMOS inverter standard cell in ASCII GDSII with N-Well, PMOS/NMOS active diffusion regions, shared polysilicon gate, VDD/GND Metal-1 rails, and contacts.",
+  "category": "Standard Cell Layout",
+  "tags": ["gdsii", "cmos", "inverter", "standard-cell"],
+  "activeFile": "cmos_inverter.gds"
+}

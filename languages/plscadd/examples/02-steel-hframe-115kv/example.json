@@ -1,0 +1,11 @@
+{
+  "id": "plscadd-02-steel-hframe-115kv",
+  "lang": "plscadd",
+  "subFormats": ["pol"],
+  "difficulty": 2,
+  "title": "Tubular Steel H-Frame 115 kV Transmission Span",
+  "description": "115 kV sub-transmission line supported on tubular steel H-frame structures with 477 kcmil Hawk ACSR conductor across two consecutive spans over rolling terrain.",
+  "category": "Transmission Line Structural",
+  "tags": ["plscadd", "h-frame", "115kv", "acsr", "transmission"],
+  "activeFile": "hframe_115kv.pol"
+}

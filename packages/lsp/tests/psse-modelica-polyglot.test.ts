@@ -100,7 +100,7 @@ test("Unified DSL Workspace Indexing: psseLanguage builtins, .raw/.dyr indexing,
   assert.equal(mergedCase.dyr?.records[0]?.model, "GENROU");
 });
 
-test("End-to-end PSS/E-in-Modelica Morsel workflow: drag-drop (empty & existing .mo), diagram ports/icons, properties, lint, DAE balance, and transient simulation", async () => {
+test("End-to-end PSS/E-in-Modelica Ansatz workflow: drag-drop (empty & existing .mo), diagram ports/icons, properties, lint, DAE balance, and transient simulation", async () => {
   const handlers = new Map<string, (...args: any[]) => any>();
   const latestDiags = new Map<string, any[]>();
 

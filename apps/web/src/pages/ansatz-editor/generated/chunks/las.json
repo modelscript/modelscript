@@ -1,0 +1,77 @@
+[
+  {
+    "id": "las-01-gamma-ray-caliper-lithology",
+    "lang": "las",
+    "subFormats": ["las"],
+    "difficulty": 1,
+    "title": "Gamma-Ray & Caliper Sandstone-Shale Lithology Well Log",
+    "description": "CWLS LAS 2.0 wireline well log capturing natural gamma-ray (GR) and borehole caliper (CALI) across a clean sandstone bed bounded by marine shale.",
+    "category": "Subsurface & Petrophysics",
+    "tags": ["las", "well-log", "gamma-ray", "caliper", "lithology"],
+    "activeFile": "well_gr.las",
+    "fileNames": ["well_gr.las"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "~VERSION INFORMATION\n VERS.                          2.0 : CWLS LOG ASCII STANDARD - VERSION 2.0\n WRAP.                          NO  : ONE LINE PER DEPTH STEP\n~WELL INFORMATION\n STRT.M                      1500.0 : START DEPTH\n STOP.M                      1503.0 : STOP DEPTH\n STEP.M                         0.5 : STEP\n NULL.                      -999.25 : NULL VALUE\n WELL.                   ALPHA-101  : WELL NAME\n~CURVE INFORMATION\n DEPT.M                             : MEASURED DEPTH\n GR  .GAPI                          : GAMMA RAY\n CALI.IN                            : BOREHOLE CALIPER\n~PARAMETER INFORMATION\n BS  .IN                      8.500 : BIT SIZE\n~ASCII\n 1500.0  105.2   9.10\n 1500.5   98.4   8.95\n 1501.0   42.6   8.55\n 1501.5   28.1   8.50\n 1502.0   31.5   8.52\n 1502.5   88.9   8.85\n 1503.0  112.4   9.25\n"
+  },
+  {
+    "id": "las-02-triple-combo-sandstone",
+    "lang": "las",
+    "subFormats": ["las"],
+    "difficulty": 2,
+    "title": "Triple-Combo Porosity-Resistivity Sandstone Reservoir Log",
+    "description": "Standard petrophysical triple-combo LAS 2.0 suite combining gamma-ray, deep induction resistivity (ILD), bulk density (RHOB), and neutron porosity (NPHI) showing classic gas-effect crossover.",
+    "category": "Subsurface & Petrophysics",
+    "tags": ["las", "triple-combo", "resistivity", "porosity", "sandstone"],
+    "activeFile": "triple_combo.las",
+    "fileNames": ["triple_combo.las"],
+    "fileCount": 1,
+    "code": "~VERSION INFORMATION\n VERS.                          2.0 : CWLS LOG ASCII STANDARD - VERSION 2.0\n WRAP.                          NO  : ONE LINE PER DEPTH STEP\n~WELL INFORMATION\n STRT.M                      2100.0 : START DEPTH\n STOP.M                      2103.5 : STOP DEPTH\n STEP.M                         0.5 : STEP\n NULL.                      -999.25 : NULL VALUE\n WELL.                   SAND-204   : WELL NAME\n~CURVE INFORMATION\n DEPT.M                             : MEASURED DEPTH\n GR  .GAPI                          : GAMMA RAY\n ILD .OHMM                          : DEEP INDUCTION RESISTIVITY\n RHOB.G/C3                          : BULK DENSITY\n NPHI.V/V                           : NEUTRON POROSITY\n~PARAMETER INFORMATION\n BHT .DEGC                     82.0 : BOTTOM HOLE TEMPERATURE\n~ASCII\n 2100.0  110.0    2.4   2.56   0.32\n 2100.5   92.0    3.1   2.52   0.29\n 2101.0   34.0   48.5   2.22   0.15\n 2101.5   26.5   74.2   2.18   0.13\n 2102.0   29.0   62.8   2.20   0.14\n 2102.5   38.5   18.4   2.28   0.22\n 2103.0   85.0    4.2   2.48   0.28\n 2103.5  108.0    2.6   2.55   0.31\n"
+  },
+  {
+    "id": "las-03-archie-payzone-evaluation",
+    "lang": "las",
+    "subFormats": ["las"],
+    "difficulty": 3,
+    "title": "Archie Water Saturation & Net Pay-Zone Petrophysical Log",
+    "description": "Interpreted petrophysical LAS 2.0 log incorporating formation resistivity (RT), effective porosity (PHIE), shale volume (VSH), and Archie water saturation (SW) across an oil-water contact.",
+    "category": "Subsurface & Petrophysics",
+    "tags": ["las", "archie", "water-saturation", "pay-zone", "petrophysics"],
+    "activeFile": "payzone.las",
+    "fileNames": ["payzone.las"],
+    "fileCount": 1,
+    "code": "~VERSION INFORMATION\n VERS.                          2.0 : CWLS LOG ASCII STANDARD - VERSION 2.0\n WRAP.                          NO  : ONE LINE PER DEPTH STEP\n~WELL INFORMATION\n STRT.M                      2450.0 : START DEPTH\n STOP.M                      2453.5 : STOP DEPTH\n STEP.M                         0.5 : STEP\n NULL.                      -999.25 : NULL VALUE\n WELL.                   PAY-309    : WELL NAME\n~CURVE INFORMATION\n DEPT.M                             : MEASURED DEPTH\n GR  .GAPI                          : GAMMA RAY\n RT  .OHMM                          : TRUE FORMATION RESISTIVITY\n PHIE.V/V                           : EFFECTIVE POROSITY\n VSH .V/V                           : SHALE VOLUME\n SW  .V/V                           : ARCHIE WATER SATURATION\n~PARAMETER INFORMATION\n RW  .OHMM                    0.045 : FORMATION WATER RESISTIVITY\n M_EX.                          2.0 : CEMENTATION EXPONENT\n N_EX.                          2.0 : SATURATION EXPONENT\n~ASCII\n 2450.0  115.0    2.2   0.04   0.88   1.00\n 2450.5   32.0   55.0   0.22   0.12   0.13\n 2451.0   25.0   82.0   0.24   0.06   0.10\n 2451.5   28.0   68.0   0.23   0.09   0.11\n 2452.0   35.0   22.0   0.21   0.15   0.22\n 2452.5   36.0    4.5   0.20   0.16   0.50\n 2453.0   38.0    1.2   0.21   0.18   0.92\n 2453.5  104.0    2.0   0.05   0.82   1.00\n"
+  },
+  {
+    "id": "las-04-sonic-density-geomechanics",
+    "lang": "las",
+    "subFormats": ["las"],
+    "difficulty": 4,
+    "title": "LAS 3.0 Dipole Sonic & Density Geomechanics Well Log",
+    "description": "Comma-delimited CWLS LAS 3.0 geomechanical wireline log recording compressional slowness (DTC), shear slowness (DTS), bulk density (RHOB), and companion core permeability calibration table.",
+    "category": "Subsurface & Petrophysics",
+    "tags": ["las", "las-3.0", "sonic", "geomechanics", "core-data"],
+    "activeFile": "geomech.las",
+    "fileNames": ["geomech.las"],
+    "fileCount": 1,
+    "code": "~Version\n VERS. 3.0 : CWLS LOG ASCII STANDARD - VERSION 3.0\n WRAP. NO  : ONE LINE PER DEPTH STEP\n DLM . COMMA : COMMA DELIMITED\n~Well\n STRT.M 2800.0 : START DEPTH\n STOP.M 2803.0 : STOP DEPTH\n STEP.M 0.5 : STEP\n NULL. -999.25 : NULL VALUE\n WELL. GEOMECH-401 : WELL NAME\n~Curve\n DEPT.M : MEASURED DEPTH\n DTC.US/M : COMPRESSIONAL SLOWNESS\n DTS.US/M : SHEAR SLOWNESS\n RHOB.G/C3 : BULK DENSITY\n PR.V/V : DYNAMIC POISSON RATIO\n YM.GPA : DYNAMIC YOUNG MODULUS\n~Parameter\n BHT.DEGC 94.0 : BOTTOM HOLE TEMPERATURE\n~ASCII\n 2800.0,262.0,458.0,2.54,0.26,28.4\n 2800.5,248.5,422.0,2.46,0.23,31.2\n 2801.0,218.0,362.0,2.31,0.21,36.8\n 2801.5,212.5,351.0,2.28,0.21,38.1\n 2802.0,224.0,374.0,2.34,0.22,35.4\n 2802.5,259.0,449.0,2.52,0.25,29.1\n 2803.0,266.0,465.0,2.56,0.26,27.8\n"
+  },
+  {
+    "id": "las-05-two-well-stratigraphic-correlation",
+    "lang": "las",
+    "subFormats": ["las"],
+    "difficulty": 5,
+    "title": "Two-Well Stratigraphic Reservoir Correlation Pair",
+    "description": "Multi-file LAS 2.0 basin correlation workspace pairing an updip discovery well (well_a.las) and a downdip appraisal well (well_b.las) offset by 25 m structural dip across a sandstone pay interval.",
+    "category": "Subsurface & Petrophysics",
+    "tags": ["las", "correlation", "stratigraphy", "multi-well", "multi-file"],
+    "activeFile": "well_a.las",
+    "fileNames": ["well_a.las", "well_b.las"],
+    "fileCount": 2,
+    "code": "~VERSION INFORMATION\n VERS.                          2.0 : CWLS LOG ASCII STANDARD - VERSION 2.0\n WRAP.                          NO  : ONE LINE PER DEPTH STEP\n~WELL INFORMATION\n STRT.M                      1900.0 : START DEPTH\n STOP.M                      1903.0 : STOP DEPTH\n STEP.M                         0.5 : STEP\n NULL.                      -999.25 : NULL VALUE\n WELL.                  DISCOVERY-A : UPDIP WELL A\n~CURVE INFORMATION\n DEPT.M                             : MEASURED DEPTH\n GR  .GAPI                          : GAMMA RAY\n ILD .OHMM                          : DEEP RESISTIVITY\n RHOB.G/C3                          : BULK DENSITY\n NPHI.V/V                           : NEUTRON POROSITY\n~PARAMETER INFORMATION\n BHT .DEGC                     76.0 : BOTTOM HOLE TEMP\n~ASCII\n 1900.0  108.0    2.5   2.55   0.31\n 1900.5   36.0   52.0   2.23   0.17\n 1901.0   24.5   84.0   2.19   0.15\n 1901.5   27.0   76.5   2.20   0.16\n 1902.0   33.0   48.0   2.24   0.18\n 1902.5   89.0    4.1   2.49   0.29\n 1903.0  112.0    2.3   2.56   0.32\n",
+    "files": {
+      "well_a.las": "~VERSION INFORMATION\n VERS.                          2.0 : CWLS LOG ASCII STANDARD - VERSION 2.0\n WRAP.                          NO  : ONE LINE PER DEPTH STEP\n~WELL INFORMATION\n STRT.M                      1900.0 : START DEPTH\n STOP.M                      1903.0 : STOP DEPTH\n STEP.M                         0.5 : STEP\n NULL.                      -999.25 : NULL VALUE\n WELL.                  DISCOVERY-A : UPDIP WELL A\n~CURVE INFORMATION\n DEPT.M                             : MEASURED DEPTH\n GR  .GAPI                          : GAMMA RAY\n ILD .OHMM                          : DEEP RESISTIVITY\n RHOB.G/C3                          : BULK DENSITY\n NPHI.V/V                           : NEUTRON POROSITY\n~PARAMETER INFORMATION\n BHT .DEGC                     76.0 : BOTTOM HOLE TEMP\n~ASCII\n 1900.0  108.0    2.5   2.55   0.31\n 1900.5   36.0   52.0   2.23   0.17\n 1901.0   24.5   84.0   2.19   0.15\n 1901.5   27.0   76.5   2.20   0.16\n 1902.0   33.0   48.0   2.24   0.18\n 1902.5   89.0    4.1   2.49   0.29\n 1903.0  112.0    2.3   2.56   0.32\n",
+      "well_b.las": "~VERSION INFORMATION\n VERS.                          2.0 : CWLS LOG ASCII STANDARD - VERSION 2.0\n WRAP.                          NO  : ONE LINE PER DEPTH STEP\n~WELL INFORMATION\n STRT.M                      1925.0 : START DEPTH\n STOP.M                      1928.0 : STOP DEPTH\n STEP.M                         0.5 : STEP\n NULL.                      -999.25 : NULL VALUE\n WELL.                  APPRAISAL-B : DOWNDIP WELL B\n~CURVE INFORMATION\n DEPT.M                             : MEASURED DEPTH\n GR  .GAPI                          : GAMMA RAY\n ILD .OHMM                          : DEEP RESISTIVITY\n RHOB.G/C3                          : BULK DENSITY\n NPHI.V/V                           : NEUTRON POROSITY\n~PARAMETER INFORMATION\n BHT .DEGC                     77.5 : BOTTOM HOLE TEMP\n~ASCII\n 1925.0  110.0    2.4   2.56   0.32\n 1925.5   40.0   38.0   2.25   0.19\n 1926.0   28.0   58.0   2.21   0.17\n 1926.5   30.5   42.0   2.23   0.18\n 1927.0   35.0   11.5   2.27   0.22\n 1927.5   94.0    3.2   2.51   0.30\n 1928.0  115.0    2.1   2.57   0.33\n"
+    }
+  }
+]

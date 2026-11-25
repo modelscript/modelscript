@@ -1,0 +1,12 @@
+{
+  "id": "openadr-01-peak-shaving-price-signal",
+  "lang": "openadr",
+  "subFormats": ["oadr"],
+  "difficulty": 1,
+  "title": "Simple Peak-Shaving Price Signal Event",
+  "description": "Minimal OpenADR 2.0b demand response program broadcasting a single 2-hour afternoon peak-shaving setpoint event to a commercial building VEN.",
+  "category": "Demand Response",
+  "tags": ["openadr", "peak-shaving", "dr-event", "ven"],
+  "activeFile": "peak_shave.oadr",
+  "isDefaultStarter": true
+}

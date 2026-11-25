@@ -1,0 +1,11 @@
+{
+  "id": "gerber-03-microstrip-diffpair",
+  "lang": "gerber",
+  "subFormats": ["rs-274x", "high-speed"],
+  "difficulty": 3,
+  "title": "Controlled-Impedance 50-Ohm Microstrip Differential Pair",
+  "description": "High-speed RS-274X top copper layer routing a length-matched 100-ohm differential microstrip pair with 45-degree mitered bends and SMA launch pads.",
+  "category": "High-Speed RF PCB",
+  "tags": ["gerber", "microstrip", "differential-pair", "rf"],
+  "activeFile": "diffpair.gbr"
+}

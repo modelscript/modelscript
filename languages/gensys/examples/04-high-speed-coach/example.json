@@ -1,0 +1,12 @@
+{
+  "id": "gensys-04-high-speed-coach",
+  "lang": "gensys",
+  "subFormats": ["tsimf", "runf", "sub"],
+  "difficulty": 4,
+  "title": "Four-Axle High-Speed Coach with Track Irregularity",
+  "description": "Full 4-axle 250 km/h high-speed passenger coach with front and rear bogies, secondary air springs, primary axlebox suspensions, a companion run control file, and measured track irregularity profile.",
+  "category": "High-Speed Rail",
+  "tags": ["high-speed-coach", "track-irregularity", "bogie", "multi-file"],
+  "activeFile": "coach.tsimf",
+  "fileOrder": ["coach.tsimf", "run_250kmh.runf", "track_irreg.sub"]
+}

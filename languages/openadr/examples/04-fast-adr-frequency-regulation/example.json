@@ -1,0 +1,11 @@
+{
+  "id": "openadr-04-fast-adr-frequency-regulation",
+  "lang": "openadr",
+  "subFormats": ["oadr"],
+  "difficulty": 4,
+  "title": "Fast-ADR Ancillary Frequency Regulation Event",
+  "description": "High-resolution Fast-ADR ancillary services program dispatching 5-minute dynamic battery fleet regulation setpoints across two coordinated events.",
+  "category": "Ancillary Services",
+  "tags": ["openadr", "fast-adr", "frequency-regulation", "bess"],
+  "activeFile": "fast_adr_reg.oadr"
+}

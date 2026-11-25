@@ -97,6 +97,10 @@ export interface WasmBailInfo {
   range: { startOffset: number; endOffset: number } | null;
   /** What the host did after the bail-out. */
   action: "strict-partial" | "ts-fallback";
+  /** Optional source file key where the bail-out occurred. */
+  file?: string | undefined;
+  /** Optional source code snippet for diagnostics. */
+  snippet?: string | undefined;
 }
 
 const UNKNOWN_BYTE = 0xffffffff;

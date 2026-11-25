@@ -1,0 +1,12 @@
+{
+  "id": "verilog-a-01-temp-dependent-resistor",
+  "lang": "verilog-a",
+  "subFormats": ["va", "vams"],
+  "difficulty": 1,
+  "title": "Linear Temperature-Dependent Resistor",
+  "description": "Compact Verilog-A resistor model with first- and second-order temperature coefficients referencing standard disciplines.vams.",
+  "category": "Passive Compact Models",
+  "tags": ["verilog-a", "resistor", "temperature", "multi-file"],
+  "activeFile": "resistor.va",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "lustre-02-moving-average-filter",
+  "lang": "lustre",
+  "subFormats": ["lus"],
+  "difficulty": 2,
+  "title": "Digital Moving-Average Low-Pass Filter",
+  "description": "Four-tap finite impulse response (FIR) moving-average filter and first-order exponential low-pass smoother for noisy sensor streams in Lustre.",
+  "category": "Digital Signal Processing",
+  "tags": ["lustre", "filter", "dsp", "moving-average"],
+  "activeFile": "moving_avg.lus"
+}

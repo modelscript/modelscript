@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSimDocument Version="40000">
+  <Model name="arm26_planar_reaching">
+    <gravity>0 -9.80665 0</gravity>
+    <BodySet>
+      <objects>
+        <Body name="humerus">
+          <mass>1.8646</mass>
+          <mass_center>0 -0.1805 0</mass_center>
+          <inertia>0.01481 0.00455 0.01319 0 0 0</inertia>
+        </Body>
+        <Body name="radius_ulna">
+          <mass>1.5343</mass>
+          <mass_center>0 -0.1815 0</mass_center>
+          <inertia>0.01928 0.00157 0.02006 0 0 0</inertia>
+        </Body>
+      </objects>
+    </BodySet>
+    <JointSet>
+      <objects>
+        <PinJoint name="r_shoulder">
+          <socket_parent_frame>ground_offset</socket_parent_frame>
+          <socket_child_frame>humerus_offset</socket_child_frame>
+          <frames>
+            <PhysicalOffsetFrame name="ground_offset">
+              <socket_parent>/ground</socket_parent>
+              <translation>-0.0175 -0.0070 0.1700</translation>
+              <orientation>0 0 0</orientation>
+            </PhysicalOffsetFrame>
+            <PhysicalOffsetFrame name="humerus_offset">
+              <socket_parent>/bodyset/humerus</socket_parent>
+              <translation>0 0 0</translation>
+              <orientation>0 0 0</orientation>
+            </PhysicalOffsetFrame>
+          </frames>
+          <coordinates>
+            <Coordinate name="r_shoulder_elev">
+              <motion_type>rotational</motion_type>
+              <default_value>0.15</default_value>
+              <range>-1.5708 3.1416</range>
+              <clamped>true</clamped>
+              <locked>false</locked>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+        <PinJoint name="r_elbow">
+          <socket_parent_frame>/bodyset/humerus</socket_parent_frame>
+          <socket_child_frame>/bodyset/radius_ulna</socket_child_frame>
+          <location_in_parent>0.0061 -0.2904 -0.0123</location_in_parent>
+          <orientation_in_parent>0 0 0</orientation_in_parent>
+          <coordinates>
+            <Coordinate name="r_elbow_flex">
+              <motion_type>rotational</motion_type>
+              <default_value>0.65</default_value>
+              <range>0.0 2.2689</range>
+              <clamped>true</clamped>
+              <locked>false</locked>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+      </objects>
+    </JointSet>
+    <ForceSet>
+      <objects>
+        <Thelen2003Muscle name="BIClong">
+          <max_isometric_force>624.3</max_isometric_force>
+          <optimal_fiber_length>0.1157</optimal_fiber_length>
+          <tendon_slack_length>0.2723</tendon_slack_length>
+          <pennation_angle_at_optimal>0.0</pennation_angle_at_optimal>
+          <activation_time_constant>0.010</activation_time_constant>
+          <deactivation_time_constant>0.040</deactivation_time_constant>
+          <max_contraction_velocity>10.0</max_contraction_velocity>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="BIClong_P1">
+                  <socket_parent_frame>/ground</socket_parent_frame>
+                  <location>-0.0312 0.0102 0.1478</location>
+                </PathPoint>
+                <PathPoint name="BIClong_P2">
+                  <socket_parent_frame>/bodyset/radius_ulna</socket_parent_frame>
+                  <location>0.0075 -0.0484 0.0218</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+            <PathWrapSet>
+              <objects>
+                <PathWrap>
+                  <wrap_object>HumerusHeadWrap</wrap_object>
+                </PathWrap>
+              </objects>
+            </PathWrapSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+        <Thelen2003Muscle name="TRIlong">
+          <max_isometric_force>798.5</max_isometric_force>
+          <optimal_fiber_length>0.1340</optimal_fiber_length>
+          <tendon_slack_length>0.1430</tendon_slack_length>
+          <pennation_angle_at_optimal>0.2094</pennation_angle_at_optimal>
+          <activation_time_constant>0.012</activation_time_constant>
+          <deactivation_time_constant>0.045</deactivation_time_constant>
+          <max_contraction_velocity>10.0</max_contraction_velocity>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="TRIlong_P1">
+                  <socket_parent_frame>/ground</socket_parent_frame>
+                  <location>-0.0457 -0.0407 0.1620</location>
+                </PathPoint>
+                <PathPoint name="TRIlong_P2">
+                  <socket_parent_frame>/bodyset/humerus</socket_parent_frame>
+                  <location>-0.0271 -0.1144 -0.0102</location>
+                </PathPoint>
+                <PathPoint name="TRIlong_P3">
+                  <socket_parent_frame>/bodyset/radius_ulna</socket_parent_frame>
+                  <location>-0.0219 0.0105 -0.0008</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+      </objects>
+    </ForceSet>
+    <MarkerSet>
+      <objects>
+        <Marker name="r_acromion">
+          <socket_parent_frame>/bodyset/humerus</socket_parent_frame>
+          <location>-0.020 0.010 0.150</location>
+        </Marker>
+        <Marker name="r_wrist_styloid">
+          <socket_parent_frame>/bodyset/radius_ulna</socket_parent_frame>
+          <location>0.005 -0.255 0.018</location>
+        </Marker>
+      </objects>
+    </MarkerSet>
+    <WrapObjectSet>
+      <objects>
+        <WrapCylinder name="HumerusHeadWrap">
+          <socket_parent_frame>/bodyset/humerus</socket_parent_frame>
+          <radius>0.025</radius>
+          <length>0.080</length>
+        </WrapCylinder>
+      </objects>
+    </WrapObjectSet>
+  </Model>
+</OpenSimDocument>

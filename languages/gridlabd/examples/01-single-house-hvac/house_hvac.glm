@@ -1,0 +1,42 @@
+// Single-House Thermal & HVAC Powerflow Model
+clock {
+  timezone PST+8PDT;
+  starttime '2026-07-15 00:00:00';
+  stoptime '2026-07-16 00:00:00';
+}
+
+module powerflow {
+  solver_method NR;
+}
+
+module residential;
+
+object node {
+  name sub_swing;
+  phases ABCN;
+  bustype SWING;
+  nominal_voltage 7200 V;
+}
+
+object triplex_meter {
+  name house_meter;
+  phases AS;
+  nominal_voltage 120 V;
+}
+
+object overhead_line {
+  name service_drop;
+  phases AN;
+  from sub_swing;
+  to house_meter;
+  length 120 ft;
+}
+
+object house {
+  name residence_1;
+  parent house_meter;
+  floor_area 2100;
+  cooling_setpoint 74.0;
+  heating_setpoint 68.0;
+  air_temperature 72.5;
+}

@@ -295,7 +295,14 @@ export class ConstrainedZonotope {
       return true;
     }
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as {
+      simplex_create?: (m: number, p: number) => number;
+      simplex_destroy?: (ptr: number) => void;
+      simplex_initDutertreDeMoura?: (ptr: number, m: number, p: number) => void;
+      simplex_setBound?: (ptr: number, varIdx: number, isLower: number, r: number, kDelta: number) => void;
+      simplex_setEntry?: (ptr: number, row: number, col: number, val: number) => void;
+      simplex_solveDutertreDeMoura?: (ptr: number, maxIter: number) => number;
+    } | null;
     if (
       wasm &&
       typeof wasm.simplex_create === "function" &&

@@ -1,0 +1,40 @@
+{
+  "id": "RECLOSER_FDR12_04",
+  "deviceName": "Cooper Form 6 Pole-Mounted Recloser Control",
+  "vendor": "Eaton",
+  "version": "5.2.0",
+  "outstationAddress": 412,
+  "masterAddress": 10,
+  "binaryInputs": [
+    { "index": 0, "name": "RECLOSER_CLOSED", "eventClass": 1, "normalState": 1 },
+    { "index": 1, "name": "RECLOSER_LOCKOUT", "eventClass": 1, "normalState": 0 },
+    { "index": 2, "name": "HOT_LINE_TAG_ACTIVE", "eventClass": 1, "normalState": 0 },
+    { "index": 3, "name": "GROUND_TRIP_BLOCKED", "eventClass": 2, "normalState": 0 },
+    { "index": 4, "name": "REVERSE_POWER_DETECTED", "eventClass": 1, "normalState": 0 },
+    { "index": 5, "name": "AC_AUX_POWER_LOST", "eventClass": 2, "normalState": 0 }
+  ],
+  "binaryOutputs": [
+    { "index": 0, "name": "TRIP_LOCKOUT" },
+    { "index": 1, "name": "CLOSE_RECLOSER" },
+    { "index": 2, "name": "ENABLE_HOT_LINE_TAG" },
+    { "index": 3, "name": "SWITCH_ALT_PROFILE" }
+  ],
+  "analogInputs": [
+    { "index": 0, "name": "IA_RMS_A", "eventClass": 2, "deadband": 3.0, "scalingMultiplier": 0.1, "scalingOffset": 0.0, "units": "A", "minVal": 0, "maxVal": 1000 },
+    { "index": 1, "name": "IB_RMS_A", "eventClass": 2, "deadband": 3.0, "scalingMultiplier": 0.1, "scalingOffset": 0.0, "units": "A", "minVal": 0, "maxVal": 1000 },
+    { "index": 2, "name": "IC_RMS_A", "eventClass": 2, "deadband": 3.0, "scalingMultiplier": 0.1, "scalingOffset": 0.0, "units": "A", "minVal": 0, "maxVal": 1000 },
+    { "index": 3, "name": "IN_GROUND_A", "eventClass": 2, "deadband": 1.5, "scalingMultiplier": 0.1, "scalingOffset": 0.0, "units": "A", "minVal": 0, "maxVal": 600 },
+    { "index": 4, "name": "VAB_KV", "eventClass": 2, "deadband": 0.1, "scalingMultiplier": 0.001, "scalingOffset": 0.0, "units": "kV", "minVal": 0, "maxVal": 15 },
+    { "index": 5, "name": "NET_KW", "eventClass": 2, "deadband": 25.0, "scalingMultiplier": 1.0, "scalingOffset": 0.0, "units": "kW", "minVal": -8000, "maxVal": 12000 }
+  ],
+  "analogOutputs": [
+    { "index": 0, "name": "PHASE_MIN_TRIP_A", "units": "A", "minVal": 100, "maxVal": 600 },
+    { "index": 1, "name": "GROUND_MIN_TRIP_A", "units": "A", "minVal": 50, "maxVal": 300 }
+  ],
+  "counters": [
+    { "index": 0, "name": "FWD_ENERGY_KWH", "eventClass": 3, "units": "kWh" },
+    { "index": 1, "name": "REV_ENERGY_KWH", "eventClass": 3, "units": "kWh" },
+    { "index": 2, "name": "FAULT_INTERRUPTION_COUNT", "eventClass": 1, "units": "ops" },
+    { "index": 3, "name": "INTERVAL_15MIN_FREEZE_KWH", "eventClass": 3, "units": "kWh" }
+  ]
+}

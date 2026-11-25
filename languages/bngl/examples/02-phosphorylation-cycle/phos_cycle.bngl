@@ -1,0 +1,46 @@
+begin model
+begin parameters
+  S0 500
+  K0 25
+  P0 25
+  kf_k 0.01
+  kr_k 0.2
+  kcat_k 0.8
+  kf_p 0.01
+  kr_p 0.2
+  kcat_p 0.6
+end parameters
+
+begin compartments
+  Cyt 3 1.0
+end compartments
+
+begin molecule types
+  S(b,Y~U~P)
+  K(s)
+  P(s)
+end molecule types
+
+begin seed species
+  S(b,Y~U) S0
+  K(s) K0
+  P(s) P0
+end seed species
+
+begin observables
+  Molecules UnphosS S(Y~U)
+  Molecules PhosS S(Y~P)
+  Molecules KinaseComplex K(s!1).S(b!1)
+  Molecules PhosphataseComplex P(s!1).S(b!1)
+end observables
+
+begin reaction rules
+  KinaseBind: K(s) + S(b,Y~U) <-> K(s!1).S(b!1,Y~U) kf_k, kr_k
+  KinaseCat: K(s!1).S(b!1,Y~U) -> K(s) + S(b,Y~P) kcat_k
+  PhosBind: P(s) + S(b,Y~P) <-> P(s!1).S(b!1,Y~P) kf_p, kr_p
+  PhosCat: P(s!1).S(b!1,Y~P) -> P(s) + S(b,Y~U) kcat_p
+end reaction rules
+end model
+
+generate_network({overwrite=>1,max_iter=>8})
+simulate({method=>"ode",t_end=>40,n_steps=>200})

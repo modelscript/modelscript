@@ -1,0 +1,11 @@
+{
+  "id": "pslf-04-area-interchange-transformers",
+  "lang": "pslf",
+  "subFormats": ["epc", "dyd"],
+  "difficulty": 4,
+  "title": "2-Area 500/230 kV Interchange with Tap Transformers",
+  "description": "Two-area 500/230 kV transmission corridor with autotransformers, tie lines, and matching synchronous machine dynamic models.",
+  "category": "Inter-Area Stability",
+  "tags": ["pslf", "interchange", "transformers", "dyd", "multi-file"],
+  "activeFile": "interchange.epc"
+}

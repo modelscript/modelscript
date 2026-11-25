@@ -1,0 +1,12 @@
+{
+  "id": "powerworld-01-three-bus-power-flow",
+  "lang": "powerworld",
+  "subFormats": ["aux"],
+  "difficulty": 1,
+  "title": "3-Bus Generator-Load AC Power Flow Case",
+  "description": "Minimal 138 kV three-bus PowerWorld AUX network with slack generator, PV generator, constant-power load, and Newton-Raphson power-flow solve script.",
+  "category": "Transmission Power Flow",
+  "tags": ["powerworld", "aux", "power-flow", "3-bus", "138kv"],
+  "activeFile": "case3.aux",
+  "isDefaultStarter": true
+}

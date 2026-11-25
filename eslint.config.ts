@@ -170,8 +170,8 @@ export default defineConfig([
       reportUnusedDisableDirectives: "error",
     },
   },
-  // Enforce no-explicit-any across all production src/ files and scripts by default,
-  // with an explicit shrinking legacy allowlist below (tracked by config/type-safety-baseline.json).
+  // Enforce no-explicit-any across all 197 production src/ workspaces and scripts
+  // (zero legacy allowlist remaining; tracked by config/type-safety-baseline.json).
   {
     files: [
       "eslint.config.ts",
@@ -184,30 +184,6 @@ export default defineConfig([
     ],
     rules: {
       "@typescript-eslint/no-explicit-any": "error",
-    },
-  },
-  {
-    // Legacy packages with remaining explicit 'any' tracked in config/type-safety-baseline.json.
-    // Remove entries as each package reaches 0 explicit 'any'.
-    files: [
-      "apps/web/src/**/*.{ts,tsx}",
-      "languages/cantera/src/**/*.{ts,tsx}",
-      "languages/matpower/src/**/*.{ts,tsx}",
-      "languages/modelica/src/**/*.{ts,tsx}",
-      "languages/pscad/src/**/*.{ts,tsx}",
-      "languages/psse/src/**/*.{ts,tsx}",
-      "languages/pypsa/src/**/*.{ts,tsx}",
-      "languages/simulink/src/**/*.{ts,tsx}",
-      "languages/sysml2/src/**/*.{ts,tsx}",
-      "languages/urdf/src/**/*.{ts,tsx}",
-      "packages/diagram/src/**/*.{ts,tsx}",
-      "packages/dsl/src/**/*.{ts,tsx}",
-      "packages/editor/src/**/*.{ts,tsx}",
-      "packages/lsp/src/**/*.{ts,tsx}",
-      "packages/runtime/src/**/*.{ts,tsx}",
-    ],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
     },
   },
   {
@@ -243,11 +219,17 @@ export default defineConfig([
   {
     files: [
       "ee/src/**/*.{ts,tsx}",
+      "apps/api/src/**/*.{ts,tsx}",
       "apps/desktop/src/**/*.{ts,tsx}",
       "packages/cad/src/**/*.{ts,tsx}",
+      "packages/canvas/src/**/*.{ts,tsx}",
+      "packages/dsl/src/**/*.{ts,tsx}",
       "packages/embed/src/**/*.{ts,tsx}",
       "packages/exchange/src/**/*.{ts,tsx}",
+      "packages/ide/src/**/*.{ts,tsx}",
+      "packages/lsp/src/**/*.{ts,tsx}",
       "packages/react/src/**/*.{ts,tsx}",
+      "packages/runtime/src/**/*.{ts,tsx}",
       "packages/simulate/src/**/*.{ts,tsx}",
     ],
     rules: {
@@ -292,7 +274,6 @@ export default defineConfig([
       "apps/web/src/components/artifacts/AutoThumbnailCapture.tsx",
       "apps/web/src/components/artifacts/ModelicaDiagramViewer.tsx",
       "apps/web/src/components/artifacts/card/ViewerDispatcher.tsx",
-      "apps/web/src/components/morsel/ComponentList.tsx",
       "apps/web/src/pages/RepositoryListPage.tsx",
       "apps/web/src/pages/SettingsPage.tsx",
       "apps/web/src/pages/legal/LegalLayout.tsx",
@@ -307,7 +288,6 @@ export default defineConfig([
     // light/dark theme. Use the shared `--ms-*` tokens (packages/design-tokens).
     files: ["apps/web/src/**/*.{ts,tsx}"],
     ignores: [
-      "apps/web/src/components/morsel/**",
       "apps/web/src/components/artifacts/{VegaViewer,MermaidViewer,SimulationPlotViewer,CadDiffViewer,DigitalTwinDashboardViewer,ModelicaDiagramViewer}.tsx",
       "apps/web/src/components/terminal/AnsiRenderer.tsx",
       "apps/web/src/components/artifacts/{MultibodyViewport3D,AudioViewer}.tsx",
@@ -333,13 +313,8 @@ export default defineConfig([
     },
   },
   {
-    files: [
-      "apps/web/src/components/morsel/**/*.{ts,tsx}",
-      "packages/editor/src/workbench/**/*.{ts,tsx}",
-      "packages/editor/src/internal/**/*.{ts,tsx}",
-    ],
+    files: ["packages/editor/src/workbench/**/*.{ts,tsx}", "packages/editor/src/internal/**/*.{ts,tsx}"],
     rules: {
-      "@typescript-eslint/no-explicit-any": "off",
       "react-hooks/refs": "off",
       "react-hooks/exhaustive-deps": "off",
       "react-hooks/immutability": "off",

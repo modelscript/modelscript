@@ -1,0 +1,6 @@
+LINE Dist_12kV_Tangent voltage_kv=12.47 freq=60
+CONDUCTOR Penguin_4_0 weight_n_per_m=4.26 r_ohm_per_km=0.275 gmr_m=0.0044 rated_tension_n=37100
+STRUCTURE P101 station_m=0 x=0 y=0 z_base=50 height_m=13.5 phase_spacing_m=1.2
+STRUCTURE P102 station_m=90 x=90 y=0 z_base=50 height_m=13.5 phase_spacing_m=1.2
+SPAN S1 from=P101 to=P102 conductor=Penguin_4_0 tension_n=7500 min_clearance_m=6.0
+TERRAIN 45 0 50.5

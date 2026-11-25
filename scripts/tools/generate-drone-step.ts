@@ -342,7 +342,7 @@ FILE_NAME(
 /* author */ ('ModelScript'),
 /* organization */ ('ModelScript'),
 /* preprocessor_version */ 'ModelScript Procedural CAD v1',
-/* originating_system */ 'ModelScript IDE',
+/* originating_system */ 'Ansatz Studio',
 /* authorisation */ '');
 
 FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 1 1 1 1 }'));

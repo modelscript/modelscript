@@ -1,0 +1,11 @@
+{
+  "id": "ssp-05-microgrid-multi-fmu",
+  "lang": "ssp",
+  "subFormats": ["ssd", "ssv", "ssm"],
+  "difficulty": 5,
+  "title": "Microgrid Multi-FMU Plant & Relay Protection",
+  "description": "Full multi-FMU islandable microgrid co-simulation integrating BESS grid-forming inverter, utility feeder grid model, SSV parameter sets, SSM relay mappings, and FMI descriptors.",
+  "category": "Power Systems Co-Simulation",
+  "tags": ["ssp", "microgrid", "bess", "fmi", "multi-file"],
+  "activeFile": "SystemStructure.ssd"
+}

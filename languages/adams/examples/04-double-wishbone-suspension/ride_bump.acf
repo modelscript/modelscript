@@ -1,0 +1,7 @@
+! Adams/Solver Command File (.acf)
+! Quarter-Car Double-Wishbone Ride Bump & Static Equilibrium Analysis
+FILE/MODEL=wishbone.adm
+INTEGRATOR/GSTIFF, I3, ERROR=1.0E-4, HMAX=0.002
+SIMULATE/STATIC
+SIMULATE/DYNAMIC, END=2.5, DTOUT=0.005
+STOP

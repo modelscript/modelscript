@@ -1,0 +1,25 @@
+SIMPLE  =                    T / Conforms to FITS 4.0 standard
+BITPIX  =                  -64 / IEEE 64-bit double-precision flux
+NAXIS   =                    2 / Long-slit extracted optical spectrum
+NAXIS1  =                 4000 / Number of wavelength channels
+NAXIS2  =                    1 / Extracted aperture row along slit
+OBJECT  = 'NGC-4321-NUC'       / Spiral galaxy nuclear spectrum
+TELESCOP= 'GEMINI-N'           / 8.1m optical-IR telescope
+INSTRUME= 'GMOS-N  '           / Multi-object spectrograph
+GRATING = 'R400+G5305'         / Dispersing grating
+EXPTIME =                900.0 / Total integration time [s]
+BUNIT   = 'erg/s/cm2/Angstrom' / Specific flux density unit
+Z_MEAS  =               0.0425 / Heliocentric emission-line redshift
+VELDISP =                165.4 / Stellar velocity dispersion [km/s]
+CTYPE1  = 'WAVE    '           / Vacuum wavelength spectral axis
+CTYPE2  = 'SLIT    '           / Spatial position along spectrograph slit
+CUNIT1  = 'Angstrom'           / Wavelength unit
+CUNIT2  = 'arcsec  '           / Spatial slit position unit
+CRPIX1  =                  1.0 / Reference wavelength channel index
+CRPIX2  =                  1.0 / Reference slit aperture row
+CRVAL1  =               3800.0 / Starting wavelength [Angstrom]
+CRVAL2  =                  0.0 / Slit center offset [arcsec]
+CDELT1  =                  1.0 / Linear dispersion [Angstrom/pixel]
+CDELT2  =                 0.15 / Spatial scale along slit [arcsec/pixel]
+SPECSYS = 'HELIOCEN'           / Heliocentric velocity reference frame
+END

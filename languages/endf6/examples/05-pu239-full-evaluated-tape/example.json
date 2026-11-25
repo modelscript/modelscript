@@ -1,0 +1,11 @@
+{
+  "id": "endf6-05-pu239-full-evaluated-tape",
+  "lang": "endf6",
+  "subFormats": ["endf-6"],
+  "difficulty": 5,
+  "title": "Plutonium-239 Full Evaluated Library Tape (MF=1, 2, 3, 8)",
+  "description": "Comprehensive ENDF-6 tape for Pu-239 (MAT=9437) capturing the 0.296 eV giant fission resonance in MF=2, four MF=3 reaction channels (total, elastic, fission, capture), and MF=8/MT=457 alpha-decay data.",
+  "category": "Nuclear Data Libraries",
+  "tags": ["endf6", "pu-239", "actinide", "decay", "resonance", "mf8"],
+  "activeFile": "pu239_full.endf"
+}

@@ -1,0 +1,31 @@
+# Halite / Rocksalt Sodium Chloride (Fm-3m, #225)
+data_nacl_rocksalt
+_chemical_name_mineral 'Halite'
+_chemical_formula_sum 'Cl Na'
+_space_group_name_H-M_alt 'F m -3 m'
+_space_group_IT_number 225
+_cell_length_a 5.6402(1)
+_cell_length_b 5.6402(1)
+_cell_length_c 5.6402(1)
+_cell_angle_alpha 90.0
+_cell_angle_beta 90.0
+_cell_angle_gamma 90.0
+_cell_volume 179.43
+
+loop_
+_symmetry_equiv_pos_as_xyz
+'x, y, z'
+'x, y+1/2, z+1/2'
+'x+1/2, y, z+1/2'
+'x+1/2, y+1/2, z'
+
+loop_
+_atom_site_label
+_atom_site_type_symbol
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+_atom_site_U_iso_or_equiv
+Na1 Na 0.0000 0.0000 0.0000 1.0 0.0195
+Cl1 Cl 0.5000 0.5000 0.5000 1.0 0.0158

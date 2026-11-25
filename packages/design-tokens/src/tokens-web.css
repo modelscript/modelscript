@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: AGPL-3.0-or-later */
 /*
- * Host adapter stylesheet for Ansatz / Morsel web host.
+ * Host adapter stylesheet for Ansatz Network / Ansatz Editor web host.
  * Imports canonical --ms-* design tokens directly without creating circular
  * --ms-* <-> --color-* variable cycles against apps/web/src/index.css.
  */

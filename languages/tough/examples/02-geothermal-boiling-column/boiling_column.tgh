@@ -1,0 +1,22 @@
+1D Vertical Two-Phase Geothermal Boiling Column (EOS1)
+ROCKS
+BASLT    2700.0      0.12 5.0E-14 5.0E-14 2.0E-14       2.6    1020.0
+CAPRK    2650.0      0.05 1.0E-16 1.0E-16 5.0E-17       2.0     980.0
+ELEME
+Z1  1CAPRK 1.0E+04
+Z1  2BASLT 1.0E+04
+Z1  3BASLT 1.0E+04
+Z1  4BASLT 1.0E+04
+CONNE
+Z1  1Z1  2 50.0 50.0 1.0E+02      -1.0
+Z1  2Z1  3 50.0 50.0 1.0E+02      -1.0
+Z1  3Z1  4 50.0 50.0 1.0E+02      -1.0
+GENER
+Z1  4HEAT1HEAT    2.5E+05       0.0
+Z1  2PROD1MASS      -12.0    1.2E+06
+INCON
+Z1  1        3.5E+06       215.0
+Z1  2        4.3E+06       245.0
+Z1  3        5.1E+06       265.0
+Z1  4        5.9E+06       280.0
+ENDCY

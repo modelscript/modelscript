@@ -1,0 +1,11 @@
+{
+  "id": "mps-05-facility-location-milp",
+  "lang": "mps",
+  "subFormats": ["mps", "milp", "facility-location"],
+  "difficulty": 5,
+  "title": "Warehouse Facility-Location Mixed-Integer Program",
+  "description": "Capacitated warehouse facility location MILP combining binary open/close decisions with continuous customer shipment allocations minimizing fixed plus transport cost.",
+  "category": "Supply Chain Optimization",
+  "tags": ["mps", "milp", "facility-location", "logistics"],
+  "activeFile": "facility_loc.mps"
+}

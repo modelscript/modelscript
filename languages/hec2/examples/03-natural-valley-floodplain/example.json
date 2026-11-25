@@ -1,0 +1,11 @@
+{
+  "id": "hec2-03-natural-valley-floodplain",
+  "lang": "hec2",
+  "subFormats": ["hc2"],
+  "difficulty": 3,
+  "title": "Natural River Valley with Vegetated Overbank Floodplains",
+  "description": "Compound natural river reach featuring distinct left overbank, main channel, and right overbank Manning roughness coefficients (NC), meandering reach lengths, and 8-point valley cross-sections.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec2", "floodplain", "compound-channel", "manning"],
+  "activeFile": "natural_valley.hc2"
+}

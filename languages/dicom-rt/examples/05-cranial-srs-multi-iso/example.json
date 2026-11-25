@@ -1,0 +1,11 @@
+{
+  "id": "dicom-rt-05-cranial-srs-multi-iso",
+  "lang": "dicom-rt",
+  "subFormats": ["rtplan", "dcm.json"],
+  "difficulty": 5,
+  "title": "Cranial SRS Multi-Isocenter Plan with RT-Struct and RT-Dose Verification",
+  "description": "Single-fraction 20 Gy stereotactic radiosurgery (SRS) plan targeting dual intracranial metastases with brainstem and optic chiasm QUANTEC constraints and companion RTSTRUCT/RTDOSE JSON bundles.",
+  "category": "Radiation Oncology & Dosimetry",
+  "tags": ["dicom-rt", "srs", "cranial", "multi-isocenter", "multi-file"],
+  "activeFile": "srs_plan.rtplan"
+}

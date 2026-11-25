@@ -1,0 +1,73 @@
+[
+  {
+    "id": "bufr-01-synop-surface-station",
+    "lang": "bufr",
+    "subFormats": ["bufr-ed4"],
+    "difficulty": 1,
+    "title": "WMO SYNOP Surface Weather Station Report",
+    "description": "WMO FM 94 BUFR Edition 4 SYNOP land surface observation using Table D sequence 3-07-080 with station pressure, temperature, dewpoint, humidity, and surface wind.",
+    "category": "Meteorology",
+    "tags": ["bufr", "wmo", "synop", "surface-observation"],
+    "activeFile": "denver_synop.bufr",
+    "fileNames": ["denver_synop.bufr"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# WMO BUFR Edition 4 SYNOP Surface Land Station Report (Denver, CO)\nBUFR EDITION 4 NAME DENVER_SYNOP\nSECTION 0\n  LENGTH = 0\nSECTION 1\n  MASTER_TABLE = 0\n  CENTRE = 7\n  SUBCENTRE = 0\n  CATEGORY = 0\n  VERSION = 38\n  YEAR = 2026\n  MONTH = 7\n  DAY = 15\n  HOUR = 12\n  MINUTE = 0\n  SECOND = 0\nSECTION 3\n  SUBSETS = 1\n  OBSERVED = true\n  COMPRESSED = false\n  DESCRIPTORS:\n    3-07-080\nSECTION 4\n  SUBSET 1:\n    0-01-001 = 72\n    0-01-002 = 469\n    0-04-001 = 2026\n    0-04-002 = 7\n    0-04-003 = 15\n    0-04-004 = 12\n    0-04-005 = 0\n    0-05-001 = 39.85610\n    0-06-001 = -104.67370\n    0-07-001 = 1655\n    0-10-004 = 83850\n    0-10-051 = 101420\n    0-12-101 = 292.15\n    0-12-103 = 282.65\n    0-13-003 = 54\n    0-11-001 = 195\n    0-11-002 = 4.6\n    0-13-011 = 0.0\nSECTION 5\n7777\n"
+  },
+  {
+    "id": "bufr-02-metar-aviation-report",
+    "lang": "bufr",
+    "subFormats": ["bufr-ed4"],
+    "difficulty": 2,
+    "title": "METAR Airport Aviation Weather Report",
+    "description": "BUFR Edition 4 aviation routine weather report (METAR) with custom Table B altimeter setting, runway visibility, and ceiling descriptors.",
+    "category": "Aviation Meteorology",
+    "tags": ["bufr", "metar", "aviation", "table-b", "table-d"],
+    "activeFile": "kjfk_metar.bufr",
+    "fileNames": ["kjfk_metar.bufr"],
+    "fileCount": 1,
+    "code": "# WMO BUFR Edition 4 Aviation METAR Report (KJFK)\nBUFR EDITION 4 NAME KJFK_METAR\nTABLE_B\n  0-20-201 name=\"Prevailing Horizontal Visibility\" unit=\"m\" scale=0 ref=0 width=16\n  0-20-202 name=\"Cloud Base Ceiling Height\" unit=\"m\" scale=0 ref=0 width=14\nTABLE_D\n  3-20-010 = [0-01-001, 0-01-002, 0-05-001, 0-06-001, 0-10-051, 0-12-101, 0-12-103, 0-11-001, 0-11-002, 0-20-201, 0-20-202] \"Airport METAR Sequence\"\nSECTION 0\n  LENGTH = 0\nSECTION 1\n  MASTER_TABLE = 0\n  CENTRE = 7\n  SUBCENTRE = 0\n  CATEGORY = 0\n  VERSION = 38\n  YEAR = 2026\n  MONTH = 10\n  DAY = 4\n  HOUR = 15\n  MINUTE = 51\n  SECOND = 0\nSECTION 3\n  SUBSETS = 1\n  OBSERVED = true\n  COMPRESSED = false\n  DESCRIPTORS:\n    3-20-010\nSECTION 4\n  SUBSET 1:\n    0-01-001 = 74\n    0-01-002 = 486\n    0-05-001 = 40.64130\n    0-06-001 = -73.77810\n    0-10-051 = 101860\n    0-12-101 = 288.15\n    0-12-103 = 281.15\n    0-11-001 = 310\n    0-11-002 = 7.2\n    0-20-201 = 16093\n    0-20-202 = 1370\nSECTION 5\n7777\n"
+  },
+  {
+    "id": "bufr-03-marine-buoy-sst-wave",
+    "lang": "bufr",
+    "subFormats": ["bufr-ed4"],
+    "difficulty": 3,
+    "title": "Marine Drifting Buoy SST & Significant Wave Report",
+    "description": "Oceanographic BUFR bulletin reporting two moored/drifting North Pacific buoys with sea-surface temperature, significant wave height, dominant wave period, and barometric pressure.",
+    "category": "Marine Meteorology",
+    "tags": ["bufr", "buoy", "marine", "sst", "waves"],
+    "activeFile": "pacific_buoys.bufr",
+    "fileNames": ["pacific_buoys.bufr"],
+    "fileCount": 1,
+    "code": "# WMO BUFR Edition 4 Marine Buoy SST and Wave Telemetry (2 Buoys)\nBUFR EDITION 4 NAME PACIFIC_BUOY_BULLETIN\nTABLE_B\n  0-22-201 name=\"Sea Surface Temperature\" unit=\"K\" scale=2 ref=0 width=16\n  0-22-202 name=\"Significant Wave Height\" unit=\"m\" scale=2 ref=0 width=12\n  0-22-203 name=\"Dominant Wave Period\" unit=\"s\" scale=1 ref=0 width=10\nTABLE_D\n  3-22-001 = [0-01-001, 0-05-001, 0-06-001, 0-10-051, 0-12-101, 0-11-001, 0-11-002, 0-22-201, 0-22-202, 0-22-203] \"Marine Buoy Sequence\"\nSECTION 0\n  LENGTH = 0\nSECTION 1\n  MASTER_TABLE = 0\n  CENTRE = 7\n  SUBCENTRE = 0\n  CATEGORY = 1\n  VERSION = 38\n  YEAR = 2026\n  MONTH = 8\n  DAY = 22\n  HOUR = 18\n  MINUTE = 0\n  SECOND = 0\nSECTION 3\n  SUBSETS = 2\n  OBSERVED = true\n  COMPRESSED = false\n  DESCRIPTORS:\n    3-22-001\nSECTION 4\n  SUBSET 1:\n    0-01-001 = 46\n    0-05-001 = 37.36000\n    0-06-001 = -122.88000\n    0-10-051 = 101640\n    0-12-101 = 287.45\n    0-11-001 = 315\n    0-11-002 = 9.4\n    0-22-201 = 286.20\n    0-22-202 = 2.45\n    0-22-203 = 11.2\n  SUBSET 2:\n    0-01-001 = 46\n    0-05-001 = 36.79000\n    0-06-001 = -122.47000\n    0-10-051 = 101580\n    0-12-101 = 288.05\n    0-11-001 = 305\n    0-11-002 = 8.1\n    0-22-201 = 287.10\n    0-22-202 = 2.10\n    0-22-203 = 10.5\nSECTION 5\n7777\n"
+  },
+  {
+    "id": "bufr-04-radiosonde-temp-sounding",
+    "lang": "bufr",
+    "subFormats": ["bufr-ed4"],
+    "difficulty": 4,
+    "title": "Radiosonde TEMP Upper-Air Vertical Sounding Profile",
+    "description": "High-resolution upper-air radiosonde ascent profile across four mandatory pressure levels (1000, 850, 500, and 250 hPa) encoding geopotential height, temperature, dewpoint, and wind.",
+    "category": "Upper-Air Observation",
+    "tags": ["bufr", "radiosonde", "temp", "sounding", "upper-air"],
+    "activeFile": "radiosonde_sounding.bufr",
+    "fileNames": ["radiosonde_sounding.bufr"],
+    "fileCount": 1,
+    "code": "# WMO BUFR Edition 4 Radiosonde Upper-Air Vertical Sounding (4 Mandatory Levels)\nBUFR EDITION 4 NAME OAKLAND_RAOB_00Z\nTABLE_D\n  3-21-001 = [0-01-001, 0-01-002, 0-05-001, 0-06-001, 0-07-004, 0-10-009, 0-12-101, 0-12-103, 0-11-001, 0-11-002] \"Upper-Air Level Observation\"\nSECTION 0\n  LENGTH = 0\nSECTION 1\n  MASTER_TABLE = 0\n  CENTRE = 7\n  SUBCENTRE = 0\n  CATEGORY = 2\n  VERSION = 38\n  YEAR = 2026\n  MONTH = 3\n  DAY = 18\n  HOUR = 0\n  MINUTE = 0\n  SECOND = 0\nSECTION 3\n  SUBSETS = 4\n  OBSERVED = true\n  COMPRESSED = false\n  DESCRIPTORS:\n    3-21-001\nSECTION 4\n  SUBSET 1:\n    0-01-001 = 72\n    0-01-002 = 493\n    0-05-001 = 37.75000\n    0-06-001 = -122.22000\n    0-07-004 = 100000\n    0-10-009 = 124\n    0-12-101 = 287.85\n    0-12-103 = 282.45\n    0-11-001 = 285\n    0-11-002 = 5.2\n  SUBSET 2:\n    0-01-001 = 72\n    0-01-002 = 493\n    0-05-001 = 37.76000\n    0-06-001 = -122.20000\n    0-07-004 = 85000\n    0-10-009 = 1492\n    0-12-101 = 278.45\n    0-12-103 = 271.15\n    0-11-001 = 270\n    0-11-002 = 11.8\n  SUBSET 3:\n    0-01-001 = 72\n    0-01-002 = 493\n    0-05-001 = 37.81000\n    0-06-001 = -122.11000\n    0-07-004 = 50000\n    0-10-009 = 5640\n    0-12-101 = 254.25\n    0-12-103 = 241.05\n    0-11-001 = 260\n    0-11-002 = 28.4\n  SUBSET 4:\n    0-01-001 = 72\n    0-01-002 = 493\n    0-05-001 = 37.92000\n    0-06-001 = -121.88000\n    0-07-004 = 25000\n    0-10-009 = 10480\n    0-12-101 = 221.65\n    0-12-103 = 208.15\n    0-11-001 = 255\n    0-11-002 = 49.6\nSECTION 5\n7777\n"
+  },
+  {
+    "id": "bufr-05-satellite-amv-bulletin",
+    "lang": "bufr",
+    "subFormats": ["bufr-ed4"],
+    "difficulty": 5,
+    "title": "Multi-Subset Satellite Atmospheric Motion Vector (AMV) Bulletin",
+    "description": "Geostationary GOES-East cloud-drift Atmospheric Motion Vector (AMV) BUFR bulletin containing 5 tracked upper-tropospheric wind vectors with infrared brightness temperature and quality indicator.",
+    "category": "Satellite Meteorology",
+    "tags": ["bufr", "satellite", "amv", "goes", "multi-subset"],
+    "activeFile": "goes_amv_bulletin.bufr",
+    "fileNames": ["goes_amv_bulletin.bufr"],
+    "fileCount": 1,
+    "code": "# GOES-16 Geostationary Satellite Atmospheric Motion Vector (AMV) Bulletin\nBUFR EDITION 4 NAME GOES16_AMV_IR\nTABLE_B\n  0-01-207 name=\"Satellite Identifier\" unit=\"CODE\" scale=0 ref=0 width=10\n  0-12-263 name=\"Infrared Brightness Temperature\" unit=\"K\" scale=2 ref=0 width=16\n  0-33-207 name=\"QI Percent Confidence\" unit=\"%\" scale=0 ref=0 width=7\nTABLE_D\n  3-25-001 = [0-01-207, 0-05-001, 0-06-001, 0-07-004, 0-11-001, 0-11-002, 0-12-263, 0-33-207] \"Satellite AMV Vector\"\nSECTION 0\n  LENGTH = 0\nSECTION 1\n  MASTER_TABLE = 0\n  CENTRE = 7\n  SUBCENTRE = 160\n  CATEGORY = 5\n  VERSION = 38\n  YEAR = 2026\n  MONTH = 9\n  DAY = 10\n  HOUR = 18\n  MINUTE = 0\n  SECOND = 0\nSECTION 3\n  SUBSETS = 5\n  OBSERVED = true\n  COMPRESSED = false\n  DESCRIPTORS:\n    3-25-001\nSECTION 4\n  SUBSET 1:\n    0-01-207 = 270\n    0-05-001 = 28.45000\n    0-06-001 = -76.12000\n    0-07-004 = 24500\n    0-11-001 = 242\n    0-11-002 = 34.8\n    0-12-263 = 224.30\n    0-33-207 = 94\n  SUBSET 2:\n    0-01-207 = 270\n    0-05-001 = 29.10000\n    0-06-001 = -74.85000\n    0-07-004 = 26000\n    0-11-001 = 248\n    0-11-002 = 38.2\n    0-12-263 = 227.15\n    0-33-207 = 91\n  SUBSET 3:\n    0-01-207 = 270\n    0-05-001 = 30.25000\n    0-06-001 = -73.40000\n    0-07-004 = 22000\n    0-11-001 = 251\n    0-11-002 = 44.5\n    0-12-263 = 219.80\n    0-33-207 = 96\n  SUBSET 4:\n    0-01-207 = 270\n    0-05-001 = 31.80000\n    0-06-001 = -71.90000\n    0-07-004 = 23500\n    0-11-001 = 258\n    0-11-002 = 47.1\n    0-12-263 = 221.40\n    0-33-207 = 89\n  SUBSET 5:\n    0-01-207 = 270\n    0-05-001 = 33.15000\n    0-06-001 = -70.25000\n    0-07-004 = 25000\n    0-11-001 = 263\n    0-11-002 = 51.3\n    0-12-263 = 223.95\n    0-33-207 = 92\nSECTION 5\n7777\n"
+  }
+]

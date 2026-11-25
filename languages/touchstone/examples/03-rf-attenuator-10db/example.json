@@ -1,0 +1,11 @@
+{
+  "id": "touchstone-03-rf-attenuator-10db",
+  "lang": "touchstone",
+  "subFormats": ["s2p"],
+  "difficulty": 3,
+  "title": "2-Port 10 dB Broadband RF Attenuator",
+  "description": "Broadband 0.5\u201310.5 GHz 10 dB matched Pi-network RF attenuator with parasitic capacitance roll-off and strict passivity across all frequencies.",
+  "category": "Passive RF Components",
+  "tags": ["touchstone", "s2p", "attenuator", "broadband"],
+  "activeFile": "attenuator_10db.s2p"
+}

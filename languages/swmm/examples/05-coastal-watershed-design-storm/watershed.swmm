@@ -1,0 +1,68 @@
+[TITLE]
+Coastal Watershed Dynamic Wave Routing under 100-Year Design Storm
+
+[OPTIONS]
+FLOW_UNITS          CMS
+FLOW_ROUTING        DYNWAVE
+INFILTRATION        HORTON
+START_DATE          09/15/2026
+START_TIME          00:00:00
+REPORT_START_DATE   09/15/2026
+REPORT_START_TIME   00:00:00
+END_DATE            09/15/2026
+END_TIME            24:00:00
+ALLOW_PONDING       YES
+
+[JUNCTIONS]
+;;Name           Elevation  MaxDepth   InitDepth  SurDepth   Apond
+J1               18.00      3.20       0.20       0.00       60.0
+J2               15.80      3.40       0.25       0.00       80.0
+J3               13.50      3.60       0.30       0.50       100.0
+J4               11.20      3.80       0.35       0.50       120.0
+J5               12.40      3.20       0.20       0.00       70.0
+
+[OUTFALLS]
+;;Name           Elevation  Type       Stage Data       Gated
+OF_BAY           9.00       FIXED      9.40             NO
+
+[STORAGE]
+;;Name           Elev.    MaxDepth   InitDepth  Shape      Curve Name/Params            N/A      Fevap
+BASIN_COAST      10.50    4.00       0.40       FUNCTIONAL 2500      0         800      0        0
+
+[CONDUITS]
+;;Name           From Node        To Node          Length     Roughness  InOffset   OutOffset  InitFlow   MaxFlow
+C1               J1               J2               280.00     0.013      0.00       0.00       0.00       0.00
+C2               J2               J3               310.00     0.013      0.00       0.00       0.00       0.00
+C3               J3               J4               260.00     0.012      0.00       0.00       0.00       0.00
+C4               J4               BASIN_COAST      180.00     0.013      0.00       0.00       0.00       0.00
+C_RELIEF         J2               J5               240.00     0.014      0.00       0.00       0.00       0.00
+C5               J5               BASIN_COAST      210.00     0.014      0.00       0.00       0.00       0.00
+C_OUT            BASIN_COAST      OF_BAY           220.00     0.014      0.00       0.00       0.00       0.00
+
+[XSECTIONS]
+;;Link           Shape        Geom1      Geom2      Geom3      Geom4      Barrels
+C1               CIRCULAR     1.50       0.00       0.00       0.00       1
+C2               CIRCULAR     1.80       0.00       0.00       0.00       1
+C3               RECT_CLOSED  2.20       1.80       0.00       0.00       1
+C4               RECT_CLOSED  2.40       2.00       0.00       0.00       1
+C_RELIEF         CIRCULAR     1.20       0.00       0.00       0.00       1
+C5               CIRCULAR     1.35       0.00       0.00       0.00       1
+C_OUT            RECT_CLOSED  2.50       2.20       0.00       0.00       2
+
+[SUBCATCHMENTS]
+;;Name           RainGage         Outlet           Area     PctImperv Width    PctSlope CurbLen  SnowPack
+SC_UPLAND        RG1              J1               15.00    55.00     450.00   2.20     0.00
+SC_MIDTOWN       RG1              J2               18.50    72.00     520.00   1.60     0.00
+SC_PORT          RG1              J3               22.00    84.00     600.00   1.10     0.00
+SC_EAST          RG1              J5               12.00    65.00     380.00   1.40     0.00
+
+[INFILTRATION]
+;;Subcatchment   MaxRate    MinRate    Decay      DryTime    MaxInfil
+SC_UPLAND        75.00      8.00       3.00       7.00       0.00
+SC_MIDTOWN       70.00      7.00       3.00       7.00       0.00
+SC_PORT          60.00      5.00       3.50       7.00       0.00
+SC_EAST          72.00      7.50       3.00       7.00       0.00
+
+[INFLOWS]
+;;Node           Parameter        Time Series      Type     Mfactor  Sfactor  Base     Pat
+J1               FLOW             ""               FLOW     1.0      1.0      2.80     ""

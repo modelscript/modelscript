@@ -1,0 +1,22 @@
+LOCUS       pGG_Backbone             130 bp    ds-DNA  circular SYN 24-NOV-2026
+DEFINITION  Level-1 Golden Gate acceptor backbone with BsaI overhangs and kanR.
+ACCESSION   pGG_Backbone
+VERSION     pGG_Backbone.1
+KEYWORDS    Golden Gate; MoClo; BsaI; plasmid backbone.
+SOURCE      synthetic DNA construct
+  ORGANISM  Escherichia coli
+FEATURES             Location/Qualifiers
+     rep_origin      1..30
+                     /label="ColE1_ori"
+     CDS             31..108
+                     /gene="kanR"
+                     /product="Kanamycin resistance fragment"
+                     /codon_start=1
+                     /translation="MSHIQRETSRPRLNSNMDADLYGYK"
+     misc_feature    109..130
+                     /label="BsaI_cloning_site"
+ORIGIN
+        1 ggtctcaaat ggcatgcctg caggtcgact atgagccata ttcaacggga aacgtcgagg
+       61 ccgcgattaa attccaacat ggatgctgat ttatatgggt ataaataagc ttgagaccgg
+      121 atccaagctt
+//

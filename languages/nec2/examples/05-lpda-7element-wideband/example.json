@@ -1,0 +1,11 @@
+{
+  "id": "nec2-05-lpda-7element-wideband",
+  "lang": "nec2",
+  "subFormats": ["nec2", "wideband", "transmission-line"],
+  "difficulty": 5,
+  "title": "7-Element Log-Periodic Dipole Array (LPDA) Wideband Sweep",
+  "description": "Wideband 200-400 MHz 7-element log-periodic dipole array (tau = 0.865, sigma = 0.14) with crisscrossed TL transmission-line feeder and 50-ohm termination.",
+  "category": "Antennas & Electromagnetics",
+  "tags": ["nec2", "lpda", "wideband", "transmission-line", "sweep"],
+  "activeFile": "lpda_7el.nec"
+}

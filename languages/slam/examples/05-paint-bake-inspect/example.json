@@ -1,0 +1,11 @@
+{
+  "id": "slam-05-paint-bake-inspect",
+  "lang": "slam",
+  "subFormats": ["slam"],
+  "difficulty": 5,
+  "title": "Automated Paint-Bake-Inspect Automotive Line with Rework Loops",
+  "description": "Multi-stage automotive body-in-white coating line combining robotic paint booths, continuous curing oven thermal dynamics, quality gates, and probabilistic rework branching.",
+  "category": "Automotive Manufacturing",
+  "tags": ["slam", "automotive", "rework", "combined", "multi-stage"],
+  "activeFile": "automotive_paint.slam"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "cplex-lp-03-shift-scheduling-integer",
+  "lang": "cplex-lp",
+  "subFormats": ["cplex-lp", "ip"],
+  "difficulty": 3,
+  "title": "Factory Shift Scheduling Integer Program",
+  "description": "Pure integer program (Generals) determining minimum operator headcount across overlapping 8-hour shifts to cover 24-hour plant staffing requirements.",
+  "category": "Workforce Scheduling",
+  "tags": ["cplex-lp", "integer-programming", "scheduling", "generals"],
+  "activeFile": "shift_schedule.lp"
+}

@@ -1,0 +1,90 @@
+{
+  "system-security-plan": {
+    "uuid": "44444444-4444-4444-8444-444444444403",
+    "metadata": {
+      "title": "Substation SCADA Operational Technology SSP",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "import-profile": {
+      "href": "./ot-profile.oscal.json"
+    },
+    "system-implementation": {
+      "components": [
+        {
+          "uuid": "44444444-4444-4444-8444-444444444410",
+          "type": "software",
+          "title": "ScadaHmiServer",
+          "description": "Substation operator HMI and historian server."
+        },
+        {
+          "uuid": "44444444-4444-4444-8444-444444444411",
+          "type": "hardware",
+          "title": "OtDmzFirewall",
+          "description": "Stateful industrial firewall isolating Level 2 SCADA from corporate IT."
+        }
+      ]
+    },
+    "control-implementation": {
+      "description": "Complete implementation of NIST SP 800-82 OT SCADA baseline controls.",
+      "implemented-requirements": [
+        {
+          "uuid": "44444444-4444-4444-8444-444444444420",
+          "control-id": "ac-3",
+          "by-components": [
+            {
+              "component-uuid": "44444444-4444-4444-8444-444444444410",
+              "uuid": "44444444-4444-4444-8444-444444444421",
+              "description": "Operator role enforcement with hardware MFA tokens on ScadaHmiServer."
+            }
+          ]
+        },
+        {
+          "uuid": "44444444-4444-4444-8444-444444444426",
+          "control-id": "pe-3",
+          "by-components": [
+            {
+              "component-uuid": "44444444-4444-4444-8444-444444444411",
+              "uuid": "44444444-4444-4444-8444-444444444427",
+              "description": "Substation control house cabinets locked with badge-controlled electronic access and tamper switches."
+            }
+          ]
+        },
+        {
+          "uuid": "44444444-4444-4444-8444-444444444422",
+          "control-id": "sc-7",
+          "by-components": [
+            {
+              "component-uuid": "44444444-4444-4444-8444-444444444411",
+              "uuid": "44444444-4444-4444-8444-444444444423",
+              "description": "Default-deny firewall rules allowing only signed DNP3-SA telemetry across DMZ."
+            }
+          ]
+        },
+        {
+          "uuid": "44444444-4444-4444-8444-444444444424",
+          "control-id": "si-4",
+          "by-components": [
+            {
+              "component-uuid": "44444444-4444-4444-8444-444444444411",
+              "uuid": "44444444-4444-4444-8444-444444444425",
+              "description": "Passive OT intrusion detection mirror monitoring IEC 61850 and DNP3 frames."
+            }
+          ]
+        },
+        {
+          "uuid": "44444444-4444-4444-8444-444444444428",
+          "control-id": "si-7",
+          "by-components": [
+            {
+              "component-uuid": "44444444-4444-4444-8444-444444444410",
+              "uuid": "44444444-4444-4444-8444-444444444429",
+              "description": "Cryptographic SHA-256 firmware signature verification prior to HMI and relay deployment."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

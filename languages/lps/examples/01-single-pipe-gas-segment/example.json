@@ -1,0 +1,12 @@
+{
+  "id": "lps-01-single-pipe-gas-segment",
+  "lang": "lps",
+  "subFormats": ["lps"],
+  "difficulty": 1,
+  "title": "Single-Pipe Steady-State Natural Gas Segment",
+  "description": "Single 50 km natural gas transmission pipeline connecting a fixed-pressure supply hub to a city-gate delivery terminal under AGA8 equation of state.",
+  "category": "Pipeline Hydraulics",
+  "tags": ["lps", "tgnet", "natural-gas", "steady-state"],
+  "activeFile": "single_pipe.lps",
+  "isDefaultStarter": true
+}

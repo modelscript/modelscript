@@ -1,0 +1,31 @@
+program "Industrial_Curtailment_Tier1" {
+  event "DR_IND_SHED_02" {
+    status: "active"
+    signalType: "delta"
+    targetVenId: "VEN-COLD-STORAGE-04"
+
+    interval {
+      start: "2026-08-05T14:00:00Z"
+      durationSeconds: 1800
+      payload: 150.0
+    }
+
+    interval {
+      start: "2026-08-05T14:30:00Z"
+      durationSeconds: 3600
+      payload: 320.0
+    }
+
+    interval {
+      start: "2026-08-05T15:30:00Z"
+      durationSeconds: 3600
+      payload: 280.0
+    }
+
+    interval {
+      start: "2026-08-05T16:30:00Z"
+      durationSeconds: 1800
+      payload: 100.0
+    }
+  }
+}

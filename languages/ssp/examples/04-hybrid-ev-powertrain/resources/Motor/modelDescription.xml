@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="PmsmMotor" guid="{44444444-4444-4444-4444-444444444403}">
+  <CoSimulation modelIdentifier="PmsmMotor" />
+  <ModelVariables>
+    <ScalarVariable name="i_q" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="tau_out" valueReference="1" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

@@ -1,0 +1,13 @@
+{
+  "id": "gtfs-01-airport-express-shuttle",
+  "lang": "gtfs",
+  "subFormats": ["gtfs", "txt"],
+  "difficulty": 1,
+  "title": "Airport Express Electric Shuttle Line",
+  "description": "Single-corridor airport express electric shuttle GTFS bundle with terminal and downtown stops, weekday timetable, battery-bus traction parameters, and standard six-table GTFS text files.",
+  "category": "Public Transit & Fleet Electrification",
+  "tags": ["gtfs", "airport-shuttle", "electric-bus", "multi-file"],
+  "activeFile": "feed.gtfs",
+  "fileOrder": ["feed.gtfs", "agency.txt", "stops.txt", "routes.txt", "trips.txt", "stop_times.txt", "calendar.txt"],
+  "isDefaultStarter": true
+}

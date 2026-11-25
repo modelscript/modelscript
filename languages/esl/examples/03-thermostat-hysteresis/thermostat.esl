@@ -1,0 +1,29 @@
+-- ESA ESL Thermostat-Controlled Room Heating with Hysteresis Submodel
+STUDY RoomHeatingStudy
+  SUBMODEL HeaterPower(IN REAL: cmd; IN REAL: p_max; OUT REAL: q_heat)
+  DYNAMIC
+    q_heat = cmd * p_max;
+  END SUBMODEL HeaterPower
+
+  MODEL ThermalRoom
+    CONSTANT REAL: C_TH = 18000.0;  -- Room thermal capacitance (J/K)
+    CONSTANT REAL: G_LOSS = 45.0;   -- Wall conductance (W/K)
+    CONSTANT REAL: T_AMB = 5.0;     -- Outdoor temperature (C)
+    CONSTANT REAL: P_MAX = 2500.0;  -- Heater rated power (W)
+    CONSTANT REAL: T_LOW = 19.5;    -- Lower hysteresis threshold (C)
+    CONSTANT REAL: T_HIGH = 21.5;   -- Upper hysteresis threshold (C)
+    REAL: temp, q_heat, heater_cmd;
+  INITIAL
+    temp = 16.0;
+    heater_cmd = 1.0;
+  DYNAMIC
+    HeaterPower(heater_cmd, P_MAX, q_heat);
+    temp' = (q_heat - G_LOSS * (temp - T_AMB)) / C_TH;
+    WHEN temp >= T_HIGH THEN
+      heater_cmd := 0.0;
+    END_WHEN
+    WHEN temp <= T_LOW THEN
+      heater_cmd := 1.0;
+    END_WHEN
+  END MODEL ThermalRoom
+END STUDY RoomHeatingStudy

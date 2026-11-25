@@ -23,8 +23,7 @@ export interface ComposeAttachedArtifactProps {
   aiDrafting?: boolean | undefined;
   onArtifactViewLoaded?: ((view: Record<string, unknown> | null) => void) | undefined;
   onReplaceArtifact?:
-    | ((newArtifactId: number | string, title?: string, createdView?: Record<string, unknown>) => void)
-    | undefined;
+    ((newArtifactId: number | string, title?: string, createdView?: Record<string, unknown>) => void) | undefined;
   /**
    * Open the chart wizard for this (tabular) artifact. `onDone` receives the new chart artifact. Returns false when
    * the attach flow is busy. Provide it to enable the "Visualize Data" actions.
@@ -368,7 +367,7 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
                 boxShadow: isDark ? "0 2px 6px rgba(0,0,0,0.4)" : "0 1px 3px rgba(0,0,0,0.12)",
                 backdropFilter: "blur(8px)",
               }}
-              title="Generate or regenerate post draft from this morsel using AI"
+              title="Generate or regenerate post draft from this ansatz using AI"
             >
               <span>✨</span>
               <span>{aiDrafting ? "Drafting..." : "Draft Post"}</span>
@@ -436,7 +435,7 @@ export const ComposeAttachedArtifact: React.FC<ComposeAttachedArtifactProps> = (
             icon={XIcon}
             variant="invisible"
             onClick={onRemove}
-            aria-label="Remove morsel"
+            aria-label="Remove ansatz"
             style={{
               backgroundColor: isDark ? "rgba(13, 17, 23, 0.85)" : "rgba(255, 255, 255, 0.92)",
               color: isDark ? "var(--color-fg-muted, #8b949e)" : "var(--color-fg-muted, #656d76)",

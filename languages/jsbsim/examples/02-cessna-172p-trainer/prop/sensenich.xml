@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<propeller name="sensenich">
+  <ixx> 1.65 </ixx>
+  <diameter unit="IN"> 75.0 </diameter>
+  <numblades> 2 </numblades>
+  <gearratio> 1.0 </gearratio>
+  <minpitch> 22.0 </minpitch>
+  <maxpitch> 22.0 </maxpitch>
+</propeller>

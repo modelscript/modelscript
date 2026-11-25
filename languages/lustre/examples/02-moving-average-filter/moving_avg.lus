@@ -1,0 +1,14 @@
+-- 4-Tap FIR Moving-Average and First-Order IIR Low-Pass Sensor Filter
+const
+  ALPHA: real = 0.25;
+
+node MovingAverage4(x: real) returns (y_fir, y_iir: real);
+var
+  d1, d2, d3: real;
+let
+  d1 = x -> pre(x);
+  d2 = x -> pre(d1);
+  d3 = x -> pre(d2);
+  y_fir = 0.25 * (x + d1 + d2 + d3);
+  y_iir = x -> (ALPHA * x + (1.0 - ALPHA) * pre(y_iir));
+tel

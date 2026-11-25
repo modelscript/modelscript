@@ -1,0 +1,12 @@
+{
+  "id": "verilog-01-mux4-priority-encoder",
+  "lang": "verilog",
+  "subFormats": ["v"],
+  "difficulty": 1,
+  "title": "4-to-1 Multiplexer and Priority Encoder",
+  "description": "Synthesizable combinational 4-to-1 bus multiplexer paired with a 4-input active-high priority encoder using IEEE 1364 Verilog always @(*) case logic.",
+  "category": "Combinational Logic",
+  "tags": ["verilog", "mux", "encoder", "combinational"],
+  "activeFile": "mux4.v",
+  "isDefaultStarter": true
+}

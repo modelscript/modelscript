@@ -1,0 +1,11 @@
+{
+  "id": "asm-05-bsm1-dynamic-storm-wwtp",
+  "lang": "asm",
+  "subFormats": ["asm", "csv"],
+  "difficulty": 5,
+  "title": "Dynamic Storm-Weather BSM1 WWTP with Influent Profile",
+  "description": "Full-scale BSM1 municipal wastewater treatment plant configured for dry-weather and storm-surge hydraulic load testing alongside a 24-hour dynamic influent flow and COD/NH4 profile CSV.",
+  "category": "Wastewater Biokinetics",
+  "tags": ["asm", "bsm1", "storm-weather", "dynamic-influent", "multi-file"],
+  "activeFile": "bsm1_dynamic.asm"
+}

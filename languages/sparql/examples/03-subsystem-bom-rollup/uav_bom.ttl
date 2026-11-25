@@ -1,0 +1,17 @@
+@prefix uav: <http://modelscript.dev/ontology/uav#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+uav:Propulsion a uav:Subsystem ;
+  rdfs:label "Propulsion Subsystem" ;
+  uav:containsPart uav:MotorFrontLeft , uav:MotorFrontRight , uav:ESCQuad .
+
+uav:Avionics a uav:Subsystem ;
+  rdfs:label "Avionics & Navigation" ;
+  uav:containsPart uav:Autopilot , uav:LidarUnit .
+
+uav:MotorFrontLeft uav:massKg "0.42"^^xsd:double ; uav:powerW "185.0"^^xsd:double .
+uav:MotorFrontRight uav:massKg "0.42"^^xsd:double ; uav:powerW "185.0"^^xsd:double .
+uav:ESCQuad uav:massKg "0.18"^^xsd:double ; uav:powerW "12.0"^^xsd:double .
+uav:Autopilot uav:massKg "0.09"^^xsd:double ; uav:powerW "8.5"^^xsd:double .
+uav:LidarUnit uav:massKg "0.65"^^xsd:double ; uav:powerW "18.0"^^xsd:double .

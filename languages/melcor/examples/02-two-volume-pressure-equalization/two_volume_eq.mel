@@ -1,0 +1,42 @@
+! Two-Volume Compartment Pressure Equalization
+MELGEN_INPUT
+TITLE 'Two-Volume Compartment Pressure Equalization'
+
+EXEC_INPUT
+  EXEC_TSTART 0.0
+  EXEC_TEND 120.0
+  EXEC_DT 0.02 0.5 1.0e-5
+
+CVH_INPUT
+  CV_ID 'SG_Compartment' 100 NORMAL
+  CV_THR 4.2e5 430.0 0.1 0.9
+  CV_PAS 2500.0 0.0 18.0
+  CV_NCG 'N2' 0.20
+
+  CV_ID 'Upper_Containment' 200 NORMAL
+  CV_THR 1.05e5 310.0 0.0 0.15
+  CV_PAS 48000.0 18.0 52.0
+  CV_NCG 'N2' 0.78
+
+FL_INPUT
+  FL_ID 'Compartment_Vent' 10
+  FL_FT 100 200 15.0 20.0
+  FL_GEO 4.5 2.0 1.0
+  FL_USL 1.5 1.8
+  FL_IC 0.0
+
+HS_INPUT
+  HS_ID 'Divider_Slab' 201 RECTANGULAR
+  HS_GD 0.6 850.0 42000.0 1.6 880.0 2400.0
+  HS_LB 100 400.0
+  HS_RB 200 120.0
+  HS_TEMP 320.0
+  HS_SRC 0.0
+
+CF_INPUT
+  CF_ID 'Compartment_DP' 1 SUBTRACT
+  CF_SAI 1.0 0.0 0.0
+  CF_ARG CVH 100 P 1.0
+  CF_ARG CVH 200 P -1.0
+
+END

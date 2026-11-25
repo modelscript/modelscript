@@ -1,0 +1,11 @@
+{
+  "id": "tough-02-geothermal-boiling-column",
+  "lang": "tough",
+  "subFormats": ["tgh"],
+  "difficulty": 2,
+  "title": "1D Two-Phase Geothermal Boiling Column",
+  "description": "Vertical fractured basalt geothermal column under hydrostatic pressure and basal heat recharge transitioning from compressed liquid to two-phase boiling steam near the top.",
+  "category": "Geothermal Reservoir Engineering",
+  "tags": ["tough", "geothermal", "eos1", "two-phase-boiling"],
+  "activeFile": "boiling_column.tgh"
+}

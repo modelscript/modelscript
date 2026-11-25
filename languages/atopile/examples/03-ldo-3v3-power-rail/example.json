@@ -1,0 +1,11 @@
+{
+  "id": "atopile-03-ldo-3v3-power-rail",
+  "lang": "atopile",
+  "subFormats": ["ato"],
+  "difficulty": 3,
+  "title": "3.3V LDO Linear Regulator Power Rail",
+  "description": "5V-to-3.3V low-dropout linear voltage regulator stage with input/output bulk decoupling capacitors, feedback divider resistors, and enable pull-up.",
+  "category": "ECAD & Hardware Description",
+  "tags": ["atopile", "ldo", "power-rail", "regulator", "multi-file"],
+  "activeFile": "ldo_3v3.ato"
+}

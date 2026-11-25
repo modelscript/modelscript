@@ -68,9 +68,10 @@ interface LintDiagnosticItem {
 interface CstRootLike {
   id?: number | undefined;
   ptr?: number | undefined;
+  startIndex?: number | undefined;
   text?: string | undefined;
   hasError?: boolean | (() => boolean) | undefined;
-  descendantForIndex?: ((startIndex: number, endIndex: number) => unknown) | undefined;
+  descendantForIndex?: ((startIndex: number, endIndex?: number) => CstRootLike | null | undefined) | undefined;
 }
 
 function nodeHasError(node: { hasError?: boolean | (() => boolean) | undefined } | null | undefined): boolean {
@@ -1127,11 +1128,12 @@ export const Lint: CommandModule<{}, LintArgs> = {
               const idNode = findCstNodesByType(classNode, "identifier")[0];
               const name = idNode?.text?.trim() || "";
               const algSections = findCstNodesByType(classNode, "algorithm_section");
-              if (algSections.length === 0) continue;
+              const algSection = algSections[0];
+              if (!algSection) continue;
 
-              const algOffset = algSections[0].startIndex ?? 0;
+              const algOffset = algSection.startIndex ?? 0;
               const variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
-              const statements = ModelicaCFGLowerer.extractStatementsFromCst(algSections[0], algOffset);
+              const statements = ModelicaCFGLowerer.extractStatementsFromCst(algSection, algOffset);
               if (statements.length === 0) continue;
 
               const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, { functionName: name });

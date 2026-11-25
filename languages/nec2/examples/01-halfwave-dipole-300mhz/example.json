@@ -1,0 +1,12 @@
+{
+  "id": "nec2-01-halfwave-dipole-300mhz",
+  "lang": "nec2",
+  "subFormats": ["nec2"],
+  "difficulty": 1,
+  "title": "Half-Wave Resonant Dipole at 300 MHz",
+  "description": "Free-space center-fed half-wave dipole antenna resonant at 300 MHz (lambda = 1.0 m) with 21 wire segments, voltage excitation, and elevation radiation pattern.",
+  "category": "Antennas & Electromagnetics",
+  "tags": ["nec2", "dipole", "radiation-pattern", "wire-antenna"],
+  "activeFile": "dipole_300mhz.nec",
+  "isDefaultStarter": true
+}

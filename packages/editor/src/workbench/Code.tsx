@@ -125,11 +125,15 @@ if (!self.MonacoEnvironment) {
 }
 
 if (typeof window !== "undefined") {
-  (window as any).monaco = monaco;
+  const win = window as unknown as {
+    monaco?: typeof monaco;
+    __monacoCancellationFilterInstalled__?: boolean;
+  };
+  win.monaco = monaco;
 
   // Suppress benign Monaco internal cancellation errors (e.g. WordHighlighter / Delayer cancellation on model swap)
-  if (!(window as any).__monacoCancellationFilterInstalled__) {
-    (window as any).__monacoCancellationFilterInstalled__ = true;
+  if (!win.__monacoCancellationFilterInstalled__) {
+    win.__monacoCancellationFilterInstalled__ = true;
     window.addEventListener("unhandledrejection", (event) => {
       const reason = event.reason;
       if (
@@ -275,7 +279,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       props.onProgress?.(40, "Connecting editor to compiler runtime…");
 
       // Register Monaco providers that proxy to the LSP
-      adapterDisposableRef.current = setupMonacoLspAdapter(monaco, connection as any, uriRef.current, {
+      adapterDisposableRef.current = setupMonacoLspAdapter(monaco, connection, uriRef.current, {
         onDiagnostics: (_uri, markers) => {
           props.onDiagnostics?.(markers, _uri);
         },
@@ -410,7 +414,7 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
     lastValueRef.current = code;
     if (editorRef.current) {
       editorRef.current.pushUndoStop();
-      editorRef.current.executeEdits("morsel-external-sync", [
+      editorRef.current.executeEdits("ansatz-external-sync", [
         {
           range: model.getFullModelRange(),
           text: code,
@@ -480,10 +484,18 @@ export const CodeEditor = React.forwardRef<CodeEditorHandle, CodeEditorProps>((p
       const conn = getLsp();
       if (!conn) return;
 
+      type DocSym = {
+        name?: string;
+        children?: DocSym[];
+        selectionRange?: {
+          start: { line: number; character: number };
+          end: { line: number; character: number };
+        };
+      };
       conn
-        .sendRequest("textDocument/documentSymbol", { textDocument: { uri: uriRef.current } })
-        .then((symbols: any) => {
-          const findSymbol = (items: any[]): any => {
+        .sendRequest<DocSym[] | null>("textDocument/documentSymbol", { textDocument: { uri: uriRef.current } })
+        .then((symbols) => {
+          const findSymbol = (items: DocSym[]): DocSym | null => {
             for (const sym of items) {
               if (sym.name === name) return sym;
               if (sym.children) {

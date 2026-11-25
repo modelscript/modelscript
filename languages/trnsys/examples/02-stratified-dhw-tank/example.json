@@ -1,0 +1,11 @@
+{
+  "id": "trnsys-02-stratified-dhw-tank",
+  "lang": "trnsys",
+  "subFormats": ["dck"],
+  "difficulty": 2,
+  "title": "Stratified Domestic Hot Water Storage Tank",
+  "description": "Four-node thermally stratified domestic hot water storage tank (Type 4) coupled to a flat-plate solar collector (Type 1) and diurnal weather processor (Type 15) over a 48-hour cycle.",
+  "category": "Building & Solar Thermal",
+  "tags": ["trnsys", "storage-tank", "type4", "stratification"],
+  "activeFile": "dhw_tank.dck"
+}

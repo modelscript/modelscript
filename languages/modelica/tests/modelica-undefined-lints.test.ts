@@ -58,7 +58,7 @@ end X;`;
     expect(diags).toEqual([]);
   });
 
-  test("runs diagnostics on playground initial ElectricalCircuit code", () => {
+  test("runs diagnostics on ansatz initial ElectricalCircuit code", () => {
     const code = `model ElectricalCircuit
   Pin p, n;
   parameter Real R = 100.0;

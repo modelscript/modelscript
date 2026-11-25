@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmSubstat" loc_name="OSS_Platform"/>
+  <DataObject class="ElmSubstat" loc_name="Onshore_POC"/>
+  <DataObject class="ElmTerm" loc_name="WTG_Str1_33"><uknom>33.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="WTG_Str2_33"><uknom>33.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="OSS_33kV"><uknom>33.0</uknom><fnom>50.0</fnom><substat>OSS_Platform</substat></DataObject>
+  <DataObject class="ElmTerm" loc_name="OSS_220kV"><uknom>220.0</uknom><fnom>50.0</fnom><substat>OSS_Platform</substat></DataObject>
+  <DataObject class="ElmTerm" loc_name="Shore_220kV"><uknom>220.0</uknom><fnom>50.0</fnom><substat>Onshore_POC</substat></DataObject>
+  <DataObject class="TypLne" loc_name="Subsea_33kV_630">
+    <uline>33.0</uline><r1>0.042</r1><x1>0.115</x1><b1>85.0</b1><snom>42.0</snom><inom>0.73</inom>
+  </DataObject>
+  <DataObject class="TypLne" loc_name="Export_220kV_1200">
+    <uline>220.0</uline><r1>0.025</r1><x1>0.130</x1><b1>62.0</b1><snom>240.0</snom><inom>0.63</inom>
+  </DataObject>
+  <DataObject class="ElmLne" loc_name="Array_String1"><bus1>WTG_Str1_33</bus1><bus2>OSS_33kV</bus2><dline>8.5</dline><typ_id>Subsea_33kV_630</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="Array_String2"><bus1>WTG_Str2_33</bus1><bus2>OSS_33kV</bus2><dline>9.2</dline><typ_id>Subsea_33kV_630</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="Export_Cable"><bus1>OSS_220kV</bus1><bus2>Shore_220kV</bus2><dline>42.0</dline><typ_id>Export_220kV_1200</typ_id></DataObject>
+  <DataObject class="TypTr2" loc_name="OSS_Trafo_220_33">
+    <strn>220.0</strn><utrn_h>220.0</utrn_h><utrn_l>33.0</utrn_l><ukrr>13.0</ukrr><pkr>450.0</pkr><vecgrp>YNd11</vecgrp>
+  </DataObject>
+  <DataObject class="ElmTr2" loc_name="OSS_MainXfmr">
+    <bushv>OSS_220kV</bushv><buslv>OSS_33kV</buslv><typ_id>OSS_Trafo_220_33</typ_id>
+  </DataObject>
+  <DataObject class="TypSym" loc_name="WTG_Agg_100MVA">
+    <snom>100.0</snom><unom>33.0</unom><cosn>0.95</cosn><H>3.2</H>
+  </DataObject>
+  <DataObject class="TypSym" loc_name="Grid_Shore_Type">
+    <snom>1000.0</snom><unom>220.0</unom><cosn>0.90</cosn><H>8.0</H>
+  </DataObject>
+  <DataObject class="ElmSym" loc_name="WTG_Cluster1"><bus1>WTG_Str1_33</bus1><pgini>90.0</pgini><qgini>10.0</qgini><usetp>1.01</usetp><typ_id>WTG_Agg_100MVA</typ_id></DataObject>
+  <DataObject class="ElmSym" loc_name="WTG_Cluster2"><bus1>WTG_Str2_33</bus1><pgini>90.0</pgini><qgini>10.0</qgini><usetp>1.01</usetp><typ_id>WTG_Agg_100MVA</typ_id></DataObject>
+  <DataObject class="ElmSym" loc_name="Onshore_Grid"><bus1>Shore_220kV</bus1><pgini>10.0</pgini><qgini>0.0</qgini><usetp>1.02</usetp><typ_id>Grid_Shore_Type</typ_id></DataObject>
+  <DataObject class="ElmLod" loc_name="Shore_Export_Sink"><bus1>Shore_220kV</bus1><plini>185.0</plini><qlini>25.0</qlini></DataObject>
+</PowerFactory>

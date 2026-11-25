@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-11-24T12:00:00" description="Cloverleaf Interchange Merge Test" author="Ansatz"/>
+  <RoadNetwork>
+    <LogicFile filepath="interchange.xodr"/>
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car">
+        <Performance maxSpeed="55.0" maxAcceleration="3.5" maxDeceleration="8.0"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.6" height="1.45"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <Private entityRef="Ego">
+          <PrivateAction>
+            <TeleportAction><Position><LanePosition roadId="1" laneId="-2" s="50.0"/></Position></TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="25.0"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+  </Storyboard>
+</OpenSCENARIO>

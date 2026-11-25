@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-11-24T12:00:00" description="Euro NCAP AEB CCRs 50 km/h Braking Test" author="Ansatz"/>
+  <ParameterDeclarations>
+    <ParameterDeclaration name="EgoInitSpeed" parameterType="double" value="13.89"/>
+  </ParameterDeclarations>
+  <RoadNetwork>
+    <LogicFile filepath="test_track.xodr"/>
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car">
+        <Performance maxSpeed="55.0" maxAcceleration="3.5" maxDeceleration="9.5"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.6" height="1.45"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="GVT_Target">
+      <Vehicle name="GVT_Target" vehicleCategory="car">
+        <Performance maxSpeed="40.0" maxAcceleration="2.5" maxDeceleration="8.0"/>
+        <BoundingBox><Center x="1.35" y="0.0" z="0.7"/><Dimensions width="1.80" length="4.4" height="1.42"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <Private entityRef="Ego">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-1" s="25.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$EgoInitSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="GVT_Target">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-1" s="120.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="0.0"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="AEB_EmergencyBrakeStory">
+      <Act name="EmergencyStopAct">
+        <ManeuverGroup maximumExecutionCount="1" name="EgoBrakeGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Ego"/>
+          </Actors>
+          <Maneuver name="FullBrakeManeuver">
+            <Event name="TriggerAEBEvent" priority="overwrite" maximumExecutionCount="1">
+              <Action name="EmergencyDecel">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="linear" value="8.5" dynamicsDimension="rate"/>
+                      <SpeedActionTarget><AbsoluteTargetSpeed value="0.0"/></SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="BrakeTime" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition><SimulationTimeCondition value="4.5" rule="greaterOrEqual"/></ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+      </Act>
+    </Story>
+  </Storyboard>
+</OpenSCENARIO>

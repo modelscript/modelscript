@@ -1,0 +1,32 @@
+# Multispectral 3-Band Satellite Surface Reflectance Swath
+HDF4 Landsat_Reflectance_Swath VERSION="4.2"
+  ATTR Mission = "Aqua"
+  ATTR Instrument = "MODIS"
+
+  SDS Red_Reflectance TYPE=FLOAT32 REF=10 UNIT="1"
+    DIM lines = 2
+    DIM pixels = 3
+    ATTR _FillValue = -999.0
+    DATA [0.06, 0.08, 0.14, 0.05, 0.09, 0.16]
+  END
+
+  SDS NIR_Reflectance TYPE=FLOAT32 REF=11 UNIT="1"
+    DIM lines = 2
+    DIM pixels = 3
+    ATTR _FillValue = -999.0
+    DATA [0.42, 0.39, 0.25, 0.45, 0.37, 0.22]
+  END
+
+  SDS SWIR_Reflectance TYPE=FLOAT32 REF=12 UNIT="1"
+    DIM lines = 2
+    DIM pixels = 3
+    ATTR _FillValue = -999.0
+    DATA [0.18, 0.21, 0.29, 0.16, 0.22, 0.31]
+  END
+
+  VGROUP ReflectanceSwath CLASS="SWATH" REF=40
+    MEMBER SDS Red_Reflectance
+    MEMBER SDS NIR_Reflectance
+    MEMBER SDS SWIR_Reflectance
+  END
+END

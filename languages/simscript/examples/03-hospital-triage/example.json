@@ -1,0 +1,11 @@
+{
+  "id": "simscript-03-hospital-triage",
+  "lang": "simscript",
+  "subFormats": ["sim"],
+  "difficulty": 3,
+  "title": "Hospital Triage Priority Queue with TALLY and ACCUMULATE",
+  "description": "Emergency department triage workflow with ranked priority set ordering, physician and trauma bed resources, and declared TALLY and ACCUMULATE statistics.",
+  "category": "Healthcare Operations",
+  "tags": ["simscript", "healthcare", "triage", "tally", "accumulate"],
+  "activeFile": "triage.sim"
+}

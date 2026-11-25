@@ -1,0 +1,24 @@
+# TOPAS Spread-Out Bragg Peak (SOBP) Master Parameter File
+includeFile = beam_source.topas
+includeFile = water_box.topas
+
+s:Ge/World/Material = "G4_AIR"
+d:Ge/World/HLX = 1.5 m
+d:Ge/World/HLY = 1.5 m
+d:Ge/World/HLZ = 1.5 m
+
+s:Ge/RangeModulator/Type = "TsCylinder"
+s:Ge/RangeModulator/Parent = "World"
+s:Ge/RangeModulator/Material = "G4_PMMA"
+d:Ge/RangeModulator/RMin = 0.0 mm
+d:Ge/RangeModulator/RMax = 60.0 mm
+d:Ge/RangeModulator/HL = 12.5 mm
+d:Ge/RangeModulator/TransZ = -350.0 mm
+
+s:Ge/RangeShifter/Type = "TsBox"
+s:Ge/RangeShifter/Parent = "World"
+s:Ge/RangeShifter/Material = "G4_LEXAN"
+d:Ge/RangeShifter/HLX = 80.0 mm
+d:Ge/RangeShifter/HLY = 80.0 mm
+d:Ge/RangeShifter/HLZ = 15.0 mm
+d:Ge/RangeShifter/TransZ = -180.0 mm

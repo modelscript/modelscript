@@ -5,7 +5,7 @@ import styledImport from "styled-components";
 import { useTheme } from "../../theme";
 import { CadVisual, CfdVisual, DocumentVisual, FeaVisual, SimulationVisual, getBadgeLabel } from "./placeholders";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 export interface ArtifactPlaceholderProps {
   type?: "cfd" | "fea" | "cad" | "pdf" | "generic" | string | undefined;

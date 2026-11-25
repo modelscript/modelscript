@@ -1,0 +1,475 @@
+[
+  {
+    "name": "EXPONENTIAL.F",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.EXPONENTIAL.F",
+    "exports": [
+      "MEAN",
+      "STREAM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Exponential Distribution",
+      "category": "Distributions",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 exponential random variate generator EXPONENTIAL.F(mean, stream) with PDF f(x) = (1/mean)*exp(-x/mean).",
+      "provenance": "RAND RM-5776-PR / Kiviat, Villanueva, Markowitz (1968) — SIMSCRIPT II.5",
+      "aliases": [
+        "EXPONENTIAL",
+        "EXP.F"
+      ],
+      "parameters": [
+        {
+          "key": "MEAN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Mean inter-event or service time (> 0)"
+        },
+        {
+          "key": "STREAM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Pseudo-random number stream index (1..10)"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "NORMAL.F",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.NORMAL.F",
+    "exports": [
+      "MEAN",
+      "STD_DEV",
+      "STREAM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Normal Distribution",
+      "category": "Distributions",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 Gaussian/normal random variate generator NORMAL.F(mean, std_dev, stream) via Box-Muller transform.",
+      "provenance": "RAND RM-5776-PR / Kiviat, Villanueva, Markowitz (1968) — SIMSCRIPT II.5",
+      "aliases": [
+        "NORMAL",
+        "GAUSS.F"
+      ],
+      "parameters": [
+        {
+          "key": "MEAN",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Distribution mean"
+        },
+        {
+          "key": "STD_DEV",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Standard deviation (> 0)"
+        },
+        {
+          "key": "STREAM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Pseudo-random number stream index"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "UNIFORM.F",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.UNIFORM.F",
+    "exports": [
+      "MIN",
+      "MAX",
+      "STREAM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Uniform Distribution",
+      "category": "Distributions",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 continuous uniform random variate generator UNIFORM.F(min, max, stream) over [min, max].",
+      "provenance": "RAND RM-5776-PR / Kiviat, Villanueva, Markowitz (1968) — SIMSCRIPT II.5",
+      "aliases": [
+        "UNIFORM",
+        "UNIF.F"
+      ],
+      "parameters": [
+        {
+          "key": "MIN",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Lower bound"
+        },
+        {
+          "key": "MAX",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Upper bound (> MIN)"
+        },
+        {
+          "key": "STREAM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Pseudo-random number stream index"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "POISSON.F",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.POISSON.F",
+    "exports": [
+      "MEAN",
+      "STREAM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Poisson Distribution",
+      "category": "Distributions",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 discrete Poisson random variate generator POISSON.F(mean, stream) with P(X=k) = e^-mean * mean^k / k!.",
+      "provenance": "RAND RM-5776-PR / Kiviat, Villanueva, Markowitz (1968) — SIMSCRIPT II.5",
+      "aliases": [
+        "POISSON",
+        "POIS.F"
+      ],
+      "parameters": [
+        {
+          "key": "MEAN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Expected count lambda (> 0)"
+        },
+        {
+          "key": "STREAM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Pseudo-random number stream index"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "ERLANG.F",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.ERLANG.F",
+    "exports": [
+      "MEAN",
+      "K",
+      "STREAM"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Erlang-k Distribution",
+      "category": "Distributions",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 Erlang-k random variate generator ERLANG.F(mean, k, stream) as sum of k exponential stages.",
+      "provenance": "RAND RM-5776-PR / Kiviat, Villanueva, Markowitz (1968) — SIMSCRIPT II.5",
+      "aliases": [
+        "ERLANG",
+        "ERL.F"
+      ],
+      "parameters": [
+        {
+          "key": "MEAN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Total mean across k stages (> 0)"
+        },
+        {
+          "key": "K",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Shape parameter / number of exponential stages (integer >= 1)"
+        },
+        {
+          "key": "STREAM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Pseudo-random number stream index"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "FIFO.SET",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.FIFO.SET",
+    "exports": [
+      "INITIAL_SIZE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FIFO Entity Set",
+      "category": "Set Primitives",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 First-In-First-Out entity set supporting FILE ... IN and REMOVE FIRST ... FROM operations.",
+      "provenance": "RAND RM-5776-PR — SIMSCRIPT II.5 Set Management",
+      "aliases": [
+        "FIFO_SET",
+        "FIFO"
+      ],
+      "parameters": [
+        {
+          "key": "INITIAL_SIZE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial number of filed entities"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "LIFO.SET",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.LIFO.SET",
+    "exports": [
+      "INITIAL_SIZE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "LIFO Entity Set",
+      "category": "Set Primitives",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 Last-In-First-Out stack entity set supporting FILE ... IN and REMOVE FIRST ... FROM operations.",
+      "provenance": "RAND RM-5776-PR — SIMSCRIPT II.5 Set Management",
+      "aliases": [
+        "LIFO_SET",
+        "LIFO"
+      ],
+      "parameters": [
+        {
+          "key": "INITIAL_SIZE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial number of filed entities"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "RANKED.SET",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.RANKED.SET",
+    "exports": [
+      "INITIAL_SIZE",
+      "HIGH_FIRST"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ranked Priority Set",
+      "category": "Set Primitives",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 attribute-ranked entity set ordered by ascending or descending priority key.",
+      "provenance": "RAND RM-5776-PR — SIMSCRIPT II.5 Set Management",
+      "aliases": [
+        "RANKED_SET",
+        "RANKED"
+      ],
+      "parameters": [
+        {
+          "key": "INITIAL_SIZE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial number of filed entities"
+        },
+        {
+          "key": "HIGH_FIRST",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "0 = ascending (LOW), 1 = descending (HIGH)"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "RESOURCE",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.RESOURCE",
+    "exports": [
+      "CAPACITY",
+      "ARRIVAL_RATE",
+      "SERVICE_RATE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multi-Unit Resource Pool",
+      "category": "Resource Primitives",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 multi-server resource pool managed via REQUEST and RELINQUISH with automatic FIFO queueing (U.RES, N.X.RES, N.Q.RES).",
+      "provenance": "RAND RM-5776-PR / CACI SIMSCRIPT II.5 Process Interaction",
+      "aliases": [
+        "SIMSCRIPT.RESOURCE",
+        "SERVER_POOL"
+      ],
+      "parameters": [
+        {
+          "key": "CAPACITY",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Total resource units U.<resource>"
+        },
+        {
+          "key": "ARRIVAL_RATE",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/time",
+          "description": "Nominal arrival rate lambda"
+        },
+        {
+          "key": "SERVICE_RATE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/time",
+          "description": "Per-server service rate mu"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "PREEMPTIVE.RESOURCE",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.PREEMPTIVE.RESOURCE",
+    "exports": [
+      "CAPACITY",
+      "ARRIVAL_RATE",
+      "SERVICE_RATE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Preemptive Resource Pool",
+      "category": "Resource Primitives",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 priority-preemptive resource pool supporting REQUEST ... WITH PRIORITY and resume-on-relinquish.",
+      "provenance": "CACI SIMSCRIPT II.5 Process Interaction",
+      "aliases": [
+        "PREEMPTIVE_RESOURCE"
+      ],
+      "parameters": [
+        {
+          "key": "CAPACITY",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Total resource units"
+        },
+        {
+          "key": "ARRIVAL_RATE",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/time",
+          "description": "Nominal arrival rate lambda"
+        },
+        {
+          "key": "SERVICE_RATE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/time",
+          "description": "Per-server service rate mu"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "TALLY",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.TALLY",
+    "exports": [
+      "INITIAL_VALUE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Observation Tally Collector",
+      "category": "Statistics Collectors",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 observation-based statistics collector (TALLY ... AS THE MEAN/MAX/MIN/NUMBER/STD.DEV OF ...).",
+      "provenance": "RAND RM-5776-PR — SIMSCRIPT II.5 Automatic Statistics",
+      "aliases": [
+        "TALLY.STAT"
+      ],
+      "parameters": [
+        {
+          "key": "INITIAL_VALUE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial observed value"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "ACCUMULATE",
+    "kind": "Class",
+    "namePath": "SIMSCRIPT.ACCUMULATE",
+    "exports": [
+      "INITIAL_VALUE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Time-Weighted Accumulate Collector",
+      "category": "Statistics Collectors",
+      "domain": "discrete-event-simulation",
+      "description": "SIMSCRIPT II.5 time-persistent statistics collector (ACCUMULATE ... AS THE MEAN/MAX/MIN OF ...) integrating state over simulation time.",
+      "provenance": "RAND RM-5776-PR — SIMSCRIPT II.5 Automatic Statistics",
+      "aliases": [
+        "ACCUMULATE.STAT"
+      ],
+      "parameters": [
+        {
+          "key": "INITIAL_VALUE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial state value"
+        }
+      ],
+      "wasmKernel": "evalSlot",
+      "archetypeId": 31
+    }
+  }
+]

@@ -1,0 +1,15 @@
+model GardnerToggleSwitch()
+  compartment cell = 1.0;
+  species u in cell = 4.0, v in cell = 0.2;
+  const alpha1 = 10.0, alpha2 = 10.0;
+  const beta = 2.5, gamma = 2.5;
+  const kd_u = 1.0, kd_v = 1.0;
+
+  J_u_syn: => u; alpha1 / (1 + pow(v, beta));
+  J_u_deg: u => ; kd_u * u;
+  J_v_syn: => v; alpha2 / (1 + pow(u, gamma));
+  J_v_deg: v => ; kd_v * v;
+
+  u is "Repressor 1 (LacI)";
+  v is "Repressor 2 (TetR)";
+end

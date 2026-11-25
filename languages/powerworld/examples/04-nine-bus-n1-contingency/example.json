@@ -1,0 +1,11 @@
+{
+  "id": "powerworld-04-nine-bus-n1-contingency",
+  "lang": "powerworld",
+  "subFormats": ["aux"],
+  "difficulty": 4,
+  "title": "IEEE 9-Bus N-1 Contingency Thermal Limit Screening",
+  "description": "WSCC 9-bus 230 kV transmission system configured with single-line N-1 outage contingencies and automated contingency screening script commands.",
+  "category": "Transmission Power Flow",
+  "tags": ["powerworld", "ieee-9", "contingency", "n-1", "230kv"],
+  "activeFile": "ieee9_ctg.aux"
+}

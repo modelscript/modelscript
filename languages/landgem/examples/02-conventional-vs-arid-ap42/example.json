@@ -1,0 +1,11 @@
+{
+  "id": "landgem-02-conventional-vs-arid-ap42",
+  "lang": "landgem",
+  "subFormats": ["landgem"],
+  "difficulty": 2,
+  "title": "Conventional vs Arid EPA AP-42 Inventory Comparison",
+  "description": "Side-by-side EPA AP-42 landfill gas emission inventory comparing temperate conventional decay (k=0.04/yr) against arid southwest climate decay (k=0.02/yr) under identical waste intake.",
+  "category": "Environmental & Biogas Engineering",
+  "tags": ["landgem", "ap42", "arid-climate", "emissions-inventory"],
+  "activeFile": "ap42_comparison.landgem"
+}

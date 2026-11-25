@@ -1,0 +1,18 @@
+-- Aircraft Landing Gear Door Sequencer with Synchronous Clock Partitioning
+node LandingGearSequencer(handle_down, door_open, gear_locked, hyd_ok: bool)
+returns (open_door_cmd, extend_gear_cmd: bool; active_ticks: int);
+var
+  extend_phase: bool;
+  inc_ticks: int when hyd_ok;
+  hold_ticks: int when not hyd_ok;
+let
+  extend_phase = handle_down and hyd_ok;
+  open_door_cmd = extend_phase and not gear_locked;
+  extend_gear_cmd = extend_phase and door_open and not gear_locked;
+
+  inc_ticks = (1 -> (pre(active_ticks) + 1)) when hyd_ok;
+  hold_ticks = (0 -> pre(active_ticks)) when not hyd_ok;
+  active_ticks = merge hyd_ok (inc_ticks) (hold_ticks);
+
+  assert not (extend_gear_cmd and not door_open);
+tel

@@ -278,13 +278,28 @@ const usageTypes = new Set([
   "DefaultReferenceUsage",
 ]);
 
+interface Sysml2SemanticNode {
+  type: string;
+  text: string;
+  childCount: number;
+  parent?: Sysml2SemanticNode | null;
+  children?: Sysml2SemanticNode[];
+  startPosition: { row: number; column: number };
+  endPosition: { row: number; column: number };
+}
+
+interface Sysml2SemanticTree {
+  rootNode?: Sysml2SemanticNode | null;
+  delete?(): void;
+}
+
 /**
  * Computes LSP delta-encoded semantic token data for SysML v2 documents.
  */
 export function computeSysML2SemanticTokensData(
   text: string,
-  tree?: any,
-  parser?: { parse(input: string): any } | null,
+  tree?: Sysml2SemanticTree | null,
+  parser?: { parse(input: string): Sysml2SemanticTree } | null,
 ): number[] {
   let ownedTree = false;
   let activeTree = tree;
@@ -300,7 +315,7 @@ export function computeSysML2SemanticTokensData(
 
   const collector = new TokenCollector();
 
-  const traverse = (node: any) => {
+  const traverse = (node: Sysml2SemanticNode) => {
     let tokenType: string | null = null;
     let modifier = 0;
 

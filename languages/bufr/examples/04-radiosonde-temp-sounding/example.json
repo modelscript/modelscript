@@ -1,0 +1,11 @@
+{
+  "id": "bufr-04-radiosonde-temp-sounding",
+  "lang": "bufr",
+  "subFormats": ["bufr-ed4"],
+  "difficulty": 4,
+  "title": "Radiosonde TEMP Upper-Air Vertical Sounding Profile",
+  "description": "High-resolution upper-air radiosonde ascent profile across four mandatory pressure levels (1000, 850, 500, and 250 hPa) encoding geopotential height, temperature, dewpoint, and wind.",
+  "category": "Upper-Air Observation",
+  "tags": ["bufr", "radiosonde", "temp", "sounding", "upper-air"],
+  "activeFile": "radiosonde_sounding.bufr"
+}

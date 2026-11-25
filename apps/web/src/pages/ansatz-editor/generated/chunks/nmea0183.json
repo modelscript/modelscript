@@ -1,0 +1,73 @@
+[
+  {
+    "id": "nmea0183-01-static-gps-fix",
+    "lang": "nmea0183",
+    "subFormats": ["nmea0183"],
+    "difficulty": 1,
+    "title": "Static GPS Position Fix ($GPGGA & $GPRMC)",
+    "description": "Clean NMEA 0183 static GPS receiver log combining GGA fix quality/altitude and RMC recommended minimum navigation sentences with exact XOR checksums.",
+    "category": "GNSS Navigation",
+    "tags": ["nmea0183", "gps", "gga", "rmc", "checksum"],
+    "activeFile": "static_gps_fix.nmea",
+    "fileNames": ["static_gps_fix.nmea"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# Static Geodetic GPS Fix (San Francisco Bay)\n$GPGGA,120000,3746.4940,N,12225.1640,W,1,09,0.9,18.4,M,-29.8,M,,*4A\n$GPRMC,120000,A,3746.4940,N,12225.1640,W,000.0,000.0,150626,013.2,E*6B\n$GPGGA,120005,3746.4941,N,12225.1639,W,1,09,0.9,18.5,M,-29.8,M,,*41\n$GPRMC,120005,A,3746.4941,N,12225.1639,W,000.1,045.0,150626,013.2,E*61\n"
+  },
+  {
+    "id": "nmea0183-02-vessel-coastal-track",
+    "lang": "nmea0183",
+    "subFormats": ["nmea0183"],
+    "difficulty": 2,
+    "title": "Vessel Coastal Waypoint Track (GGA, RMC, VTG)",
+    "description": "Differential GPS coastal navigation track for a 12.5-knot vessel exiting Golden Gate Channel with course-over-ground and speed-over-ground VTG sentences.",
+    "category": "Marine Navigation",
+    "tags": ["nmea0183", "marine", "dgps", "vtg", "track"],
+    "activeFile": "coastal_track.nmea",
+    "fileNames": ["coastal_track.nmea"],
+    "fileCount": 1,
+    "code": "# Coastal Vessel Underway Track (GGA, RMC, VTG)\n$GPGGA,141000,3748.5000,N,12228.0000,W,2,10,0.8,4.2,M,-29.8,M,,*70\n$GPRMC,141000,A,3748.5000,N,12228.0000,W,012.4,245.0,150626,013.2,E*64\n$GPVTG,245.0,T,231.8,M,012.4,N,023.0,K*43\n$GPGGA,141030,3748.4560,N,12228.1180,W,2,10,0.8,4.3,M,-29.8,M,,*78\n$GPRMC,141030,A,3748.4560,N,12228.1180,W,012.6,246.2,150626,013.2,E*6E\n$GPVTG,246.2,T,233.0,M,012.6,N,023.3,K*49\n$GPGGA,141100,3748.4110,N,12228.2390,W,2,10,0.8,4.1,M,-29.8,M,,*7B\n$GPRMC,141100,A,3748.4110,N,12228.2390,W,012.5,247.0,150626,013.2,E*6F\n$GPVTG,247.0,T,233.8,M,012.5,N,023.2,K*40\n"
+  },
+  {
+    "id": "nmea0183-03-satellite-constellation-skyview",
+    "lang": "nmea0183",
+    "subFormats": ["nmea0183"],
+    "difficulty": 3,
+    "title": "GPS Satellite Constellation Skyview & DOP (GGA, GSA, GSV)",
+    "description": "Multi-sentence GPS skyplot stream reporting 8 tracked satellites with elevation, azimuth, C/N0 SNR values (GSV), and PDOP/HDOP/VDOP dilution of precision (GSA).",
+    "category": "GNSS Telemetry",
+    "tags": ["nmea0183", "gsv", "gsa", "skyview", "dop"],
+    "activeFile": "skyview_constellation.nmea",
+    "fileNames": ["skyview_constellation.nmea"],
+    "fileCount": 1,
+    "code": "# GPS Satellite Constellation Skyview & DOP Telemetry\n$GPGGA,160000,4000.4500,N,10516.2300,W,1,08,1.1,1655.0,M,-21.4,M,,*45\n$GPGSA,A,3,03,07,11,14,19,22,27,31,,,,,1.9,1.1,1.5*30\n$GPGSV,2,1,08,03,68,042,46,07,52,135,44,11,34,218,41,14,74,310,48*7D\n$GPGSV,2,2,08,19,28,088,38,22,45,275,43,27,19,172,35,31,61,015,45*71\n$GPGGA,160010,4000.4500,N,10516.2300,W,1,08,1.1,1655.1,M,-21.4,M,,*45\n"
+  },
+  {
+    "id": "nmea0183-04-marine-autopilot-sensors",
+    "lang": "nmea0183",
+    "subFormats": ["nmea0183"],
+    "difficulty": 4,
+    "title": "Marine Autopilot Heading, Wind & Bathymetry Bus",
+    "description": "Multi-talker NMEA 0183 vessel bridge bus fusing GPS position ($GP), fluxgate compass heading ($HCHDG), apparent wind speed/angle ($IIMWV), and depth below transducer ($SDDBT).",
+    "category": "Marine Instrumentation",
+    "tags": ["nmea0183", "hdg", "mwv", "dbt", "autopilot"],
+    "activeFile": "bridge_sensors.nmea",
+    "fileNames": ["bridge_sensors.nmea"],
+    "fileCount": 1,
+    "code": "# Integrated Marine Bridge Sensors (GPS + Compass HDG + Wind MWV + Depth DBT)\n$GPGGA,183000,4736.3700,N,12221.4200,W,1,09,1.0,2.5,M,-18.5,M,,*72\n$GPRMC,183000,A,4736.3700,N,12221.4200,W,008.2,312.5,150626,015.4,E*61\n$HCHDG,297.1,0.5,E,15.4,E*7A\n$IIMWV,038.5,R,14.8,N,A*0E\n$SDDBT,142.4,f,43.4,M,23.7,F*00\n$GPGGA,183015,4736.3930,N,12221.4570,W,1,09,1.0,2.5,M,-18.5,M,,*7B\n$HCHDG,297.4,0.5,E,15.4,E*7F\n$IIMWV,039.2,R,15.1,N,A*00\n$SDDBT,138.1,f,42.1,M,23.0,F*0B\n"
+  },
+  {
+    "id": "nmea0183-05-vessel-voyage-ais-integration",
+    "lang": "nmea0183",
+    "subFormats": ["nmea0183"],
+    "difficulty": 5,
+    "title": "Full Multi-Sensor Vessel Voyage Telemetry Stream",
+    "description": "Complete maritime bridge NMEA 0183 capture combining DGPS position (GGA/RMC), course/speed (VTG), 8-satellite skyview (GSA/GSV), magnetic heading (HDG), apparent wind (MWV), and bathymetry (DBT).",
+    "category": "Maritime Navigation",
+    "tags": ["nmea0183", "voyage", "multi-sensor", "dgps", "bathymetry"],
+    "activeFile": "voyage_bridge.nmea",
+    "fileNames": ["voyage_bridge.nmea"],
+    "fileCount": 1,
+    "code": "# Full Integrated Multi-Sensor Vessel Voyage Telemetry (All 8 NMEA 0183 Formatters)\n$GPGGA,201500,3344.2000,N,11815.4000,W,2,11,0.7,6.0,M,-34.2,M,,*76\n$GPRMC,201500,A,3344.2000,N,11815.4000,W,014.2,175.0,150626,011.8,E*62\n$GPVTG,175.0,T,163.2,M,014.2,N,026.3,K*4B\n$GPGSA,A,3,02,05,08,12,15,21,24,29,,,,,1.6,0.7,1.4*31\n$GPGSV,2,1,08,02,55,060,45,05,40,145,42,08,72,220,47,12,26,315,39*74\n$GPGSV,2,2,08,15,64,010,46,21,33,098,40,24,49,265,44,29,18,195,36*72\n$HCHDG,163.2,0.4,W,11.8,E*6A\n$IIMWV,112.0,R,16.4,N,A*0C\n$SDDBT,085.3,f,26.0,M,14.2,F*0B\n$GPGGA,201530,3344.0820,N,11815.3880,W,2,11,0.7,6.0,M,-34.2,M,,*7A\n$GPRMC,201530,A,3344.0820,N,11815.3880,W,014.4,175.5,150626,011.8,E*6D\n$GPVTG,175.5,T,163.7,M,014.4,N,026.7,K*49\n$HCHDG,163.7,0.4,W,11.8,E*6F\n$IIMWV,114.2,R,16.8,N,A*04\n$SDDBT,091.9,f,28.0,M,15.3,F*0A\n"
+  }
+]

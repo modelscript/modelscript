@@ -1,0 +1,12 @@
+{
+  "id": "phreeqc-01-seawater-speciation",
+  "lang": "phreeqc",
+  "subFormats": ["phreeqc"],
+  "difficulty": 1,
+  "title": "Seawater Aqueous Speciation and Saturation Indices",
+  "description": "Standard seawater geochemical speciation deck at 25 C and pH 8.1 computing ionic strength, carbonate alkalinity, and aragonite/calcite saturation state.",
+  "category": "Aqueous Geochemistry",
+  "tags": ["phreeqc", "seawater", "speciation", "geochemistry"],
+  "activeFile": "seawater.pqi",
+  "isDefaultStarter": true
+}

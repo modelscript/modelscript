@@ -1,0 +1,15 @@
+pmu Sub_North_230kV idcode=202 fnom=60 rate=60
+phasor VA_230 V format=polar scale=1.0 mag=132790 ang=0.0
+phasor VB_230 V format=polar scale=1.0 mag=132790 ang=-120.0
+phasor VC_230 V format=polar scale=1.0 mag=132790 ang=120.0
+phasor IA_230 I format=polar scale=1.0 mag=615 ang=-14.2
+phasor IB_230 I format=polar scale=1.0 mag=615 ang=-134.2
+phasor IC_230 I format=polar scale=1.0 mag=615 ang=105.8
+analog LINE_MW units=MW scale=1.0 init=237.5
+analog LINE_MVAR units=MVAR scale=1.0 init=60.1
+digital CB_230_1
+digital GPS_LOCK
+frame 2026-11-17T20:05:00.000Z 60.000 0.000
+frame 2026-11-17T20:05:00.017Z 59.999 -0.005
+frame 2026-11-17T20:05:00.033Z 59.999 -0.004
+frame 2026-11-17T20:05:00.050Z 60.000 0.003

@@ -169,13 +169,13 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ initialView }) =>
       const grouped = groupNotifications(notifData.notifications || []);
       setNotifications(grouped);
 
-      const convertedBookmarks = (bookmarkData.posts || []).map((p: Record<string, any>) =>
+      const convertedBookmarks = (bookmarkData.posts || []).map((p: Record<string, unknown>) =>
         bookmarkPostToNotificationItem(p),
       );
       setBookmarkedItems(convertedBookmarks);
 
       const convertedOutbox = (hpcJobs || []).map((j) =>
-        hpcJobToNotificationItem(j as unknown as Record<string, any>, user?.username),
+        hpcJobToNotificationItem(j as unknown as Record<string, unknown>, user?.username),
       );
       setOutboxItems(convertedOutbox);
 

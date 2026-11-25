@@ -1,0 +1,11 @@
+{
+  "id": "reqif-04-ieee2800-inverter-ridethrough",
+  "lang": "reqif",
+  "subFormats": ["reqif"],
+  "difficulty": 4,
+  "title": "IEEE 2800 Inverter Ride-Through Compliance Matrix",
+  "description": "Grid-interconnection ReqIF compliance specification encoding IEEE 2800-2022 voltage and frequency ride-through, reactive current injection, and harmonic distortion bounds.",
+  "category": "Power Systems Compliance",
+  "tags": ["reqif", "ieee2800", "inverter", "grid-code", "compliance"],
+  "activeFile": "inverter_ieee2800.reqif"
+}

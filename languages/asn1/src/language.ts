@@ -25,7 +25,7 @@ export const asn1Language = language({
         shortTitle: "ASN.1",
         selector: ["*.asn", "*.asn1", "*.mib"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/Asn1Panel.tsx",
         artifactViewTypes: ["asn1", "asn"],
       },

@@ -1,0 +1,11 @@
+{
+  "id": "segy-05-avo-gas-sand-gather",
+  "lang": "segy",
+  "subFormats": ["sgy"],
+  "difficulty": 5,
+  "title": "Multi-Offset Class III AVO Gas-Sand Bright-Spot Gather",
+  "description": "True-amplitude pre-stack angle gather SEG-Y Rev 1.0 header for quantitative Shuey/Zoeppritz AVO inversion of a Class III bright-spot gas reservoir (Vp/Vs = 1.62) over incidence angles 0 to 42 degrees.",
+  "category": "Seismic & Subsurface Geophysics",
+  "tags": ["segy", "avo", "bright-spot", "rock-physics"],
+  "activeFile": "avo_bright_spot.sgy"
+}

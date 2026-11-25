@@ -25,7 +25,7 @@ export const irig106Language = language({
         shortTitle: "IRIG 106",
         selector: ["*.tmats", "*.tmt", "*.tma"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/Irig106Panel.tsx",
         artifactViewTypes: ["irig106", "tmats"],
       },

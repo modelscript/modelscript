@@ -302,7 +302,7 @@
  * --borderColor-* and --button-* custom properties; without this, primary
  * buttons render GitHub green and surfaces use GitHub greys.
  *
- * The third selector out-specifies Primer primitives bundled in morsel.css,
+ * The third selector out-specifies Primer primitives bundled in ansatz-editor.css,
  * which are scoped to [data-color-mode][data-dark-theme] on ThemeProvider.
  */
 :root,

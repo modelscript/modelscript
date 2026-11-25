@@ -1,0 +1,11 @@
+{
+  "id": "epanet-05-city-network-telemetry",
+  "lang": "epanet",
+  "subFormats": ["inp", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Source City Network with Telemetry Calibration",
+  "description": "Dual-source municipal water distribution network combining river and lake treatment plants, dual elevated storage tanks, pressure-zone PRVs, chlorine transport, and SCADA pressure calibration CSV.",
+  "category": "Water Distribution Hydraulics",
+  "tags": ["epanet", "multi-source", "scada", "multi-file", "water-quality"],
+  "activeFile": "city_net.inp"
+}

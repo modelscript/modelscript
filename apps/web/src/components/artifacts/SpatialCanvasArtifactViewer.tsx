@@ -58,7 +58,7 @@ export const SpatialCanvasArtifactViewer: React.FC<SpatialCanvasArtifactViewerPr
   );
 
   const initialEnvironment = useMemo<RotundaEnvironmentId>(
-    () => parseRotundaEnvironmentId(viewConfig?.["environment"] ?? viewConfig?.["env"], "outdoors"),
+    () => parseRotundaEnvironmentId(viewConfig?.["environment"] ?? viewConfig?.["env"], "atrium"),
     [viewConfig],
   );
 

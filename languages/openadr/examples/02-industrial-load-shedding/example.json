@@ -1,0 +1,11 @@
+{
+  "id": "openadr-02-industrial-load-shedding",
+  "lang": "openadr",
+  "subFormats": ["oadr"],
+  "difficulty": 2,
+  "title": "4-Interval Industrial Load Shedding Event",
+  "description": "Staged 4-interval industrial curtailment schedule ramping load reduction up during system peak and stepping down for controlled recovery.",
+  "category": "Industrial Demand Response",
+  "tags": ["openadr", "load-shedding", "curtailment", "intervals"],
+  "activeFile": "industrial_shed.oadr"
+}

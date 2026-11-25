@@ -1,0 +1,11 @@
+{
+  "id": "gcode-05-3d-hemisphere-subprogram",
+  "lang": "gcode",
+  "subFormats": ["iso-6983", "subprogram", "3d-contour"],
+  "difficulty": 5,
+  "title": "3D Hemisphere Contouring with Parametric Subprogram",
+  "description": "Multi-pass 3D ball-endmill contouring program using RS-274 # parameters and an M98/O2000/M99 step-down subprogram for stepped hemisphere roughing.",
+  "category": "3D CNC Machining",
+  "tags": ["gcode", "3d-contour", "subprogram", "m98", "parametric"],
+  "activeFile": "hemisphere_3d.nc"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "aspen-02-shell-tube-heat-exchanger",
+  "lang": "aspen",
+  "subFormats": ["in"],
+  "difficulty": 2,
+  "title": "Shell-and-Tube Heat Exchanger Network",
+  "description": "Counter-current shell-and-tube heat exchanger recovering sensible heat from a hot toluene reactor effluent to preheat a cold benzene-toluene feed prior to flash separation.",
+  "category": "Chemical Process Simulation",
+  "tags": ["aspen", "heatx", "heat-recovery", "peng-robinson"],
+  "activeFile": "heat_exchanger.in"
+}

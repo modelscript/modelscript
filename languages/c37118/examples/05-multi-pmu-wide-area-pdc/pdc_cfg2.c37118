@@ -1,0 +1,20 @@
+{
+  "stn": "Regional_PDC_North",
+  "idcode": 500,
+  "fnom": 60,
+  "dataRate": 30,
+  "phasors": [
+    { "name": "V1_NORTH_500", "type": "V", "format": "polar", "scale": 1.0, "mag": 502000, "ang": 0.0 },
+    { "name": "V1_SOUTH_500", "type": "V", "format": "polar", "scale": 1.0, "mag": 497500, "ang": -22.8 },
+    { "name": "I1_CORRIDOR", "type": "I", "format": "polar", "scale": 1.0, "mag": 1340, "ang": -15.4 }
+  ],
+  "analogs": [
+    { "name": "ANGLE_DIFF_DEG", "units": "deg", "scale": 1.0, "init": 22.8 },
+    { "name": "CORRIDOR_MW", "units": "MW", "scale": 1.0, "init": 1140.0 }
+  ],
+  "digitals": ["PDC_TIME_SYNC_OK", "ANGLE_LIMIT_OK"],
+  "frames": [
+    { "timestamp": "2026-11-17T23:00:00.000Z", "freq": 60.002, "rocof": 0.001 },
+    { "timestamp": "2026-11-17T23:00:00.033Z", "freq": 60.001, "rocof": -0.002 }
+  ]
+}

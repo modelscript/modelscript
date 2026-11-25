@@ -1,0 +1,12 @@
+{
+  "id": "sbol-01-constitutive-gfp-cassette",
+  "lang": "sbol",
+  "subFormats": ["sbol3-xml"],
+  "difficulty": 1,
+  "title": "Constitutive GFP Expression Cassette",
+  "description": "Minimal SBOL3 transcriptional unit assembling a constitutive Anderson promoter, strong bacterial RBS, GFP coding sequence, and double terminator.",
+  "category": "Synthetic Biology",
+  "tags": ["sbol", "sbol3", "gfp", "genetic-parts"],
+  "activeFile": "gfp_cassette.sbol",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,12 @@
+{
+  "id": "acsl-01-thermal-cooling",
+  "lang": "acsl",
+  "subFormats": ["csl"],
+  "difficulty": 1,
+  "title": "First-Order Thermal Cooling",
+  "description": "Newton's law of cooling for a heated metallic billet immersed in an ambient convective bath using an ACSL DERIVATIVE integrator.",
+  "category": "Thermal Systems",
+  "tags": ["acsl", "thermal", "first-order", "ode"],
+  "activeFile": "thermal_cooling.csl",
+  "isDefaultStarter": true
+}

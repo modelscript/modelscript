@@ -666,7 +666,9 @@ export class PressureVesselOracle implements TheoryOracle {
         if (spec.sysmlRequirementId) culprits.push(spec.sysmlRequirementId);
 
         const matchingLits = Array.from(this.assertedLiterals.values()).filter((l) =>
-          l.args.some((a) => a && typeof a === "object" && a.checkId === spec.checkId),
+          l.args.some(
+            (a) => typeof a === "object" && a !== null && (a as { checkId?: unknown }).checkId === spec.checkId,
+          ),
         );
         return {
           isSat: false,
@@ -694,7 +696,9 @@ export class PressureVesselOracle implements TheoryOracle {
             isSat: false,
             conflict: {
               literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-                l.args.some((a) => a && typeof a === "object" && a.checkId === spec.checkId),
+                l.args.some(
+                  (a) => typeof a === "object" && a !== null && (a as { checkId?: unknown }).checkId === spec.checkId,
+                ),
               ),
               explanation: `${res.standard} ${res.clauseId} Cross-Theory Stress Violation on '${res.vesselName}': FEA von_mises_stress upper bound ${vmBound[1].toFixed(3)} exceeds code limit ${stressCeiling.toFixed(3)}.`,
               culpritEntities: [spec.checkId, res.vesselName, "fea.von_mises_stress", res.clauseId],

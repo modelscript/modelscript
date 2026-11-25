@@ -1,0 +1,11 @@
+{
+  "id": "stl-04-hexagonal-bolt-head",
+  "lang": "stl",
+  "subFormats": ["ascii-stl"],
+  "difficulty": 4,
+  "title": "Watertight Hexagonal Fastener Bolt Head",
+  "description": "Closed 24-triangle hexagonal prism bolt head (24 mm across corners, 8 mm height) with radial top/bottom caps and manifold side faces.",
+  "category": "Mechanical Fasteners",
+  "tags": ["stl", "hexagon", "fastener", "prism", "manifold"],
+  "activeFile": "hex_bolt_head.stl"
+}

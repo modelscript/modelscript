@@ -1,0 +1,9 @@
+PREFIX : <http://modelscript.org/ont/faults#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?asset ?anomaly ?sensor
+WHERE {
+  ?asset :exhibitsAnomaly ?anomaly .
+  ?asset :monitoredBy ?sensor .
+}
+ORDER BY ?asset

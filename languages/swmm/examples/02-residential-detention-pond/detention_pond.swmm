@@ -1,0 +1,60 @@
+[TITLE]
+Branched Residential Drainage Network with Detention Storage Pond
+
+[OPTIONS]
+FLOW_UNITS          CMS
+FLOW_ROUTING        DYNWAVE
+INFILTRATION        HORTON
+START_DATE          05/01/2026
+START_TIME          00:00:00
+REPORT_START_DATE   05/01/2026
+REPORT_START_TIME   00:00:00
+END_DATE            05/01/2026
+END_TIME            08:00:00
+ALLOW_PONDING       YES
+
+[JUNCTIONS]
+;;Name           Elevation  MaxDepth   InitDepth  SurDepth   Apond
+J_NORTH          32.00      3.00       0.00       0.00       30.0
+J_SOUTH          31.50      3.00       0.00       0.00       30.0
+J_MERGE          29.20      3.20       0.00       0.00       40.0
+J_OUT            26.00      3.00       0.00       0.00       30.0
+
+[OUTFALLS]
+;;Name           Elevation  Type       Stage Data       Gated
+OF_CREEK         24.50      FREE                        NO
+
+[STORAGE]
+;;Name           Elev.    MaxDepth   InitDepth  Shape      Curve Name/Params            N/A      Fevap
+POND1            27.00    3.50       0.25       FUNCTIONAL 1200      0         500      0        0
+
+[CONDUITS]
+;;Name           From Node        To Node          Length     Roughness  InOffset   OutOffset  InitFlow   MaxFlow
+C_NORTH          J_NORTH          J_MERGE          220.00     0.013      0.00       0.00       0.00       0.00
+C_SOUTH          J_SOUTH          J_MERGE          190.00     0.013      0.00       0.00       0.00       0.00
+C_INLET          J_MERGE          POND1            150.00     0.013      0.00       0.00       0.00       0.00
+C_DISCH          POND1            J_OUT            140.00     0.014      0.00       0.00       0.00       0.00
+C_FINAL          J_OUT            OF_CREEK         180.00     0.014      0.00       0.00       0.00       0.00
+
+[XSECTIONS]
+;;Link           Shape        Geom1      Geom2      Geom3      Geom4      Barrels
+C_NORTH          CIRCULAR     1.00       0.00       0.00       0.00       1
+C_SOUTH          CIRCULAR     0.90       0.00       0.00       0.00       1
+C_INLET          CIRCULAR     1.35       0.00       0.00       0.00       1
+C_DISCH          CIRCULAR     0.75       0.00       0.00       0.00       1
+C_FINAL          CIRCULAR     1.20       0.00       0.00       0.00       1
+
+[SUBCATCHMENTS]
+;;Name           RainGage         Outlet           Area     PctImperv Width    PctSlope CurbLen  SnowPack
+SC_NORTH         RG1              J_NORTH          6.50     55.00     260.00   1.80     0.00
+SC_SOUTH         RG1              J_SOUTH          5.20     60.00     230.00   1.60     0.00
+
+[INFILTRATION]
+;;Subcatchment   MaxRate    MinRate    Decay      DryTime    MaxInfil
+SC_NORTH         75.00      7.50       3.00       7.00       0.00
+SC_SOUTH         75.00      7.50       3.00       7.00       0.00
+
+[INFLOWS]
+;;Node           Parameter        Time Series      Type     Mfactor  Sfactor  Base     Pat
+J_NORTH          FLOW             ""               FLOW     1.0      1.0      0.80     ""
+J_SOUTH          FLOW             ""               FLOW     1.0      1.0      0.65     ""

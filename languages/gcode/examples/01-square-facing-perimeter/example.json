@@ -1,0 +1,12 @@
+{
+  "id": "gcode-01-square-facing-perimeter",
+  "lang": "gcode",
+  "subFormats": ["iso-6983", "fanuc"],
+  "difficulty": 1,
+  "title": "Square Facing and Perimeter Milling Profile",
+  "description": "Metric ISO 6983 CNC milling program facing an aluminum block and profiling a 60 mm x 60 mm square perimeter with spindle start before cutting.",
+  "category": "CNC Machining & CAM",
+  "tags": ["gcode", "milling", "facing", "iso-6983"],
+  "activeFile": "square_face.nc",
+  "isDefaultStarter": true
+}

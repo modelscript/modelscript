@@ -1,0 +1,20 @@
+' Bare HEU Metal Sphere KENO-VI Criticality
+=csas6
+Bare HEU Metal Sphere Benchmark
+v7.1-252
+read comp
+  u 1 den=18.74 1.0 300.0 92235 93.71 92238 6.29 end
+end comp
+read param
+  npg=2000 gen=200 nsk=50
+end param
+read geom
+  global unit 1
+  sphere 1 8.741
+  media 1 1 1
+  boundary 1
+end geom
+read bounds
+  all=vacuum
+end bounds
+end

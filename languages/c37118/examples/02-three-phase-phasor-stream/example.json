@@ -1,0 +1,11 @@
+{
+  "id": "c37118-02-three-phase-phasor-stream",
+  "lang": "c37118",
+  "subFormats": ["c37118"],
+  "difficulty": 2,
+  "title": "3-Phase Balanced Voltage & Current Synchrophasor Stream",
+  "description": "60 frames/s IEEE C37.118 PMU telemetry stream capturing individual A-B-C phase voltage and line current phasors on a 230 kV transmission corridor.",
+  "category": "Wide-Area Grid Monitoring",
+  "tags": ["c37118", "three-phase", "phasors", "230kv", "telemetry"],
+  "activeFile": "three_phase_stream.c37118"
+}

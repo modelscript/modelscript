@@ -1,0 +1,11 @@
+{
+  "id": "rocets-02-hypergolic-oms-engine",
+  "lang": "rocets",
+  "subFormats": ["roc"],
+  "difficulty": 2,
+  "title": "Pressure-Fed Hypergolic Orbital Maneuvering Engine",
+  "description": "Bipropellant NTO/MMH pressure-fed Orbital Maneuvering System (OMS) rocket engine with separate oxidizer and fuel tanks, isolation valves, and a regeneratively cooled combustion chamber.",
+  "category": "Spacecraft Propulsion",
+  "tags": ["rocets", "hypergolic", "oms", "bipropellant"],
+  "activeFile": "oms_hypergolic.roc"
+}

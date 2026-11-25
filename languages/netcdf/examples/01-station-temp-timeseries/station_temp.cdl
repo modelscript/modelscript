@@ -1,0 +1,33 @@
+// CF-1.8 1D Surface Weather Station Diurnal Temperature Record
+netcdf boulder_station_2026 {
+dimensions:
+  time = UNLIMITED ; // (8 currently)
+variables:
+  double time(time) ;
+    time:units = "hours since 2026-06-15 00:00:00 UTC" ;
+    time:long_name = "observation time" ;
+    time:standard_name = "time" ;
+  float air_temperature(time) ;
+    air_temperature:units = "K" ;
+    air_temperature:long_name = "2-meter Air Temperature" ;
+    air_temperature:standard_name = "air_temperature" ;
+    air_temperature:_FillValue = -9999.f ;
+  float relative_humidity(time) ;
+    relative_humidity:units = "%" ;
+    relative_humidity:long_name = "2-meter Relative Humidity" ;
+    relative_humidity:standard_name = "relative_humidity" ;
+  int wmo_station_id ;
+    wmo_station_id:units = "1" ;
+    wmo_station_id:long_name = "WMO Station Identifier" ;
+
+// global attributes:
+  :Conventions = "CF-1.8" ;
+  :title = "Boulder Synoptic Station Diurnal Temperature Cycle" ;
+  :institution = "NOAA Earth System Research Laboratories" ;
+  :source = "Automated Surface Observing System (ASOS)" ;
+data:
+  time = 0, 3, 6, 9, 12, 15, 18, 21 ;
+  air_temperature = 289.4, 287.2, 285.8, 289.1, 294.6, 299.3, 301.2, 295.7 ;
+  relative_humidity = 62.0, 68.5, 74.0, 61.5, 46.0, 34.5, 31.0, 44.0 ;
+  wmo_station_id = 72469 ;
+}

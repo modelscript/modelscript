@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { sampleTelemetryFrame, type SimulatorHudSpec, type TelemetryChannelProvider } from "@modelscript/cad";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { useXR } from "@react-three/xr";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -12,6 +13,7 @@ import {
 } from "../cad-viewer/telemetry-canvas-painter.js";
 import {
   clampNumber,
+  rotundaScaleModeLabel,
   type RotundaAction,
   type RotundaCaeOverlay,
   type RotundaClipAxis,
@@ -19,6 +21,13 @@ import {
   type RotundaRenderStyle,
   type RotundaState,
 } from "./types.js";
+import {
+  pulseEventHaptic,
+  releaseEventForBinding,
+  resolveXrPointerBinding,
+  tryCapturePointer,
+  type XrPointerBinding,
+} from "./xr-handle.js";
 
 export interface FloatingToolWingsProps {
   state: RotundaState;
@@ -48,12 +57,15 @@ export interface FloatingToolWingsProps {
   onSelectEnvironment?: ((env: RotundaEnvironmentId) => void) | undefined;
 }
 
-const WING_WIDTH = 0.86;
-const WING_HEIGHT = 0.72;
-const WING_CURVE_DEPTH = 0.032;
-const WING_YAW_RAD = (28 * Math.PI) / 180;
-const LEFT_WING_POS: [number, number, number] = [-1.06, 1.32, -1.16];
-const RIGHT_WING_POS: [number, number, number] = [1.06, 1.32, -1.16];
+// Sleek ergonomic side-lectern tablets flanking the user at waist-to-chest height,
+// angled inward & tilted upward so they never obstruct the sightline to the ~3.2 m hero model.
+const WING_WIDTH = 0.44;
+const WING_HEIGHT = 0.368;
+const WING_CURVE_DEPTH = 0.016;
+const WING_YAW_RAD = (44 * Math.PI) / 180;
+const WING_TILT_RAD = (14 * Math.PI) / 180;
+const LEFT_WING_POS: [number, number, number] = [-0.88, 1.08, -0.88];
+const RIGHT_WING_POS: [number, number, number] = [0.88, 1.08, -0.88];
 
 const CANVAS_W = 1024;
 const CANVAS_H = 856;
@@ -72,11 +84,12 @@ interface TabletEnvPillSpec {
 }
 
 const LEFT_ENV_PILLS: readonly TabletEnvPillSpec[] = [
-  { id: "outdoors", label: "Grass", dotColor: "#16a34a", activeBg: "#16a34a", x: 52, y: 164, w: 296, h: 70 },
-  { id: "warehouse", label: "Factory", dotColor: "#f59e0b", activeBg: "#f59e0b", x: 364, y: 164, w: 296, h: 70 },
-  { id: "office", label: "Studio", dotColor: "#0284c7", activeBg: "#0284c7", x: 676, y: 164, w: 296, h: 70 },
-  { id: "dark-lab", label: "Dark Lab", dotColor: "#0891b2", activeBg: "#0f172a", x: 52, y: 246, w: 452, h: 70 },
-  { id: "passthrough", label: "Passthrough", dotColor: "#8b5cf6", activeBg: "#7c3aed", x: 520, y: 246, w: 452, h: 70 },
+  { id: "atrium", label: "Atrium", dotColor: "#38bdf8", activeBg: "#0284c7", x: 52, y: 164, w: 296, h: 70 },
+  { id: "outdoors", label: "Grass", dotColor: "#16a34a", activeBg: "#16a34a", x: 364, y: 164, w: 296, h: 70 },
+  { id: "warehouse", label: "Factory", dotColor: "#f59e0b", activeBg: "#f59e0b", x: 676, y: 164, w: 296, h: 70 },
+  { id: "office", label: "Studio", dotColor: "#0284c7", activeBg: "#0284c7", x: 52, y: 246, w: 296, h: 70 },
+  { id: "dark-lab", label: "Dark Lab", dotColor: "#0891b2", activeBg: "#0f172a", x: 364, y: 246, w: 296, h: 70 },
+  { id: "passthrough", label: "Passthrough", dotColor: "#8b5cf6", activeBg: "#7c3aed", x: 676, y: 246, w: 296, h: 70 },
 ] as const;
 
 interface TabletCaePillSpec {
@@ -570,13 +583,22 @@ function mapSliderZoneValue(zone: TabletHitZone, canvasX: number): number {
 interface CurvedGlassTabletProps {
   name: string;
   position: [number, number, number];
-  rotation: [number, number, number];
+  yawRad: number;
+  tiltRad?: number | undefined;
   geometry: THREE.PlaneGeometry;
   hitZones: readonly TabletHitZone[];
   paint: (ctx: CanvasRenderingContext2D, hoveredId: string | null, draggingId: string | null) => void;
   onPressZone: (zoneId: string) => void;
   onSliderChange?: ((zoneId: string, value: number) => void) | undefined;
   onSliderDetent?: (() => void) | undefined;
+}
+
+function matchesBindingPointer(binding: XrPointerBinding | null, e: ThreeEvent<PointerEvent>): boolean {
+  if (!binding) return true;
+  if (binding.pointerId >= 0 && typeof e.pointerId === "number") {
+    return e.pointerId === binding.pointerId;
+  }
+  return true;
 }
 
 /**
@@ -587,7 +609,8 @@ interface CurvedGlassTabletProps {
 function CurvedGlassTablet({
   name,
   position,
-  rotation,
+  yawRad,
+  tiltRad = 0,
   geometry,
   hitZones,
   paint,
@@ -595,6 +618,8 @@ function CurvedGlassTablet({
   onSliderChange,
   onSliderDetent,
 }: CurvedGlassTabletProps): React.ReactElement {
+  const gl = useThree((s) => s.gl);
+  const xrSession = useXR((s) => s.session);
   const hitMeshRef = useRef<THREE.Mesh | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const textureRef = useRef<THREE.CanvasTexture | null>(null);
@@ -604,7 +629,8 @@ function CurvedGlassTablet({
   const hoveredIdRef = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const activeSliderRef = useRef<TabletHitZone | null>(null);
-  const pressedButtonIdRef = useRef<string | null>(null);
+  const activeDragBindingRef = useRef<XrPointerBinding | null>(null);
+  const lastPressRef = useRef<{ zoneId: string; atMs: number }>({ zoneId: "", atMs: 0 });
   const lastDetentRef = useRef<number>(-1);
   const captureRef = useRef<{ target: PointerCaptureLike | null; pointerId: number | null }>({
     target: null,
@@ -612,7 +638,7 @@ function CurvedGlassTablet({
   });
   const tmpLocalPtRef = useRef(new THREE.Vector3());
 
-  // Allocate ONE high-DPI CanvasTexture per tablet with mipmaps so distant text never shimmers
+  // Allocate ONE high-DPI CanvasTexture per tablet with mipmaps & high anisotropy for oblique crispness
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
     const canvas = document.createElement("canvas");
@@ -624,7 +650,7 @@ function CurvedGlassTablet({
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.generateMipmaps = true;
-    tex.anisotropy = 4;
+    tex.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
 
     canvasRef.current = canvas;
     textureRef.current = tex;
@@ -636,7 +662,7 @@ function CurvedGlassTablet({
       setTexture(null);
       tex.dispose();
     };
-  }, []);
+  }, [gl]);
 
   // Repaint tablet ONLY when `paint` inputs, hover, or drag state change
   useEffect(() => {
@@ -659,6 +685,7 @@ function CurvedGlassTablet({
       }
     }
     captureRef.current = { target: null, pointerId: null };
+    activeDragBindingRef.current = null;
     if (activeSliderRef.current) {
       activeSliderRef.current = null;
       lastDetentRef.current = -1;
@@ -666,10 +693,14 @@ function CurvedGlassTablet({
     }
   }, []);
 
+  // Desktop release safety net (window pointerup never fires in immersive WebXR)
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const handleWindowUp = () => {
-      releaseDrag();
+      const dragBinding = activeDragBindingRef.current;
+      if (!dragBinding || dragBinding.kind === "desktop") {
+        releaseDrag();
+      }
     };
     window.addEventListener("pointerup", handleWindowUp);
     window.addEventListener("pointercancel", handleWindowUp);
@@ -680,6 +711,37 @@ function CurvedGlassTablet({
       setDocumentCursor("auto");
     };
   }, [releaseDrag]);
+
+  // Immersive WebXR release safety net: end slider drags on selectend / squeezeend
+  // (or controller disconnect) for the exact owning input source.
+  useEffect(() => {
+    if (!xrSession) return undefined;
+    const onInputEnd = (type: "selectend" | "squeezeend") => (ev: XRInputSourceEvent) => {
+      const dragBinding = activeDragBindingRef.current;
+      if (dragBinding && dragBinding.inputSource === ev.inputSource) {
+        const expected = releaseEventForBinding(dragBinding);
+        if (expected === null || expected === type) {
+          releaseDrag();
+        }
+      }
+    };
+    const onSelectEnd = onInputEnd("selectend");
+    const onSqueezeEnd = onInputEnd("squeezeend");
+    const onInputSourcesChange = (ev: XRInputSourcesChangeEvent) => {
+      const dragSrc = activeDragBindingRef.current?.inputSource;
+      if (dragSrc && ev.removed.includes(dragSrc)) {
+        releaseDrag();
+      }
+    };
+    xrSession.addEventListener("selectend", onSelectEnd);
+    xrSession.addEventListener("squeezeend", onSqueezeEnd);
+    xrSession.addEventListener("inputsourceschange", onInputSourcesChange);
+    return () => {
+      xrSession.removeEventListener("selectend", onSelectEnd);
+      xrSession.removeEventListener("squeezeend", onSqueezeEnd);
+      xrSession.removeEventListener("inputsourceschange", onInputSourcesChange);
+    };
+  }, [xrSession, releaseDrag]);
 
   const resolveCanvasPoint = useCallback((e: ThreeEvent<PointerEvent>): { x: number; y: number } | null => {
     if (e.uv) {
@@ -697,7 +759,7 @@ function CurvedGlassTablet({
   }, []);
 
   const applySliderPoint = useCallback(
-    (zone: TabletHitZone, canvasX: number) => {
+    (zone: TabletHitZone, canvasX: number, e?: ThreeEvent<PointerEvent>) => {
       const value = mapSliderZoneValue(zone, canvasX);
       const min = zone.min ?? 0;
       const max = zone.max ?? 1;
@@ -705,6 +767,7 @@ function CurvedGlassTablet({
       const detent = Math.round(norm * 10);
       if (detent !== lastDetentRef.current) {
         lastDetentRef.current = detent;
+        if (e) pulseEventHaptic(e, 0.04, 4);
         onSliderDetent?.();
       }
       onSliderChange?.(zone.id, value);
@@ -721,6 +784,7 @@ function CurvedGlassTablet({
       if (nextId !== hoveredIdRef.current) {
         hoveredIdRef.current = nextId;
         setHoveredId(nextId);
+        if (nextId !== null) pulseEventHaptic(e, 0.04, 4);
         setDocumentCursor(zone ? (zone.kind === "slider" ? "ew-resize" : "pointer") : "auto");
       }
     },
@@ -740,9 +804,10 @@ function CurvedGlassTablet({
       e.stopPropagation();
       const activeSlider = activeSliderRef.current;
       if (activeSlider) {
+        if (!matchesBindingPointer(activeDragBindingRef.current, e)) return;
         const pt = resolveCanvasPoint(e);
         if (pt) {
-          applySliderPoint(activeSlider, pt.x);
+          applySliderPoint(activeSlider, pt.x, e);
         }
         return;
       }
@@ -753,7 +818,6 @@ function CurvedGlassTablet({
 
   const handlePointerOut = useCallback((e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    pressedButtonIdRef.current = null;
     if (hoveredIdRef.current !== null) {
       hoveredIdRef.current = null;
       setHoveredId(null);
@@ -771,89 +835,101 @@ function CurvedGlassTablet({
       const zone = findHitZone(hitZones, pt.x, pt.y);
       if (!zone) return;
 
+      const binding = resolveXrPointerBinding(e);
+
       if (zone.kind === "slider") {
-        pressedButtonIdRef.current = null;
         activeSliderRef.current = zone;
+        activeDragBindingRef.current = binding;
         lastDetentRef.current = -1;
         setDraggingId(zone.id);
 
+        tryCapturePointer(e);
         const target = e.target as unknown as PointerCaptureLike | null;
-        if (target && typeof e.pointerId === "number" && typeof target.setPointerCapture === "function") {
-          try {
-            target.setPointerCapture(e.pointerId);
-            captureRef.current = { target, pointerId: e.pointerId };
-          } catch {
-            captureRef.current = { target: null, pointerId: null };
-          }
+        if (target && typeof e.pointerId === "number" && typeof target.releasePointerCapture === "function") {
+          captureRef.current = { target, pointerId: e.pointerId };
+        } else {
+          captureRef.current = { target: null, pointerId: null };
         }
-        applySliderPoint(zone, pt.x);
+        pulseEventHaptic(e, 0.08, 8);
+        applySliderPoint(zone, pt.x, e);
         return;
       }
 
-      pressedButtonIdRef.current = zone.id;
+      // Fire button presses immediately on trigger/pointer down so XR selectend timing
+      // and trigger-release laser jitter can never swallow clicks.
+      const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (lastPressRef.current.zoneId === zone.id && nowMs - lastPressRef.current.atMs < 120) {
+        return;
+      }
+      lastPressRef.current = { zoneId: zone.id, atMs: nowMs };
+      pulseEventHaptic(e, 0.1, 8);
+      onPressZone(zone.id);
     },
-    [applySliderPoint, hitZones, resolveCanvasPoint],
+    [applySliderPoint, hitZones, onPressZone, resolveCanvasPoint],
   );
 
   const handlePointerUp = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       if (activeSliderRef.current) {
+        if (!matchesBindingPointer(activeDragBindingRef.current, e)) return;
         e.stopPropagation();
         releaseDrag();
-        return;
-      }
-      const pressedId = pressedButtonIdRef.current;
-      pressedButtonIdRef.current = null;
-      if (!pressedId) return;
-      e.stopPropagation();
-      const pt = resolveCanvasPoint(e);
-      if (!pt) return;
-      const zone = findHitZone(hitZones, pt.x, pt.y);
-      if (zone && zone.id === pressedId) {
-        onPressZone(zone.id);
       }
     },
-    [hitZones, onPressZone, releaseDrag, resolveCanvasPoint],
+    [releaseDrag],
+  );
+
+  const handlePointerCancel = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      if (activeSliderRef.current && matchesBindingPointer(activeDragBindingRef.current, e)) {
+        e.stopPropagation();
+        releaseDrag();
+      }
+    },
+    [releaseDrag],
   );
 
   return (
-    <group name={name} position={position} rotation={rotation}>
-      {/* Visual frosted-glass curved tablet mesh (1 draw call) */}
-      <mesh geometry={geometry}>
-        {texture ? (
-          <meshBasicMaterial
-            key="tablet-tex"
-            color="#ffffff"
-            map={texture}
-            transparent={true}
-            toneMapped={false}
-            side={THREE.DoubleSide}
-          />
-        ) : (
-          <meshBasicMaterial
-            key="tablet-fallback"
-            color="#f8fafc"
-            transparent={true}
-            opacity={0.92}
-            toneMapped={false}
-          />
-        )}
-      </mesh>
+    <group name={name} position={position} rotation={[0, yawRad, 0]}>
+      <group rotation={[-tiltRad, 0, 0]}>
+        {/* Visual frosted-glass curved tablet mesh (1 draw call) */}
+        <mesh geometry={geometry}>
+          {texture ? (
+            <meshBasicMaterial
+              key="tablet-tex"
+              color="#ffffff"
+              map={texture}
+              transparent={true}
+              toneMapped={false}
+              side={THREE.DoubleSide}
+            />
+          ) : (
+            <meshBasicMaterial
+              key="tablet-fallback"
+              color="#f8fafc"
+              transparent={true}
+              opacity={0.92}
+              toneMapped={false}
+            />
+          )}
+        </mesh>
 
-      {/* Transparent interactive ray/pinch hit plane (1 mesh) */}
-      <mesh
-        ref={hitMeshRef}
-        position={[0, 0, 0.003]}
-        geometry={geometry}
-        onPointerOver={handlePointerOver}
-        onPointerMove={handlePointerMove}
-        onPointerOut={handlePointerOut}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-      >
-        <meshBasicMaterial transparent={true} opacity={0} depthWrite={false} />
-      </mesh>
+        {/* Transparent interactive ray/pinch hit plane (1 mesh) */}
+        <mesh
+          ref={hitMeshRef}
+          position={[0, 0, 0.003]}
+          geometry={geometry}
+          onPointerOver={handlePointerOver}
+          onPointerMove={handlePointerMove}
+          onPointerOut={handlePointerOut}
+          onPointerDown={handlePointerDown}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onLostPointerCapture={handlePointerCancel}
+        >
+          <meshBasicMaterial transparent={true} opacity={0} depthWrite={false} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -1293,8 +1369,8 @@ export function FloatingToolWings({
       paintSectionEyebrow(ctx, "STAGE & PLAYBACK", 630);
       paintPill(ctx, {
         ...RIGHT_LAYOUT.scaleBtn,
-        label: state.scaleMode === "real-scale" ? "1:1 Scale" : "Tabletop",
-        active: state.scaleMode === "real-scale",
+        label: rotundaScaleModeLabel(state.scaleMode),
+        active: state.scaleMode !== "tabletop",
         hovered: hoveredId === RIGHT_LAYOUT.scaleBtn.id,
         activeBg: "#16a34a",
         fontSize: 27,
@@ -1507,7 +1583,8 @@ export function FloatingToolWings({
       <CurvedGlassTablet
         name="rotunda-left-wing"
         position={LEFT_WING_POS}
-        rotation={[0, WING_YAW_RAD, 0]}
+        yawRad={WING_YAW_RAD}
+        tiltRad={WING_TILT_RAD}
         geometry={tabletGeometry}
         hitZones={leftHitZones}
         paint={paintLeftTablet}
@@ -1517,7 +1594,8 @@ export function FloatingToolWings({
       <CurvedGlassTablet
         name="rotunda-right-wing"
         position={RIGHT_WING_POS}
-        rotation={[0, -WING_YAW_RAD, 0]}
+        yawRad={-WING_YAW_RAD}
+        tiltRad={WING_TILT_RAD}
         geometry={tabletGeometry}
         hitZones={rightHitZones}
         paint={paintRightTablet}
@@ -1578,6 +1656,7 @@ function DiegeticTelemetryWing({
   onIsolateSubsystem: (subsystemId: string | null) => void;
   onSeek: (time: number) => void;
 }): React.ReactElement {
+  const gl = useThree((s) => s.gl);
   const hitRegionsRef = useRef<CanvasHitRegion[]>([]);
   const lastPaintMsRef = useRef<number>(0);
 
@@ -1592,9 +1671,9 @@ function DiegeticTelemetryWing({
     texture.minFilter = THREE.LinearMipmapLinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.generateMipmaps = true;
-    texture.anisotropy = 4;
+    texture.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
     return { canvas, ctx, texture };
-  }, []);
+  }, [gl]);
 
   useEffect(() => {
     return () => {
@@ -1639,14 +1718,15 @@ function DiegeticTelemetryWing({
     repaintAt(simulationTimeRef?.current ?? simulationTime);
   });
 
-  const handleClick = useCallback(
-    (e: ThreeEvent<MouseEvent>) => {
+  const handlePointerDown = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
       if (!e.uv) return;
       e.stopPropagation();
       const px = e.uv.x * CANVAS_W;
       const py = (1 - e.uv.y) * CANVAS_H;
       for (const hit of hitRegionsRef.current) {
         if (px >= hit.x && px <= hit.x + hit.w && py >= hit.y && py <= hit.y + hit.h) {
+          pulseEventHaptic(e, 0.08, 8);
           if (hit.action.kind === "seek") {
             onSeek(hit.action.time);
           } else if (hit.action.kind === "isolate") {
@@ -1662,8 +1742,8 @@ function DiegeticTelemetryWing({
   if (!canvasBundle) return <group name="rotunda-telemetry-wing" />;
 
   return (
-    <group name="rotunda-telemetry-wing" position={[0, 2.06, -1.52]} rotation={[0.16, 0, 0]}>
-      <mesh geometry={geometry} onClick={handleClick}>
+    <group name="rotunda-telemetry-wing" position={[0, 2.22, -1.48]} rotation={[0.22, 0, 0]} scale={[1.18, 1.18, 1]}>
+      <mesh geometry={geometry} onPointerDown={handlePointerDown}>
         <meshBasicMaterial map={canvasBundle.texture} transparent side={THREE.FrontSide} />
       </mesh>
     </group>

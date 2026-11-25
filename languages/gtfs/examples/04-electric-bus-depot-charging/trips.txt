@@ -1,0 +1,3 @@
+route_id,service_id,trip_id,shape_id
+EBUS_1T,WEEKDAY,EB_AM_01,SHP_1T
+EBUS_1T,WEEKDAY,EB_PM_01,SHP_1T

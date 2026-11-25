@@ -1,0 +1,11 @@
+{
+  "id": "magicdraw-05-ev-multi-viewpoint-model",
+  "lang": "magicdraw",
+  "subFormats": ["mdxml", "xmi"],
+  "difficulty": 5,
+  "title": "Electric Vehicle Multi-Viewpoint Cameo System Model",
+  "description": "Multi-file MagicDraw/Cameo MBSE architecture decomposing an 800V electric vehicle into system blocks (ev_system.mdxml), safety requirements (requirements.mdxml), and shared value types (types_lib.xmi).",
+  "category": "MBSE & SysML",
+  "tags": ["magicdraw", "cameo", "ev", "multi-file", "mbse"],
+  "activeFile": "ev_system.mdxml"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "topas-05-pbs-proton-treatment-head",
+  "lang": "topas",
+  "subFormats": ["topas"],
+  "difficulty": 5,
+  "title": "Pencil-Beam Scanning (PBS) Proton Therapy Treatment Head",
+  "description": "Four-file clinical Pencil-Beam Scanning (PBS) proton therapy Monte Carlo setup combining nozzle ionization chamber geometry, scanning spot list parameters, patient phantom, and 3D dose-to-medium scorer.",
+  "category": "Medical Physics & Monte Carlo",
+  "tags": ["topas", "pbs", "proton-therapy", "treatment-head", "multi-file"],
+  "activeFile": "pbs_plan.topas"
+}

@@ -20,20 +20,20 @@ declare module "../../../../node_modules/@primer/react/dist/Dialog/Dialog.js" {
     onClose?: ((gesture: "close-button" | "escape") => void) | undefined;
     "aria-labelledby"?: string | undefined;
     "aria-label"?: string | undefined;
-    sx?: Record<string, any> | undefined;
+    sx?: Record<string, unknown> | undefined;
   }
 }
 
 declare module "@primer/octicons-react" {
   interface OcticonProps {
     style?: React.CSSProperties | undefined;
-    title?: string | React.ReactElement<any> | undefined;
+    title?: string | React.ReactElement | undefined;
     color?: string | undefined;
   }
 }
 
 export interface PrimerSystemStyleProps {
-  sx?: Record<string, any> | undefined;
+  sx?: Record<string, unknown> | undefined;
   noWrap?: boolean | undefined;
   onDismiss?: (() => void) | undefined;
   p?: string | number | undefined;
@@ -70,7 +70,7 @@ export interface PrimerSystemStyleProps {
   maxWidth?: string | number | undefined;
   minHeight?: string | number | undefined;
   maxHeight?: string | number | undefined;
-  size?: any;
+  size?: string | number | undefined;
   border?: string | undefined;
   borderTop?: string | undefined;
   borderRight?: string | undefined;
@@ -122,7 +122,7 @@ declare module "react" {
 
   namespace JSX {
     interface IntrinsicElements {
-      "model-viewer": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & Record<string, any>;
+      "model-viewer": React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & Record<string, unknown>;
     }
   }
 }
@@ -130,21 +130,49 @@ declare module "react" {
 declare module "@primer/react" {
   interface BoxProps extends PrimerSystemStyleProps {
     style?: React.CSSProperties | undefined;
-    [key: string]: any;
+    [key: string]: unknown;
   }
 }
 
-// Minimal WebGPU ambient declarations for browser environments without @webgpu/types
+// Minimal WebGPU and app global ambient declarations for browser environments without @webgpu/types
 declare global {
   interface GPUBuffer {
     destroy(): void;
   }
+  interface GPUBindGroupLayout {
+    label?: string;
+  }
+  interface GPUBindGroup {
+    label?: string;
+  }
+  interface GPUShaderModule {
+    label?: string;
+  }
+  interface GPURenderPipeline {
+    getBindGroupLayout(index: number): GPUBindGroupLayout;
+  }
+  interface GPUTextureView {
+    label?: string;
+  }
+  interface GPUCommandBuffer {
+    label?: string;
+  }
+  interface GPURenderPassEncoder {
+    setPipeline(pipeline: GPURenderPipeline): void;
+    setBindGroup(index: number, bindGroup: GPUBindGroup): void;
+    draw(vertexCount: number, instanceCount?: number, firstVertex?: number, firstInstance?: number): void;
+    end(): void;
+  }
+  interface GPUCommandEncoder {
+    beginRenderPass(descriptor: Record<string, unknown>): GPURenderPassEncoder;
+    finish(): GPUCommandBuffer;
+  }
   interface GPUDevice {
-    createBuffer(descriptor: Record<string, any>): GPUBuffer;
-    createBindGroup(descriptor: Record<string, any>): any;
-    createShaderModule(descriptor: { code: string }): any;
-    createRenderPipeline(descriptor: Record<string, any>): any;
-    createCommandEncoder(): any;
+    createBuffer(descriptor: Record<string, unknown>): GPUBuffer;
+    createBindGroup(descriptor: Record<string, unknown>): GPUBindGroup;
+    createShaderModule(descriptor: { code: string }): GPUShaderModule;
+    createRenderPipeline(descriptor: Record<string, unknown>): GPURenderPipeline;
+    createCommandEncoder(): GPUCommandEncoder;
     queue: {
       writeBuffer(
         buffer: GPUBuffer,
@@ -153,17 +181,17 @@ declare global {
         dataOffset?: number,
         size?: number,
       ): void;
-      submit(commandBuffers: any[]): void;
+      submit(commandBuffers: GPUCommandBuffer[]): void;
     };
     destroy(): void;
   }
   interface GPUCanvasContext {
-    configure(configuration: Record<string, any>): void;
-    getCurrentTexture(): { createView(): any };
+    configure(configuration: Record<string, unknown>): void;
+    getCurrentTexture(): { createView(): GPUTextureView };
   }
   interface GPU {
     getPreferredCanvasFormat(): string;
-    requestAdapter(options?: Record<string, any>): Promise<{ requestDevice(): Promise<GPUDevice> } | null>;
+    requestAdapter(options?: Record<string, unknown>): Promise<{ requestDevice(): Promise<GPUDevice> } | null>;
   }
 
   var GPUBufferUsage: {
@@ -183,5 +211,26 @@ declare global {
   }
   interface HTMLCanvasElement {
     getContext(contextId: "webgpu"): GPUCanvasContext | null;
+  }
+
+  interface TurnstileRenderOptions {
+    sitekey: string;
+    callback?: (token: string) => void;
+    "expired-callback"?: () => void;
+    [key: string]: unknown;
+  }
+
+  interface TurnstileApi {
+    render(container: HTMLElement, options: TurnstileRenderOptions): string;
+    reset?: (widgetId?: string) => void;
+    remove: (widgetId: string) => void;
+  }
+
+  interface Window {
+    __ARTIFACT_READY?: boolean;
+    __MODEL_SCRIPT_CAPTCHA_TOKEN__?: string;
+    __threeClockWarningFilterInstalled__?: boolean;
+    __monacoCancellationFilterInstalled__?: boolean;
+    turnstile?: TurnstileApi;
   }
 }

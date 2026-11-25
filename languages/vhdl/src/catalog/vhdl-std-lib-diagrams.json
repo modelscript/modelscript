@@ -1,0 +1,1055 @@
+[
+  {
+    "namePath": "STD.STANDARD.BIT",
+    "aliases": [
+      "std.standard.bit"
+    ],
+    "label": "BIT",
+    "category": "STD.STANDARD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">STD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BIT</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STD.STANDARD.BIT_VECTOR",
+    "aliases": [
+      "std.standard.bit_vector"
+    ],
+    "label": "BIT_VECTOR",
+    "category": "STD.STANDARD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">STD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">BIT_VECTOR</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STD.STANDARD.BOOLEAN",
+    "aliases": [
+      "std.standard.boolean"
+    ],
+    "label": "BOOLEAN",
+    "category": "STD.STANDARD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">STD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BOOLEAN</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STD.STANDARD.INTEGER",
+    "aliases": [
+      "std.standard.integer"
+    ],
+    "label": "INTEGER",
+    "category": "STD.STANDARD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">STD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">INTEGER</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STD.STANDARD.NATURAL",
+    "aliases": [
+      "std.standard.natural"
+    ],
+    "label": "NATURAL",
+    "category": "STD.STANDARD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">STD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NATURAL</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STD.STANDARD.POSITIVE",
+    "aliases": [
+      "std.standard.positive"
+    ],
+    "label": "POSITIVE",
+    "category": "STD.STANDARD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">STD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">POSITIVE</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STD.STANDARD.TIME",
+    "aliases": [
+      "std.standard.time"
+    ],
+    "label": "TIME",
+    "category": "STD.STANDARD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#94a3b8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#94a3b8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#94a3b8\">STD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TIME</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.STD_LOGIC_1164.STD_ULOGIC",
+    "aliases": [
+      "ieee.std_logic_1164.std_ulogic"
+    ],
+    "label": "STD_ULOGIC",
+    "category": "IEEE.STD_LOGIC_1164",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">1164</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">STD_ULOGIC</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.STD_LOGIC_1164.STD_LOGIC",
+    "aliases": [
+      "ieee.std_logic_1164.std_logic"
+    ],
+    "label": "STD_LOGIC",
+    "category": "IEEE.STD_LOGIC_1164",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">1164</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">STD_LOGIC</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.STD_LOGIC_1164.STD_LOGIC_VECTOR",
+    "aliases": [
+      "ieee.std_logic_1164.std_logic_vector"
+    ],
+    "label": "STD_LOGIC_VECTOR",
+    "category": "IEEE.STD_LOGIC_1164",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">1164</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">STD_LOGIC_V</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.STD_LOGIC_1164.RESOLVED",
+    "aliases": [
+      "ieee.std_logic_1164.resolved"
+    ],
+    "label": "RESOLVED",
+    "category": "IEEE.STD_LOGIC_1164",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">1164</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RESOLVED</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.STD_LOGIC_1164.RISING_EDGE",
+    "aliases": [
+      "ieee.std_logic_1164.rising_edge"
+    ],
+    "label": "RISING_EDGE",
+    "category": "IEEE.STD_LOGIC_1164",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">1164</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">RISING_EDGE</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.STD_LOGIC_1164.FALLING_EDGE",
+    "aliases": [
+      "ieee.std_logic_1164.falling_edge"
+    ],
+    "label": "FALLING_EDGE",
+    "category": "IEEE.STD_LOGIC_1164",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">1164</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">FALLING_EDG</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.NUMERIC_STD.UNSIGNED",
+    "aliases": [
+      "ieee.numeric_std.unsigned"
+    ],
+    "label": "UNSIGNED",
+    "category": "IEEE.NUMERIC_STD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">NUM</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">UNSIGNED</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.NUMERIC_STD.SIGNED",
+    "aliases": [
+      "ieee.numeric_std.signed"
+    ],
+    "label": "SIGNED",
+    "category": "IEEE.NUMERIC_STD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">NUM</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SIGNED</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.NUMERIC_STD.TO_UNSIGNED",
+    "aliases": [
+      "ieee.numeric_std.to_unsigned"
+    ],
+    "label": "TO_UNSIGNED",
+    "category": "IEEE.NUMERIC_STD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">NUM</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">TO_UNSIGNED</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.NUMERIC_STD.TO_INTEGER",
+    "aliases": [
+      "ieee.numeric_std.to_integer"
+    ],
+    "label": "TO_INTEGER",
+    "category": "IEEE.NUMERIC_STD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">NUM</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">TO_INTEGER</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.NUMERIC_STD.ADD_UNSIGNED",
+    "aliases": [
+      "add_u"
+    ],
+    "label": "ADD_UNSIGNED",
+    "category": "IEEE.NUMERIC_STD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">NUM</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">ADD_UNSIGNE</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "IEEE.NUMERIC_STD.SUB_UNSIGNED",
+    "aliases": [
+      "sub_u"
+    ],
+    "label": "SUB_UNSIGNED",
+    "category": "IEEE.NUMERIC_STD",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">NUM</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">SUB_UNSIGNE</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.AND2",
+    "aliases": [
+      "and_gate",
+      "and2"
+    ],
+    "label": "AND2",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AND2</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.OR2",
+    "aliases": [
+      "or_gate",
+      "or2"
+    ],
+    "label": "OR2",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OR2</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.XOR2",
+    "aliases": [
+      "xor_gate",
+      "xor2"
+    ],
+    "label": "XOR2",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">XOR2</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.NAND2",
+    "aliases": [
+      "nand_gate",
+      "nand2"
+    ],
+    "label": "NAND2",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NAND2</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.NOR2",
+    "aliases": [
+      "nor_gate",
+      "nor2"
+    ],
+    "label": "NOR2",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NOR2</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.INV",
+    "aliases": [
+      "not_gate",
+      "inverter"
+    ],
+    "label": "INV",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">INV</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.MUX2",
+    "aliases": [
+      "mux2_1",
+      "multiplexer"
+    ],
+    "label": "MUX2",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MUX2</text></svg>",
+    "ports": [
+      {
+        "name": "d0",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "d1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "sel",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.GATES.FA1",
+    "aliases": [
+      "full_adder",
+      "full_adder_1bit"
+    ],
+    "label": "FA1",
+    "category": "Logic Gates",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GATE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FA1</text></svg>",
+    "ports": [
+      {
+        "name": "a",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 12
+      },
+      {
+        "name": "b",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "cin",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 40
+      },
+      {
+        "name": "sum",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 18
+      },
+      {
+        "name": "cout",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.SEQ.DFF",
+    "aliases": [
+      "d_flip_flop",
+      "dff"
+    ],
+    "label": "DFF",
+    "category": "Sequential",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">SEQ</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DFF</text></svg>",
+    "ports": [
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "d",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "VHDL.SEQ.REG4",
+    "aliases": [
+      "register4",
+      "reg4"
+    ],
+    "label": "REG4",
+    "category": "Sequential",
+    "domain": "digital",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">SEQ</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">REG4</text></svg>",
+    "ports": [
+      {
+        "name": "clk",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      },
+      {
+        "name": "d",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "q",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

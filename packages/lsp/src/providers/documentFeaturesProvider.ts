@@ -1,14 +1,62 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { buildSemanticTagTable } from "@modelscript/dsl";
-import { Connection, DocumentHighlightKind, DocumentSymbol, FoldingRange, TextDocuments } from "vscode-languageserver";
+import type { SymbolIndex } from "@modelscript/runtime";
+import type { QueryEngine } from "@modelscript/runtime/wasm_query_engine.js";
+import {
+  Connection,
+  DocumentHighlightKind,
+  DocumentSymbol,
+  FoldingRange,
+  SelectionRange,
+  TextDocuments,
+} from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import { nodeRange } from "../utils/ast-utils.js";
-import type { SyntaxNode } from "../utils/cst-facade.js";
+import type { ValidationService } from "../services/validation-service.js";
+import { nodeRange, type CstTreeLike } from "../utils/ast-utils.js";
+import type { SyntaxNode, Tree } from "../utils/cst-facade.js";
 import { extractWordAtOffset, isDigitCode } from "../utils/lexical-utils.js";
+import type { LineIndex } from "../utils/line-index.js";
 import { extractDocumentSymbolsByTags, extractFoldingRangesByTags } from "./semantic-tag-provider.js";
+
+type DocFeatureNodeLike = SyntaxNode & {
+  id?: number;
+  ptr?: number;
+  kindId?: number;
+};
+
+type DocFeatureTreeLike = (Tree | CstTreeLike) & {
+  text?: string | undefined;
+  tree?:
+    ((Tree | CstTreeLike) & { rootPtr?: number; delete?(): void; rootNode: DocFeatureNodeLike }) | null | undefined;
+  rootPtr?: number | undefined;
+  delete?(): void;
+  rootNode: DocFeatureNodeLike;
+};
+
+interface DocFeatureParserLike {
+  parse(text: string): Tree | CstTreeLike | null;
+}
+
+interface DocFeatureWorkspaceIndexLike {
+  register(uri: string, loader: () => SyntaxNode | null): void;
+  getFileIndex(uri: string): unknown;
+  getIndex?(): SymbolIndex;
+}
+
+export interface DocFeatureValidationServiceLike {
+  parserService?: { parser?: DocFeatureParserLike | null | undefined } | undefined;
+  workspaceManager?:
+    | {
+        getWorkspaceIndex?(langId: string): DocFeatureWorkspaceIndexLike | null | undefined;
+        unifiedWorkspace?: { getIndex?(): SymbolIndex } | undefined;
+        getQueryEngine?(langId: string): QueryEngine | null | undefined;
+        globalModelicaQueryEngine?: QueryEngine | null | undefined;
+      }
+    | undefined;
+}
 
 function isPosBefore(a: { line: number; character: number }, b: { line: number; character: number }): boolean {
   return a.line < b.line || (a.line === b.line && a.character < b.character);
@@ -77,14 +125,15 @@ export function sanitizeDocumentSymbols(symbols: unknown): DocumentSymbol[] {
 export function registerDocumentFeaturesProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  documentLSPBridges: Map<string, any>,
-  getDocumentTree: (uri: string) => any,
-  getLineIndexForDoc: (uri: string) => any,
+  documentLSPBridges: Map<string, LSPBridge>,
+  getDocumentTree: (uri: string) => DocFeatureTreeLike | null | undefined,
+  getLineIndexForDoc: (uri: string) => { lineIndex: LineIndex; tokens: SyntaxNode[] } | null | undefined,
   isParserReady: () => boolean,
   isSysml2ParserReady: () => boolean,
-  getSysml2Parser: () => any,
-  validationService?: any,
+  getSysml2Parser: () => DocFeatureParserLike | null | undefined,
+  rawValidationService?: ValidationService | DocFeatureValidationServiceLike,
 ) {
+  const validationService = rawValidationService as unknown as DocFeatureValidationServiceLike | undefined;
   /* Document symbols — enables Outline panel and breadcrumb navigation */
   connection.onDocumentSymbol(async (params) => {
     try {
@@ -156,37 +205,43 @@ export function registerDocumentFeaturesProvider(
       let bridge = findBridge(params.textDocument.uri);
 
       // Fast instant bridge creation for immediate Outline response (0-5ms)
-      const parser =
-        plugin?.parser ??
-        (isSysmlUri
-          ? getSysml2Parser()
-          : isModelicaUri
-            ? (validationService as any)?.parserService?.parser
-            : undefined);
+      const parser: DocFeatureParserLike | null | undefined =
+        (plugin?.parser as DocFeatureParserLike | null | undefined) ??
+        (isSysmlUri ? getSysml2Parser() : isModelicaUri ? validationService?.parserService?.parser : undefined);
       if (!bridge && parser) {
         const doc = getDoc(params.textDocument.uri);
         const text = doc ? doc.getText() : getDocumentTree(params.textDocument.uri)?.text;
         const wm = validationService?.workspaceManager;
         if (text) {
-          let tree: any = null;
+          let tree: DocFeatureTreeLike | null = null;
           try {
-            tree = parser.parse(text);
+            tree = parser.parse(text) as DocFeatureTreeLike | null;
             const langId = plugin?.id ?? "modelica";
-            const ws = plugin?.workspaceIndex ?? wm?.getWorkspaceIndex(langId);
-            if (ws) {
-              ws.register(params.textDocument.uri, () => tree.rootNode);
+            const ws =
+              (plugin?.workspaceIndex as DocFeatureWorkspaceIndexLike | undefined) ?? wm?.getWorkspaceIndex?.(langId);
+            if (ws && tree) {
+              const parsedRoot = tree.rootNode;
+              ws.register(params.textDocument.uri, () => parsedRoot);
               ws.getFileIndex(params.textDocument.uri);
               const unified =
-                wm?.unifiedWorkspace?.getIndex?.() ?? (typeof ws.getIndex === "function" ? ws.getIndex() : ws);
-              const realEngine = plugin?.queryEngine ?? wm?.getQueryEngine(langId);
+                wm?.unifiedWorkspace?.getIndex?.() ??
+                (typeof ws.getIndex === "function" ? ws.getIndex() : (ws as unknown as SymbolIndex));
+              const realEngine =
+                (plugin?.queryEngine as QueryEngine | null | undefined) ?? wm?.getQueryEngine?.(langId);
               const engine = realEngine ?? {
                 toQueryDB: () => ({ index: unified }),
                 index: unified,
               };
-              bridge = new LSPBridge(unified as any, engine as any, new PositionIndex(text), params.textDocument.uri, {
-                documentLSPBridges,
-                documents: { get: (u: string) => getDoc(u) },
-              });
+              bridge = new LSPBridge(
+                unified,
+                engine as unknown as QueryEngine,
+                new PositionIndex(text),
+                params.textDocument.uri,
+                {
+                  documentLSPBridges,
+                  documents: { get: (u: string) => getDoc(u) },
+                },
+              );
               if (realEngine) {
                 documentLSPBridges.set(params.textDocument.uri, bridge);
               }
@@ -203,8 +258,10 @@ export function registerDocumentFeaturesProvider(
         const doc = getDoc(params.textDocument.uri);
         const treeWrapper = getDocumentTree(params.textDocument.uri);
         const text = doc?.getText() ?? treeWrapper?.text;
-        const unifiedIndex = validationService?.workspaceManager?.unifiedWorkspace?.getIndex();
-        const engine = plugin?.queryEngine ?? validationService?.workspaceManager?.globalModelicaQueryEngine;
+        const unifiedIndex = validationService?.workspaceManager?.unifiedWorkspace?.getIndex?.();
+        const engine =
+          (plugin?.queryEngine as QueryEngine | null | undefined) ??
+          validationService?.workspaceManager?.globalModelicaQueryEngine;
         if (text && unifiedIndex && engine) {
           bridge = new LSPBridge(unifiedIndex, engine, new PositionIndex(text), params.textDocument.uri, {
             documentLSPBridges,
@@ -226,9 +283,9 @@ export function registerDocumentFeaturesProvider(
               const doc = getDoc(params.textDocument.uri);
               const text = doc?.getText() ?? getDocumentTree(params.textDocument.uri)?.text;
               if (text) {
-                const tree = parser.parse(text);
+                const tree = parser.parse(text) as DocFeatureTreeLike | null;
                 try {
-                  const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+                  const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? tree?.rootPtr ?? 0;
                   if (rootPtr) {
                     const symbols = plugin.facade.getDocumentSymbols(rootPtr);
                     if (symbols && symbols.length > 0) return sanitizeDocumentSymbols(symbols);
@@ -237,11 +294,14 @@ export function registerDocumentFeaturesProvider(
                   tree?.delete?.();
                 }
               }
-            } catch {}
+            } catch {
+              // Facade document symbol extraction failed; fall back to SemanticCstTag traversal below.
+            }
           }
           // Generic GraalVM-style SemanticCstTag fallback for any language without custom outline handlers
           const cachedTree = getDocumentTree(params.textDocument.uri);
-          const rootNode = cachedTree?.tree?.rootNode ?? cachedTree?.rootNode ?? cachedTree;
+          const rootNode = (cachedTree?.tree?.rootNode ?? cachedTree?.rootNode ?? cachedTree) as
+            DocFeatureNodeLike | undefined;
           if (rootNode && (typeof rootNode.type === "string" || typeof rootNode.kindId === "number")) {
             const explicitTags = (plugin.languageDef?.lsp as { semanticTags?: Record<string, number> } | undefined)
               ?.semanticTags;
@@ -278,19 +338,25 @@ export function registerDocumentFeaturesProvider(
   };
 
   type FoldRulePlugin = {
-    languageDef?: {
-      lsp?: {
-        folding?: Array<
-          | string
-          | {
-              rule?: string;
-              kind?: "comment" | "imports" | "region";
-              defaultCollapsed?: boolean;
-              collapsedText?: string;
-            }
-        >;
-      };
-    };
+    languageDef?:
+      | {
+          lsp?:
+            | {
+                folding?:
+                  | Array<
+                      | string
+                      | {
+                          rule?: string | undefined;
+                          kind?: "comment" | "imports" | "region" | undefined;
+                          defaultCollapsed?: boolean | undefined;
+                          collapsedText?: string | undefined;
+                        }
+                    >
+                  | undefined;
+              }
+            | undefined;
+        }
+      | undefined;
   };
 
   const buildFoldRuleMap = (plugin: FoldRulePlugin | null | undefined): Map<string, NormalizedFoldRule> => {
@@ -400,22 +466,27 @@ export function registerDocumentFeaturesProvider(
         return customFolding as InternalFoldingRange[];
       }
     }
-    const parser = plugin?.parser ?? (isParserReady() ? (validationService as any)?.parserService?.parser : undefined);
+    const parser: DocFeatureParserLike | null | undefined =
+      (plugin?.parser as DocFeatureParserLike | null | undefined) ??
+      (isParserReady() ? validationService?.parserService?.parser : undefined);
 
     const treeWrapper = getDocumentTree(document.uri);
-    let tree = treeWrapper?.tree ?? treeWrapper;
+    let tree: DocFeatureTreeLike | null | undefined = (treeWrapper?.tree ?? treeWrapper) as
+      DocFeatureTreeLike | null | undefined;
     let ownsTree = false;
     if (!tree && parser) {
       try {
-        tree = parser.parse(document.getText());
+        tree = parser.parse(document.getText()) as DocFeatureTreeLike | null;
         ownsTree = true;
-      } catch {}
+      } catch {
+        // Parse failed; fall back to comment-based folding ranges below.
+      }
     }
     if (!tree) return scanCommentFoldingRanges(document.getText());
 
     try {
-      const rootNode = tree.rootNode ?? tree;
-      const rootPtr = rootNode?.id ?? rootNode?.ptr ?? (tree as any)?.rootPtr ?? 0;
+      const rootNode = (tree.rootNode ?? tree) as DocFeatureNodeLike;
+      const rootPtr = rootNode?.id ?? rootNode?.ptr ?? tree.rootPtr ?? 0;
 
       if (plugin?.customHandlers?.folding) {
         try {
@@ -423,7 +494,9 @@ export function registerDocumentFeaturesProvider(
           if (Array.isArray(customFolds) && customFolds.length > 0) {
             return customFolds;
           }
-        } catch {}
+        } catch {
+          // Custom folding handler failed; fall back to facade and CST folding below.
+        }
       }
 
       const ruleMap = buildFoldRuleMap(plugin);
@@ -481,7 +554,9 @@ export function registerDocumentFeaturesProvider(
               }
             }
           }
-        } catch {}
+        } catch {
+          // Facade folding range extraction failed; fall back to CST walk below.
+        }
       }
 
       // Walk CST to cover newly-configured rules on older WASMs, attach collapsedText/defaultCollapsed,
@@ -580,14 +655,14 @@ export function registerDocumentFeaturesProvider(
   }
 
   /* Selection Ranges — enables smart Expand/Shrink selection */
-  connection.onSelectionRanges((params) => {
+  connection.onSelectionRanges((params): SelectionRange[] => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return [];
 
     const tree = getDocumentTree(document.uri);
     if (!tree) return [];
 
-    const results = params.positions.map((pos) => {
+    const results: SelectionRange[] = params.positions.map((pos) => {
       let node: SyntaxNode | null = null;
       const indexData = getLineIndexForDoc(document.uri);
       if (indexData) {
@@ -610,9 +685,9 @@ export function registerDocumentFeaturesProvider(
       }
 
       // Build linked list from outermost to innermost so innermost is at the head
-      let current: any = undefined;
+      let current: SelectionRange | undefined = undefined;
       for (let i = ancestors.length - 1; i >= 0; i--) {
-        const r = nodeRange(ancestors[i] as any);
+        const r = nodeRange(ancestors[i]!);
         if (
           current &&
           current.range.start.line === r.start.line &&
@@ -622,16 +697,13 @@ export function registerDocumentFeaturesProvider(
         ) {
           continue;
         }
-        current = {
-          range: r,
-          parent: current,
-        };
+        current = current ? { range: r, parent: current } : { range: r };
       }
 
-      return current ?? { range: nodeRange(tree.rootNode as any) };
+      return current ?? { range: nodeRange(tree.rootNode) };
     });
 
-    return results as any[];
+    return results;
   });
 
   /* Document Highlights — highlights all occurrences of the symbol under cursor */

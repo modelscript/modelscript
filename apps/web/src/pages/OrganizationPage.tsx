@@ -16,6 +16,7 @@ import CreateSpaceModal from "../components/spaces/CreateSpaceModal";
 import SpaceCard from "../components/spaces/SpaceCard";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 
 interface OrganizationPageProps {
@@ -319,8 +320,8 @@ export const OrganizationPage: React.FC<OrganizationPageProps> = ({ orgSlugOverr
                     setInviteUsername("");
                     toast.success("Added member to organization");
                     void fetchOrg();
-                  } catch (err: any) {
-                    toast.error(err?.response?.data?.error || "Failed to add member");
+                  } catch (err: unknown) {
+                    toast.error(getApiErrorMessage(err, "Failed to add member"));
                   }
                 }}
                 style={{ display: "flex", gap: "8px", marginTop: "8px" }}
@@ -384,8 +385,8 @@ export const OrganizationPage: React.FC<OrganizationPageProps> = ({ orgSlugOverr
                 });
                 toast.success("Updated organization profile");
                 void fetchOrg();
-              } catch (err: any) {
-                toast.error(err?.response?.data?.error || "Failed to update organization");
+              } catch (err: unknown) {
+                toast.error(getApiErrorMessage(err, "Failed to update organization"));
               }
             }}
             style={{ display: "flex", flexDirection: "column", gap: "12px", maxWidth: "520px" }}

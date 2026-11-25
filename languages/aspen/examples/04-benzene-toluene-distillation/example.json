@@ -1,0 +1,11 @@
+{
+  "id": "aspen-04-benzene-toluene-distillation",
+  "lang": "aspen",
+  "subFormats": ["in"],
+  "difficulty": 4,
+  "title": "Benzene-Toluene Distillation Column",
+  "description": "20-stage rigorous RADFRAC distillation column separating an equimolar benzene-toluene feed with feed preheater, reflux ratio specification, and bottoms product pump.",
+  "category": "Chemical Process Simulation",
+  "tags": ["aspen", "radfrac", "distillation", "benzene-toluene"],
+  "activeFile": "btx_column.in"
+}

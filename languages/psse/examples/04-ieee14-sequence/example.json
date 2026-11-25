@@ -1,0 +1,11 @@
+{
+  "id": "psse-04-ieee14-sequence",
+  "lang": "psse",
+  "subFormats": ["raw", "seq"],
+  "difficulty": 4,
+  "title": "IEEE 14-Bus Power Flow + Sequence Fault Data",
+  "description": "IEEE 14-bus transmission system paired with positive-, negative-, and zero-sequence machine and branch impedances for unbalanced fault analysis.",
+  "category": "Short-Circuit & Sequence",
+  "tags": ["psse", "ieee14", "seq", "short-circuit", "multi-file"],
+  "activeFile": "ieee14.raw"
+}

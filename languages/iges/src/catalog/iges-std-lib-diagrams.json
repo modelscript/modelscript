@@ -1,0 +1,632 @@
+[
+  {
+    "namePath": "iges.std.TYPE_100",
+    "aliases": [
+      "100",
+      "CircularArc",
+      "CIRCULAR_ARC"
+    ],
+    "label": "Type 100 — Circular Arc",
+    "category": "Curves & Points",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">CURV</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_100</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_102",
+    "aliases": [
+      "102",
+      "CompositeCurve",
+      "COMPOSITE_CURVE"
+    ],
+    "label": "Type 102 — Composite Curve",
+    "category": "Curves & Points",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">CURV</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_102</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_104",
+    "aliases": [
+      "104",
+      "ConicArc",
+      "CONIC_ARC"
+    ],
+    "label": "Type 104 — Conic Arc",
+    "category": "Curves & Points",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">CURV</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_104</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_106",
+    "aliases": [
+      "106",
+      "CopiousData",
+      "COPIOUS_DATA"
+    ],
+    "label": "Type 106 — Copious Data",
+    "category": "Curves & Points",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">CURV</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_106</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_108",
+    "aliases": [
+      "108",
+      "Plane",
+      "PLANE"
+    ],
+    "label": "Type 108 — Plane",
+    "category": "Surfaces",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">SURF</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_108</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_110",
+    "aliases": [
+      "110",
+      "Line",
+      "LINE"
+    ],
+    "label": "Type 110 — Line",
+    "category": "Curves & Points",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">CURV</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_110</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_116",
+    "aliases": [
+      "116",
+      "Point",
+      "POINT"
+    ],
+    "label": "Type 116 — Point",
+    "category": "Curves & Points",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">CURV</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_116</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_120",
+    "aliases": [
+      "120",
+      "SurfaceOfRevolution",
+      "SURFACE_OF_REVOLUTION"
+    ],
+    "label": "Type 120 — Surface of Revolution",
+    "category": "Surfaces",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">SURF</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_120</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_122",
+    "aliases": [
+      "122",
+      "TabulatedCylinder",
+      "TABULATED_CYLINDER"
+    ],
+    "label": "Type 122 — Tabulated Cylinder",
+    "category": "Surfaces",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">SURF</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_122</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_124",
+    "aliases": [
+      "124",
+      "TransformationMatrix",
+      "TRANSFORMATION_MATRIX"
+    ],
+    "label": "Type 124 — Transformation Matrix",
+    "category": "Transforms",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#3f2e1e\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">XFRM</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_124</text></svg>",
+    "ports": [
+      {
+        "name": "local_in",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "world_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_126",
+    "aliases": [
+      "126",
+      "NurbsCurve",
+      "RATIONAL_BSPLINE_CURVE"
+    ],
+    "label": "Type 126 — Rational B-Spline Curve (NURBS)",
+    "category": "Curves & Points",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">CURV</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_126</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_128",
+    "aliases": [
+      "128",
+      "NurbsSurface",
+      "RATIONAL_BSPLINE_SURFACE"
+    ],
+    "label": "Type 128 — Rational B-Spline Surface (NURBS)",
+    "category": "Surfaces",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">SURF</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_128</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_142",
+    "aliases": [
+      "142",
+      "CurveOnParametricSurface",
+      "CURVE_ON_PARAMETRIC_SURFACE"
+    ],
+    "label": "Type 142 — Curve on Parametric Surface",
+    "category": "Surfaces",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">SURF</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_142</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_144",
+    "aliases": [
+      "144",
+      "TrimmedParametricSurface",
+      "TRIMMED_PARAMETRIC_SURFACE"
+    ],
+    "label": "Type 144 — Trimmed Parametric Surface",
+    "category": "Surfaces",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">SURF</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_144</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.TYPE_186",
+    "aliases": [
+      "186",
+      "ManifoldSolidBRep",
+      "MANIFOLD_SOLID_BREP"
+    ],
+    "label": "Type 186 — Manifold Solid B-Rep Object",
+    "category": "Topology & B-Rep",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">BREP</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TYPE_186</text></svg>",
+    "ports": [
+      {
+        "name": "transform",
+        "kind": "geometry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.UNIT_INCH",
+    "aliases": [
+      "IN",
+      "INCH",
+      "FLAG_1"
+    ],
+    "label": "IGES Unit 1 — Inch (0.0254 m)",
+    "category": "Unit Presets",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UNIT</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">UNIT_INCH</text></svg>",
+    "ports": [
+      {
+        "name": "model_val",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si_meters",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.UNIT_MM",
+    "aliases": [
+      "MM",
+      "MILLIMETER",
+      "FLAG_2"
+    ],
+    "label": "IGES Unit 2 — Millimeter (0.001 m)",
+    "category": "Unit Presets",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UNIT</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">UNIT_MM</text></svg>",
+    "ports": [
+      {
+        "name": "model_val",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si_meters",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.UNIT_FOOT",
+    "aliases": [
+      "FT",
+      "FOOT",
+      "FLAG_4"
+    ],
+    "label": "IGES Unit 4 — Foot (0.3048 m)",
+    "category": "Unit Presets",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UNIT</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">UNIT_FOOT</text></svg>",
+    "ports": [
+      {
+        "name": "model_val",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si_meters",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.UNIT_METER",
+    "aliases": [
+      "M",
+      "METER",
+      "FLAG_6"
+    ],
+    "label": "IGES Unit 6 — Meter (1.0 m)",
+    "category": "Unit Presets",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UNIT</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">UNIT_METER</text></svg>",
+    "ports": [
+      {
+        "name": "model_val",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si_meters",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.UNIT_MICRON",
+    "aliases": [
+      "UM",
+      "MICRON",
+      "FLAG_9"
+    ],
+    "label": "IGES Unit 9 — Micron (1e-6 m)",
+    "category": "Unit Presets",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UNIT</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">UNIT_MICRON</text></svg>",
+    "ports": [
+      {
+        "name": "model_val",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si_meters",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "iges.std.UNIT_CM",
+    "aliases": [
+      "CM",
+      "CENTIMETER",
+      "FLAG_10"
+    ],
+    "label": "IGES Unit 10 — Centimeter (0.01 m)",
+    "category": "Unit Presets",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">UNIT</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">UNIT_CM</text></svg>",
+    "ports": [
+      {
+        "name": "model_val",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "si_meters",
+        "kind": "signal",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  }
+]

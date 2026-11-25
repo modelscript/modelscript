@@ -1,0 +1,27 @@
+-- Dual-Channel Redundant Flight Control Voter with Discrepancy Persistence
+const
+  MAX_DIFF: real = 0.05;
+  FAULT_LIMIT: int = 3;
+
+function AbsDiff(a, b: real) returns (d: real);
+let
+  d = if a >= b then a - b else b - a;
+tel
+
+node FlightControlVoter(ch_a, ch_b: real; valid_a, valid_b: bool)
+returns (cmd_out: real; fault_latched: bool; mismatch_cnt: int);
+var
+  disagree: bool;
+  both_valid: bool;
+let
+  both_valid = valid_a and valid_b;
+  disagree = both_valid and (AbsDiff(ch_a, ch_b) > MAX_DIFF);
+  mismatch_cnt = 0 -> (if disagree then pre(mismatch_cnt) + 1 else 0);
+  fault_latched = false -> (pre(fault_latched) or (mismatch_cnt >= FAULT_LIMIT));
+  cmd_out = if fault_latched then 0.0
+            else if both_valid then 0.5 * (ch_a + ch_b)
+            else if valid_a then ch_a
+            else if valid_b then ch_b
+            else 0.0;
+  assert mismatch_cnt >= 0;
+tel

@@ -1,0 +1,20 @@
+network EU_4Region_Expansion baseMva=100
+bus DE_North v_nom=380 carrier=AC
+bus DE_South v_nom=380 carrier=AC
+bus FR_West v_nom=380 carrier=AC
+bus NO_Hydro v_nom=380 carrier=AC
+generator Wind_DE_N bus=DE_North carrier=wind p_nom=1800 marginal_cost=0 capital_cost=1350
+generator Solar_DE_S bus=DE_South carrier=solar p_nom=1400 marginal_cost=0 capital_cost=780
+generator Nuclear_FR bus=FR_West carrier=nuclear p_nom=1600 marginal_cost=14 capital_cost=4200
+generator Hydro_NO bus=NO_Hydro carrier=hydro p_nom=1500 marginal_cost=5 capital_cost=2100
+generator CCGT_DE_S bus=DE_South carrier=gas p_nom=900 marginal_cost=62 capital_cost=640
+load Load_DE_N bus=DE_North p_set=1100
+load Load_DE_S bus=DE_South p_set=1450
+load Load_FR bus=FR_West p_set=1200
+load Load_NO bus=NO_Hydro p_set=650
+line AC_DE_NS bus0=DE_North bus1=DE_South r=1.6 x=18.0 s_nom=1600
+line AC_DE_FR bus0=DE_South bus1=FR_West r=2.0 x=22.0 s_nom=1400
+link HVDC_NordLink bus0=NO_Hydro bus1=DE_North p_nom=1400 efficiency=0.96
+link HVDC_SuedLink bus0=DE_North bus1=DE_South p_nom=2000 efficiency=0.97
+storage_unit BESS_DE_S bus=DE_South p_nom=400 max_hours=4 efficiency_store=0.92 efficiency_dispatch=0.92 standing_loss=0.001
+storage_unit PSH_NO bus=NO_Hydro p_nom=600 max_hours=24 efficiency_store=0.86 efficiency_dispatch=0.86 standing_loss=0.0002

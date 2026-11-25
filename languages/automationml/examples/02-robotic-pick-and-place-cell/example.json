@@ -1,0 +1,11 @@
+{
+  "id": "automationml-02-robotic-pick-and-place-cell",
+  "lang": "automationml",
+  "subFormats": ["aml", "caex"],
+  "difficulty": 2,
+  "title": "Robotic Pick-and-Place Workcell with Kinematical Ports",
+  "description": "Six-axis industrial pick-and-place robotic workcell with 6-DOF spatial mounting frames, vacuum gripper attachment ports, vision trigger interface, and cell controller links.",
+  "category": "Robotic Workcells",
+  "tags": ["automationml", "pick-and-place", "kinematics", "workcell"],
+  "activeFile": "pick_and_place.aml"
+}

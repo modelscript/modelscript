@@ -5,9 +5,9 @@
  *
  * Implemented once per language inside `languages/<lang>/src/ui/` and mounted
  * uniformly across:
- *   1. VS Code Extension Custom Editors / Webviews (`packages/ide`)
- *   2. Morsel Editor Inspector / Workbench Panes (`apps/web`)
- *   3. Ansatz Feed & Package Artifact Cards (`apps/web`)
+ *   1. Ansatz Studio (VS Code Extension Custom Editors / Webviews, `packages/ide`)
+ *   2. Ansatz Editor Inspector / Workbench Panes (`apps/web`)
+ *   3. Ansatz Network Feed & Package Artifact Cards (`apps/web`)
  */
 
 export type LanguagePanelMode = "workbench" | "inspector" | "artifact";
@@ -27,8 +27,8 @@ export interface LanguagePanelHost {
   exportFile?: ((filename: string, content: string | Uint8Array, mimeType?: string) => void) | undefined;
   /** Show a non-blocking status, warning, or error notification. */
   notify?: ((level: LanguagePanelNotifyLevel, message: string) => void) | undefined;
-  /** Open the current model in Morsel (used in Ansatz artifact cards). */
-  openInMorsel?: ((code: string, dialect: string, title?: string) => void) | undefined;
+  /** Open the current model in Ansatz Editor (used in Ansatz Network artifact cards). */
+  openInAnsatzEditor?: ((code: string, dialect: string, title?: string) => void) | undefined;
   /** Open an external URL in the user's browser. */
   openExternal?: ((url: string) => void) | undefined;
 }

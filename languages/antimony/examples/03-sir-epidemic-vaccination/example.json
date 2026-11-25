@@ -1,0 +1,11 @@
+{
+  "id": "antimony-03-sir-epidemic-vaccination",
+  "lang": "antimony",
+  "subFormats": ["antimony"],
+  "difficulty": 3,
+  "title": "SIR Epidemiological Model with Vaccination Event",
+  "description": "Susceptible-Infected-Recovered population dynamics with conserved total headcount assignment rule and a discrete public-health vaccination campaign event.",
+  "category": "Epidemiology",
+  "tags": ["antimony", "sir-model", "epidemiology", "events"],
+  "activeFile": "sir_vaccination.ant"
+}

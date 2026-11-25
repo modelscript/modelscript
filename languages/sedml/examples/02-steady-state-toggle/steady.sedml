@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model_toggle" name="Genetic Toggle Switch" language="urn:sedml:language:sbml" source="toggle.sbml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <steadyState id="sim_ss" name="Newton-Raphson Steady State">
+      <algorithm kisaoID="KISAO:0000407" name="NLEQ2"/>
+    </steadyState>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_ss" name="Compute Equilibrium" modelReference="model_toggle" simulationReference="sim_ss"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_u" name="Repressor U">
+      <listOfVariables>
+        <variable id="u" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='u']" taskReference="task_ss"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>u</ci></math>
+    </dataGenerator>
+    <dataGenerator id="dg_v" name="Repressor V">
+      <listOfVariables>
+        <variable id="v" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='v']" taskReference="task_ss"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>v</ci></math>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <report id="report_ss" name="Steady-State Repressor Table">
+      <listOfDataSets>
+        <dataSet id="ds_u" label="u_ss" dataReference="dg_u"/>
+        <dataSet id="ds_v" label="v_ss" dataReference="dg_v"/>
+      </listOfDataSets>
+    </report>
+  </listOfOutputs>
+</sedML>

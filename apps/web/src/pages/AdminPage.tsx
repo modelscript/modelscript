@@ -263,7 +263,7 @@ export const AdminPage: React.FC = () => {
     integrityOk?: boolean | undefined;
     issues?: string[] | undefined;
   } | null>(null);
-  const [dbUpgradeResult, setDbUpgradeResult] = useState<any | null>(null);
+  const [dbUpgradeResult, setDbUpgradeResult] = useState<unknown>(null);
   const [dbDryRun, setDbDryRun] = useState(false);
 
   // Settings & System state
@@ -856,8 +856,7 @@ export const AdminPage: React.FC = () => {
     format?: "csv" | "json" | undefined;
     csv?: string | undefined;
     domains?:
-      | Array<{ domain: string; tier: "allow" | "silence" | "suspend"; reason?: string | null | undefined }>
-      | undefined;
+      Array<{ domain: string; tier: "allow" | "silence" | "suspend"; reason?: string | null | undefined }> | undefined;
   }) => {
     setLoading(true);
     clearMessages();

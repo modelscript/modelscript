@@ -1,0 +1,11 @@
+{
+  "id": "touchstone-02-butterworth-lpf-s2p",
+  "lang": "touchstone",
+  "subFormats": ["s2p"],
+  "difficulty": 2,
+  "title": "2-Port 2.4 GHz Butterworth Low-Pass Filter",
+  "description": "3rd-order lumped L-C-L Butterworth low-pass RF filter characterized from 0.25 to 4.0 GHz with verified passivity and reciprocity.",
+  "category": "RF Filters",
+  "tags": ["touchstone", "s2p", "butterworth", "low-pass-filter"],
+  "activeFile": "butterworth_lpf.s2p"
+}

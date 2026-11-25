@@ -102,7 +102,7 @@ flowchart TD
 - **When to use:** Run before running Modelica/MSL verification suites (`npm run test:msl`) or when `npm run doctor:dev` reports a missing MSL installation.
 - **How it works:** Reuses an existing archive or local OpenModelica library (`~/.openmodelica/libraries/Modelica <version>+maint.om`) if available; otherwise downloads from GitHub releases and, with `--extract`, unpacks into `--outDir` (default `scripts/msl`) with a `Modelica` symlink.
 - **CLI flags:** `--version=<semver>` (default `"4.1.0"`), `--extract` / `-x`, `--outDir=<path>` (default `scripts/msl`).
-- **Callers:** `.github/workflows/ci.yml`, `.github/workflows/nightly.yml`, `.github/workflows/release.yml`, `scripts/ci/ci-local.sh`, and `packages/lsp/tests/morsel-load-example-model.test.ts`.
+- **Callers:** `.github/workflows/ci.yml`, `.github/workflows/nightly.yml`, `.github/workflows/release.yml`, `scripts/ci/ci-local.sh`, and `packages/lsp/tests/ansatz-load-example-model.test.ts`.
 
 ---
 

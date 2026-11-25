@@ -1,0 +1,11 @@
+{
+  "id": "gridlabd-03-solar-pv-smart-inverter",
+  "lang": "gridlabd",
+  "subFormats": ["glm", "player"],
+  "difficulty": 3,
+  "title": "Solar PV & Smart Inverter Volt-VAR Distribution Feeder",
+  "description": "GridLAB-D feeder integrating a 250 kW four-quadrant smart solar inverter with companion diurnal solar irradiance player profile.",
+  "category": "Distribution Power Systems",
+  "tags": ["gridlabd", "solar-pv", "smart-inverter", "player", "multi-file"],
+  "activeFile": "feeder_pv.glm"
+}

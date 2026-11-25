@@ -1,0 +1,11 @@
+{
+  "id": "arinc429-05-glass-cockpit-pfd-bus",
+  "lang": "arinc429",
+  "subFormats": ["arinc429-high"],
+  "difficulty": 5,
+  "title": "Flight-Control Glass-Cockpit Multi-Label PFD Bus Capture",
+  "description": "Integrated 100 kbps Primary Flight Display (PFD) ARINC 429 bus combining baro altitude, Mach number, vertical speed, pitch/roll attitude, ground speed, and autopilot discrete status.",
+  "category": "Flight Control Avionics",
+  "tags": ["arinc429", "pfd", "glass-cockpit", "discrete", "bnr", "mach"],
+  "activeFile": "pfd_integrated.a429"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "esl-03-thermostat-hysteresis",
+  "lang": "esl",
+  "subFormats": ["esl"],
+  "difficulty": 3,
+  "title": "Thermostat Hysteresis Room Heating",
+  "description": "Thermal room heating plant coupled to a reusable ESL SUBMODEL controller with deadband hysteresis switching via WHEN discontinuity events.",
+  "category": "Thermal Control",
+  "tags": ["esl", "thermostat", "hysteresis", "submodel", "when"],
+  "activeFile": "thermostat.esl"
+}

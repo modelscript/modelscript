@@ -1,0 +1,44 @@
+PROGRAM BALLISTIC_PROJECTILE
+  ! 2D projectile trajectory with quadratic air drag and scheduled telemetry
+  INITIAL
+    CONSTANT g = 9.80665     ! Gravitational acceleration (m/s^2)
+    CONSTANT cd = 0.47       ! Sphere drag coefficient
+    CONSTANT rho = 1.225     ! Sea-level air density (kg/m^3)
+    CONSTANT area = 0.015    ! Cross-sectional area (m^2)
+    CONSTANT mass = 4.5      ! Projectile mass (kg)
+    CONSTANT vx0 = 65.0      ! Initial horizontal velocity (m/s)
+    CONSTANT vy0 = 55.0      ! Initial vertical velocity (m/s)
+    CONSTANT x0 = 0.0
+    CONSTANT y0 = 1.5
+    LOGICAL landed = .FALSE.
+    CINTERVAL cint = 0.1
+    MAXTERVAL maxt = 0.02
+    ALGORITHM ialg = 5
+  END
+
+  DYNAMIC
+    DERIVATIVE
+      speed = SQRT(vx**2 + vy**2)
+      drag_k = 0.5 * rho * cd * area / mass
+      ax = -drag_k * speed * vx
+      ay = -g - drag_k * speed * vy
+      vx = INTEG(ax, vx0)
+      vy = INTEG(ay, vy0)
+      x = INTEG(vx, x0)
+      y = INTEG(vy, y0)
+      SCHEDULE impact_ev .AT. 8.0
+    END
+
+    DISCRETE impact_ev
+      landed = .TRUE.
+      impact_range = x
+      impact_speed = SQRT(vx**2 + vy**2)
+    END
+
+    TERMT(t .GE. 10.0, 'Trajectory integration complete')
+  END
+
+  TERMINAL
+    final_range = x
+  END
+END

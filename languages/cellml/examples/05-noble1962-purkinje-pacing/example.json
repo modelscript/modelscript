@@ -1,0 +1,11 @@
+{
+  "id": "cellml-05-noble1962-purkinje-pacing",
+  "lang": "cellml",
+  "subFormats": ["cellml", "sedml"],
+  "difficulty": 5,
+  "title": "Noble-1962 Purkinje Fiber with Units Library and SED-ML Pacing",
+  "description": "Multi-file Noble (1962) cardiac Purkinje fiber pacemaker model importing a reusable SI electrophysiology units library via xlink:href alongside a companion SED-ML pacing simulation protocol.",
+  "category": "Electrophysiology & Systems Biology",
+  "tags": ["cellml", "noble1962", "purkinje", "sedml", "multi-file"],
+  "activeFile": "noble1962.cellml"
+}

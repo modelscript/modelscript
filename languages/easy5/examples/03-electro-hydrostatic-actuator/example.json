@@ -1,0 +1,11 @@
+{
+  "id": "easy5-03-electro-hydrostatic-actuator",
+  "lang": "easy5",
+  "subFormats": ["ez5"],
+  "difficulty": 3,
+  "title": "Electro-Hydrostatic Flight Control Actuator (EHA)",
+  "description": "More-electric aircraft Electro-Hydrostatic Actuator (EHA) modeling a brushless motor-pump dynamic transfer function, pressure relief saturation, hydraulic cylinder integration, and LVDT position feedback.",
+  "category": "Aerospace Actuation",
+  "tags": ["easy5", "eha", "flight-control", "transfer-function"],
+  "activeFile": "eha_actuator.ez5"
+}

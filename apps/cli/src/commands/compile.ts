@@ -231,7 +231,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
       const sysml2LangFallback = (await import("@modelscript/sysml2/language")).default;
       const modelicaLangFallback = (await import("@modelscript/modelica/language")).default;
       if (sysmlParser) {
-        loadEmbeddedKerMLStdlib(sysmlIndex, sysmlParser);
+        loadEmbeddedKerMLStdlib(sysmlIndex, sysmlParser as unknown as Parameters<typeof loadEmbeddedKerMLStdlib>[1]);
       }
       const u = new UnifiedWorkspaceCtor();
       u.registerWorkspace("modelica", mIdx, modelicaLangFallback);
@@ -278,7 +278,7 @@ export const Compile: CommandModule<{}, CompileArgs> = {
         },
         undefined,
         undefined,
-        sysmlFactory.queryHooks,
+        sysmlFactory.queryHooks as unknown as Parameters<typeof createModelicaQueryEngine>[4],
       );
       context.setQueryEngine(engine);
     }

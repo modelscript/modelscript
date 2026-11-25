@@ -17,6 +17,7 @@ import styled from "styled-components";
 import { getSolution, type Solution, type SolutionRelease } from "../api";
 import Box from "../components/Box";
 import Spinner from "../components/Spinner";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 
 const SolutionHeader = styled.header`
@@ -65,8 +66,8 @@ export default function SolutionPage() {
         const data = await getSolution(username, slug);
         setSolution(data.solution);
         setRelease(data.release);
-      } catch (err: any) {
-        setError(err.response?.data?.error || `Solution '${username}/${slug}' could not be loaded.`);
+      } catch (err: unknown) {
+        setError(getApiErrorMessage(err, `Solution '${username}/${slug}' could not be loaded.`));
       } finally {
         setLoading(false);
       }

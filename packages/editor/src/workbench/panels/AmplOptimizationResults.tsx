@@ -33,6 +33,8 @@ interface AmplOptimizationResultsProps {
   status?: { status?: string; error?: string | null } | null;
   documentUri?: string | undefined;
   documentText?: string | undefined;
+  projectFiles?: Record<string, string> | undefined;
+  activeFileName?: string | undefined;
   onSolve: () => void;
   onBackToInspector?: (() => void) | undefined;
 }
@@ -51,6 +53,8 @@ export const AmplOptimizationResults: React.FC<AmplOptimizationResultsProps> = (
   status,
   documentUri = "file:///document.ampl",
   documentText = "",
+  projectFiles,
+  activeFileName,
   onSolve,
   onBackToInspector,
 }) => {
@@ -62,9 +66,23 @@ export const AmplOptimizationResults: React.FC<AmplOptimizationResultsProps> = (
       setGeometry(null);
       return;
     }
+    const effectiveFiles: Record<string, string> = {
+      ...(projectFiles ?? {}),
+      ...(activeFileName ? { [activeFileName]: documentText } : {}),
+    };
+    const dataText = Object.entries(effectiveFiles)
+      .filter(([name]) => name.toLowerCase().endsWith(".dat"))
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, txt]) => txt.trim())
+      .filter(Boolean)
+      .join("\n\n");
     let cancelled = false;
     const timer = setTimeout(() => {
-      executeLspAction("ampl_inspect_geometry", "ampl", documentUri, { documentText })
+      executeLspAction("ampl_inspect_geometry", "ampl", documentUri, {
+        documentText,
+        ...(dataText ? { dataText } : {}),
+        ...(Object.keys(effectiveFiles).length > 0 ? { projectFiles: effectiveFiles } : {}),
+      })
         .then((geo) => {
           if (!cancelled && geo) setGeometry(geo);
         })
@@ -76,7 +94,7 @@ export const AmplOptimizationResults: React.FC<AmplOptimizationResultsProps> = (
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [result, documentUri, documentText]);
+  }, [result, documentUri, documentText, projectFiles, activeFileName]);
   const borderCol = "var(--color-border-default, var(--ms-border, rgba(148, 163, 184, 0.18)))";
   const cardBg = "var(--bgColor-muted, var(--ms-bg-elv))";
   const textPrimary = "var(--ms-text-1, var(--color-fg-default))";

@@ -1,0 +1,29 @@
+' PWR 17x17 Pin-Cell Lattice Physics and Depletion
+=triton
+PWR 17x17 4.0 wt pct UO2 Pin Cell Depletion
+v7.1-252
+read comp
+  uo2 1 den=10.41 1.0 900.0 92235 4.0 92238 96.0 end
+  zirc4 3 den=6.56 1.0 600.0 end
+  h2o 2 den=0.71 1.0 580.0 end
+end comp
+read celldata
+  latticecell squarepitch pitch=1.26 2 fuelr=0.4096 1 cladr=0.475 3 end
+end celldata
+read param
+  npg=2000 gen=250 nsk=50
+end param
+read geom
+  global unit 1
+  cylinder 1 0.4096 182.88 -182.88
+  cylinder 2 0.4750 182.88 -182.88
+  cuboid 3 0.63 -0.63 0.63 -0.63 182.88 -182.88
+  media 1 1 1
+  media 3 1 2 -1
+  media 2 1 3 -2
+  boundary 3
+end geom
+read bounds
+  all=mirror
+end bounds
+end

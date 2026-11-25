@@ -1,0 +1,23 @@
+Radial Injection Well Pressure Buildup (Theis Analytical Parity)
+ROCKS
+AQUIF    2620.0      0.22 8.0E-14 8.0E-14 4.0E-14       2.3     950.0
+ELEME
+R1  1AQUIF 1.2E+03
+R1  2AQUIF 4.8E+03
+R1  3AQUIF 1.9E+04
+R1  4AQUIF 7.5E+04
+R1  5AQUIF 3.0E+05
+CONNE
+R1  1R1  2  5.0 10.0 1.2E+02       0.0
+R1  2R1  3 10.0 20.0 2.5E+02       0.0
+R1  3R1  4 20.0 40.0 5.0E+02       0.0
+R1  4R1  5 40.0 80.0 1.0E+03       0.0
+GENER
+R1  1WELL1MASS       15.0    2.5E+05
+INCON
+R1  1        1.5E+07        60.0
+R1  2        1.5E+07        60.0
+R1  3        1.5E+07        60.0
+R1  4        1.5E+07        60.0
+R1  5        1.5E+07        60.0
+ENDCY

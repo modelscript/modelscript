@@ -68,29 +68,34 @@ const DEDENT_START_TOKENS = new Set([
   "expandable",
 ]);
 
-export interface ModelicaFormatOptions {
-  indentSize?: number;
-  parser?: any;
-  structural?: boolean;
-  oneOfEachSection?: boolean;
-  importsFirst?: boolean;
-  extendsAtTop?: boolean;
-  componentsBeforeClasses?: boolean;
-  declarationOrder?: boolean;
-  preserveFormatting?: boolean;
-}
-
-interface FormatterAstNode {
+export interface FormatterAstNode {
   type: string;
   startIndex: number;
   endIndex: number;
   childCount: number;
   child(i: number): FormatterAstNode | null;
   parent: FormatterAstNode | null;
-  text?: string;
+  text?: string | undefined;
+  descendantForPosition?(pos: { row: number; column: number }): FormatterAstNode | null;
 }
 
-export function restructureModelicaTree(tree: { rootNode?: unknown }, source: string): string {
+export interface FormatterTree {
+  rootNode?: FormatterAstNode | null | undefined;
+}
+
+export interface ModelicaFormatOptions {
+  indentSize?: number | undefined;
+  parser?: { parse: (source: string) => FormatterTree | null | undefined } | undefined;
+  structural?: boolean | undefined;
+  oneOfEachSection?: boolean | undefined;
+  importsFirst?: boolean | undefined;
+  extendsAtTop?: boolean | undefined;
+  componentsBeforeClasses?: boolean | undefined;
+  declarationOrder?: boolean | undefined;
+  preserveFormatting?: boolean | undefined;
+}
+
+export function restructureModelicaTree(tree: FormatterTree | null | undefined, source: string): string {
   if (!tree || !tree.rootNode) return source;
 
   function findNodes(node: unknown, type: string, acc: FormatterAstNode[] = []): FormatterAstNode[] {
@@ -257,7 +262,7 @@ export function restructureModelicaTree(tree: { rootNode?: unknown }, source: st
 }
 
 export function formatModelicaTree(
-  tree: any,
+  tree: FormatterTree | null | undefined,
   content: string,
   optionsOrIndentSize: number | ModelicaFormatOptions = 2,
 ): string {
@@ -313,14 +318,14 @@ export function formatModelicaTree(
     }
     if (firstCharColumn >= line.length) firstCharColumn = -1;
 
-    const node = currentTree?.rootNode?.descendantForPosition({ row: i, column: firstCharColumn });
+    const node = currentTree?.rootNode?.descendantForPosition?.({ row: i, column: firstCharColumn });
     if (!node) {
       formattedLines.push(line);
       continue;
     }
 
     let isExcluded = false;
-    let curr = node;
+    let curr: FormatterAstNode | null = node;
     while (curr) {
       if (curr.type === "class_definition" || curr.type === "ClassDefinition") {
         const txt = curr.text ?? "";

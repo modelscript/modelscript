@@ -1,0 +1,11 @@
+{
+  "id": "cantera-02-h2-o2-autoignition",
+  "lang": "cantera",
+  "subFormats": ["cantera-yaml"],
+  "difficulty": 2,
+  "title": "H2/O2 Autoignition 0D Constant-Volume Reactor",
+  "description": "Hydrogen-oxygen radical chain-branching mechanism with elementary, three-body, and Troe falloff reactions for 0D homogeneous autoignition delay modeling.",
+  "category": "Combustion & Thermochemistry",
+  "tags": ["cantera", "hydrogen", "autoignition", "falloff"],
+  "activeFile": "h2_o2_autoignition.cantera.yaml"
+}

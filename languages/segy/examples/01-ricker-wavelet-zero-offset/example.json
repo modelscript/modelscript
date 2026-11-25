@@ -1,0 +1,12 @@
+{
+  "id": "segy-01-ricker-wavelet-zero-offset",
+  "lang": "segy",
+  "subFormats": ["sgy"],
+  "difficulty": 1,
+  "title": "Single Ricker Wavelet Zero-Offset Seismic Trace",
+  "description": "SEG-Y Rev 1.0 textual reel header specification for a zero-offset synthetic 30 Hz Ricker wavelet seismic trace sampled at 2 ms (2000 us) in IEEE 32-bit floating-point format.",
+  "category": "Seismic & Subsurface Geophysics",
+  "tags": ["segy", "ricker-wavelet", "zero-offset", "geophysics"],
+  "activeFile": "ricker_zero_offset.sgy",
+  "isDefaultStarter": true
+}

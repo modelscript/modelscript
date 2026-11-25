@@ -1,0 +1,9 @@
+Meteorology: Urban_100yr
+  Unit System: Metric
+  Precipitation Method: Frequency Storm
+End:
+
+Subbasin: Suburban West
+  Gage: MetroGage
+  Depth: 155.0
+End:

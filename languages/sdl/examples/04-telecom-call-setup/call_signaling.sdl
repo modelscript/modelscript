@@ -1,0 +1,110 @@
+/* SDL-88 Telecom Call Setup, Alerting, Active Speech & Teardown Signaling */
+SYSTEM TelecomCallControl;
+  SIGNAL DialReq(Integer), Setup(Integer), Alert, Connect, ConnectAck, Hangup, Release, ReleaseComp;
+
+  CHANNEL C_Trunk
+    FROM OrigExchange TO TermExchange WITH Setup, ConnectAck, Release;
+    FROM TermExchange TO OrigExchange WITH Alert, Connect, ReleaseComp;
+  ENDCHANNEL C_Trunk;
+
+  BLOCK OrigExchange;
+    SIGNALROUTE SR_Orig
+      FROM CallerFSM TO ENV WITH Setup, ConnectAck, Release;
+      FROM ENV TO CallerFSM WITH Alert, Connect, ReleaseComp;
+    CONNECT C_Trunk AND SR_Orig;
+
+    PROCESS CallerFSM(1, 1);
+      DCL destNum Integer := 0;
+      TIMER T_NoAnswer;
+
+      START;
+        NEXTSTATE NullState;
+
+      STATE NullState;
+        INPUT DialReq(destNum);
+          OUTPUT Setup(destNum) VIA SR_Orig;
+          SET(NOW + 30.0, T_NoAnswer);
+          NEXTSTATE CallProceeding;
+      ENDSTATE NullState;
+
+      STATE CallProceeding;
+        INPUT Alert;
+          NEXTSTATE Ringing;
+        INPUT T_NoAnswer;
+          OUTPUT Release VIA SR_Orig;
+          NEXTSTATE Releasing;
+      ENDSTATE CallProceeding;
+
+      STATE Ringing;
+        INPUT Connect;
+          RESET(T_NoAnswer);
+          OUTPUT ConnectAck VIA SR_Orig;
+          NEXTSTATE ActiveCall;
+        INPUT Hangup;
+          RESET(T_NoAnswer);
+          OUTPUT Release VIA SR_Orig;
+          NEXTSTATE Releasing;
+        INPUT T_NoAnswer;
+          OUTPUT Release VIA SR_Orig;
+          NEXTSTATE Releasing;
+      ENDSTATE Ringing;
+
+      STATE ActiveCall;
+        INPUT Hangup;
+          OUTPUT Release VIA SR_Orig;
+          NEXTSTATE Releasing;
+      ENDSTATE ActiveCall;
+
+      STATE Releasing;
+        INPUT ReleaseComp;
+          NEXTSTATE NullState;
+      ENDSTATE Releasing;
+    ENDPROCESS CallerFSM;
+  ENDBLOCK OrigExchange;
+
+  BLOCK TermExchange;
+    SIGNALROUTE SR_Term
+      FROM ENV TO CalleeFSM WITH Setup, ConnectAck, Release;
+      FROM CalleeFSM TO ENV WITH Alert, Connect, ReleaseComp;
+    CONNECT C_Trunk AND SR_Term;
+
+    PROCESS CalleeFSM(1, 1);
+      DCL calledId Integer := 0;
+      TIMER T_Ring;
+
+      START;
+        NEXTSTATE Idle;
+
+      STATE Idle;
+        INPUT Setup(calledId);
+          OUTPUT Alert VIA SR_Term;
+          SET(NOW + 3.0, T_Ring);
+          NEXTSTATE Alerting;
+      ENDSTATE Idle;
+
+      STATE Alerting;
+        INPUT T_Ring;
+          OUTPUT Connect VIA SR_Term;
+          NEXTSTATE WaitAck;
+        INPUT Release;
+          RESET(T_Ring);
+          OUTPUT ReleaseComp VIA SR_Term;
+          NEXTSTATE Idle;
+      ENDSTATE Alerting;
+
+      STATE WaitAck;
+        INPUT ConnectAck;
+          NEXTSTATE Connected;
+        INPUT Release;
+          OUTPUT ReleaseComp VIA SR_Term;
+          NEXTSTATE Idle;
+      ENDSTATE WaitAck;
+
+      STATE Connected;
+        INPUT Release;
+          OUTPUT ReleaseComp VIA SR_Term;
+          NEXTSTATE Idle;
+      ENDSTATE Connected;
+    ENDPROCESS CalleeFSM;
+  ENDBLOCK TermExchange;
+ENDSYSTEM TelecomCallControl;

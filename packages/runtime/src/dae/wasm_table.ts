@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DAEBuilder, ExprKind, UnaryOp } from "./wasm_dae.js";
-import { getDefaultWasmExports } from "./wasm_loader.js";
+import { getDefaultWasmExports, type WasmRuntimeExports } from "./wasm_loader.js";
+
+export interface TableWasmExports extends WasmRuntimeExports {
+  table_interpolate1D?: (ptr: number, n: number, nCols: number, colIdx: number, u: number) => number;
+}
+
+export type TableArrayLiteral = number | null | TableArrayLiteral[];
 
 export interface CachedTable1D {
   table: number[][];
@@ -12,7 +18,9 @@ export interface CachedTable1D {
   hasTimeScaled?: boolean;
 }
 
-export function extractTableArrayLiteral(arena: DAEBuilder, exprId: number): any {
+const cachedTablesByArena = new WeakMap<DAEBuilder, Map<number, CachedTable1D>>();
+
+export function extractTableArrayLiteral(arena: DAEBuilder, exprId: number): TableArrayLiteral {
   if (exprId < 0) return null;
   const kind = arena.getExprKind(exprId);
   if (kind === ExprKind.IntLiteral) return arena.getExprData1(exprId);
@@ -31,7 +39,7 @@ export function extractTableArrayLiteral(arena: DAEBuilder, exprId: number): any
   }
   if (kind === ExprKind.ArrayCtor) {
     const count = arena.getExprData1(exprId);
-    const elems: any[] = [];
+    const elems: TableArrayLiteral[] = [];
     elems.push(extractTableArrayLiteral(arena, arena.getExprLeft(exprId)));
     for (let i = 1; i < count; i++) {
       elems.push(extractTableArrayLiteral(arena, arena.getExprLeft(exprId + i)));
@@ -47,7 +55,7 @@ export function interpolate1DTable(table: number[][], colIdx: number, u: number)
   const nCols = table[0]?.length ?? 0;
   if (nCols === 0 || colIdx < 0 || colIdx >= nCols) return 0.0;
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as TableWasmExports | null;
   if (
     w &&
     typeof w.table_interpolate1D === "function" &&
@@ -96,11 +104,11 @@ export function interpolate1DTable(table: number[][], colIdx: number, u: number)
 }
 
 export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number): CachedTable1D | null {
-  const arenaAny = arena as any;
-  if (!arenaAny._cachedTables) {
-    arenaAny._cachedTables = new Map<number, CachedTable1D>();
+  let cachedMap = cachedTablesByArena.get(arena);
+  if (!cachedMap) {
+    cachedMap = new Map<number, CachedTable1D>();
+    cachedTablesByArena.set(arena, cachedMap);
   }
-  const cachedMap: Map<number, CachedTable1D> = arenaAny._cachedTables;
   if (cachedMap.has(tableVarNameId)) {
     return cachedMap.get(tableVarNameId)!;
   }
@@ -113,7 +121,7 @@ export function getOrCreateCachedTable(arena: DAEBuilder, tableVarNameId: number
   if (tableIdx >= 0) {
     const tableExpr = arena.getVarExpression(tableIdx);
     const data = tableExpr !== undefined ? extractTableArrayLiteral(arena, tableExpr) : null;
-    if (Array.isArray(data)) tableData = data;
+    if (Array.isArray(data)) tableData = data as number[][];
   }
   if (!tableData) {
     if (arena.getVarIdxByName(`${prefix}.table[1,1]`) >= 0) {

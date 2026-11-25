@@ -132,7 +132,7 @@ const LOCAL_DOMAIN_MAP: Record<string, { domain: string; hashtags: string[] }> =
   modelica: { domain: "Modelica & Physical Modeling", hashtags: ["#Modelica", "#DAE", "#Simulation"] },
   "modelica-diagram": { domain: "Modelica & Physical Modeling", hashtags: ["#Modelica", "#DAE", "#Simulation"] },
   "modelica-code": { domain: "Modelica & Physical Modeling", hashtags: ["#Modelica", "#DAE", "#PhysicalModeling"] },
-  morsel: { domain: "Multi-Domain Simulation", hashtags: ["#ModelScript", "#Simulation", "#DAE"] },
+  ansatz: { domain: "Multi-Domain Simulation", hashtags: ["#ModelScript", "#Simulation", "#DAE"] },
   modelscript: {
     domain: "ModelScript Native Modeling",
     hashtags: ["#ModelScript", "#Simulation", "#SystemsEngineering"],

@@ -1,0 +1,11 @@
+{
+  "id": "esl-02-bouncing-ball",
+  "lang": "esl",
+  "subFormats": ["esl"],
+  "difficulty": 2,
+  "title": "Bouncing Ball with Discontinuity WHEN Re-Initialization",
+  "description": "Hybrid continuous-discrete elastic bouncing ball under gravity using an ESA ESL WHEN zero-crossing block to re-initialize velocity upon ground impact.",
+  "category": "Hybrid Systems",
+  "tags": ["esl", "bouncing-ball", "when", "hybrid", "discontinuity"],
+  "activeFile": "bouncing_ball.esl"
+}

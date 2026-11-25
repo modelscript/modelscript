@@ -1,0 +1,11 @@
+{
+  "id": "ocpp-02-rfid-dcfc-transaction",
+  "lang": "ocpp",
+  "subFormats": ["ocpp"],
+  "difficulty": 2,
+  "title": "Dual-Port Highway DC Fast Charger Session",
+  "description": "180 kW dual-EVSE CCS2 highway DC fast charging station with two concurrent EV transactions sharing the station grid connection limit.",
+  "category": "DC Fast Charging",
+  "tags": ["ocpp", "dcfc", "ccs2", "transaction"],
+  "activeFile": "highway_dcfc.ocpp"
+}

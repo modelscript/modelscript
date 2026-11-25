@@ -1,0 +1,9 @@
+LINE Line_230kV_HeavyIce voltage_kv=230 freq=60
+CONDUCTOR Drake_795_Ice weight_n_per_m=24.5 r_ohm_per_km=0.072 gmr_m=0.0114 rated_tension_n=140000
+STRUCTURE T301 station_m=0 x=0 y=0 z_base=200 height_m=34.0 phase_spacing_m=6.2
+STRUCTURE T302 station_m=310 x=310 y=0 z_base=202 height_m=34.0 phase_spacing_m=6.2
+STRUCTURE T303 station_m=620 x=620 y=0 z_base=200 height_m=34.0 phase_spacing_m=6.2
+SPAN S1 from=T301 to=T302 conductor=Drake_795_Ice tension_n=48000 min_clearance_m=9.0
+SPAN S2 from=T302 to=T303 conductor=Drake_795_Ice tension_n=48000 min_clearance_m=9.0
+TERRAIN 155 0 205.0
+TERRAIN 465 0 204.5

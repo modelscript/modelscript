@@ -1,0 +1,78 @@
+// Level-1B Polar-Orbiting Radiometer Swath, Geolocation, Quality Flags & Calibration
+netcdf viirs_swath_l1b_20260712 {
+dimensions:
+  scanline = UNLIMITED ; // (3 currently)
+  pixel = 4 ;
+  band = 2 ;
+variables:
+  double scan_time(scanline) ;
+    scan_time:units = "seconds since 2026-07-12 18:00:00 UTC" ;
+    scan_time:long_name = "Scanline Midpoint Acquisition Time" ;
+    scan_time:standard_name = "time" ;
+  float latitude(scanline, pixel) ;
+    latitude:units = "degrees_north" ;
+    latitude:long_name = "Pixel Geodetic Latitude" ;
+    latitude:standard_name = "latitude" ;
+  float longitude(scanline, pixel) ;
+    longitude:units = "degrees_east" ;
+    longitude:long_name = "Pixel Geodetic Longitude" ;
+    longitude:standard_name = "longitude" ;
+  float solar_zenith(scanline, pixel) ;
+    solar_zenith:units = "degree" ;
+    solar_zenith:long_name = "Solar Zenith Angle" ;
+    solar_zenith:standard_name = "solar_zenith_angle" ;
+  short toa_radiance(scanline, band, pixel) ;
+    toa_radiance:units = "W m-2 sr-1 um-1" ;
+    toa_radiance:long_name = "Packed Top-of-Atmosphere Spectral Radiance" ;
+    toa_radiance:standard_name = "toa_outgoing_radiance_per_unit_wavelength" ;
+    toa_radiance:scale_factor = 0.01f ;
+    toa_radiance:add_offset = 0.0f ;
+    toa_radiance:_FillValue = -32768s ;
+  float band_wavelength(band) ;
+    band_wavelength:units = "um" ;
+    band_wavelength:long_name = "Central Channel Wavelength" ;
+  float cal_gain(band) ;
+    cal_gain:units = "W m-2 sr-1 um-1 count-1" ;
+    cal_gain:long_name = "On-Orbit Solar Diffuser Calibration Gain" ;
+  byte quality_flag(scanline, pixel) ;
+    quality_flag:units = "1" ;
+    quality_flag:long_name = "Pixel Radiometric Quality Flag (0=nominal, 1=glint, 2=cloud)" ;
+  int orbit_number ;
+    orbit_number:units = "1" ;
+    orbit_number:long_name = "Spacecraft Ascending Orbit Number" ;
+
+// global attributes:
+  :Conventions = "CF-1.8" ;
+  :title = "VIIRS Level-1B Calibrated Radiance Swath Granule" ;
+  :platform = "NOAA-21" ;
+  :instrument = "VIIRS" ;
+  :processing_level = "L1B" ;
+data:
+  scan_time = 0.0, 1.786, 3.572 ;
+  latitude =
+    37.10, 37.12, 37.14, 37.16,
+    37.20, 37.22, 37.24, 37.26,
+    37.30, 37.32, 37.34, 37.36 ;
+  longitude =
+    -122.40, -122.30, -122.20, -122.10,
+    -122.42, -122.32, -122.22, -122.12,
+    -122.44, -122.34, -122.24, -122.14 ;
+  solar_zenith =
+    28.4, 28.5, 28.6, 28.7,
+    28.5, 28.6, 28.7, 28.8,
+    28.6, 28.7, 28.8, 28.9 ;
+  toa_radiance =
+    4120s, 4250s, 4390s, 4510s,
+    1820s, 1890s, 1950s, 2010s,
+    4180s, 4310s, 4440s, 4580s,
+    1845s, 1910s, 1980s, 2040s,
+    4210s, 4350s, _,     4620s,
+    1860s, 1930s, _,     2075s ;
+  band_wavelength = 0.672, 0.865 ;
+  cal_gain = 0.0425, 0.0281 ;
+  quality_flag =
+    0b, 0b, 0b, 1b,
+    0b, 0b, 1b, 1b,
+    0b, 0b, 2b, 0b ;
+  orbit_number = 18492 ;
+}

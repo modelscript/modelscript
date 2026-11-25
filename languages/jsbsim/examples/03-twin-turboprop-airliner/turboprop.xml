@@ -1,0 +1,103 @@
+<?xml version="1.0"?>
+<fdm_config name="Regional_TwinTurboprop" version="2.0" release="PRODUCTION">
+  <fileheader>
+    <author>Ansatz Aerospace Team</author>
+    <description>19-Passenger Twin-Turboprop Regional Commuter Aircraft FDM</description>
+  </fileheader>
+  <metrics>
+    <wingarea unit="FT2"> 310.0 </wingarea>
+    <wingspan unit="FT"> 58.0 </wingspan>
+    <chord unit="FT"> 5.4 </chord>
+    <htailarea unit="FT2"> 68.0 </htailarea>
+    <htailarm unit="FT"> 26.5 </htailarm>
+    <vtailarea unit="FT2"> 52.0 </vtailarea>
+    <vtailarm unit="FT"> 25.0 </vtailarm>
+    <location name="AERORP" unit="IN">
+      <x> 180.0 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+  </metrics>
+  <mass_balance>
+    <emptywt unit="LBS"> 10400.0 </emptywt>
+    <location name="CG" unit="IN">
+      <x> 176.0 </x>
+      <y> 0.0 </y>
+      <z> -4.0 </z>
+    </location>
+    <ixx unit="SLUG*FT2"> 18500.0 </ixx>
+    <iyy unit="SLUG*FT2"> 24200.0 </iyy>
+    <izz unit="SLUG*FT2"> 39800.0 </izz>
+    <ixz unit="SLUG*FT2"> 0.0 </ixz>
+  </mass_balance>
+  <ground_reactions>
+    <contact type="BOGEY" name="NOSE">
+      <location unit="IN"> <x> 45.0 </x> <y> 0.0 </y> <z> -65.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 8500.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 2200.0 </damping_coeff>
+      <steerable> 1 </steerable>
+    </contact>
+    <contact type="BOGEY" name="MAIN_LEFT">
+      <location unit="IN"> <x> 195.0 </x> <y> -102.0 </y> <z> -65.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 22000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 5500.0 </damping_coeff>
+      <brake_group> LEFT </brake_group>
+    </contact>
+    <contact type="BOGEY" name="MAIN_RIGHT">
+      <location unit="IN"> <x> 195.0 </x> <y> 102.0 </y> <z> -65.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 22000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 5500.0 </damping_coeff>
+      <brake_group> RIGHT </brake_group>
+    </contact>
+  </ground_reactions>
+  <propulsion>
+    <engine file="pt6a">
+      <location unit="IN"> <x> 140.0 </x> <y> -105.0 </y> <z> 0.0 </z> </location>
+      <thruster file="hartzell">
+        <location unit="IN"> <x> 110.0 </x> <y> -105.0 </y> <z> 0.0 </z> </location>
+      </thruster>
+    </engine>
+    <engine file="pt6a">
+      <location unit="IN"> <x> 140.0 </x> <y> 105.0 </y> <z> 0.0 </z> </location>
+      <thruster file="hartzell">
+        <location unit="IN"> <x> 110.0 </x> <y> 105.0 </y> <z> 0.0 </z> </location>
+      </thruster>
+    </engine>
+  </propulsion>
+  <aerodynamics>
+    <axis name="LIFT">
+      <function name="aero/coefficient/CLalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 5.10 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="DRAG">
+      <function name="aero/coefficient/CD0">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 0.024 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/coefficient/Cmalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/cbarw-ft</property>
+          <value> -1.15 </value>
+        </product>
+      </function>
+    </axis>
+  </aerodynamics>
+</fdm_config>

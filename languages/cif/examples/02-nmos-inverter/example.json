@@ -1,0 +1,11 @@
+{
+  "id": "cif-02-nmos-inverter",
+  "lang": "cif",
+  "subFormats": ["cif"],
+  "difficulty": 2,
+  "title": "Mead-Conway NMOS Inverter Layout",
+  "description": "Classic Mead-Conway depletion-load NMOS inverter layout in CIF 2.0 featuring active diffusion, polysilicon pull-down gate, contact cuts, and Metal-1 VDD/GND power buses.",
+  "category": "Standard Cell Layout",
+  "tags": ["cif", "mead-conway", "nmos", "inverter"],
+  "activeFile": "nmos_inverter.cif"
+}

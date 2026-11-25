@@ -1,0 +1,12 @@
+{
+  "id": "openscenario-03-highway-cut-in",
+  "lang": "openscenario",
+  "subFormats": ["xosc", "xodr"],
+  "difficulty": 3,
+  "title": "Highway Cut-In Maneuver with Speed Trigger",
+  "description": "Three-lane motorway cut-in scenario where an overtaking sedan merges abruptly into the Ego lane ahead of the Ego vehicle, exercising lateral lane-change dynamics and ACC response.",
+  "category": "ADAS Safety Validation",
+  "tags": ["cut-in", "lane-change", "highway", "acc", "multi-file"],
+  "activeFile": "cut_in.xosc",
+  "fileOrder": ["cut_in.xosc", "highway_3lane.xodr"]
+}

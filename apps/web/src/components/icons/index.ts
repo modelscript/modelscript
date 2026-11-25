@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export { AnsatzEditorIcon } from "./AnsatzEditorIcon";
+export type { AnsatzEditorIconFillMode, AnsatzEditorIconProps } from "./AnsatzEditorIcon";
 export {
-  AnsatzMorselIcon,
+  AnsatzAnsatzIcon,
+  AnsatzIcon,
   AnsatzSketchIcon,
   DraftingTriangleIcon,
-  MorselIcon,
   PenIcon,
   SketchIcon,
 } from "./AnsatzSketchIcon";
 export type { AnsatzSketchIconProps, SketchIconVariant } from "./AnsatzSketchIcon";
-export { PlaygroundIcon } from "./PlaygroundIcon";
-export type { PlaygroundIconFillMode, PlaygroundIconProps } from "./PlaygroundIcon";
 export { VsCodeIcon } from "./VsCodeIcon";
 export type { VsCodeIconProps } from "./VsCodeIcon";

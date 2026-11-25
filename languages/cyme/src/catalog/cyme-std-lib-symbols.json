@@ -1,0 +1,1911 @@
+[
+  {
+    "name": "OH_ACSR_336_LINNET",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:OH_ACSR_336_LINNET",
+    "exports": [
+      "rAcOhmPerKm",
+      "gmrMm",
+      "gmdMm",
+      "ampacityA",
+      "c1NfPerKm",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "336.4 kcmil 26/7 ACSR Overhead Conductor (Linnet)",
+      "category": "Conductors & Cables",
+      "domain": "electrical",
+      "description": "Overhead 336.4 kcmil 26/7 ACSR Linnet distribution feeder conductor modeled with Carson's positive and zero-sequence impedance equations.",
+      "provenance": "Kersting, Distribution System Modeling and Analysis (4th ed., Appendix A) / ASTM B232",
+      "aliases": [
+        "336_ACSR",
+        "LINNET",
+        "OH_336_LINNET"
+      ],
+      "parameters": [
+        {
+          "key": "rAcOhmPerKm",
+          "type": "real",
+          "defaultValue": 0.1901,
+          "unit": "Ohm/km",
+          "description": "AC resistance at 50 C"
+        },
+        {
+          "key": "gmrMm",
+          "type": "real",
+          "defaultValue": 7.437,
+          "unit": "mm",
+          "description": "Geometric Mean Radius (GMR)"
+        },
+        {
+          "key": "gmdMm",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "mm",
+          "description": "Equivalent 3-phase Geometric Mean Distance (GMD)"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 530,
+          "unit": "A",
+          "description": "Continuous thermal ampacity rating"
+        },
+        {
+          "key": "c1NfPerKm",
+          "type": "real",
+          "defaultValue": 10.9,
+          "unit": "nF/km",
+          "description": "Positive-sequence shunt capacitance"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 12.47,
+          "unit": "kV",
+          "description": "Nominal distribution line-to-line voltage"
+        }
+      ],
+      "wasmKernel": "OH_ACSR_336_LINNET",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "OH_ACSR_477_HAWK",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:OH_ACSR_477_HAWK",
+    "exports": [
+      "rAcOhmPerKm",
+      "gmrMm",
+      "gmdMm",
+      "ampacityA",
+      "c1NfPerKm",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "477 kcmil 26/7 ACSR Overhead Conductor (Hawk)",
+      "category": "Conductors & Cables",
+      "domain": "electrical",
+      "description": "Heavy trunk feeder 477 kcmil 26/7 ACSR Hawk overhead conductor with Carson earth-return sequence impedance.",
+      "provenance": "Kersting, Distribution System Modeling and Analysis (4th ed., Appendix A) / ASTM B232",
+      "aliases": [
+        "477_ACSR",
+        "HAWK",
+        "OH_477_HAWK"
+      ],
+      "parameters": [
+        {
+          "key": "rAcOhmPerKm",
+          "type": "real",
+          "defaultValue": 0.1342,
+          "unit": "Ohm/km",
+          "description": "AC resistance at 50 C"
+        },
+        {
+          "key": "gmrMm",
+          "type": "real",
+          "defaultValue": 8.839,
+          "unit": "mm",
+          "description": "Geometric Mean Radius (GMR)"
+        },
+        {
+          "key": "gmdMm",
+          "type": "real",
+          "defaultValue": 1250,
+          "unit": "mm",
+          "description": "Equivalent 3-phase Geometric Mean Distance (GMD)"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 670,
+          "unit": "A",
+          "description": "Continuous thermal ampacity rating"
+        },
+        {
+          "key": "c1NfPerKm",
+          "type": "real",
+          "defaultValue": 11.4,
+          "unit": "nF/km",
+          "description": "Positive-sequence shunt capacitance"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 12.47,
+          "unit": "kV",
+          "description": "Nominal distribution line-to-line voltage"
+        }
+      ],
+      "wasmKernel": "OH_ACSR_477_HAWK",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "OH_ACSR_1_0_RAVEN",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:OH_ACSR_1_0_RAVEN",
+    "exports": [
+      "rAcOhmPerKm",
+      "gmrMm",
+      "gmdMm",
+      "ampacityA",
+      "c1NfPerKm",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1/0 AWG 6/1 ACSR Overhead Conductor (Raven)",
+      "category": "Conductors & Cables",
+      "domain": "electrical",
+      "description": "Distribution lateral 1/0 AWG 6/1 ACSR Raven overhead conductor modeled with Carson's equations.",
+      "provenance": "Kersting, Distribution System Modeling and Analysis (4th ed., Appendix A) / ASTM B232",
+      "aliases": [
+        "1/0_ACSR",
+        "RAVEN",
+        "OH_1_0_RAVEN"
+      ],
+      "parameters": [
+        {
+          "key": "rAcOhmPerKm",
+          "type": "real",
+          "defaultValue": 0.6959,
+          "unit": "Ohm/km",
+          "description": "AC resistance at 50 C"
+        },
+        {
+          "key": "gmrMm",
+          "type": "real",
+          "defaultValue": 1.359,
+          "unit": "mm",
+          "description": "Geometric Mean Radius (GMR)"
+        },
+        {
+          "key": "gmdMm",
+          "type": "real",
+          "defaultValue": 1100,
+          "unit": "mm",
+          "description": "Equivalent 3-phase Geometric Mean Distance (GMD)"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 230,
+          "unit": "A",
+          "description": "Continuous thermal ampacity rating"
+        },
+        {
+          "key": "c1NfPerKm",
+          "type": "real",
+          "defaultValue": 9.6,
+          "unit": "nF/km",
+          "description": "Positive-sequence shunt capacitance"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 12.47,
+          "unit": "kV",
+          "description": "Nominal distribution line-to-line voltage"
+        }
+      ],
+      "wasmKernel": "OH_ACSR_1_0_RAVEN",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "OH_AAAC_394_CANTON",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:OH_AAAC_394_CANTON",
+    "exports": [
+      "rAcOhmPerKm",
+      "gmrMm",
+      "gmdMm",
+      "ampacityA",
+      "c1NfPerKm",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "394.5 kcmil 19-Strand AAAC Overhead Conductor (Canton)",
+      "category": "Conductors & Cables",
+      "domain": "electrical",
+      "description": "All-Aluminum Alloy 6201-T81 394.5 kcmil Canton overhead feeder conductor for corrosion-resistant distribution corridors.",
+      "provenance": "Kersting, Distribution System Modeling and Analysis (4th ed., Ch. 4) / ASTM B399",
+      "aliases": [
+        "394_AAAC",
+        "CANTON",
+        "OH_394_CANTON"
+      ],
+      "parameters": [
+        {
+          "key": "rAcOhmPerKm",
+          "type": "real",
+          "defaultValue": 0.1865,
+          "unit": "Ohm/km",
+          "description": "AC resistance at 50 C"
+        },
+        {
+          "key": "gmrMm",
+          "type": "real",
+          "defaultValue": 7.163,
+          "unit": "mm",
+          "description": "Geometric Mean Radius (GMR)"
+        },
+        {
+          "key": "gmdMm",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "mm",
+          "description": "Equivalent 3-phase Geometric Mean Distance (GMD)"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 545,
+          "unit": "A",
+          "description": "Continuous thermal ampacity rating"
+        },
+        {
+          "key": "c1NfPerKm",
+          "type": "real",
+          "defaultValue": 10.8,
+          "unit": "nF/km",
+          "description": "Positive-sequence shunt capacitance"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 12.47,
+          "unit": "kV",
+          "description": "Nominal distribution line-to-line voltage"
+        }
+      ],
+      "wasmKernel": "OH_AAAC_394_CANTON",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "UG_XLPE_500MCM_15kV",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:UG_XLPE_500MCM_15kV",
+    "exports": [
+      "rAcOhmPerKm",
+      "gmrMm",
+      "gmdMm",
+      "ampacityA",
+      "c1NfPerKm",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "500 kcmil Al 15 kV XLPE Concentric-Neutral Underground Cable",
+      "category": "Conductors & Cables",
+      "domain": "electrical",
+      "description": "15 kV class 500 kcmil Aluminum XLPE insulated underground feeder cable with concentric neutral return.",
+      "provenance": "Kersting, Distribution System Modeling and Analysis (4th ed., Ch. 4) / ICEA S-94-649",
+      "aliases": [
+        "500MCM_XLPE_15KV",
+        "UG_500_15KV"
+      ],
+      "parameters": [
+        {
+          "key": "rAcOhmPerKm",
+          "type": "real",
+          "defaultValue": 0.141,
+          "unit": "Ohm/km",
+          "description": "AC conductor resistance at 90 C"
+        },
+        {
+          "key": "gmrMm",
+          "type": "real",
+          "defaultValue": 8.05,
+          "unit": "mm",
+          "description": "Conductor Geometric Mean Radius (GMR)"
+        },
+        {
+          "key": "gmdMm",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "mm",
+          "description": "Equivalent trefoil/duct spacing GMD"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 385,
+          "unit": "A",
+          "description": "Underground duct bank ampacity"
+        },
+        {
+          "key": "c1NfPerKm",
+          "type": "real",
+          "defaultValue": 310,
+          "unit": "nF/km",
+          "description": "Cable insulation shunt capacitance"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kV",
+          "description": "Cable voltage class"
+        }
+      ],
+      "wasmKernel": "UG_XLPE_500MCM_15kV",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "UG_XLPE_1000MCM_25kV",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:UG_XLPE_1000MCM_25kV",
+    "exports": [
+      "rAcOhmPerKm",
+      "gmrMm",
+      "gmdMm",
+      "ampacityA",
+      "c1NfPerKm",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1000 kcmil Cu 25 kV XLPE Concentric-Neutral Underground Cable",
+      "category": "Conductors & Cables",
+      "domain": "electrical",
+      "description": "25 kV class 1000 kcmil Copper XLPE insulated heavy underground substation exit cable.",
+      "provenance": "Kersting, Distribution System Modeling and Analysis (4th ed., Ch. 4) / ICEA S-94-649",
+      "aliases": [
+        "1000MCM_XLPE_25KV",
+        "UG_1000_25KV"
+      ],
+      "parameters": [
+        {
+          "key": "rAcOhmPerKm",
+          "type": "real",
+          "defaultValue": 0.0485,
+          "unit": "Ohm/km",
+          "description": "AC conductor resistance at 90 C"
+        },
+        {
+          "key": "gmrMm",
+          "type": "real",
+          "defaultValue": 11.4,
+          "unit": "mm",
+          "description": "Conductor Geometric Mean Radius (GMR)"
+        },
+        {
+          "key": "gmdMm",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "mm",
+          "description": "Equivalent duct spacing GMD"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 650,
+          "unit": "A",
+          "description": "Underground duct bank ampacity"
+        },
+        {
+          "key": "c1NfPerKm",
+          "type": "real",
+          "defaultValue": 340,
+          "unit": "nF/km",
+          "description": "Cable insulation shunt capacitance"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "kV",
+          "description": "Cable voltage class"
+        }
+      ],
+      "wasmKernel": "UG_XLPE_1000MCM_25kV",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "UG_EPR_4_0_15kV",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:UG_EPR_4_0_15kV",
+    "exports": [
+      "rAcOhmPerKm",
+      "gmrMm",
+      "gmdMm",
+      "ampacityA",
+      "c1NfPerKm",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "4/0 AWG Al 15 kV EPR Underground Distribution Cable",
+      "category": "Conductors & Cables",
+      "domain": "electrical",
+      "description": "15 kV class 4/0 AWG Aluminum Ethylene Propylene Rubber (EPR) underground residential distribution cable.",
+      "provenance": "Kersting, Distribution System Modeling and Analysis (4th ed., Ch. 4) / AEIC CS8",
+      "aliases": [
+        "4/0_EPR_15KV",
+        "UG_4_0_EPR"
+      ],
+      "parameters": [
+        {
+          "key": "rAcOhmPerKm",
+          "type": "real",
+          "defaultValue": 0.331,
+          "unit": "Ohm/km",
+          "description": "AC conductor resistance at 90 C"
+        },
+        {
+          "key": "gmrMm",
+          "type": "real",
+          "defaultValue": 5.23,
+          "unit": "mm",
+          "description": "Conductor Geometric Mean Radius (GMR)"
+        },
+        {
+          "key": "gmdMm",
+          "type": "real",
+          "defaultValue": 130,
+          "unit": "mm",
+          "description": "Equivalent direct-buried spacing GMD"
+        },
+        {
+          "key": "ampacityA",
+          "type": "real",
+          "defaultValue": 230,
+          "unit": "A",
+          "description": "Direct-buried ampacity"
+        },
+        {
+          "key": "c1NfPerKm",
+          "type": "real",
+          "defaultValue": 245,
+          "unit": "nF/km",
+          "description": "Cable insulation shunt capacitance"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kV",
+          "description": "Cable voltage class"
+        }
+      ],
+      "wasmKernel": "UG_EPR_4_0_15kV",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "XFMR_3P_DYN1_1500kVA",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:XFMR_3P_DYN1_1500kVA",
+    "exports": [
+      "ratingKva",
+      "vPriKv",
+      "vSecKv",
+      "zPct",
+      "xrRatio",
+      "noLoadLossKw",
+      "tapPu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1500 kVA 3-Phase Delta-Wye (Dyn1) Pad-Mount Transformer",
+      "category": "Transformers & Regulators",
+      "domain": "electrical",
+      "description": "Three-phase 12.47 kV / 0.48 kV 1500 kVA Dyn1 commercial pad-mount distribution transformer.",
+      "provenance": "IEEE Std C57.12.34 / Kersting, Distribution System Modeling and Analysis (Ch. 8)",
+      "aliases": [
+        "DYN1_1500KVA",
+        "PADMOUNT_1500KVA"
+      ],
+      "parameters": [
+        {
+          "key": "ratingKva",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "kVA",
+          "description": "Nominal 3-phase apparent power rating"
+        },
+        {
+          "key": "vPriKv",
+          "type": "real",
+          "defaultValue": 12.47,
+          "unit": "kV",
+          "description": "Primary line-to-line voltage"
+        },
+        {
+          "key": "vSecKv",
+          "type": "real",
+          "defaultValue": 0.48,
+          "unit": "kV",
+          "description": "Secondary line-to-line voltage"
+        },
+        {
+          "key": "zPct",
+          "type": "real",
+          "defaultValue": 5.75,
+          "unit": "%",
+          "description": "Short-circuit impedance percentage"
+        },
+        {
+          "key": "xrRatio",
+          "type": "real",
+          "defaultValue": 6.5,
+          "unit": "ratio",
+          "description": "X/R impedance ratio"
+        },
+        {
+          "key": "noLoadLossKw",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "kW",
+          "description": "Core / no-load excitation loss"
+        },
+        {
+          "key": "tapPu",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Off-circuit tap ratio"
+        }
+      ],
+      "wasmKernel": "XFMR_3P_DYN1_1500kVA",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "XFMR_3P_YY_10MVA",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:XFMR_3P_YY_10MVA",
+    "exports": [
+      "ratingKva",
+      "vPriKv",
+      "vSecKv",
+      "zPct",
+      "xrRatio",
+      "noLoadLossKw",
+      "tapPu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "10 MVA 3-Phase Grounded Wye-Wye Substation Transformer",
+      "category": "Transformers & Regulators",
+      "domain": "electrical",
+      "description": "Three-phase 69 kV / 12.47 kV 10 MVA Yg-Yg distribution substation power transformer.",
+      "provenance": "IEEE Std C57.12.00 / Kersting, Distribution System Modeling and Analysis (Ch. 8)",
+      "aliases": [
+        "SUB_10MVA",
+        "YY_10MVA"
+      ],
+      "parameters": [
+        {
+          "key": "ratingKva",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "kVA",
+          "description": "Nominal 3-phase ONAN rating"
+        },
+        {
+          "key": "vPriKv",
+          "type": "real",
+          "defaultValue": 69,
+          "unit": "kV",
+          "description": "Primary sub-transmission voltage"
+        },
+        {
+          "key": "vSecKv",
+          "type": "real",
+          "defaultValue": 12.47,
+          "unit": "kV",
+          "description": "Secondary distribution voltage"
+        },
+        {
+          "key": "zPct",
+          "type": "real",
+          "defaultValue": 7.5,
+          "unit": "%",
+          "description": "Short-circuit impedance percentage"
+        },
+        {
+          "key": "xrRatio",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "ratio",
+          "description": "X/R impedance ratio"
+        },
+        {
+          "key": "noLoadLossKw",
+          "type": "real",
+          "defaultValue": 11.5,
+          "unit": "kW",
+          "description": "Core / no-load loss"
+        },
+        {
+          "key": "tapPu",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Nominal tap ratio"
+        }
+      ],
+      "wasmKernel": "XFMR_3P_YY_10MVA",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "XFMR_1P_POLE_50kVA",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:XFMR_1P_POLE_50kVA",
+    "exports": [
+      "ratingKva",
+      "vPriKv",
+      "vSecKv",
+      "zPct",
+      "xrRatio",
+      "noLoadLossKw",
+      "tapPu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "50 kVA Single-Phase Center-Tapped Pole-Mount Transformer",
+      "category": "Transformers & Regulators",
+      "domain": "electrical",
+      "description": "Single-phase 7.2 kV / 120-240 V 50 kVA overhead pole-mounted residential service transformer.",
+      "provenance": "IEEE Std C57.12.20 / Kersting, Distribution System Modeling and Analysis (Ch. 8)",
+      "aliases": [
+        "POLE_50KVA",
+        "1P_50KVA"
+      ],
+      "parameters": [
+        {
+          "key": "ratingKva",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "kVA",
+          "description": "Nominal single-phase rating"
+        },
+        {
+          "key": "vPriKv",
+          "type": "real",
+          "defaultValue": 7.2,
+          "unit": "kV",
+          "description": "Primary line-to-neutral voltage"
+        },
+        {
+          "key": "vSecKv",
+          "type": "real",
+          "defaultValue": 0.24,
+          "unit": "kV",
+          "description": "Secondary 240 V split-phase voltage"
+        },
+        {
+          "key": "zPct",
+          "type": "real",
+          "defaultValue": 2.4,
+          "unit": "%",
+          "description": "Short-circuit impedance percentage"
+        },
+        {
+          "key": "xrRatio",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "ratio",
+          "description": "X/R impedance ratio"
+        },
+        {
+          "key": "noLoadLossKw",
+          "type": "real",
+          "defaultValue": 0.14,
+          "unit": "kW",
+          "description": "Core / no-load loss"
+        },
+        {
+          "key": "tapPu",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Nominal tap ratio"
+        }
+      ],
+      "wasmKernel": "XFMR_1P_POLE_50kVA",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "REG_3P_STEP_32",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:REG_3P_STEP_32",
+    "exports": [
+      "vSetPu",
+      "bandwidthPu",
+      "stepSizePu",
+      "maxSteps",
+      "rLdcPu",
+      "xLdcPu",
+      "ratingKva"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase 32-Step Voltage Regulator (+/-10% Range)",
+      "category": "Transformers & Regulators",
+      "domain": "electrical",
+      "description": "Ganged 3-phase 32-step (+/-16 steps at 0.625%/step) distribution feeder step voltage regulator with Line Drop Compensation.",
+      "provenance": "IEEE Std C57.15 / Kersting, Distribution System Modeling and Analysis (Ch. 7)",
+      "aliases": [
+        "3P_REG_32",
+        "STEP_REG_3P"
+      ],
+      "parameters": [
+        {
+          "key": "vSetPu",
+          "type": "real",
+          "defaultValue": 1.025,
+          "unit": "pu",
+          "description": "Voltage regulation setpoint (123 V on 120 V base)"
+        },
+        {
+          "key": "bandwidthPu",
+          "type": "real",
+          "defaultValue": 0.01667,
+          "unit": "pu",
+          "description": "Regulator deadband width (2 V on 120 V base)"
+        },
+        {
+          "key": "stepSizePu",
+          "type": "real",
+          "defaultValue": 0.00625,
+          "unit": "pu",
+          "description": "Per-tap voltage change (5/8%)"
+        },
+        {
+          "key": "maxSteps",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "steps",
+          "description": "Maximum raise/lower tap steps"
+        },
+        {
+          "key": "rLdcPu",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "pu",
+          "description": "Line drop compensator R setting"
+        },
+        {
+          "key": "xLdcPu",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "pu",
+          "description": "Line drop compensator X setting"
+        },
+        {
+          "key": "ratingKva",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "kVA",
+          "description": "Through-power rating"
+        }
+      ],
+      "wasmKernel": "REG_3P_STEP_32",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "REG_1P_STEP_32",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:REG_1P_STEP_32",
+    "exports": [
+      "vSetPu",
+      "bandwidthPu",
+      "stepSizePu",
+      "maxSteps",
+      "rLdcPu",
+      "xLdcPu",
+      "ratingKva"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Phase 32-Step Voltage Regulator (+/-10% Range)",
+      "category": "Transformers & Regulators",
+      "domain": "electrical",
+      "description": "Single-phase 32-step (+/-16 steps at 0.625%/step) pole-mounted distribution voltage regulator.",
+      "provenance": "IEEE Std C57.15 / Kersting, Distribution System Modeling and Analysis (Ch. 7)",
+      "aliases": [
+        "1P_REG_32",
+        "STEP_REG_1P"
+      ],
+      "parameters": [
+        {
+          "key": "vSetPu",
+          "type": "real",
+          "defaultValue": 1.025,
+          "unit": "pu",
+          "description": "Voltage regulation setpoint"
+        },
+        {
+          "key": "bandwidthPu",
+          "type": "real",
+          "defaultValue": 0.01667,
+          "unit": "pu",
+          "description": "Regulator deadband width"
+        },
+        {
+          "key": "stepSizePu",
+          "type": "real",
+          "defaultValue": 0.00625,
+          "unit": "pu",
+          "description": "Per-tap voltage change (5/8%)"
+        },
+        {
+          "key": "maxSteps",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "steps",
+          "description": "Maximum raise/lower tap steps"
+        },
+        {
+          "key": "rLdcPu",
+          "type": "real",
+          "defaultValue": 0.015,
+          "unit": "pu",
+          "description": "Line drop compensator R setting"
+        },
+        {
+          "key": "xLdcPu",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "pu",
+          "description": "Line drop compensator X setting"
+        },
+        {
+          "key": "ratingKva",
+          "type": "real",
+          "defaultValue": 167,
+          "unit": "kVA",
+          "description": "Single-phase regulator rating"
+        }
+      ],
+      "wasmKernel": "REG_1P_STEP_32",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "FUSE_K_65A",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:FUSE_K_65A",
+    "exports": [
+      "ratedAmps",
+      "i2tMelt",
+      "minMeltMult",
+      "clearFactor",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "65A Type-K (Fast) Expulsion Fuse Link",
+      "category": "Protection & Switching",
+      "domain": "electrical",
+      "description": "ANSI/IEEE C37.42 65A Type-K fast-speed distribution cutout fuse link with I^2*t minimum melting curve.",
+      "provenance": "IEEE Std C37.41 / ANSI C37.42 Fuse Link Time-Current Characteristics",
+      "aliases": [
+        "65K",
+        "FUSE_65K"
+      ],
+      "parameters": [
+        {
+          "key": "ratedAmps",
+          "type": "real",
+          "defaultValue": 65,
+          "unit": "A",
+          "description": "Continuous current rating"
+        },
+        {
+          "key": "i2tMelt",
+          "type": "real",
+          "defaultValue": 18500,
+          "unit": "A^2*s",
+          "description": "Minimum melting I^2*t constant"
+        },
+        {
+          "key": "minMeltMult",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Minimum melting pickup multiple"
+        },
+        {
+          "key": "clearFactor",
+          "type": "real",
+          "defaultValue": 1.35,
+          "unit": "ratio",
+          "description": "Total clearing to minimum melting ratio"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kV",
+          "description": "Maximum design voltage"
+        }
+      ],
+      "wasmKernel": "FUSE_K_65A",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "FUSE_T_100A",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:FUSE_T_100A",
+    "exports": [
+      "ratedAmps",
+      "i2tMelt",
+      "minMeltMult",
+      "clearFactor",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "100A Type-T (Slow) Expulsion Fuse Link",
+      "category": "Protection & Switching",
+      "domain": "electrical",
+      "description": "ANSI/IEEE C37.42 100A Type-T slow-speed distribution lateral fuse link with high I^2*t thermal withstand.",
+      "provenance": "IEEE Std C37.41 / ANSI C37.42 Fuse Link Time-Current Characteristics",
+      "aliases": [
+        "100T",
+        "FUSE_100T"
+      ],
+      "parameters": [
+        {
+          "key": "ratedAmps",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "A",
+          "description": "Continuous current rating"
+        },
+        {
+          "key": "i2tMelt",
+          "type": "real",
+          "defaultValue": 115000,
+          "unit": "A^2*s",
+          "description": "Minimum melting I^2*t constant"
+        },
+        {
+          "key": "minMeltMult",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "pu",
+          "description": "Minimum melting pickup multiple"
+        },
+        {
+          "key": "clearFactor",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "ratio",
+          "description": "Total clearing to minimum melting ratio"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kV",
+          "description": "Maximum design voltage"
+        }
+      ],
+      "wasmKernel": "FUSE_T_100A",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "RECLOSER_3P_HYD",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:RECLOSER_3P_HYD",
+    "exports": [
+      "pickupAmps",
+      "timeDial",
+      "curveA",
+      "curveB",
+      "curveP",
+      "instMult",
+      "instTimeSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Phase Hydraulic Automatic Circuit Recloser",
+      "category": "Protection & Switching",
+      "domain": "electrical",
+      "description": "Three-phase distribution pole-mounted hydraulic recloser with IEEE C37.112 fast/delayed inverse overcurrent curves.",
+      "provenance": "IEEE Std C37.60 / IEEE Std C37.112-2018",
+      "aliases": [
+        "RECLOSER_HYD",
+        "HYD_RECLOSER"
+      ],
+      "parameters": [
+        {
+          "key": "pickupAmps",
+          "type": "real",
+          "defaultValue": 280,
+          "unit": "A",
+          "description": "Minimum trip current"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Time dial multiplier"
+        },
+        {
+          "key": "curveA",
+          "type": "real",
+          "defaultValue": 0.0515,
+          "unit": "s",
+          "description": "IEEE Moderately Inverse constant A"
+        },
+        {
+          "key": "curveB",
+          "type": "real",
+          "defaultValue": 0.114,
+          "unit": "s",
+          "description": "IEEE Moderately Inverse constant B"
+        },
+        {
+          "key": "curveP",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "exp",
+          "description": "IEEE Moderately Inverse exponent p"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "pu",
+          "description": "Fast trip / instantaneous multiple"
+        },
+        {
+          "key": "instTimeSec",
+          "type": "real",
+          "defaultValue": 0.03,
+          "unit": "s",
+          "description": "Fast clearing time"
+        }
+      ],
+      "wasmKernel": "RECLOSER_3P_HYD",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "RELAY_OC_IEEE_VI",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:RELAY_OC_IEEE_VI",
+    "exports": [
+      "pickupAmps",
+      "timeDial",
+      "curveA",
+      "curveB",
+      "curveP",
+      "instMult",
+      "instTimeSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE C37.112 Very Inverse Overcurrent Relay (51)",
+      "category": "Protection & Switching",
+      "domain": "electrical",
+      "description": "IEEE Std C37.112-2018 Very Inverse (U3) time-overcurrent protective relay (A=19.61, B=0.491, p=2.0).",
+      "provenance": "IEEE Std C37.112-2018 Table 1 (Very Inverse Curve)",
+      "aliases": [
+        "IEEE_VI",
+        "51_IEEE_VI",
+        "C37_112_VI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupAmps",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "A",
+          "description": "Phase overcurrent pickup current (Ip)"
+        },
+        {
+          "key": "timeDial",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "TD",
+          "description": "Time Dial setting (TD)"
+        },
+        {
+          "key": "curveA",
+          "type": "real",
+          "defaultValue": 19.61,
+          "unit": "s",
+          "description": "IEEE C37.112 Very Inverse constant A"
+        },
+        {
+          "key": "curveB",
+          "type": "real",
+          "defaultValue": 0.491,
+          "unit": "s",
+          "description": "IEEE C37.112 Very Inverse constant B"
+        },
+        {
+          "key": "curveP",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "exp",
+          "description": "IEEE C37.112 Very Inverse exponent p"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu",
+          "description": "Instantaneous 50 element pickup multiple"
+        },
+        {
+          "key": "instTimeSec",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Instantaneous operating time"
+        }
+      ],
+      "wasmKernel": "RELAY_OC_IEEE_VI",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "RELAY_OC_IEC_SI",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:RELAY_OC_IEC_SI",
+    "exports": [
+      "pickupAmps",
+      "tms",
+      "curveK",
+      "curveAlpha",
+      "instMult",
+      "instTimeSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEC 60255-151 Standard Inverse Overcurrent Relay",
+      "category": "Protection & Switching",
+      "domain": "electrical",
+      "description": "IEC 60255-151 Standard Inverse (Class A) time-overcurrent relay (k=0.14, alpha=0.02).",
+      "provenance": "IEC 60255-151:2009 Table 1 (Standard Inverse Curve)",
+      "aliases": [
+        "IEC_SI",
+        "51_IEC_SI",
+        "IEC_60255_SI"
+      ],
+      "parameters": [
+        {
+          "key": "pickupAmps",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "A",
+          "description": "Phase overcurrent pickup current (Is)"
+        },
+        {
+          "key": "tms",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "TMS",
+          "description": "Time Multiplier Setting (TMS)"
+        },
+        {
+          "key": "curveK",
+          "type": "real",
+          "defaultValue": 0.14,
+          "unit": "s",
+          "description": "IEC 60255 Standard Inverse constant k"
+        },
+        {
+          "key": "curveAlpha",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "exp",
+          "description": "IEC 60255 Standard Inverse exponent alpha"
+        },
+        {
+          "key": "instMult",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "pu",
+          "description": "Instantaneous element pickup multiple"
+        },
+        {
+          "key": "instTimeSec",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Instantaneous operating time"
+        }
+      ],
+      "wasmKernel": "RELAY_OC_IEC_SI",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "BREAKER_DIST_15kV",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:BREAKER_DIST_15kV",
+    "exports": [
+      "ratedAmps",
+      "interruptingKa",
+      "rClosedOhm",
+      "clearTimeSec",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "15 kV Substation Feeder Vacuum Circuit Breaker",
+      "category": "Protection & Switching",
+      "domain": "electrical",
+      "description": "15 kV class 1200 A, 25 kA interrupting rating substation distribution feeder vacuum circuit breaker.",
+      "provenance": "IEEE Std C37.06 / IEEE Std C37.04",
+      "aliases": [
+        "CB_15KV",
+        "BREAKER_15KV"
+      ],
+      "parameters": [
+        {
+          "key": "ratedAmps",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "A",
+          "description": "Continuous current rating"
+        },
+        {
+          "key": "interruptingKa",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "kA",
+          "description": "Symmetrical short-circuit interrupting rating"
+        },
+        {
+          "key": "rClosedOhm",
+          "type": "real",
+          "defaultValue": 0.0005,
+          "unit": "Ohm",
+          "description": "Closed contact resistance"
+        },
+        {
+          "key": "clearTimeSec",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "3-cycle breaker interrupting time"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kV",
+          "description": "Rated maximum voltage"
+        }
+      ],
+      "wasmKernel": "BREAKER_DIST_15kV",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "SWITCH_LOADBREAK",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:SWITCH_LOADBREAK",
+    "exports": [
+      "ratedAmps",
+      "interruptingKa",
+      "rClosedOhm",
+      "clearTimeSec",
+      "kVNom"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "600A 15 kV Gang-Operated Load-Break Switch",
+      "category": "Protection & Switching",
+      "domain": "electrical",
+      "description": "Three-phase 600 A gang-operated distribution sectionalizing load-break switch.",
+      "provenance": "IEEE Std C37.74 / ANSI C37.30",
+      "aliases": [
+        "LBS_600A",
+        "LOADBREAK_SW"
+      ],
+      "parameters": [
+        {
+          "key": "ratedAmps",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "A",
+          "description": "Continuous load-break current rating"
+        },
+        {
+          "key": "interruptingKa",
+          "type": "real",
+          "defaultValue": 0.6,
+          "unit": "kA",
+          "description": "Load-interruption rating"
+        },
+        {
+          "key": "rClosedOhm",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "Ohm",
+          "description": "Closed blade contact resistance"
+        },
+        {
+          "key": "clearTimeSec",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "s",
+          "description": "Manual/motorized opening time"
+        },
+        {
+          "key": "kVNom",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kV",
+          "description": "Rated maximum voltage"
+        }
+      ],
+      "wasmKernel": "SWITCH_LOADBREAK",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "CAP_BANK_3P_1200kVAR",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:CAP_BANK_3P_1200kVAR",
+    "exports": [
+      "qNomKvar",
+      "vNomKv",
+      "steps"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1200 kVAR 3-Phase Switched Shunt Capacitor Bank",
+      "category": "Shunts, Loads & DER",
+      "domain": "electrical",
+      "description": "Three-phase 12.47 kV 1200 kVAR pole-mounted distribution shunt capacitor bank for power factor and voltage support.",
+      "provenance": "IEEE Std 18 / Kersting, Distribution System Modeling and Analysis (Ch. 9)",
+      "aliases": [
+        "CAP_1200KVAR",
+        "SHUNT_CAP_1200"
+      ],
+      "parameters": [
+        {
+          "key": "qNomKvar",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "kVAR",
+          "description": "Nominal 3-phase reactive power at rated voltage"
+        },
+        {
+          "key": "vNomKv",
+          "type": "real",
+          "defaultValue": 12.47,
+          "unit": "kV",
+          "description": "Nominal line-to-line voltage"
+        },
+        {
+          "key": "steps",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "steps",
+          "description": "Number of switched capacitor steps"
+        }
+      ],
+      "wasmKernel": "CAP_BANK_3P_1200kVAR",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "LOAD_ZIP_DIST",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:LOAD_ZIP_DIST",
+    "exports": [
+      "pNomKw",
+      "qNomKvar",
+      "zp",
+      "ip",
+      "pp",
+      "zq",
+      "iq",
+      "pq"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Composite ZIP Distribution Feeder Load",
+      "category": "Shunts, Loads & DER",
+      "domain": "electrical",
+      "description": "Voltage-dependent composite polynomial (Constant-Z, Constant-I, Constant-P) distribution feeder load model.",
+      "provenance": "IEEE Task Force on Load Representation (1993) / Kersting (Ch. 9)",
+      "aliases": [
+        "ZIP_LOAD",
+        "DIST_LOAD_ZIP"
+      ],
+      "parameters": [
+        {
+          "key": "pNomKw",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "kW",
+          "description": "Nominal active power at 1.0 pu voltage"
+        },
+        {
+          "key": "qNomKvar",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "kVAR",
+          "description": "Nominal reactive power at 1.0 pu voltage"
+        },
+        {
+          "key": "zp",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Active power constant-impedance fraction"
+        },
+        {
+          "key": "ip",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Active power constant-current fraction"
+        },
+        {
+          "key": "pp",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "pu",
+          "description": "Active power constant-power fraction"
+        },
+        {
+          "key": "zq",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "pu",
+          "description": "Reactive power constant-impedance fraction"
+        },
+        {
+          "key": "iq",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "pu",
+          "description": "Reactive power constant-current fraction"
+        },
+        {
+          "key": "pq",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "pu",
+          "description": "Reactive power constant-power fraction"
+        }
+      ],
+      "wasmKernel": "LOAD_ZIP_DIST",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "DER_PV_IEEE1547",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:DER_PV_IEEE1547",
+    "exports": [
+      "sRatedKva",
+      "v1Pu",
+      "v2Pu",
+      "v3Pu",
+      "v4Pu",
+      "qMaxPu",
+      "qMinAbsPu",
+      "vw1Pu",
+      "vw2Pu",
+      "pMinPu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE 1547-2018 Category B Solar PV Smart Inverter",
+      "category": "Shunts, Loads & DER",
+      "domain": "electrical",
+      "description": "Grid-following photovoltaic smart inverter implementing IEEE Std 1547-2018 Category B Volt-VAR and Volt-Watt autonomous voltage regulation.",
+      "provenance": "IEEE Std 1547-2018 Category B (Tables 8 & 10, Volt-VAR & Volt-Watt)",
+      "aliases": [
+        "PV_IEEE1547",
+        "SMART_INVERTER_PV"
+      ],
+      "parameters": [
+        {
+          "key": "sRatedKva",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "kVA",
+          "description": "Inverter apparent power rating"
+        },
+        {
+          "key": "v1Pu",
+          "type": "real",
+          "defaultValue": 0.92,
+          "unit": "pu",
+          "description": "Volt-VAR V1 breakpoint (max capacitive injection)"
+        },
+        {
+          "key": "v2Pu",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "pu",
+          "description": "Volt-VAR V2 lower deadband breakpoint"
+        },
+        {
+          "key": "v3Pu",
+          "type": "real",
+          "defaultValue": 1.02,
+          "unit": "pu",
+          "description": "Volt-VAR V3 upper deadband breakpoint"
+        },
+        {
+          "key": "v4Pu",
+          "type": "real",
+          "defaultValue": 1.08,
+          "unit": "pu",
+          "description": "Volt-VAR V4 breakpoint (max inductive absorption)"
+        },
+        {
+          "key": "qMaxPu",
+          "type": "real",
+          "defaultValue": 0.44,
+          "unit": "pu",
+          "description": "Category B maximum reactive injection (+Q)"
+        },
+        {
+          "key": "qMinAbsPu",
+          "type": "real",
+          "defaultValue": 0.44,
+          "unit": "pu",
+          "description": "Category B maximum reactive absorption (|-Q|)"
+        },
+        {
+          "key": "vw1Pu",
+          "type": "real",
+          "defaultValue": 1.06,
+          "unit": "pu",
+          "description": "Volt-Watt curtailment start voltage"
+        },
+        {
+          "key": "vw2Pu",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Volt-Watt full curtailment voltage"
+        },
+        {
+          "key": "pMinPu",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "pu",
+          "description": "Minimum active power floor at V >= vw2"
+        }
+      ],
+      "wasmKernel": "DER_PV_IEEE1547",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "DER_BESS_IEEE1547",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:DER_BESS_IEEE1547",
+    "exports": [
+      "sRatedKva",
+      "v1Pu",
+      "v2Pu",
+      "v3Pu",
+      "v4Pu",
+      "qMaxPu",
+      "qMinAbsPu",
+      "vw1Pu",
+      "vw2Pu",
+      "pMinPu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE 1547-2018 Category B Battery Energy Storage (BESS)",
+      "category": "Shunts, Loads & DER",
+      "domain": "electrical",
+      "description": "Four-quadrant distribution battery energy storage inverter with IEEE 1547-2018 Category B Volt-VAR and Volt-Watt curves.",
+      "provenance": "IEEE Std 1547-2018 Category B (Tables 8 & 10)",
+      "aliases": [
+        "BESS_IEEE1547",
+        "BATTERY_DER"
+      ],
+      "parameters": [
+        {
+          "key": "sRatedKva",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "kVA",
+          "description": "BESS inverter apparent power rating"
+        },
+        {
+          "key": "v1Pu",
+          "type": "real",
+          "defaultValue": 0.92,
+          "unit": "pu",
+          "description": "Volt-VAR V1 breakpoint"
+        },
+        {
+          "key": "v2Pu",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "pu",
+          "description": "Volt-VAR V2 lower deadband breakpoint"
+        },
+        {
+          "key": "v3Pu",
+          "type": "real",
+          "defaultValue": 1.02,
+          "unit": "pu",
+          "description": "Volt-VAR V3 upper deadband breakpoint"
+        },
+        {
+          "key": "v4Pu",
+          "type": "real",
+          "defaultValue": 1.08,
+          "unit": "pu",
+          "description": "Volt-VAR V4 breakpoint"
+        },
+        {
+          "key": "qMaxPu",
+          "type": "real",
+          "defaultValue": 0.44,
+          "unit": "pu",
+          "description": "Maximum reactive injection (+Q)"
+        },
+        {
+          "key": "qMinAbsPu",
+          "type": "real",
+          "defaultValue": 0.44,
+          "unit": "pu",
+          "description": "Maximum reactive absorption (|-Q|)"
+        },
+        {
+          "key": "vw1Pu",
+          "type": "real",
+          "defaultValue": 1.06,
+          "unit": "pu",
+          "description": "Volt-Watt curtailment start voltage"
+        },
+        {
+          "key": "vw2Pu",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Volt-Watt zero-export voltage"
+        },
+        {
+          "key": "pMinPu",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Minimum active power output at V >= vw2"
+        }
+      ],
+      "wasmKernel": "DER_BESS_IEEE1547",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "DER_WIND_DIST",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:DER_WIND_DIST",
+    "exports": [
+      "sRatedKva",
+      "v1Pu",
+      "v2Pu",
+      "v3Pu",
+      "v4Pu",
+      "qMaxPu",
+      "qMinAbsPu",
+      "vw1Pu",
+      "vw2Pu",
+      "pMinPu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IEEE 1547-2018 Distributed Wind Turbine Generator",
+      "category": "Shunts, Loads & DER",
+      "domain": "electrical",
+      "description": "Type-4 full-converter distributed wind generator with IEEE 1547-2018 Category B Volt-VAR / Volt-Watt support.",
+      "provenance": "IEEE Std 1547-2018 Category B / IEC 61400-27-1",
+      "aliases": [
+        "WIND_IEEE1547",
+        "DIST_WIND"
+      ],
+      "parameters": [
+        {
+          "key": "sRatedKva",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "kVA",
+          "description": "Wind converter apparent power rating"
+        },
+        {
+          "key": "v1Pu",
+          "type": "real",
+          "defaultValue": 0.92,
+          "unit": "pu",
+          "description": "Volt-VAR V1 breakpoint"
+        },
+        {
+          "key": "v2Pu",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "pu",
+          "description": "Volt-VAR V2 lower deadband breakpoint"
+        },
+        {
+          "key": "v3Pu",
+          "type": "real",
+          "defaultValue": 1.02,
+          "unit": "pu",
+          "description": "Volt-VAR V3 upper deadband breakpoint"
+        },
+        {
+          "key": "v4Pu",
+          "type": "real",
+          "defaultValue": 1.08,
+          "unit": "pu",
+          "description": "Volt-VAR V4 breakpoint"
+        },
+        {
+          "key": "qMaxPu",
+          "type": "real",
+          "defaultValue": 0.44,
+          "unit": "pu",
+          "description": "Maximum reactive injection (+Q)"
+        },
+        {
+          "key": "qMinAbsPu",
+          "type": "real",
+          "defaultValue": 0.44,
+          "unit": "pu",
+          "description": "Maximum reactive absorption (|-Q|)"
+        },
+        {
+          "key": "vw1Pu",
+          "type": "real",
+          "defaultValue": 1.06,
+          "unit": "pu",
+          "description": "Volt-Watt curtailment start voltage"
+        },
+        {
+          "key": "vw2Pu",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Volt-Watt curtailment end voltage"
+        },
+        {
+          "key": "pMinPu",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "pu",
+          "description": "Minimum active power floor"
+        }
+      ],
+      "wasmKernel": "DER_WIND_DIST",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "EV_CHARGER_L3",
+    "kind": "cyme_equipment_model",
+    "namePath": "cyme:EV_CHARGER_L3",
+    "exports": [
+      "pNomKw",
+      "qNomKvar",
+      "zp",
+      "ip",
+      "pp",
+      "zq",
+      "iq",
+      "pq"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Level-3 DC Fast Charger (Constant-Power Rectifier Load)",
+      "category": "Shunts, Loads & DER",
+      "domain": "electrical",
+      "description": "350 kW three-phase Level-3 EV DC Fast Charger modeled as high-power-factor constant-power ZIP load.",
+      "provenance": "SAE J1772 / IEEE Std 1547-2018 / EPRI EV Grid Integration Guidelines",
+      "aliases": [
+        "DCFC_L3",
+        "EV_DCFC"
+      ],
+      "parameters": [
+        {
+          "key": "pNomKw",
+          "type": "real",
+          "defaultValue": 350,
+          "unit": "kW",
+          "description": "Rated DC fast charging active power"
+        },
+        {
+          "key": "qNomKvar",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "kVAR",
+          "description": "Nominal reactive power at 0.995 pf"
+        },
+        {
+          "key": "zp",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Constant-impedance active fraction"
+        },
+        {
+          "key": "ip",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Constant-current active fraction"
+        },
+        {
+          "key": "pp",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "pu",
+          "description": "Constant-power active fraction"
+        },
+        {
+          "key": "zq",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Constant-impedance reactive fraction"
+        },
+        {
+          "key": "iq",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "pu",
+          "description": "Constant-current reactive fraction"
+        },
+        {
+          "key": "pq",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Constant-power reactive fraction"
+        }
+      ],
+      "wasmKernel": "EV_CHARGER_L3",
+      "archetypeId": 31
+    }
+  }
+]

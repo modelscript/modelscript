@@ -1,0 +1,11 @@
+model MichaelisMenten()
+  compartment cytosol = 1.0;
+  species S in cytosol = 15.0, P in cytosol = 0.0;
+  const Vmax = 2.4, Km = 1.8;
+
+  J_cat: S => P; (Vmax * S) / (Km + S);
+
+  S is "Substrate";
+  P is "Product";
+  J_cat is "Enzymatic Catalysis";
+end

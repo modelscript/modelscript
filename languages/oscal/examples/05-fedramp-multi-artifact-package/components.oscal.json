@@ -1,0 +1,25 @@
+{
+  "component-definition": {
+    "uuid": "55555555-5555-4555-8555-555555555503",
+    "metadata": {
+      "title": "Cloud Simulation Platform Components",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "components": [
+      {
+        "uuid": "55555555-5555-4555-8555-555555555510",
+        "type": "software",
+        "title": "IdentityBrokerService",
+        "description": "OIDC and SAML identity provider enforcing MFA and RBAC."
+      },
+      {
+        "uuid": "55555555-5555-4555-8555-555555555511",
+        "type": "software",
+        "title": "MeshIngressProxy",
+        "description": "FIPS 140-3 validated TLS 1.3 ingress gateway and audit collector."
+      }
+    ]
+  }
+}

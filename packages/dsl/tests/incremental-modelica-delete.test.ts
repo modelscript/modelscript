@@ -47,7 +47,7 @@ const modelicaLikeGrammar = language({
   extras: ($) => [/\s+/],
 });
 
-describe("Modelica Playground Model Parsing", () => {
+describe("Modelica Ansatz Model Parsing", () => {
   let facade;
   let tmpDir;
 

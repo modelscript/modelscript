@@ -1,0 +1,12 @@
+{
+  "id": "plot3d-01-uniform-2d-grid",
+  "lang": "plot3d",
+  "subFormats": ["xyz"],
+  "difficulty": 1,
+  "title": "2D Uniform Rectangular Structured Grid",
+  "description": "Single-block 4x3 structured Cartesian grid in ASCII PLOT3D format with strictly positive right-handed cell Jacobians for a planar computational fluid dynamics domain.",
+  "category": "Structured CFD & Aerodynamics",
+  "tags": ["plot3d", "structured-grid", "cfd", "2d"],
+  "activeFile": "grid2d.xyz",
+  "isDefaultStarter": true
+}

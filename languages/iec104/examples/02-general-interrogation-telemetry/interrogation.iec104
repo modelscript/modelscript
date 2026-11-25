@@ -1,0 +1,8 @@
+station Sub_138kV_East ca=102 oa=1 port=2404 k=12 w=8 t1=15 t2=10
+point 1001 M_SP_NA_1 CB_138_Line1_Closed init=1
+point 1002 M_SP_NA_1 CB_138_Xfmr1_Closed init=1
+point 1003 M_SP_NA_1 Relay_86_Lockout init=0
+point 2001 M_ME_NC_1 Bus_138_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.25 init=138.4
+point 2002 M_ME_NC_1 Line1_Current_A units=A scale=1.0 offset=0.0 deadband=2.0 init=385.0
+point 2003 M_ME_NC_1 Xfmr1_Active_MW units=MW scale=1.0 offset=0.0 deadband=0.5 init=78.5
+point 3001 M_IT_NA_1 Feeder1_Import_MWh units=MWh scale=1.0 offset=0.0 deadband=0.1 init=14280.0

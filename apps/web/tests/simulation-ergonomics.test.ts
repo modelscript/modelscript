@@ -397,7 +397,7 @@ describe("Simulation Ergonomics & Analysis Engine", () => {
       const states = ["capacitor.v"];
       const t = [0.0, 0.5, 1.0];
 
-      // Simulate row mapping in useMorselEngine
+      // Simulate row mapping in useAnsatzEngine
       const localSimulationData = t.map((timeVal, i) => {
         const rowObj: Record<string, number | string> = { time: timeVal };
         mockSweepResults.forEach((sweep) => {

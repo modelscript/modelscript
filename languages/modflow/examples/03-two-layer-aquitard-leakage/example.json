@@ -1,0 +1,11 @@
+{
+  "id": "modflow-03-two-layer-aquitard-leakage",
+  "lang": "modflow",
+  "subFormats": ["nam", "dis", "npf", "ic", "chd", "wel", "sto", "rch"],
+  "difficulty": 3,
+  "title": "Two-Layer Aquifer-Aquitard Vertical Leakage",
+  "description": "MODFLOW 6 two-layer hydrogeologic system modeling vertical leakage from an unconfined water-table aquifer receiving areal recharge into a deeper pumped confined sandstone layer.",
+  "category": "Groundwater Hydrogeology",
+  "tags": ["modflow", "mf6", "aquitard", "recharge", "storage", "multi-file"],
+  "activeFile": "gwf.dis"
+}

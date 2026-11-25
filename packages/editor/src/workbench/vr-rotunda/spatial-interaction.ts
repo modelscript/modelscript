@@ -162,3 +162,71 @@ export function isInsideDeleteRing(
   );
   return Number.isFinite(dist) && dist <= ringRadiusMeters;
 }
+
+export interface TossPredictionResult {
+  readonly willHit: boolean;
+  readonly impactTimeSec: number;
+  readonly minDistance: number;
+}
+
+/**
+ * Predicts whether a released component with stage-local velocity `vel` will arc into
+ * the disposal bin (Job Simulator style "toss to delete"). Evaluates the parabolic trajectory
+ * `p(t) = pos + vel * t + 0.5 * [0, gravity, 0] * t^2` over `[0, maxTimeSec]`.
+ */
+export function predictTossIntoRecycleBin(
+  pos: readonly [number, number, number],
+  vel: readonly [number, number, number],
+  binPos: readonly [number, number, number],
+  captureRadius = 0.18,
+  minThrowSpeed = 0.55,
+  gravity = -3.6,
+  maxTimeSec = 0.85,
+): TossPredictionResult {
+  const speed = Math.hypot(vel[0], vel[1], vel[2]);
+  if (!Number.isFinite(speed) || speed < minThrowSpeed) {
+    return { willHit: false, impactTimeSec: 0, minDistance: Infinity };
+  }
+
+  let bestDist = Infinity;
+  let bestT = 0;
+  const steps = 24;
+  for (let i = 1; i <= steps; i++) {
+    const t = (i / steps) * maxTimeSec;
+    const px = pos[0] + vel[0] * t;
+    const py = pos[1] + vel[1] * t + 0.5 * gravity * t * t;
+    const pz = pos[2] + vel[2] * t;
+    const d = Math.hypot(px - binPos[0], py - binPos[1], pz - binPos[2]);
+    if (d < bestDist) {
+      bestDist = d;
+      bestT = t;
+    }
+    if (d <= captureRadius) {
+      return { willHit: true, impactTimeSec: t, minDistance: d };
+    }
+  }
+  return { willHit: false, impactTimeSec: bestT, minDistance: bestDist };
+}
+
+/**
+ * Detects an intentional brisk backward wrist flick ("Gravity Gloves" force-pull) along
+ * a far-field ray pointer: returns true when the pointer pulls backward along `-rayDir`
+ * faster than `speedThreshold` (default 1.35 m/s) while holding an object farther than `minDistance`.
+ */
+export function shouldTriggerForcePull(
+  prevPointerPos: readonly [number, number, number],
+  currPointerPos: readonly [number, number, number],
+  rayForwardDir: readonly [number, number, number],
+  deltaSec: number,
+  currentDistance: number,
+  speedThreshold = 1.35,
+  minDistance = 0.36,
+): boolean {
+  if (!Number.isFinite(deltaSec) || deltaSec <= 1e-4 || currentDistance < minDistance) return false;
+  const vx = (currPointerPos[0] - prevPointerPos[0]) / deltaSec;
+  const vy = (currPointerPos[1] - prevPointerPos[1]) / deltaSec;
+  const vz = (currPointerPos[2] - prevPointerPos[2]) / deltaSec;
+  // Negative dot with forward means pulling BACK toward the user
+  const pullSpeed = -(vx * rayForwardDir[0] + vy * rayForwardDir[1] + vz * rayForwardDir[2]);
+  return Number.isFinite(pullSpeed) && pullSpeed >= speedThreshold;
+}

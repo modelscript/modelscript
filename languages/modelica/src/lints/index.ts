@@ -31,6 +31,7 @@ import {
   isTypeCompatible,
   resolveComplexName,
   resolveComponentClassDefinition,
+  type ModelicaGrammarSymbols,
 } from "./helpers.js";
 
 export {
@@ -54,9 +55,15 @@ export {
   modelicaTypeLints,
   resolveComplexName,
   resolveComponentClassDefinition,
+  type ModelicaGrammarSymbols,
 };
 
-export { deriveSimplification, findNonlinearTermsInCst, type NonlinearTermInfo } from "./homotopy-synthesis.js";
+export {
+  deriveSimplification,
+  findNonlinearTermsInCst,
+  type HomotopyCstNode,
+  type NonlinearTermInfo,
+} from "./homotopy-synthesis.js";
 
 /**
  * Combined registry of all linear-memory CST `CompilerLint` rules for Modelica 3.x,

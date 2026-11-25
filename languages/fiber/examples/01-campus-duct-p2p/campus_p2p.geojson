@@ -1,0 +1,63 @@
+{
+  "type": "FeatureCollection",
+  "name": "Campus-P2P-Duct",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -71.0942,
+          42.3601
+        ]
+      },
+      "properties": {
+        "id": "CO_CAMPUS",
+        "name": "Campus Central Office",
+        "node-type": "central-office"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -71.091,
+          42.3612
+        ]
+      },
+      "properties": {
+        "id": "BLDG_LAB1",
+        "name": "Engineering Lab 1",
+        "node-type": "customer-premise"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -71.0942,
+            42.3601
+          ],
+          [
+            -71.091,
+            42.3612
+          ]
+        ]
+      },
+      "properties": {
+        "id": "CABLE-CAMPUS-24F",
+        "name": "Campus Duct 24F",
+        "from": "CO_CAMPUS",
+        "to": "BLDG_LAB1",
+        "strands": 24,
+        "length": 280,
+        "slack": 15,
+        "helix-factor": 1.02
+      }
+    }
+  ],
+  "splices": []
+}

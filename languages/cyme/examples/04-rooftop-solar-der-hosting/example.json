@@ -1,0 +1,11 @@
+{
+  "id": "cyme-04-rooftop-solar-der-hosting",
+  "lang": "cyme",
+  "subFormats": ["sxst"],
+  "difficulty": 4,
+  "title": "Rooftop Solar DER Reverse-Power Hosting Capacity Study",
+  "description": "High-penetration solar PV feeder modeled in CYME SXST evaluating midday reverse-power flow and voltage rise along a 12.47 kV suburban circuit.",
+  "category": "Distribution Power Systems",
+  "tags": ["cyme", "der", "solar-pv", "hosting-capacity", "reverse-power"],
+  "activeFile": "solar_hosting.sxst"
+}

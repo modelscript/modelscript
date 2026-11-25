@@ -1,0 +1,12 @@
+{
+  "id": "gerber-01-breakout-trace-2pad",
+  "lang": "gerber",
+  "subFormats": ["rs-274x"],
+  "difficulty": 1,
+  "title": "Single-Layer Breakout Trace and Two-Pad Footprint",
+  "description": "Minimal RS-274X Gerber top copper layer connecting two through-hole pads (1.6 mm pad, 0.8 mm drill) with a 0.30 mm signal trace.",
+  "category": "PCB Fabrication & CAM",
+  "tags": ["gerber", "rs-274x", "pcb", "breakout"],
+  "activeFile": "simple.gbr",
+  "isDefaultStarter": true
+}

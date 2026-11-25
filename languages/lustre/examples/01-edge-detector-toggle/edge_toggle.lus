@@ -1,0 +1,13 @@
+-- Synchronous Rising-Edge Detector and Toggle Flip-Flop in Lustre
+node RisingEdge(sig: bool) returns (edge: bool);
+let
+  edge = false -> (sig and not pre(sig));
+tel
+
+node ToggleFF(btn, reset: bool) returns (q: bool);
+var
+  press: bool;
+let
+  press = RisingEdge(btn);
+  q = false -> (if reset then false else if press then not pre(q) else pre(q));
+tel

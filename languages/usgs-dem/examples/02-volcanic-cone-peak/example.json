@@ -1,0 +1,11 @@
+{
+  "id": "usgs-dem-02-volcanic-cone-peak",
+  "lang": "usgs-dem",
+  "subFormats": ["free-format"],
+  "difficulty": 2,
+  "title": "Symmetrical Volcanic Cone Peak Terrain",
+  "description": "5x5 USGS DEM modeling a symmetrical volcanic cinder cone rising 260 m above a 1850 m basalt plateau in UTM Zone 10.",
+  "category": "Geomorphology",
+  "tags": ["usgs-dem", "volcano", "cone", "terrain"],
+  "activeFile": "cinder_cone.dem"
+}

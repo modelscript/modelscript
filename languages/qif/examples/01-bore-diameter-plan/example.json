@@ -1,0 +1,12 @@
+{
+  "id": "qif-01-bore-diameter-plan",
+  "lang": "qif",
+  "subFormats": ["qif"],
+  "difficulty": 1,
+  "title": "Bore Diameter & Depth Tolerance Inspection Plan",
+  "description": "QIF 3.0 XML metrology plan specifying nominal bore cylinder geometry, bilateral diameter tolerance, CMM device uncertainty, and probing points.",
+  "category": "Dimensional Metrology",
+  "tags": ["qif", "cmm", "tolerance", "bore", "metrology"],
+  "activeFile": "bore_plan.qif",
+  "isDefaultStarter": true
+}

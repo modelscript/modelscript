@@ -1,0 +1,18 @@
+set PROD := BANDS COILS PLATE ;
+
+param avail := 40 ;
+
+param rate :=
+  BANDS 200
+  COILS 140
+  PLATE 160 ;
+
+param profit :=
+  BANDS 25
+  COILS 30
+  PLATE 29 ;
+
+param market :=
+  BANDS 6000
+  COILS 4000
+  PLATE 3500 ;

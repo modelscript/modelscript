@@ -1,0 +1,11 @@
+{
+  "id": "rocets-03-gas-generator-lox-rp1",
+  "lang": "rocets",
+  "subFormats": ["roc"],
+  "difficulty": 3,
+  "title": "Gas-Generator Cycle LOX/RP-1 Booster Engine",
+  "description": "Merlin-class open-cycle LOX/RP-1 liquid booster rocket engine with single-shaft dual-impeller turbopump, fuel-rich gas generator, turbine drive, main valves, and regeneratively cooled thrust chamber.",
+  "category": "Launch Vehicle Propulsion",
+  "tags": ["rocets", "gas-generator", "lox-rp1", "turbopump"],
+  "activeFile": "gg_booster.roc"
+}

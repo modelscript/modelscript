@@ -59,7 +59,7 @@ import { AttachWizard, getAttachAcceptList } from "./compose/attach";
 import type { ComposeBoxProps } from "./compose/types";
 
 const HpcArtifactPickerModal = React.lazy(() => import("./HpcArtifactPickerModal"));
-const MorselComposeModal = React.lazy(() => import("./MorselComposeModal"));
+const AnsatzComposeModal = React.lazy(() => import("./AnsatzComposeModal"));
 const PackageRepoPickerModal = React.lazy(() => import("./PackageRepoPickerModal"));
 
 export type { ComposeBoxProps } from "./compose/types";
@@ -161,7 +161,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
     }
   }, [controlledContentWarning]);
   const [showHpcPicker, setShowHpcPicker] = useState(false);
-  const [showMorselModal, setShowMorselModal] = useState(false);
+  const [showAnsatzModal, setShowAnsatzModal] = useState(false);
   const [showPackageRepoPicker, setShowPackageRepoPicker] = useState(false);
   const [showCitationPicker, setShowCitationPicker] = useState(false);
   const hasHpc = useFeatureFlag("cae_cloud_solver");
@@ -288,7 +288,8 @@ export default function ComposeBox(props: ComposeBoxProps) {
       return undefined;
     };
 
-    navigator.push = (to: any, state?: any, opts?: any) => {
+    navigator.push = (...args: Parameters<typeof origPush>) => {
+      const [to] = args;
       const targetPathname = resolveTargetPathname(to);
       const curPath = currentPathnameRef.current;
       if (
@@ -296,15 +297,16 @@ export default function ComposeBox(props: ComposeBoxProps) {
         hasUnsavedChangesRef.current() &&
         (!curPath || targetPathname !== curPath)
       ) {
-        pendingNavigationRef.current = () => origPush.call(navigator, to, state, opts);
+        pendingNavigationRef.current = () => origPush.apply(navigator, args);
         setPendingAction("navigate");
         setShowConfirmSave(true);
         return;
       }
-      origPush.call(navigator, to, state, opts);
+      origPush.apply(navigator, args);
     };
 
-    navigator.replace = (to: any, state?: any, opts?: any) => {
+    navigator.replace = (...args: Parameters<typeof origReplace>) => {
+      const [to] = args;
       const targetPathname = resolveTargetPathname(to);
       const curPath = currentPathnameRef.current;
       if (
@@ -312,12 +314,12 @@ export default function ComposeBox(props: ComposeBoxProps) {
         hasUnsavedChangesRef.current() &&
         (!curPath || targetPathname !== curPath)
       ) {
-        pendingNavigationRef.current = () => origReplace.call(navigator, to, state, opts);
+        pendingNavigationRef.current = () => origReplace.apply(navigator, args);
         setPendingAction("navigate");
         setShowConfirmSave(true);
         return;
       }
-      origReplace.call(navigator, to, state, opts);
+      origReplace.apply(navigator, args);
     };
 
     navigator.go = (delta: number) => {
@@ -866,10 +868,11 @@ export default function ComposeBox(props: ComposeBoxProps) {
   const shortPostArtifacts = useMemo(() => {
     if (notebook.isNotebookMode) return [];
     const cells = notebook.notebookCells.filter(
-      (c: any) => c.type === "artifact" && c.artifactId !== undefined && c.artifactId !== null && c.artifactId !== "",
+      (c): c is Extract<typeof c, { type: "artifact" }> =>
+        c.type === "artifact" && c.artifactId !== undefined && c.artifactId !== null && c.artifactId !== "",
     );
     if (cells.length > 0) {
-      return cells.map((c: any) => ({ cellId: c.id, artifactId: c.artifactId as number | string, title: c.title }));
+      return cells.map((c) => ({ cellId: c.id, artifactId: c.artifactId, title: c.title }));
     }
     if (artifactId !== null && artifactId !== undefined && artifactId !== "") {
       return [{ artifactId }];
@@ -1233,7 +1236,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   setHashtagQuery={autocomplete.setHashtagQuery}
                   setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
                   setShowCodeSnippetModal={setShowCodeSnippetModal}
-                  setShowMorselModal={setShowMorselModal}
+                  setShowAnsatzModal={setShowAnsatzModal}
                   setShowPackageRepoPicker={setShowPackageRepoPicker}
                   fileInputRef={fileInputRef}
                   onPolishCell={hasAiPolish ? (cellId) => void handleAiPolish("polish", cellId) : undefined}
@@ -1315,7 +1318,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                 setHashtagQuery={autocomplete.setHashtagQuery}
                 setPendingInsertAfterCellId={notebook.setPendingInsertAfterCellId}
                 setShowCodeSnippetModal={setShowCodeSnippetModal}
-                setShowMorselModal={setShowMorselModal}
+                setShowAnsatzModal={setShowAnsatzModal}
                 setShowPackageRepoPicker={setShowPackageRepoPicker}
                 fileInputRef={fileInputRef}
                 onPolishCell={hasAiPolish ? (cellId) => void handleAiPolish("polish", cellId) : undefined}
@@ -1663,7 +1666,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
                   content={content}
                   setContent={setContent}
                   handleToggleNotebookMode={notebook.handleToggleNotebookMode}
-                  setShowMorselModal={setShowMorselModal}
+                  setShowAnsatzModal={setShowAnsatzModal}
                   setShowPackageRepoPicker={setShowPackageRepoPicker}
                   setShowCodeSnippetModal={setShowCodeSnippetModal}
                   setShowHpcPicker={setShowHpcPicker}
@@ -1821,22 +1824,22 @@ export default function ComposeBox(props: ComposeBoxProps) {
           <HpcArtifactPickerModal
             isOpen={showHpcPicker}
             onClose={() => setShowHpcPicker(false)}
-            onSelect={(art: any) => {
+            onSelect={(art) => {
               notebook.attachArtifactToComposer(art.id, art.title);
               setShowHpcPicker(false);
             }}
           />
         )}
 
-        {showMorselModal && (
-          <MorselComposeModal
-            isOpen={showMorselModal}
-            onClose={() => setShowMorselModal(false)}
-            onAttach={(art: any) => {
+        {showAnsatzModal && (
+          <AnsatzComposeModal
+            isOpen={showAnsatzModal}
+            onClose={() => setShowAnsatzModal(false)}
+            onAttach={(art) => {
               if (art.id) {
                 notebook.attachArtifactToComposer(art.id, art.title);
               }
-              setShowMorselModal(false);
+              setShowAnsatzModal(false);
             }}
           />
         )}
@@ -1845,7 +1848,7 @@ export default function ComposeBox(props: ComposeBoxProps) {
           <PackageRepoPickerModal
             isOpen={showPackageRepoPicker}
             onClose={() => setShowPackageRepoPicker(false)}
-            onSelect={(art: any) => {
+            onSelect={(art) => {
               notebook.attachArtifactToComposer(art.id, art.title);
               setShowPackageRepoPicker(false);
             }}

@@ -2,7 +2,7 @@
 
 import styledImport from "styled-components";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 export const AdminContainer = styled.div`
   display: flex;

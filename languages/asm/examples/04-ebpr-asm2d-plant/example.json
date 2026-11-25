@@ -1,0 +1,11 @@
+{
+  "id": "asm-04-ebpr-asm2d-plant",
+  "lang": "asm",
+  "subFormats": ["asm"],
+  "difficulty": 4,
+  "title": "Enhanced Biological Phosphorus Removal (ASM2d)",
+  "description": "A2O Enhanced Biological Phosphorus Removal (EBPR) plant modeled under IWA ASM2d with sequential anaerobic PAO release, anoxic denitrification, and aerobic luxury phosphorus uptake zones.",
+  "category": "Nutrient Removal Engineering",
+  "tags": ["asm", "asm2d", "ebpr", "phosphorus-removal", "a2o"],
+  "activeFile": "ebpr_asm2d.asm"
+}

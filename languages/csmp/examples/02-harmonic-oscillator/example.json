@@ -1,0 +1,11 @@
+{
+  "id": "csmp-02-harmonic-oscillator",
+  "lang": "csmp",
+  "subFormats": ["csmp"],
+  "difficulty": 2,
+  "title": "Damped Harmonic Oscillator",
+  "description": "Second-order linear spring-mass-damper mechanical oscillator using paired INTGRL integrators and a NOSORT energy balance calculation.",
+  "category": "Mechanical Dynamics",
+  "tags": ["csmp", "oscillator", "intgrl", "nosort"],
+  "activeFile": "harmonic_oscillator.csmp"
+}

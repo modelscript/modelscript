@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineStudio id="branched_regulator" title="Branched Transmission Pipeline with Regulator Valve" simulationType="TGNET">
+  <Nodes>
+    <Node name="Interstate_Receipt" type="SUPPLY" elevation="25m" pressure="76.0bar" flow="140.0" />
+    <Node name="Tee_Junction" type="JUNCTION" elevation="30m" />
+    <Node name="Reg_Inlet" type="JUNCTION" elevation="28m" />
+    <Node name="Reg_Outlet" type="JUNCTION" elevation="28m" />
+    <Node name="Power_Plant_Gate" type="DELIVERY" elevation="22m" minDeliveryPressure="42.0bar" flow="85.0" />
+    <Node name="City_Distribution" type="DELIVERY" elevation="18m" minDeliveryPressure="28.0bar" flow="55.0" />
+  </Nodes>
+  <Pipes>
+    <Pipe name="Main_Feeder" from="Interstate_Receipt" to="Tee_Junction" length="55.0km" diameter="30inch" roughness="0.000045m" maop="95.0bar" />
+    <Pipe name="Power_Lateral" from="Tee_Junction" to="Power_Plant_Gate" length="40.0km" diameter="24inch" roughness="0.000045m" maop="90.0bar" />
+    <Pipe name="Reg_Approach" from="Tee_Junction" to="Reg_Inlet" length="22.0km" diameter="20inch" roughness="0.000045m" maop="90.0bar" />
+    <Pipe name="City_Feeder" from="Reg_Outlet" to="City_Distribution" length="18.0km" diameter="16inch" roughness="0.000045m" maop="60.0bar" />
+  </Pipes>
+  <Regulators>
+    <Regulator name="City_Gate_PRV" from="Reg_Inlet" to="Reg_Outlet" setpoint="42.0bar" capacity="90.0" preheater="true" />
+  </Regulators>
+  <GasComposition ch4="0.915" c2h6="0.048" c3h8="0.014" co2="0.011" n2="0.012" h2="0.02" ghv="38.8" />
+  <SimulationControls startTime="0" endTime="43200" timeStep="60" eos="AGA8" steadyStateFirst="true" />
+</PipelineStudio>

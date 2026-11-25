@@ -1,0 +1,11 @@
+{
+  "id": "molfile-03-aspirin-v2000-structure",
+  "lang": "molfile",
+  "subFormats": ["mol"],
+  "difficulty": 3,
+  "title": "Aspirin (Acetylsalicylic Acid) V2000 Structure",
+  "description": "Complete 13-heavy-atom MDL V2000 connection table of acetylsalicylic acid (C9H8O4) combining a Kekule benzene ring, ortho carboxylic acid group, and phenolic acetate ester.",
+  "category": "Cheminformatics & Molecular Structure",
+  "tags": ["molfile", "aspirin", "pharmaceutical", "v2000"],
+  "activeFile": "aspirin.mol"
+}

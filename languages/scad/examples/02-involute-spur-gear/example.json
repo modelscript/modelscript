@@ -1,0 +1,11 @@
+{
+  "id": "scad-02-involute-spur-gear",
+  "lang": "scad",
+  "subFormats": ["scad"],
+  "difficulty": 2,
+  "title": "Parametric Involute Spur Gear Generator",
+  "description": "Metric module spur gear generator in OpenSCAD computing pitch diameter, addendum/dedendum radii, radially arrayed tooth profiles, and keyed shaft bore.",
+  "category": "Power Transmission CAD",
+  "tags": ["scad", "gear", "spur-gear", "parametric", "mechanical"],
+  "activeFile": "spur_gear.scad"
+}

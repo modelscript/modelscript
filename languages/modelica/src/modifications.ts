@@ -57,6 +57,11 @@ export type ModificationValue =
  *   `break x`          → { name: "x", value: {kind:"break"} }
  *   `redeclare type T = NewT` → { name: "T", isRedeclaration: true, redeclaredTypeSpecifier: "NewT" }
  */
+export type ArrayDimensionRaw =
+  | { readonly kind: "flexible" }
+  | { readonly kind: "literal"; readonly value: number }
+  | { readonly kind: "expression"; readonly cstBytes: readonly [number, number]; readonly text?: string | undefined };
+
 export interface ModificationArg {
   /** The target element name. */
   readonly name: string;
@@ -83,7 +88,7 @@ export interface ModificationArg {
   /** For redeclarations: the new prefix (e.g. "parameter", "flow", "stream"). */
   readonly redeclaredPrefix?: string | undefined;
   /** For redeclarations: the raw array dimensions of the new type specifier. */
-  readonly redeclaredArrayDimensionsRaw?: any[] | undefined;
+  readonly redeclaredArrayDimensionsRaw?: readonly ArrayDimensionRaw[] | undefined;
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
   readonly evaluationScopeId?: number | undefined;
   /** Exact text of the modification (e.g. '= 30', ' = 30', '(x = 2.0)'). */
@@ -119,7 +124,7 @@ export interface ModelicaModArgs {
   /** The new prefix if redeclared. */
   readonly redeclaredPrefix?: string | undefined;
   /** The raw array dimensions of the new type specifier if redeclared. */
-  readonly redeclaredArrayDimensionsRaw?: any[] | undefined;
+  readonly redeclaredArrayDimensionsRaw?: readonly ArrayDimensionRaw[] | undefined;
   /** The SymbolId of the class where this modification was defined, for lexical scoping. */
   readonly evaluationScopeId?: number | null | undefined;
 }

@@ -1,0 +1,11 @@
+{
+  "id": "apdl-04-finned-heatsink-thermal",
+  "lang": "apdl",
+  "subFormats": ["apdl"],
+  "difficulty": 4,
+  "title": "Steady-State Finned Aluminum Heatsink Conduction",
+  "description": "Two-dimensional steady-state thermal conduction analysis of an extruded 6063 aluminum electronics heatsink using PLANE55 thermal elements, base temperature boundary, and convective fin tip cooling.",
+  "category": "Structural & Thermal FEA",
+  "tags": ["apdl", "thermal", "plane55", "heatsink"],
+  "activeFile": "heatsink_thermal.apdl"
+}

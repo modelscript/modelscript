@@ -1,0 +1,2 @@
+route_id,agency_id,route_short_name,route_long_name,route_type
+BRT_R1,METRO_BRT,B1,Crosstown Electric BRT Rapid,3

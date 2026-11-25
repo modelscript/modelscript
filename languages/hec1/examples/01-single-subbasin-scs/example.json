@@ -1,0 +1,12 @@
+{
+  "id": "hec1-01-single-subbasin-scs",
+  "lang": "hec1",
+  "subFormats": ["hec1"],
+  "difficulty": 1,
+  "title": "Single Subbasin SCS Curve Number Runoff",
+  "description": "Minimal HEC-1 flood hydrograph deck for a single rural subbasin using total basin storm precipitation (PB), SCS Curve Number infiltration loss (LS), and SCS dimensionless unit hydrograph (UD).",
+  "category": "Watershed Hydrology",
+  "tags": ["hec1", "scs-cn", "unit-hydrograph", "runoff"],
+  "activeFile": "single_subbasin.hec1",
+  "isDefaultStarter": true
+}

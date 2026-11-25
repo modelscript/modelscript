@@ -1,0 +1,84 @@
+Basin: Green-Ampt Clark Watershed
+  Last Modified Date: 15 May 2026
+  Unit System: Metric
+End:
+
+Subbasin: Upper Forest
+  Area: 124.0
+  Downstream: Reach Forest
+  Loss: Green and Ampt
+  Transform: Clark
+End:
+
+Subbasin-Loss: Upper Forest
+  Curve Number: 68.0
+  Initial Abstraction: 22.0
+  Impervious: 2.0
+End:
+
+Subbasin-Transform: Upper Forest
+  Lag: 140.0
+End:
+
+Reach: Reach Forest
+  Downstream: Mid Junction
+  Route: Muskingum
+End:
+
+Reach-Route: Reach Forest
+  Muskingum K: 3.1
+  Muskingum X: 0.24
+  Subreaches: 4
+End:
+
+Subbasin: Central Farmland
+  Area: 86.5
+  Downstream: Mid Junction
+  Loss: Green and Ampt
+  Transform: Clark
+End:
+
+Subbasin-Loss: Central Farmland
+  Curve Number: 77.0
+  Initial Abstraction: 15.0
+  Impervious: 5.0
+End:
+
+Subbasin-Transform: Central Farmland
+  Lag: 95.0
+End:
+
+Junction: Mid Junction
+  Downstream: Lower Reach
+End:
+
+Reach: Lower Reach
+  Downstream: River Gauge Sink
+  Route: Muskingum
+End:
+
+Reach-Route: Lower Reach
+  Muskingum K: 2.4
+  Muskingum X: 0.20
+  Subreaches: 3
+End:
+
+Subbasin: Lower Valley
+  Area: 52.0
+  Downstream: River Gauge Sink
+  Loss: Green and Ampt
+  Transform: Clark
+End:
+
+Subbasin-Loss: Lower Valley
+  Curve Number: 82.0
+  Initial Abstraction: 11.0
+  Impervious: 18.0
+End:
+
+Subbasin-Transform: Lower Valley
+  Lag: 60.0
+End:
+
+Sink: River Gauge Sink
+End:

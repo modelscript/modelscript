@@ -1,0 +1,12 @@
+{
+  "id": "jcamp-dx-01-polystyrene-ftir-reference",
+  "lang": "jcamp-dx",
+  "subFormats": ["jcamp-dx-4.24"],
+  "difficulty": 1,
+  "title": "Polystyrene Film FTIR Wavenumber Calibration Reference",
+  "description": "JCAMP-DX 4.24 infrared transmittance spectrum of a standard polystyrene calibration film across the 1650 to 1550 cm-1 aromatic C=C stretch band.",
+  "category": "Infrared Spectroscopy",
+  "tags": ["jcamp-dx", "ftir", "polystyrene", "transmittance"],
+  "activeFile": "polystyrene_ir.jdx",
+  "isDefaultStarter": true
+}

@@ -2276,8 +2276,8 @@ export class UnifiedVerifier {
     const verifResults: VerificationResult[] = [];
     for (const t of ctrf.report.results.tests) {
       verifResults.push({
-        requirementId: t.extra?.["requirementId"] || 1,
-        constraintId: t.extra?.["constraintId"] || 1,
+        requirementId: typeof t.extra?.["requirementId"] === "number" ? t.extra["requirementId"] : 1,
+        constraintId: typeof t.extra?.["constraintId"] === "number" ? t.extra["constraintId"] : 1,
         isSatisfied: t.status === "passed",
         requirementName: t.name,
         message: t.message,

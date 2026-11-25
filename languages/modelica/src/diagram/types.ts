@@ -175,22 +175,31 @@ export interface ITransformation {
 
 export interface ModelicaComponentInstance {
   name: string;
-  declaration?: any;
+  declaration?: unknown;
   classInstance?: ModelicaClassInstance | null | undefined;
-  annotation?: ((key?: string, ...args: any[]) => any) | undefined;
-  annotations?: any[] | undefined;
-  [key: string]: any;
+  annotation?: ((key?: string, ...args: unknown[]) => unknown) | undefined;
+  annotations?: unknown[] | undefined;
+  description?: string | undefined;
+  typeName?: string | undefined;
+  typeSpecifier?: string | undefined;
+  classKind?: string | undefined;
+  kind?: string | undefined;
+  [key: string]: unknown;
 }
 
 export interface ModelicaClassInstance {
   id?: number | undefined;
-  db?: any;
+  db?: unknown;
   name?: string | undefined;
+  compositeName?: string | undefined;
   kind?: string | undefined;
+  classKind?: string | undefined;
+  description?: string | undefined;
+  classInstance?: ModelicaClassInstance | null | undefined;
   components?: ModelicaComponentInstance[] | undefined;
   extendsClassInstances?: ModelicaClassInstance[] | undefined;
-  annotation?: ((key?: string, ...args: any[]) => any) | undefined;
-  annotations?: any[] | undefined;
-  declaredElements?: any[] | undefined;
-  [key: string]: any;
+  annotation?: ((key?: string, ...args: unknown[]) => unknown) | undefined;
+  annotations?: unknown[] | undefined;
+  declaredElements?: unknown[] | undefined;
+  [key: string]: unknown;
 }

@@ -1,0 +1,49 @@
+# Hierarchical HDF4 Sensor Calibration & Geolocation Granule
+HDF4 Calibrated_Sensor_Granule VERSION="4.2"
+  ATTR Mission = "Terra"
+  ATTR Instrument = "MODIS"
+
+  SDS Latitude TYPE=FLOAT32 REF=10 UNIT="degrees_north"
+    DIM lines = 2
+    DIM pixels = 3
+    DATA [37.1, 37.1, 37.1, 37.2, 37.2, 37.2]
+  END
+
+  SDS Longitude TYPE=FLOAT32 REF=11 UNIT="degrees_east"
+    DIM lines = 2
+    DIM pixels = 3
+    DATA [-122.4, -122.3, -122.2, -122.4, -122.3, -122.2]
+  END
+
+  SDS Thermal_IR_Radiance TYPE=FLOAT32 REF=12 UNIT="W/(m2.sr.um)"
+    DIM lines = 2
+    DIM pixels = 3
+    ATTR scale_factor = 0.005
+    ATTR add_offset = 0.1
+    ATTR _FillValue = -999.0
+    DATA [8.42, 8.51, 8.39, 8.48, 8.55, 8.44]
+  END
+
+  VDATA BlackbodyCal CLASS="Calibration" REF=20
+    FIELD scan_id : INT16
+    FIELD bb_temp_K : FLOAT32
+    FIELD gain_coeff : FLOAT32
+    DATA [1, 290.15, 0.00501]
+    DATA [2, 290.18, 0.00500]
+  END
+
+  VGROUP GeolocationFields CLASS="SWATH_GEOLOC" REF=30
+    MEMBER SDS Latitude
+    MEMBER SDS Longitude
+  END
+
+  VGROUP DataFields CLASS="SWATH_DATA" REF=31
+    MEMBER SDS Thermal_IR_Radiance
+    MEMBER VDATA BlackbodyCal
+  END
+
+  VGROUP GranuleRoot CLASS="SWATH" REF=40
+    MEMBER VGROUP GeolocationFields
+    MEMBER VGROUP DataFields
+  END
+END

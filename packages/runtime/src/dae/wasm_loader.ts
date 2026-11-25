@@ -3,15 +3,32 @@
  * WebAssembly Runtime Singleton Loader & FinalizationRegistry for `DAEBuilder`.
  */
 
-let cachedWasmExports: any = null;
+/**
+ * Minimal typed surface for the loaded WebAssembly runtime exports.
+ * Specific subsystems narrow this to their domain-specific `*WasmExports` interface.
+ */
+export interface WasmRuntimeExports {
+  memory: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
+  dae_free?: (ptr: number) => void;
+}
+
+interface GlobalThisWithWasm {
+  __modelscript_wasm_exports__?: WasmRuntimeExports | null;
+  __modelscript_native_addon__?: { runtime?: WasmRuntimeExports };
+}
+
+let cachedWasmExports: WasmRuntimeExports | null = null;
 
 /**
  * Registers a pre-instantiated WebAssembly runtime exports object as the process-wide default.
  */
-export function setCachedWasmExports(exports: any): void {
-  cachedWasmExports = exports;
+export function setCachedWasmExports(exports: WasmRuntimeExports | WebAssembly.Exports | null): void {
+  const normalized = (exports as unknown as WasmRuntimeExports | null) ?? null;
+  cachedWasmExports = normalized;
   if (typeof globalThis !== "undefined") {
-    (globalThis as any).__modelscript_wasm_exports__ = exports;
+    (globalThis as unknown as GlobalThisWithWasm).__modelscript_wasm_exports__ = normalized;
   }
 }
 
@@ -19,11 +36,14 @@ export function setCachedWasmExports(exports: any): void {
  * Returns the cached WebAssembly runtime exports, lazily loading `build/release.wasm`
  * from disk when running in Node.js if not yet initialized.
  */
-export function getDefaultWasmExports(): any {
+export function getDefaultWasmExports(): WasmRuntimeExports | null {
   if (cachedWasmExports) return cachedWasmExports;
-  if (typeof globalThis !== "undefined" && (globalThis as any).__modelscript_wasm_exports__) {
-    cachedWasmExports = (globalThis as any).__modelscript_wasm_exports__;
-    return cachedWasmExports;
+  if (typeof globalThis !== "undefined") {
+    const existing = (globalThis as unknown as GlobalThisWithWasm).__modelscript_wasm_exports__;
+    if (existing) {
+      cachedWasmExports = existing;
+      return cachedWasmExports;
+    }
   }
   if (typeof process !== "undefined" && process.versions?.node != null) {
     try {
@@ -41,7 +61,9 @@ export function getDefaultWasmExports(): any {
             fsModule = fsModule || (req("node:fs") as typeof fsModule);
             pathModule = pathModule || (req("node:path") as typeof pathModule);
           }
-        } catch {}
+        } catch {
+          // ignore fallback require error
+        }
       }
       if (!fsModule || !pathModule) return null;
 
@@ -49,14 +71,15 @@ export function getDefaultWasmExports(): any {
       const backendPref = process.env["MODELSCRIPT_BACKEND"] ?? "auto";
       if (backendPref !== "wasm") {
         try {
-          const nativeAddon = (globalThis as Record<string, unknown>)["__modelscript_native_addon__"] as
-            { runtime?: unknown } | undefined;
+          const nativeAddon = (globalThis as unknown as GlobalThisWithWasm).__modelscript_native_addon__;
           if (nativeAddon?.runtime) {
             cachedWasmExports = nativeAddon.runtime;
-            (globalThis as Record<string, unknown>)["__modelscript_wasm_exports__"] = cachedWasmExports;
+            (globalThis as unknown as GlobalThisWithWasm).__modelscript_wasm_exports__ = cachedWasmExports;
             return cachedWasmExports;
           }
-        } catch {}
+        } catch {
+          // ignore native addon lookup error
+        }
       }
 
       const dir = typeof import.meta.dirname === "string" ? import.meta.dirname : "";
@@ -85,9 +108,9 @@ export function getDefaultWasmExports(): any {
             },
           },
         });
-        cachedWasmExports = inst.exports;
+        cachedWasmExports = inst.exports as unknown as WasmRuntimeExports;
         if (typeof globalThis !== "undefined") {
-          (globalThis as any).__modelscript_wasm_exports__ = cachedWasmExports;
+          (globalThis as unknown as GlobalThisWithWasm).__modelscript_wasm_exports__ = cachedWasmExports;
         }
         return cachedWasmExports;
       }
@@ -99,7 +122,7 @@ export function getDefaultWasmExports(): any {
 }
 
 export interface DaeCleanupPayload {
-  exports: any;
+  exports: WasmRuntimeExports | null;
   ptr: number;
 }
 

@@ -24,7 +24,7 @@ import {
   registerFmu,
   searchClasses,
 } from "./util/lsp-bridge";
-import { decompressMorselPayload, resolveMorselShortlink } from "./util/permalink";
+import { decompressAnsatzPayload, resolveAnsatzShortlink } from "./util/permalink";
 import { fetchRegistryClassSource, type StreamedRegistryModelItem, streamRegistryModels } from "./util/registry-stream";
 
 function sanitizeSvgMarkup(rawSvg: string, _options?: { maxHeight?: string; isDark?: boolean }): string {
@@ -52,6 +52,8 @@ export interface OpenModelPayload {
   title: string;
   className?: string | undefined;
   filename?: string | undefined;
+  files?: Record<string, string> | undefined;
+  activeFile?: string | undefined;
   targetView: OpenModelTargetView;
 }
 
@@ -713,7 +715,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
     setIsResolvingUrl(true);
     try {
       let hashPart = "";
-      let morselId = "";
+      let ansatzId = "";
       if (raw.includes("#")) {
         hashPart = raw.slice(raw.indexOf("#"));
       } else if (raw.startsWith("m=")) {
@@ -721,7 +723,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
       }
       try {
         const parsedUrl = new URL(raw, window.location.origin);
-        morselId = parsedUrl.searchParams.get("morsel") || "";
+        ansatzId = parsedUrl.searchParams.get("ansatz") || "";
         if (!hashPart && parsedUrl.hash) {
           hashPart = parsedUrl.hash;
         }
@@ -730,9 +732,9 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
       }
 
       const payload = hashPart
-        ? decompressMorselPayload(hashPart)
-        : morselId
-          ? await resolveMorselShortlink(morselId)
+        ? decompressAnsatzPayload(hashPart)
+        : ansatzId
+          ? await resolveAnsatzShortlink(ansatzId)
           : null;
 
       if (!payload?.code) {
@@ -2093,7 +2095,7 @@ export const OpenModelModal: React.FC<OpenModelModalProps> = ({
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void handleResolveShareLink();
                     }}
-                    placeholder="Paste https://ansatz.social/editor#m=... or ?morsel=..."
+                    placeholder="Paste https://ansatz.social/editor#m=... or ?ansatz=..."
                     style={{
                       flex: 1,
                       height: 34,

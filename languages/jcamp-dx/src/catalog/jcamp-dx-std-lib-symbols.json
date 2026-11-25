@@ -1,0 +1,582 @@
+[
+  {
+    "name": "INFRARED_SPECTRUM",
+    "kind": "Class",
+    "namePath": "JCAMP.INFRARED_SPECTRUM",
+    "exports": [
+      "FIRSTX",
+      "LASTX",
+      "PATH_LENGTH",
+      "CONCENTRATION"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Infrared Spectrum (JCAMP-DX 4.24)",
+      "category": "Spectroscopy Types",
+      "domain": "chemistry",
+      "description": "Mid/Near-IR vibrational absorption or transmittance spectrum (4000–400 cm^-1).",
+      "provenance": "IUPAC JCAMP-DX 4.24 (McDonald & Wilks, 1988)",
+      "aliases": [
+        "INFRARED SPECTRUM",
+        "IR",
+        "FTIR"
+      ],
+      "parameters": [
+        {
+          "key": "FIRSTX",
+          "type": "real",
+          "defaultValue": 4000,
+          "unit": "1/CM",
+          "description": "Starting wavenumber"
+        },
+        {
+          "key": "LASTX",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "1/CM",
+          "description": "Ending wavenumber"
+        },
+        {
+          "key": "PATH_LENGTH",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "cm",
+          "description": "Optical path length"
+        },
+        {
+          "key": "CONCENTRATION",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "mol/L",
+          "description": "Sample concentration"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "NMR_SPECTRUM",
+    "kind": "Class",
+    "namePath": "JCAMP.NMR_SPECTRUM",
+    "exports": [
+      "FIRSTX",
+      "LASTX",
+      "OBSERVE_FREQ",
+      "LINEWIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NMR Spectrum (JCAMP-DX 5.01)",
+      "category": "Spectroscopy Types",
+      "domain": "chemistry",
+      "description": "Nuclear Magnetic Resonance chemical shift spectrum (ppm, descending axis).",
+      "provenance": "IUPAC JCAMP-DX 5.01 (Davies & Lampen, 1993)",
+      "aliases": [
+        "NMR SPECTRUM",
+        "1H NMR",
+        "13C NMR"
+      ],
+      "parameters": [
+        {
+          "key": "FIRSTX",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "PPM",
+          "description": "Downfield chemical shift limit"
+        },
+        {
+          "key": "LASTX",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "PPM",
+          "description": "Upfield TMS reference limit"
+        },
+        {
+          "key": "OBSERVE_FREQ",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "MHz",
+          "description": "Larmor observe frequency"
+        },
+        {
+          "key": "LINEWIDTH",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "PPM",
+          "description": "Lorentzian half-width at half-maximum"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "MASS_SPECTRUM",
+    "kind": "Class",
+    "namePath": "JCAMP.MASS_SPECTRUM",
+    "exports": [
+      "FIRSTX",
+      "LASTX",
+      "BASE_PEAK_INTENSITY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Mass Spectrum (JCAMP-DX 5.00)",
+      "category": "Spectroscopy Types",
+      "domain": "chemistry",
+      "description": "Discrete mass-to-charge (m/z) ion abundance spectrum.",
+      "provenance": "IUPAC JCAMP-DX 5.00 (Lampen et al., 1994)",
+      "aliases": [
+        "MASS SPECTRUM",
+        "MS",
+        "EI-MS"
+      ],
+      "parameters": [
+        {
+          "key": "FIRSTX",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "M/Z",
+          "description": "Minimum m/z"
+        },
+        {
+          "key": "LASTX",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "M/Z",
+          "description": "Maximum m/z"
+        },
+        {
+          "key": "BASE_PEAK_INTENSITY",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "%",
+          "description": "Normalized base peak intensity"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "UV_VIS_SPECTRUM",
+    "kind": "Class",
+    "namePath": "JCAMP.UV_VIS_SPECTRUM",
+    "exports": [
+      "FIRSTX",
+      "LASTX",
+      "EPSILON",
+      "PATH_LENGTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "UV/Vis Electronic Spectrum (JCAMP-DX 4.24)",
+      "category": "Spectroscopy Types",
+      "domain": "chemistry",
+      "description": "Ultraviolet-Visible electronic absorption spectrum (200–800 nm) obeying Beer-Lambert law.",
+      "provenance": "IUPAC JCAMP-DX 4.24",
+      "aliases": [
+        "UV/VIS SPECTRUM",
+        "UV-VIS",
+        "ULTRAVIOLET SPECTRUM"
+      ],
+      "parameters": [
+        {
+          "key": "FIRSTX",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "NANOMETERS",
+          "description": "Starting wavelength"
+        },
+        {
+          "key": "LASTX",
+          "type": "real",
+          "defaultValue": 800,
+          "unit": "NANOMETERS",
+          "description": "Ending wavelength"
+        },
+        {
+          "key": "EPSILON",
+          "type": "real",
+          "defaultValue": 12000,
+          "unit": "L/(mol*cm)",
+          "description": "Molar absorptivity"
+        },
+        {
+          "key": "PATH_LENGTH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "cm",
+          "description": "Cuvette optical path length"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "RAMAN_SPECTRUM",
+    "kind": "Class",
+    "namePath": "JCAMP.RAMAN_SPECTRUM",
+    "exports": [
+      "FIRSTX",
+      "LASTX",
+      "LASER_WAVELENGTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Raman Scattering Spectrum (JCAMP-DX 4.24)",
+      "category": "Spectroscopy Types",
+      "domain": "chemistry",
+      "description": "Inelastic Raman shift vibrational scattering spectrum (cm^-1).",
+      "provenance": "IUPAC JCAMP-DX 4.24",
+      "aliases": [
+        "RAMAN SPECTRUM",
+        "RAMAN"
+      ],
+      "parameters": [
+        {
+          "key": "FIRSTX",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "1/CM",
+          "description": "Minimum Raman shift"
+        },
+        {
+          "key": "LASTX",
+          "type": "real",
+          "defaultValue": 3500,
+          "unit": "1/CM",
+          "description": "Maximum Raman shift"
+        },
+        {
+          "key": "LASER_WAVELENGTH",
+          "type": "real",
+          "defaultValue": 532,
+          "unit": "nm",
+          "description": "Excitation laser wavelength"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "IR_BAND_OH",
+    "kind": "Class",
+    "namePath": "JCAMP.IR_BAND_OH",
+    "exports": [
+      "CENTER",
+      "MIN_X",
+      "MAX_X",
+      "WIDTH",
+      "AMPLITUDE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IR O-H Stretch (3200–3600 cm^-1)",
+      "category": "IR Functional Groups",
+      "domain": "chemistry",
+      "description": "Broad hydrogen-bonded O-H stretching absorption band characteristic of alcohols and phenols.",
+      "provenance": "IUPAC / Silverstein IR Correlation Table",
+      "aliases": [
+        "O-H",
+        "HYDROXYL",
+        "ALCOHOL_OH"
+      ],
+      "parameters": [
+        {
+          "key": "CENTER",
+          "type": "real",
+          "defaultValue": 3380,
+          "unit": "1/CM",
+          "description": "Band center wavenumber"
+        },
+        {
+          "key": "MIN_X",
+          "type": "real",
+          "defaultValue": 3200,
+          "unit": "1/CM",
+          "description": "Lower wavenumber bound"
+        },
+        {
+          "key": "MAX_X",
+          "type": "real",
+          "defaultValue": 3600,
+          "unit": "1/CM",
+          "description": "Upper wavenumber bound"
+        },
+        {
+          "key": "WIDTH",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "1/CM",
+          "description": "Gaussian/Lorentzian half-width"
+        },
+        {
+          "key": "AMPLITUDE",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "AU",
+          "description": "Peak absorbance amplitude"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "IR_BAND_CO_CARBONYL",
+    "kind": "Class",
+    "namePath": "JCAMP.IR_BAND_CO_CARBONYL",
+    "exports": [
+      "CENTER",
+      "MIN_X",
+      "MAX_X",
+      "WIDTH",
+      "AMPLITUDE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IR C=O Stretch (1680–1750 cm^-1)",
+      "category": "IR Functional Groups",
+      "domain": "chemistry",
+      "description": "Strong, sharp C=O carbonyl stretching band characteristic of ketones, aldehydes, esters, and acids.",
+      "provenance": "IUPAC / Silverstein IR Correlation Table",
+      "aliases": [
+        "C=O",
+        "CARBONYL",
+        "KETONE_CO"
+      ],
+      "parameters": [
+        {
+          "key": "CENTER",
+          "type": "real",
+          "defaultValue": 1715,
+          "unit": "1/CM",
+          "description": "Band center wavenumber"
+        },
+        {
+          "key": "MIN_X",
+          "type": "real",
+          "defaultValue": 1680,
+          "unit": "1/CM",
+          "description": "Lower wavenumber bound"
+        },
+        {
+          "key": "MAX_X",
+          "type": "real",
+          "defaultValue": 1750,
+          "unit": "1/CM",
+          "description": "Upper wavenumber bound"
+        },
+        {
+          "key": "WIDTH",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "1/CM",
+          "description": "Lorentzian half-width"
+        },
+        {
+          "key": "AMPLITUDE",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "AU",
+          "description": "Peak absorbance amplitude"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "IR_BAND_CH_ALKANE",
+    "kind": "Class",
+    "namePath": "JCAMP.IR_BAND_CH_ALKANE",
+    "exports": [
+      "CENTER",
+      "MIN_X",
+      "MAX_X",
+      "WIDTH",
+      "AMPLITUDE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IR C-H Stretch (2850–2960 cm^-1)",
+      "category": "IR Functional Groups",
+      "domain": "chemistry",
+      "description": "Aliphatic sp3 C-H stretching band.",
+      "provenance": "IUPAC / Silverstein IR Correlation Table",
+      "aliases": [
+        "C-H",
+        "ALKANE_CH"
+      ],
+      "parameters": [
+        {
+          "key": "CENTER",
+          "type": "real",
+          "defaultValue": 2925,
+          "unit": "1/CM",
+          "description": "Band center wavenumber"
+        },
+        {
+          "key": "MIN_X",
+          "type": "real",
+          "defaultValue": 2850,
+          "unit": "1/CM",
+          "description": "Lower wavenumber bound"
+        },
+        {
+          "key": "MAX_X",
+          "type": "real",
+          "defaultValue": 2960,
+          "unit": "1/CM",
+          "description": "Upper wavenumber bound"
+        },
+        {
+          "key": "WIDTH",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "1/CM",
+          "description": "Half-width"
+        },
+        {
+          "key": "AMPLITUDE",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "AU",
+          "description": "Peak absorbance amplitude"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "IR_BAND_CC_ALKENE",
+    "kind": "Class",
+    "namePath": "JCAMP.IR_BAND_CC_ALKENE",
+    "exports": [
+      "CENTER",
+      "MIN_X",
+      "MAX_X",
+      "WIDTH",
+      "AMPLITUDE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IR C=C Stretch (1620–1680 cm^-1)",
+      "category": "IR Functional Groups",
+      "domain": "chemistry",
+      "description": "Unsaturated alkene C=C stretching band.",
+      "provenance": "IUPAC / Silverstein IR Correlation Table",
+      "aliases": [
+        "C=C",
+        "ALKENE_CC"
+      ],
+      "parameters": [
+        {
+          "key": "CENTER",
+          "type": "real",
+          "defaultValue": 1650,
+          "unit": "1/CM",
+          "description": "Band center wavenumber"
+        },
+        {
+          "key": "MIN_X",
+          "type": "real",
+          "defaultValue": 1620,
+          "unit": "1/CM",
+          "description": "Lower wavenumber bound"
+        },
+        {
+          "key": "MAX_X",
+          "type": "real",
+          "defaultValue": 1680,
+          "unit": "1/CM",
+          "description": "Upper wavenumber bound"
+        },
+        {
+          "key": "WIDTH",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "1/CM",
+          "description": "Half-width"
+        },
+        {
+          "key": "AMPLITUDE",
+          "type": "real",
+          "defaultValue": 0.45,
+          "unit": "AU",
+          "description": "Peak absorbance amplitude"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "IR_BAND_CO_ETHER",
+    "kind": "Class",
+    "namePath": "JCAMP.IR_BAND_CO_ETHER",
+    "exports": [
+      "CENTER",
+      "MIN_X",
+      "MAX_X",
+      "WIDTH",
+      "AMPLITUDE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IR C-O Stretch (1050–1250 cm^-1)",
+      "category": "IR Functional Groups",
+      "domain": "chemistry",
+      "description": "Strong C-O single-bond stretching band in ethers, esters, and alcohols.",
+      "provenance": "IUPAC / Silverstein IR Correlation Table",
+      "aliases": [
+        "C-O",
+        "ETHER_CO"
+      ],
+      "parameters": [
+        {
+          "key": "CENTER",
+          "type": "real",
+          "defaultValue": 1150,
+          "unit": "1/CM",
+          "description": "Band center wavenumber"
+        },
+        {
+          "key": "MIN_X",
+          "type": "real",
+          "defaultValue": 1050,
+          "unit": "1/CM",
+          "description": "Lower wavenumber bound"
+        },
+        {
+          "key": "MAX_X",
+          "type": "real",
+          "defaultValue": 1250,
+          "unit": "1/CM",
+          "description": "Upper wavenumber bound"
+        },
+        {
+          "key": "WIDTH",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "1/CM",
+          "description": "Half-width"
+        },
+        {
+          "key": "AMPLITUDE",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "AU",
+          "description": "Peak absorbance amplitude"
+        }
+      ],
+      "wasmKernel": "jcampDxEvalBand",
+      "archetypeId": 14
+    }
+  }
+]

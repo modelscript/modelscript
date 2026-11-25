@@ -1,0 +1,6 @@
+! Feeder Trunk and Lateral Line Segments
+New Line.L701_702 bus1=Bus701 bus2=Bus702 phases=3 linecode=UG_Main length=1.4
+New Line.L702_703 bus1=Bus702 bus2=Bus703 phases=3 linecode=UG_Main length=1.8
+New Line.L703_704 bus1=Bus703 bus2=Bus704 phases=3 linecode=UG_Main length=1.6
+New Line.L702_705 bus1=Bus702 bus2=Bus705 phases=3 linecode=UG_Lat  length=0.9
+New Line.L703_706 bus1=Bus703 bus2=Bus706 phases=3 linecode=UG_Lat  length=1.1

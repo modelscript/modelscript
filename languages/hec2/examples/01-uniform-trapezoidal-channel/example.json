@@ -1,0 +1,12 @@
+{
+  "id": "hec2-01-uniform-trapezoidal-channel",
+  "lang": "hec2",
+  "subFormats": ["hc2"],
+  "difficulty": 1,
+  "title": "Uniform Trapezoidal Channel Steady Water-Surface Profile",
+  "description": "Concrete-lined trapezoidal irrigation canal modeled in HEC-2 with three cross-sections, uniform bed slope S0=0.001, positive steady discharge Q=250 cfs, and Manning roughness n=0.015.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec2", "open-channel", "trapezoidal", "backwater"],
+  "activeFile": "trap_channel.hc2",
+  "isDefaultStarter": true
+}

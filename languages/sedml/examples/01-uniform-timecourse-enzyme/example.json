@@ -1,0 +1,13 @@
+{
+  "id": "sedml-01-uniform-timecourse-enzyme",
+  "lang": "sedml",
+  "subFormats": ["sedml-l1v4", "sbml"],
+  "difficulty": 1,
+  "title": "Uniform Time-Course Simulation of Enzyme Kinetics",
+  "description": "Foundational SED-ML L1V4 uniformTimeCourse experiment executing a CVODE trajectory on a companion Michaelis-Menten SBML enzymatic reaction model.",
+  "category": "Simulation Experiments",
+  "tags": ["sedml", "sbml", "timecourse", "cvode", "multi-file"],
+  "activeFile": "run.sedml",
+  "fileOrder": ["run.sedml", "mm_enzyme.sbml"],
+  "isDefaultStarter": true
+}

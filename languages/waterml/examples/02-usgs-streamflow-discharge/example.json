@@ -1,0 +1,11 @@
+{
+  "id": "waterml-02-usgs-streamflow-discharge",
+  "lang": "waterml",
+  "subFormats": ["waterml"],
+  "difficulty": 2,
+  "title": "USGS Streamflow Discharge 24-Hour Observation Series",
+  "description": "24-hour stormflow discharge observation series in cubic meters per second from a USGS gaging station with rising limb, storm peak, and recession curve quality flags.",
+  "category": "Hydrologic Telemetry",
+  "tags": ["waterml", "usgs", "streamflow", "discharge"],
+  "activeFile": "usgs_discharge.waterml"
+}

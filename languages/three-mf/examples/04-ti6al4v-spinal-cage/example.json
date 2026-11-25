@@ -1,0 +1,11 @@
+{
+  "id": "three-mf-04-ti6al4v-spinal-cage",
+  "lang": "three-mf",
+  "subFormats": ["3mf"],
+  "difficulty": 4,
+  "title": "Multi-Material Porous Ti-6Al-4V and PEEK Spinal Interbody Cage",
+  "description": "Two-component lumbar interbody fusion (ALIF) cage assembly pairing an electron-beam-melted Ti-6Al-4V load-bearing frame with a radiolucent PEEK graft core in 3MF.",
+  "category": "Medical Additive Manufacturing & 3MF",
+  "tags": ["three-mf", "spinal-cage", "multi-material", "ti6al4v", "peek"],
+  "activeFile": "spinal_cage.3mf"
+}

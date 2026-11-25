@@ -1,0 +1,11 @@
+{
+  "id": "doe2-05-campus-thermal-plant",
+  "lang": "doe2",
+  "subFormats": ["inp", "csv"],
+  "difficulty": 5,
+  "title": "University Campus Multi-Building Thermal Plant",
+  "description": "Multi-building university campus energy model combining an Engineering Lab, Library, and Central Chiller-Boiler Plant with hourly fractional load schedules and companion design-day weather CSV data.",
+  "category": "Building Energy Simulation",
+  "tags": ["doe2", "campus", "central-plant", "multi-file"],
+  "activeFile": "campus.inp"
+}

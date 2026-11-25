@@ -1,0 +1,11 @@
+{
+  "id": "sparql-04-failure-propagation-path",
+  "lang": "sparql",
+  "subFormats": ["rq", "owl"],
+  "difficulty": 4,
+  "title": "Transitive Dependency & Substation Failure Propagation",
+  "description": "SPARQL 1.1 property-path query using transitive closure (+) to trace all downstream substation loads and protection bays affected by an upstream transformer outage.",
+  "category": "Knowledge Graphs & MBSE",
+  "tags": ["sparql", "property-path", "fmea", "substation", "multi-file"],
+  "activeFile": "impact.rq"
+}

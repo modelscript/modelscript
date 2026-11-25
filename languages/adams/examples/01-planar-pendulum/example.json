@@ -1,0 +1,12 @@
+{
+  "id": "adams-01-planar-pendulum",
+  "lang": "adams",
+  "subFormats": ["adm"],
+  "difficulty": 1,
+  "title": "Simple Planar Pendulum",
+  "description": "Single-DOF compound pendulum pivoted to ground via a revolute joint with coincident markers, rotational damping, and gravitational loading.",
+  "category": "Multibody Dynamics",
+  "tags": ["pendulum", "revolute-joint", "kinematics", "mbd"],
+  "activeFile": "pendulum.adm",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "hdf4-05-modis-eos-archive",
+  "lang": "hdf4",
+  "subFormats": ["ddl"],
+  "difficulty": 5,
+  "title": "MODIS-Style HDF-EOS Swath, Quicklook Raster & Telemetry Archive",
+  "description": "Complete HDF-EOS Level-1B granule uniting calibrated multi-band SDS radiance, geolocation, 8-bit quicklook browse raster, orbit ephemeris Vdata, and nested Vgroups.",
+  "category": "Earth Observation",
+  "tags": ["hdf4", "modis", "hdf-eos", "raster8", "vgroup", "vdata"],
+  "activeFile": "modis_eos_granule.hdf"
+}

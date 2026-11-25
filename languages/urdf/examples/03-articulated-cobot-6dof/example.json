@@ -1,0 +1,11 @@
+{
+  "id": "urdf-03-articulated-cobot-6dof",
+  "lang": "urdf",
+  "subFormats": ["urdf"],
+  "difficulty": 3,
+  "title": "6-DOF Industrial Articulated Cobot",
+  "description": "UR5e-class 6-axis collaborative industrial robot arm with shoulder pan, shoulder lift, elbow, and three wrist revolute joints, complete effort/velocity limits, and collision capsules.",
+  "category": "Industrial Robotics",
+  "tags": ["cobot", "6-dof", "ur5e", "kinematic-chain"],
+  "activeFile": "cobot_6dof.urdf"
+}

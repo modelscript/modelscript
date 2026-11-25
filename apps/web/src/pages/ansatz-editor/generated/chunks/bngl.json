@@ -1,0 +1,77 @@
+[
+  {
+    "id": "bngl-01-ligand-receptor-binding",
+    "lang": "bngl",
+    "subFormats": ["bngl"],
+    "difficulty": 1,
+    "title": "Reversible Ligand-Receptor Binding",
+    "description": "Foundational BioNetGen rule-based model of reversible extracellular ligand binding to a monovalent cell-surface receptor with mass-action ODE network generation.",
+    "category": "Rule-Based Systems Biology",
+    "tags": ["bngl", "bionetgen", "ligand-receptor", "rule-based"],
+    "activeFile": "ligand_receptor.bngl",
+    "fileNames": ["ligand_receptor.bngl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "begin model\nbegin parameters\n  L0 120\n  R0 200\n  kp1 0.0025\n  km1 0.08\nend parameters\n\nbegin compartments\n  EC 3 1.0\nend compartments\n\nbegin molecule types\n  L(r)\n  R(l)\nend molecule types\n\nbegin seed species\n  L(r) L0\n  R(l) R0\nend seed species\n\nbegin observables\n  Molecules FreeLigand L(r)\n  Molecules FreeReceptor R(l)\n  Molecules BoundComplex L(r!1).R(l!1)\nend observables\n\nbegin reaction rules\n  Bind: L(r) + R(l) <-> L(r!1).R(l!1) kp1, km1\nend reaction rules\nend model\n\ngenerate_network({overwrite=>1,max_iter=>5})\nsimulate({method=>\"ode\",t_end=>20,n_steps=>200})\n"
+  },
+  {
+    "id": "bngl-02-phosphorylation-cycle",
+    "lang": "bngl",
+    "subFormats": ["bngl"],
+    "difficulty": 2,
+    "title": "Enzymatic Phosphorylation-Dephosphorylation Cycle",
+    "description": "Goldbeter-Koshland covalent modification switch modeled with explicit kinase and phosphatase binding rules and substrate site state transitions (~U to ~P).",
+    "category": "Rule-Based Systems Biology",
+    "tags": ["bngl", "phosphorylation", "kinase", "switch"],
+    "activeFile": "phos_cycle.bngl",
+    "fileNames": ["phos_cycle.bngl"],
+    "fileCount": 1,
+    "code": "begin model\nbegin parameters\n  S0 500\n  K0 25\n  P0 25\n  kf_k 0.01\n  kr_k 0.2\n  kcat_k 0.8\n  kf_p 0.01\n  kr_p 0.2\n  kcat_p 0.6\nend parameters\n\nbegin compartments\n  Cyt 3 1.0\nend compartments\n\nbegin molecule types\n  S(b,Y~U~P)\n  K(s)\n  P(s)\nend molecule types\n\nbegin seed species\n  S(b,Y~U) S0\n  K(s) K0\n  P(s) P0\nend seed species\n\nbegin observables\n  Molecules UnphosS S(Y~U)\n  Molecules PhosS S(Y~P)\n  Molecules KinaseComplex K(s!1).S(b!1)\n  Molecules PhosphataseComplex P(s!1).S(b!1)\nend observables\n\nbegin reaction rules\n  KinaseBind: K(s) + S(b,Y~U) <-> K(s!1).S(b!1,Y~U) kf_k, kr_k\n  KinaseCat: K(s!1).S(b!1,Y~U) -> K(s) + S(b,Y~P) kcat_k\n  PhosBind: P(s) + S(b,Y~P) <-> P(s!1).S(b!1,Y~P) kf_p, kr_p\n  PhosCat: P(s!1).S(b!1,Y~P) -> P(s) + S(b,Y~U) kcat_p\nend reaction rules\nend model\n\ngenerate_network({overwrite=>1,max_iter=>8})\nsimulate({method=>\"ode\",t_end=>40,n_steps=>200})\n"
+  },
+  {
+    "id": "bngl-03-egfr-dimerization",
+    "lang": "bngl",
+    "subFormats": ["bngl"],
+    "difficulty": 3,
+    "title": "EGFR Dimerization and Autophosphorylation Signaling",
+    "description": "Epidermal growth factor receptor (EGFR) rule-based model capturing EGF binding, receptor homodimerization, trans-autophosphorylation, and Grb2 adaptor recruitment.",
+    "category": "Cell Signaling",
+    "tags": ["bngl", "egfr", "dimerization", "grb2", "signaling"],
+    "activeFile": "egfr_signaling.bngl",
+    "fileNames": ["egfr_signaling.bngl"],
+    "fileCount": 1,
+    "code": "begin model\nbegin parameters\n  EGF0 300\n  EGFR0 150\n  HER20 150\n  Grb20 100\n  kp_egf 0.003\n  km_egf 0.06\n  kp_dim 0.005\n  km_dim 0.1\n  k_phos 0.5\n  k_dephos 0.08\n  kp_grb 0.004\n  km_grb 0.05\nend parameters\n\nbegin compartments\n  PM 2 1.0\nend compartments\n\nbegin molecule types\n  EGF(r)\n  EGFR(l,d,Y~U~P)\n  HER2(d,Y~U~P)\n  Grb2(sh2)\nend molecule types\n\nbegin seed species\n  EGF(r) EGF0\n  EGFR(l,d,Y~U) EGFR0\n  HER2(d,Y~U) HER20\n  Grb2(sh2) Grb20\nend seed species\n\nbegin observables\n  Molecules BoundEGF EGF(r!1).EGFR(l!1)\n  Molecules Heterodimers EGFR(d!1).HER2(d!1)\n  Molecules PhosphoEGFR EGFR(Y~P)\n  Molecules RecruitedGrb2 EGFR(Y~P!1).Grb2(sh2!1)\nend observables\n\nbegin reaction rules\n  EGFBind: EGF(r) + EGFR(l) <-> EGF(r!1).EGFR(l!1) kp_egf, km_egf\n  Heterodimerize: EGF(r!1).EGFR(l!1,d) + HER2(d) <-> EGF(r!1).EGFR(l!1,d!2).HER2(d!2) kp_dim, km_dim\n  TransPhos: EGFR(d!1,Y~U).HER2(d!1) -> EGFR(d!1,Y~P).HER2(d!1) k_phos\n  Dephos: EGFR(Y~P) -> EGFR(Y~U) k_dephos\n  Grb2Bind: EGFR(Y~P) + Grb2(sh2) <-> EGFR(Y~P!1).Grb2(sh2!1) kp_grb, km_grb\nend reaction rules\nend model\n\ngenerate_network({overwrite=>1,max_iter=>10})\nsimulate({method=>\"ode\",t_end=>30,n_steps=>200})\n"
+  },
+  {
+    "id": "bngl-04-fceri-receptor-crosslinking",
+    "lang": "bngl",
+    "subFormats": ["bngl"],
+    "difficulty": 4,
+    "title": "FcεRI Immune Receptor Cross-Linking Network",
+    "description": "Mast-cell FcεRI early signaling cascade modeling bivalent antigen cross-linking of IgE-FcεRI complexes, Lyn kinase recruitment, and Syk activation.",
+    "category": "Immunology & Signaling",
+    "tags": ["bngl", "fceri", "immunology", "crosslinking", "lyn"],
+    "activeFile": "fceri_crosslink.bngl",
+    "fileNames": ["fceri_crosslink.bngl"],
+    "fileCount": 1,
+    "code": "begin model\nbegin parameters\n  Lig0 200\n  RecA0 150\n  RecB0 150\n  Lyn0 80\n  Syk0 120\n  kp1 0.002\n  km1 0.05\n  kp2 0.01\n  km2 0.05\n  kpL 0.004\n  kmL 0.1\n  k_phos_b 0.6\n  k_phos_g 0.5\n  kpS 0.003\n  kmS 0.08\n  k_dephos 0.05\nend parameters\n\nbegin compartments\n  PM 2 1.0\nend compartments\n\nbegin molecule types\n  Lig(l1,l2)\n  RecA(a,b~U~P)\n  RecB(a,g~U~P)\n  Lyn(u)\n  Syk(tsh2)\nend molecule types\n\nbegin seed species\n  Lig(l1,l2) Lig0\n  RecA(a,b~U) RecA0\n  RecB(a,g~U) RecB0\n  Lyn(u) Lyn0\n  Syk(tsh2) Syk0\nend seed species\n\nbegin observables\n  Molecules CrosslinkedRec Lig(l1!1,l2!2).RecA(a!1).RecB(a!2)\n  Molecules PhosphoBeta RecA(b~P)\n  Molecules PhosphoGamma RecB(g~P)\n  Molecules BoundSyk RecB(g~P!1).Syk(tsh2!1)\nend observables\n\nbegin reaction rules\n  LigCapture: Lig(l1,l2) + RecA(a) <-> Lig(l1!1,l2).RecA(a!1) kp1, km1\n  CrossLink: Lig(l1!1,l2).RecA(a!1) + RecB(a) <-> Lig(l1!1,l2!2).RecA(a!1).RecB(a!2) kp2, km2\n  LynBind: RecA(b~U) + Lyn(u) <-> RecA(b~U!1).Lyn(u!1) kpL, kmL\n  PhosBeta: Lig(l1!1,l2!2).RecA(a!1,b~U!3).Lyn(u!3).RecB(a!2,g~U) -> Lig(l1!1,l2!2).RecA(a!1,b~P!3).Lyn(u!3).RecB(a!2,g~U) k_phos_b\n  PhosGamma: Lig(l1!1,l2!2).RecA(a!1,b~P).RecB(a!2,g~U) -> Lig(l1!1,l2!2).RecA(a!1,b~P).RecB(a!2,g~P) k_phos_g\n  SykRecruit: RecB(g~P) + Syk(tsh2) <-> RecB(g~P!1).Syk(tsh2!1) kpS, kmS\n  DephosGamma: RecB(g~P) -> RecB(g~U) k_dephos\nend reaction rules\nend model\n\ngenerate_network({overwrite=>1,max_iter=>8})\nsimulate({method=>\"ode\",t_end=>50,n_steps=>250})\n"
+  },
+  {
+    "id": "bngl-05-scaffold-mapk-signaling",
+    "lang": "bngl",
+    "subFormats": ["bngl"],
+    "difficulty": 5,
+    "title": "Multi-Site Scaffold MAPK Signaling with Dose-Response Data",
+    "description": "Rule-based scaffold-mediated MAPK signaling assembly (KSR scaffold binding Raf, MEK, and ERK) demonstrating prozone combinatorial inhibition paired with dose-response assay data.",
+    "category": "Cell Signaling",
+    "tags": ["bngl", "scaffold", "mapk", "combinatorial-complexity", "multi-file"],
+    "activeFile": "scaffold_mapk.bngl",
+    "fileNames": ["scaffold_mapk.bngl", "dose_data.csv"],
+    "fileCount": 2,
+    "code": "begin model\nbegin parameters\n  Scaf0 100\n  Raf0 80\n  MEK0 120\n  ERK0 150\n  kp_raf 0.005\n  km_raf 0.05\n  kp_mek 0.005\n  km_mek 0.05\n  kp_erk 0.004\n  km_erk 0.06\n  k_act_mek 0.7\n  k_act_erk 0.6\n  k_dephos 0.08\nend parameters\n\nbegin compartments\n  Cyt 3 1.0\nend compartments\n\nbegin molecule types\n  Scaf(r,m,e)\n  Raf(s)\n  MEK(s,st~U~P)\n  ERK(s,st~U~P)\nend molecule types\n\nbegin seed species\n  Scaf(r,m,e) Scaf0\n  Raf(s) Raf0\n  MEK(s,st~U) MEK0\n  ERK(s,st~U) ERK0\nend seed species\n\nbegin observables\n  Molecules ActiveMEK MEK(st~P)\n  Molecules ActiveERK ERK(st~P)\n  Molecules FullComplex Scaf(r!1,m!2,e!3).Raf(s!1).MEK(s!2).ERK(s!3)\nend observables\n\nbegin reaction rules\n  BindRaf: Scaf(r) + Raf(s) <-> Scaf(r!1).Raf(s!1) kp_raf, km_raf\n  BindMEK: Scaf(m) + MEK(s) <-> Scaf(m!1).MEK(s!1) kp_mek, km_mek\n  BindERK: Scaf(e) + ERK(s) <-> Scaf(e!1).ERK(s!1) kp_erk, km_erk\n  PhosMEK: Scaf(r!1,m!2).Raf(s!1).MEK(s!2,st~U) -> Scaf(r!1,m!2).Raf(s!1).MEK(s!2,st~P) k_act_mek\n  PhosERK: Scaf(m!1,e!2).MEK(s!1,st~P).ERK(s!2,st~U) -> Scaf(m!1,e!2).MEK(s!1,st~P).ERK(s!2,st~P) k_act_erk\n  DephosMEK: MEK(st~P) -> MEK(st~U) k_dephos\n  DephosERK: ERK(st~P) -> ERK(st~U) k_dephos\nend reaction rules\nend model\n\ngenerate_network({overwrite=>1,max_iter=>10})\nsimulate({method=>\"ode\",t_end=>60,n_steps=>300})\n",
+    "files": {
+      "scaffold_mapk.bngl": "begin model\nbegin parameters\n  Scaf0 100\n  Raf0 80\n  MEK0 120\n  ERK0 150\n  kp_raf 0.005\n  km_raf 0.05\n  kp_mek 0.005\n  km_mek 0.05\n  kp_erk 0.004\n  km_erk 0.06\n  k_act_mek 0.7\n  k_act_erk 0.6\n  k_dephos 0.08\nend parameters\n\nbegin compartments\n  Cyt 3 1.0\nend compartments\n\nbegin molecule types\n  Scaf(r,m,e)\n  Raf(s)\n  MEK(s,st~U~P)\n  ERK(s,st~U~P)\nend molecule types\n\nbegin seed species\n  Scaf(r,m,e) Scaf0\n  Raf(s) Raf0\n  MEK(s,st~U) MEK0\n  ERK(s,st~U) ERK0\nend seed species\n\nbegin observables\n  Molecules ActiveMEK MEK(st~P)\n  Molecules ActiveERK ERK(st~P)\n  Molecules FullComplex Scaf(r!1,m!2,e!3).Raf(s!1).MEK(s!2).ERK(s!3)\nend observables\n\nbegin reaction rules\n  BindRaf: Scaf(r) + Raf(s) <-> Scaf(r!1).Raf(s!1) kp_raf, km_raf\n  BindMEK: Scaf(m) + MEK(s) <-> Scaf(m!1).MEK(s!1) kp_mek, km_mek\n  BindERK: Scaf(e) + ERK(s) <-> Scaf(e!1).ERK(s!1) kp_erk, km_erk\n  PhosMEK: Scaf(r!1,m!2).Raf(s!1).MEK(s!2,st~U) -> Scaf(r!1,m!2).Raf(s!1).MEK(s!2,st~P) k_act_mek\n  PhosERK: Scaf(m!1,e!2).MEK(s!1,st~P).ERK(s!2,st~U) -> Scaf(m!1,e!2).MEK(s!1,st~P).ERK(s!2,st~P) k_act_erk\n  DephosMEK: MEK(st~P) -> MEK(st~U) k_dephos\n  DephosERK: ERK(st~P) -> ERK(st~U) k_dephos\nend reaction rules\nend model\n\ngenerate_network({overwrite=>1,max_iter=>10})\nsimulate({method=>\"ode\",t_end=>60,n_steps=>300})\n",
+      "dose_data.csv": "scaffold_nM,active_mek_ss,active_erk_ss\n10,24.1,31.5\n50,62.4,88.2\n100,78.9,112.4\n250,64.2,91.0\n500,39.5,52.8\n1000,19.8,24.1\n"
+    }
+  }
+]

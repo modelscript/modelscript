@@ -1,0 +1,31 @@
+LOCUS       pUC19_Mini               243 bp    ds-DNA  circular SYN 24-NOV-2026
+DEFINITION  pUC19-style high-copy cloning plasmid with pMB1 ori, ampR, and lacZ alpha.
+ACCESSION   pUC19_Mini
+VERSION     pUC19_Mini.1
+KEYWORDS    plasmid; cloning vector; pUC19; beta-lactamase.
+SOURCE      synthetic DNA construct
+  ORGANISM  Escherichia coli
+FEATURES             Location/Qualifiers
+     rep_origin      1..30
+                     /label="pMB1_ori"
+     CDS             31..123
+                     /gene="ampR"
+                     /product="Beta-lactamase resistance marker"
+                     /codon_start=1
+                     /translation="MSIQHFRVALIPFFAAFCLPVFAHPETLVK"
+     promoter        124..135
+                     /label="lac_promoter"
+     CDS             136..231
+                     /gene="lacZ_alpha"
+                     /product="Beta-galactosidase alpha peptide"
+                     /codon_start=1
+                     /translation="MTMITPSLHACRSTLEDPRVPSSNSLAVVLQ"
+     terminator      232..243
+                     /label="rrnB_T1"
+ORIGIN
+        1 gcatgcctgc aggtcgactc tagaggatcc atgagtattc aacatttccg tgtcgccctt
+       61 attccctttt ttgcggcatt ttgccttcct gtttttgctc acccagaaac gctggtgaaa
+      121 taagaattct tgacaatgac catgattacg ccaagcttgc atgcctgcag gtcgactcta
+      181 gaggatcccc gggtaccgag ctcgaattca ctggccgtcg ttttacaata aaagcttttt
+      241 ttt
+//

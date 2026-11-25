@@ -176,7 +176,7 @@ export const scadLanguage = language({
         shortTitle: "OpenSCAD",
         selector: ["*.scad"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/ScadPanel.tsx",
         artifactViewTypes: ["scad", "openscad"],
       },
@@ -189,7 +189,7 @@ export const scadLanguage = language({
         tooltip: "Evaluate OpenSCAD CSG tree and refresh 3D mesh",
         icon: "stack",
         views: ["3d", "code"],
-        targets: ["morsel", "vscode"],
+        targets: ["ansatz", "vscode"],
         placement: "primary",
         order: 10,
         actionId: "preview_csg",
@@ -201,7 +201,7 @@ export const scadLanguage = language({
         tooltip: "Export evaluated solid geometry as an ISO 10303 STEP AP242 file",
         icon: "download",
         views: ["3d"],
-        targets: ["morsel", "vscode"],
+        targets: ["ansatz", "vscode"],
         placement: "primary",
         order: 20,
         actionId: "export_step",
@@ -368,8 +368,7 @@ export const scadLanguage = language({
           ctx.workspaceManager as
             | {
                 unifiedWorkspace?:
-                  | { getAllUris?(): string[]; getDocumentText?(uri: string): string | undefined }
-                  | undefined;
+                  { getAllUris?(): string[]; getDocumentText?(uri: string): string | undefined } | undefined;
               }
             | undefined
         )?.unifiedWorkspace;

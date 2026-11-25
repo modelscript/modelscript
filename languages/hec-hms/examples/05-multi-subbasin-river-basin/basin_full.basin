@@ -1,0 +1,109 @@
+Basin: Cascade Regional River Basin
+  Last Modified Date: 15 May 2026
+  Unit System: Metric
+End:
+
+Subbasin: Alpine Headwaters
+  Area: 185.0
+  Downstream: Canyon Reach
+  Loss: SCS
+  Transform: SCS
+End:
+
+Subbasin-Loss: Alpine Headwaters
+  Curve Number: 70.0
+  Initial Abstraction: 20.0
+  Impervious: 2.0
+End:
+
+Subbasin-Transform: Alpine Headwaters
+  Lag: 150.0
+End:
+
+Reach: Canyon Reach
+  Downstream: Upper Junction
+  Route: Muskingum
+End:
+
+Reach-Route: Canyon Reach
+  Muskingum K: 3.5
+  Muskingum X: 0.25
+  Subreaches: 4
+End:
+
+Subbasin: East Glacier Fork
+  Area: 112.5
+  Downstream: Upper Junction
+  Loss: SCS
+  Transform: SCS
+End:
+
+Subbasin-Loss: East Glacier Fork
+  Curve Number: 74.0
+  Initial Abstraction: 17.0
+  Impervious: 3.0
+End:
+
+Subbasin-Transform: East Glacier Fork
+  Lag: 115.0
+End:
+
+Junction: Upper Junction
+  Downstream: Cascade Dam Reservoir
+End:
+
+Reservoir: Cascade Dam Reservoir
+  Downstream: Valley Mainstem
+End:
+
+Reach: Valley Mainstem
+  Downstream: Lower Junction
+  Route: Muskingum
+End:
+
+Reach-Route: Valley Mainstem
+  Muskingum K: 4.0
+  Muskingum X: 0.22
+  Subreaches: 5
+End:
+
+Subbasin: West Foothills
+  Area: 94.0
+  Downstream: Lower Junction
+  Loss: SCS
+  Transform: SCS
+End:
+
+Subbasin-Loss: West Foothills
+  Curve Number: 79.0
+  Initial Abstraction: 13.5
+  Impervious: 9.0
+End:
+
+Subbasin-Transform: West Foothills
+  Lag: 90.0
+End:
+
+Junction: Lower Junction
+  Downstream: Estuary Outlet
+End:
+
+Subbasin: Coastal Plain
+  Area: 68.0
+  Downstream: Estuary Outlet
+  Loss: SCS
+  Transform: SCS
+End:
+
+Subbasin-Loss: Coastal Plain
+  Curve Number: 84.0
+  Initial Abstraction: 9.5
+  Impervious: 24.0
+End:
+
+Subbasin-Transform: Coastal Plain
+  Lag: 65.0
+End:
+
+Sink: Estuary Outlet
+End:

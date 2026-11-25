@@ -1,0 +1,11 @@
+{
+  "id": "esl-04-satellite-eclipse",
+  "lang": "esl",
+  "subFormats": ["esl"],
+  "difficulty": 4,
+  "title": "Satellite Solar Array Eclipse Battery Cycling",
+  "description": "Low-Earth-orbit spacecraft electrical power subsystem modeling orbital sunlit/eclipse switching, battery state-of-charge dynamics, and thermal bus balance.",
+  "category": "Spacecraft Power",
+  "tags": ["esl", "satellite", "eclipse", "battery", "package"],
+  "activeFile": "satellite_eclipse.esl"
+}

@@ -143,6 +143,8 @@ const StatusBadge = styled.span<{ $variant: "success" | "pending" | "used" }>`
           : "rgba(148, 163, 184, 0.3)"};
 `;
 
+type UserInvitesData = Awaited<ReturnType<typeof getUserInvites>>;
+
 export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
   const toast = useToast();
   const branding = useInstanceBranding();
@@ -150,8 +152,8 @@ export const InvitesTab: React.FC<InvitesTabProps> = ({ onBack }) => {
 
   const [loading, setLoading] = useState(true);
   const [invitesRemaining, setInvitesRemaining] = useState(0);
-  const [invites, setInvites] = useState<any[]>([]);
-  const [referrals, setReferrals] = useState<any[]>([]);
+  const [invites, setInvites] = useState<UserInvitesData["invites"]>([]);
+  const [referrals, setReferrals] = useState<UserInvitesData["referrals"]>([]);
   const [count, setCount] = useState(1);
   const [note, setNote] = useState("");
   const [generating, setGenerating] = useState(false);

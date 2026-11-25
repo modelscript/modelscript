@@ -1,0 +1,7 @@
+# Modular Clinical Proton Beam Source (180 MeV Passive Scattering)
+s:So/SobpProtonBeam/Type = "Beam"
+s:So/SobpProtonBeam/Component = "BeamPosition"
+s:So/SobpProtonBeam/BeamParticle = "proton"
+d:So/SobpProtonBeam/BeamEnergy = 180.0 MeV
+u:So/SobpProtonBeam/BeamEnergySpread = 0.65
+i:So/SobpProtonBeam/NumberOfHistoriesInRun = 75000

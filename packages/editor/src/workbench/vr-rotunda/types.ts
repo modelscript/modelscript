@@ -2,6 +2,8 @@
 
 import {
   createCanonicalPolyglotDemoBoard,
+  nextCanvasBoardTheme,
+  type CanvasBoardThemeId,
   type CanvasDocument,
   type CanvasPeerPresence,
   type CanvasTile,
@@ -16,10 +18,33 @@ import type { SpatialDiagramSnapMode, SpatialNodePose3D } from "./spatial-diagra
 import type { ExtrudedWaferStyle } from "./svg-extruder.js";
 
 /** Selectable 3D VR / Spatial environments for the Engineering Rotunda. */
-export type RotundaEnvironmentId = "warehouse" | "office" | "outdoors" | "dark-lab" | "passthrough";
+export type RotundaEnvironmentId = "atrium" | "warehouse" | "office" | "outdoors" | "dark-lab" | "passthrough";
 
-/** Physical model scale presentation on the central plinth. */
-export type RotundaScaleMode = "tabletop" | "real-scale";
+/** Default hero environment used when no explicit / recommended environment is supplied. */
+export const DEFAULT_ROTUNDA_ENVIRONMENT: RotundaEnvironmentId = "atrium";
+
+/**
+ * Physical model scale presentation on the central plinth.
+ *  - `hero` (default): model normalized to ~3.2 m, floating above a low wide glowing plinth far beyond the desk.
+ *  - `tabletop`: ~0.78 m model on the raised metrology pedestal for detailed inspection.
+ *  - `real-scale`: walk-in presentation with the plinth flush with the floor.
+ */
+export type RotundaScaleMode = "hero" | "tabletop" | "real-scale";
+
+/** Cycle order used by `toggleScaleMode` (HUD button, wings & XR controller bindings). */
+export const ROTUNDA_SCALE_MODE_ORDER: readonly RotundaScaleMode[] = ["hero", "tabletop", "real-scale"];
+
+/** Short human-readable label for a scale mode (desktop HUD + VR wings). */
+export function rotundaScaleModeLabel(mode: RotundaScaleMode): string {
+  switch (mode) {
+    case "hero":
+      return "Hero";
+    case "tabletop":
+      return "Tabletop";
+    case "real-scale":
+      return "1:1 Scale";
+  }
+}
 
 /** Surface rendering mode for the hero 3D assembly. */
 export type RotundaRenderStyle = "shaded" | "wireframe" | "xray";
@@ -47,7 +72,7 @@ export type RotundaModelKind =
   | "octopus-rov"
   | "generic";
 
-/** Metadata describing one of the 5 Engineering Rotunda environments. */
+/** Metadata describing one of the 6 Engineering Rotunda environments. */
 export interface RotundaEnvironmentMeta {
   id: RotundaEnvironmentId;
   label: string;
@@ -56,9 +81,29 @@ export interface RotundaEnvironmentMeta {
   accentColor: string;
   orbColor: string;
   skyColor: string;
+  /**
+   * Renderer `toneMappingExposure` applied while this environment is active.
+   * Tuned for `THREE.NeutralToneMapping` (Khronos PBR Neutral), which keeps
+   * mid-tones ~35–40% darker than three's ACES Filmic at the same exposure.
+   */
+  toneMappingExposure: number;
 }
 
+/** Canvas-level tone mapping operator shared by every Rotunda environment. */
+export const ROTUNDA_TONE_MAPPING = "neutral" as const;
+
 export const ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentMeta[] = [
+  {
+    id: "atrium",
+    label: "Future Atrium",
+    shortLabel: "Atrium",
+    description:
+      "Bright clean-future circular atrium with a glass daylight oculus, tall glazing fins, polished white epoxy floor, and cool LED cove lines.",
+    accentColor: "#38bdf8",
+    orbColor: "#e0f2fe",
+    skyColor: "#eef2f6",
+    toneMappingExposure: 1.0,
+  },
   {
     id: "warehouse",
     label: "Sunlit Factory",
@@ -68,6 +113,7 @@ export const ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentMeta[] = [
     accentColor: "#eab308",
     orbColor: "#f59e0b",
     skyColor: "#cbd5e1",
+    toneMappingExposure: 1.4,
   },
   {
     id: "office",
@@ -77,6 +123,7 @@ export const ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentMeta[] = [
     accentColor: "#38bdf8",
     orbColor: "#e2e8f0",
     skyColor: "#e8eef5",
+    toneMappingExposure: 1.4,
   },
   {
     id: "outdoors",
@@ -86,6 +133,7 @@ export const ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentMeta[] = [
     accentColor: "#22c55e",
     orbColor: "#4e9f3d",
     skyColor: "#8ec5f8",
+    toneMappingExposure: 1.35,
   },
   {
     id: "dark-lab",
@@ -95,6 +143,7 @@ export const ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentMeta[] = [
     accentColor: "#06b6d4",
     orbColor: "#0e7490",
     skyColor: "#050914",
+    toneMappingExposure: 1.45,
   },
   {
     id: "passthrough",
@@ -104,8 +153,14 @@ export const ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentMeta[] = [
     accentColor: "#a855f7",
     orbColor: "#9333ea",
     skyColor: "transparent",
+    toneMappingExposure: 1.35,
   },
 ] as const;
+
+/** Resolves the tuned tone-mapping exposure for an environment (falls back to 1.0). */
+export function getRotundaEnvironmentExposure(env: RotundaEnvironmentId): number {
+  return ROTUNDA_ENVIRONMENTS.find((e) => e.id === env)?.toneMappingExposure ?? 1.0;
+}
 
 /** Normalized 3D model entry hosted on the Circular Center Plinth & Orbital Carousel. */
 export interface RotundaModelEntry {
@@ -160,7 +215,17 @@ export interface RotundaState {
   sectionCutEnabled: boolean;
   sectionCutAxis: RotundaClipAxis;
   sectionCutOffset: number;
+  /**
+   * Drafting desk tilt in degrees measured from vertical (0 = upright screen, 90 = flat table).
+   * Default 70 (= a real drafting table's ~20° slope from horizontal).
+   */
   podiumTiltDeg: number;
+  /** Uniform multiplier of the drafting desk's physical size (presets in `DESK_SCALE_PRESETS`). */
+  deskScale: number;
+  /** Calibrated desk center height in meters (from XR head height); `null` = default ergonomic height. */
+  deskHeightY: number | null;
+  /** Visual sheet theme of the drafting desk (`"blueprint"` default, `"light"`, or `"dark"`). */
+  deskTheme: CanvasBoardThemeId;
   podiumVisible: boolean;
   wingsVisible: boolean;
   isPlaying: boolean;
@@ -193,6 +258,9 @@ export interface RotundaState {
   wristPaletteOpen: boolean;
 }
 
+/** Default drafting desk sheet presentation theme (spread cyanotype architectural blueprint). */
+export const DEFAULT_DESK_THEME: CanvasBoardThemeId = "blueprint";
+
 export type RotundaAction =
   | { type: "setEnvironment"; environment: RotundaEnvironmentId }
   | { type: "pageModel"; delta: number; modelCount: number }
@@ -210,6 +278,13 @@ export type RotundaAction =
   | { type: "setSectionCutAxis"; axis: RotundaClipAxis }
   | { type: "setSectionCutOffset"; offset: number }
   | { type: "togglePodiumTilt" }
+  | { type: "setPodiumTilt"; tiltDeg: number }
+  | { type: "setDeskScale"; scale: number }
+  | { type: "cycleDeskScale" }
+  | { type: "recalibrateDeskHeight"; headY: number }
+  | { type: "resetDeskHeight" }
+  | { type: "setDeskTheme"; theme: CanvasBoardThemeId }
+  | { type: "cycleDeskTheme" }
   | { type: "togglePodiumVisible" }
   | { type: "toggleWingsVisible" }
   | { type: "togglePlaying" }
@@ -243,7 +318,7 @@ const SNAP_MODE_ORDER: readonly SpatialDiagramSnapMode[] = ["free-3d", "domain-l
 
 export function createInitialRotundaState(overrides?: Partial<RotundaState>): RotundaState {
   return {
-    environment: "outdoors",
+    environment: DEFAULT_ROTUNDA_ENVIRONMENT,
     activeModelIndex: 0,
     carouselStep: 0,
     plinthYaw: 0,
@@ -251,11 +326,14 @@ export function createInitialRotundaState(overrides?: Partial<RotundaState>): Ro
     explodeFactor: 0,
     caeOverlay: "none",
     renderStyle: "shaded",
-    scaleMode: "tabletop",
+    scaleMode: "hero",
     sectionCutEnabled: false,
     sectionCutAxis: "x",
     sectionCutOffset: 0,
-    podiumTiltDeg: 45,
+    podiumTiltDeg: DEFAULT_PODIUM_TILT_DEG,
+    deskScale: DEFAULT_DESK_SCALE,
+    deskHeightY: null,
+    deskTheme: DEFAULT_DESK_THEME,
     podiumVisible: true,
     wingsVisible: true,
     isPlaying: true,
@@ -333,16 +411,39 @@ export function rotundaReducer(state: RotundaState, action: RotundaAction): Rotu
       return { ...state, renderStyle: action.style };
     case "setScaleMode":
       return { ...state, scaleMode: action.mode };
-    case "toggleScaleMode":
-      return { ...state, scaleMode: state.scaleMode === "tabletop" ? "real-scale" : "tabletop" };
+    case "toggleScaleMode": {
+      const idx = ROTUNDA_SCALE_MODE_ORDER.indexOf(state.scaleMode);
+      const next = ROTUNDA_SCALE_MODE_ORDER[(idx + 1) % ROTUNDA_SCALE_MODE_ORDER.length] ?? "hero";
+      return { ...state, scaleMode: next };
+    }
     case "toggleSectionCut":
       return { ...state, sectionCutEnabled: !state.sectionCutEnabled };
     case "setSectionCutAxis":
       return { ...state, sectionCutAxis: action.axis };
     case "setSectionCutOffset":
       return { ...state, sectionCutOffset: clampNumber(action.offset, -1, 1) };
-    case "togglePodiumTilt":
-      return { ...state, podiumTiltDeg: state.podiumTiltDeg >= 30 ? 12 : 45 };
+    case "togglePodiumTilt": {
+      // Cycle: drafting table (70° from vertical) → classic 45° → near-upright 12° → drafting table
+      const tilt = state.podiumTiltDeg;
+      const next = tilt >= 57.5 ? 45 : tilt >= 28.5 ? 12 : DEFAULT_PODIUM_TILT_DEG;
+      return { ...state, podiumTiltDeg: next };
+    }
+    case "setPodiumTilt":
+      return { ...state, podiumTiltDeg: clampNumber(action.tiltDeg, 0, 85) };
+    case "setDeskScale":
+      return { ...state, deskScale: clampNumber(action.scale, DESK_SCALE_MIN, DESK_SCALE_MAX) };
+    case "cycleDeskScale":
+      return { ...state, deskScale: nextDeskScalePreset(state.deskScale) };
+    case "recalibrateDeskHeight": {
+      const y = computeCalibratedDeskHeight(action.headY);
+      return y === null ? state : { ...state, deskHeightY: y };
+    }
+    case "resetDeskHeight":
+      return { ...state, deskHeightY: null };
+    case "setDeskTheme":
+      return { ...state, deskTheme: action.theme };
+    case "cycleDeskTheme":
+      return { ...state, deskTheme: nextCanvasBoardTheme(state.deskTheme) };
     case "togglePodiumVisible":
       return { ...state, podiumVisible: !state.podiumVisible };
     case "toggleWingsVisible":
@@ -517,14 +618,154 @@ export function pointInPodiumRect(x: number, y: number, rect: PodiumUiRect, pad 
   return x >= rect.x - pad && x <= rect.x + rect.width + pad && y >= rect.y - pad && y <= rect.y + rect.height + pad;
 }
 
-/** Physical dimensions of the 45° Drafting Podium in meters. */
+/**
+ * Base (deskScale = 1.0 / "XL") physical dimensions of the Drafting Podium board surface in meters.
+ * The rendered desk is `deskScale ×` these dimensions — use {@link resolveDeskLayout} for live sizes.
+ */
 export const PODIUM_WIDTH_METERS = 1.52;
 export const PODIUM_HEIGHT_METERS = 0.95;
-export const PODIUM_CENTER: [number, number, number] = [0, 0.92, -0.78];
+
+/** Desk size presets (multipliers of the base podium size). */
+export const DESK_SCALE_PRESETS: readonly { readonly id: "S" | "M" | "L" | "XL"; readonly scale: number }[] = [
+  { id: "S", scale: 0.45 },
+  { id: "M", scale: 0.6 },
+  { id: "L", scale: 0.8 },
+  { id: "XL", scale: 1.0 },
+] as const;
+export const DEFAULT_DESK_SCALE = 0.6;
+export const DESK_SCALE_MIN = 0.3;
+export const DESK_SCALE_MAX = 1.2;
+
+/** Default desk tilt measured from vertical (70° ⇒ ~20° drafting-table slope from horizontal). */
+export const DEFAULT_PODIUM_TILT_DEG = 70;
+
+/** Default ergonomic desk center height (meters) for the "M" desk; larger desks sit lower. */
+export const DESK_DEFAULT_CENTER_Y = 0.82;
+/** Calibrated desk center = clamp(headY − offset, min, max). */
+export const DESK_HEAD_HEIGHT_OFFSET = 0.62;
+export const DESK_CALIBRATED_MIN_Y = 0.65;
+export const DESK_CALIBRATED_MAX_Y = 1.05;
+
+/** World center of the default ("M", uncalibrated) Drafting Podium board surface. */
+export const PODIUM_CENTER: [number, number, number] = [0, DESK_DEFAULT_CENTER_Y, -0.55];
+
+/** Live physical layout of the drafting desk board surface (all in world meters). */
+export interface RotundaDeskLayout {
+  /** Uniform desk scale multiplier (1.0 = base 1.52 × 0.95 m). */
+  scale: number;
+  width: number;
+  height: number;
+  center: [number, number, number];
+}
+
+/** Returns the preset label ("S" | "M" | "L" | "XL") closest to a desk scale value. */
+export function deskScaleLabel(scale: number): string {
+  let best: (typeof DESK_SCALE_PRESETS)[number] = DESK_SCALE_PRESETS[1]!;
+  for (const preset of DESK_SCALE_PRESETS) {
+    if (Math.abs(preset.scale - scale) < Math.abs(best.scale - scale)) best = preset;
+  }
+  return best.id;
+}
+
+/** Next desk size preset after the current scale (S → M → L → XL → S). */
+export function nextDeskScalePreset(scale: number): number {
+  const idx = DESK_SCALE_PRESETS.findIndex((p) => p.scale > scale + 1e-6);
+  return (DESK_SCALE_PRESETS[idx >= 0 ? idx : 0] ?? DESK_SCALE_PRESETS[0]!).scale;
+}
+
+/**
+ * Computes the calibrated desk center height from a headset (eye) height above the floor.
+ * Returns `null` for implausible readings (e.g. tracking not yet initialized).
+ */
+export function computeCalibratedDeskHeight(headY: number): number | null {
+  if (!Number.isFinite(headY) || headY < 0.9 || headY > 2.4) return null;
+  return clampNumber(headY - DESK_HEAD_HEIGHT_OFFSET, DESK_CALIBRATED_MIN_Y, DESK_CALIBRATED_MAX_Y);
+}
+
+/**
+ * Resolves the desk board layout for a size multiplier and optional calibrated height.
+ * Larger desks are placed slightly lower & further away so their top edge stays below the
+ * eye → hero-model sightline.
+ */
+export function resolveDeskLayout(
+  deskScale: number = DEFAULT_DESK_SCALE,
+  deskHeightY: number | null = null,
+): RotundaDeskLayout {
+  const scale = clampNumber(
+    Number.isFinite(deskScale) ? deskScale : DEFAULT_DESK_SCALE,
+    DESK_SCALE_MIN,
+    DESK_SCALE_MAX,
+  );
+  const baseY =
+    deskHeightY !== null && Number.isFinite(deskHeightY)
+      ? clampNumber(deskHeightY, DESK_CALIBRATED_MIN_Y, DESK_CALIBRATED_MAX_Y)
+      : DESK_DEFAULT_CENTER_Y;
+  const y = Math.max(0.5, baseY - (scale - DEFAULT_DESK_SCALE) * 0.3);
+  const z = -(0.25 + 0.5 * scale);
+  return {
+    scale,
+    width: PODIUM_WIDTH_METERS * scale,
+    height: PODIUM_HEIGHT_METERS * scale,
+    center: [PODIUM_CENTER[0], y, z],
+  };
+}
+
+/** Default desk layout ("M", uncalibrated). */
+export const DEFAULT_DESK_LAYOUT: RotundaDeskLayout = resolveDeskLayout(DEFAULT_DESK_SCALE, null);
 
 /** World center of the Circular Metrology Plinth. */
 export const PLINTH_CENTER_TABLETOP: [number, number, number] = [0, 1.08, -2.25];
 export const PLINTH_CENTER_REAL_SCALE: [number, number, number] = [0, 0.04, -2.65];
+/** Hero mode: low dais far beyond the desk; model base lands at ≈ y = 0.36 m. */
+export const PLINTH_CENTER_HERO: [number, number, number] = [0, 0.2, -4.2];
+
+/** Max dimension (local plinth units) that hero assemblies are normalized to on the plinth. */
+export const PLINTH_MODEL_NORMALIZED_SIZE = 0.78;
+/** Target apparent max dimension of the hero model in `hero` scale mode (meters). */
+export const HERO_MODEL_TARGET_SIZE_METERS = 3.2;
+
+/** Resolved world placement of the plinth + carousel root for a given scale mode. */
+export interface RotundaPlinthPresentation {
+  /** World position of the plinth stage top (carousel root). */
+  center: [number, number, number];
+  /** Uniform scale applied to the plinth + model carousel root. */
+  scale: number;
+  /** 1 = full raised pedestal column, 0 = retracted (dais / flush with floor). */
+  pedestalRatio: number;
+  /** Extra horizontal (XZ) scale applied to plinth visuals only (keeps hero dais from becoming huge). */
+  plinthFootprint: number;
+  /** Extra vertical scale applied to plinth visuals only (low dais keeps the LED halo above the floor). */
+  plinthHeightScale: number;
+}
+
+export function getRotundaPlinthPresentation(mode: RotundaScaleMode): RotundaPlinthPresentation {
+  switch (mode) {
+    case "hero":
+      return {
+        center: PLINTH_CENTER_HERO,
+        scale: HERO_MODEL_TARGET_SIZE_METERS / PLINTH_MODEL_NORMALIZED_SIZE,
+        pedestalRatio: 0,
+        plinthFootprint: 0.74,
+        plinthHeightScale: 0.42,
+      };
+    case "real-scale":
+      return {
+        center: PLINTH_CENTER_REAL_SCALE,
+        scale: 2.15,
+        pedestalRatio: 0,
+        plinthFootprint: 1,
+        plinthHeightScale: 1,
+      };
+    case "tabletop":
+    default:
+      return { center: PLINTH_CENTER_TABLETOP, scale: 1, pedestalRatio: 1, plinthFootprint: 1, plinthHeightScale: 1 };
+  }
+}
+
+/** Convenience: world center of the plinth for a scale mode. */
+export function getPlinthCenterForScaleMode(mode: RotundaScaleMode): [number, number, number] {
+  return getRotundaPlinthPresentation(mode).center;
+}
 
 /**
  * Builds an exact `SpatialPlane3D` for the angled Drafting Podium so `SpatialSurfaceBridge`
@@ -539,8 +780,8 @@ export const PLINTH_CENTER_REAL_SCALE: [number, number, number] = [0, 0.04, -2.6
 export function buildPodiumSpatialPlane(
   tiltDeg = 45,
   center: [number, number, number] = PODIUM_CENTER,
-  widthMeters = PODIUM_WIDTH_METERS,
-  heightMeters = PODIUM_HEIGHT_METERS,
+  widthMeters = DEFAULT_DESK_LAYOUT.width,
+  heightMeters = DEFAULT_DESK_LAYOUT.height,
 ): SpatialPlane3D {
   const rad = (clampNumber(tiltDeg, 0, 85) * Math.PI) / 180;
   const c = Math.cos(rad);
@@ -566,6 +807,14 @@ export function buildPodiumSpatialPlane(
     normal,
     unitsPerMeter: ROTUNDA_BOARD_CANVAS_WIDTH / widthMeters,
   };
+}
+
+/** Builds the podium `SpatialPlane3D` for a live desk layout (size preset + calibrated height). */
+export function buildDeskSpatialPlane(
+  tiltDeg: number,
+  layout: RotundaDeskLayout = DEFAULT_DESK_LAYOUT,
+): SpatialPlane3D {
+  return buildPodiumSpatialPlane(tiltDeg, layout.center, layout.width, layout.height);
 }
 
 export function planeUvToBoard(u: number, v: number, panX = 0, panY = 0): { x: number; y: number } {
@@ -899,6 +1148,8 @@ export interface EngineeringRotundaProps {
   mode?: SurfacePresentationMode | undefined;
   /** Initial environment preset. */
   initialEnvironment?: RotundaEnvironmentId | undefined;
+  /** Initial drafting desk sheet theme (`"blueprint"` default, `"light"`, or `"dark"`). */
+  initialDeskTheme?: CanvasBoardThemeId | undefined;
   /** Controlled or initial simulation time in seconds. */
   simulationTime?: number | undefined;
   /** Optional callback when simulation time changes inside the Rotunda. */

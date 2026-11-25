@@ -1,0 +1,542 @@
+[
+  {
+    "name": "SDS",
+    "kind": "Class",
+    "namePath": "HDF4.SDS",
+    "exports": [
+      "tag",
+      "dataType",
+      "rank",
+      "scaleFactor",
+      "addOffset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Scientific Data Set (SDS)",
+      "category": "HDF4 Core Objects",
+      "domain": "scientific-data",
+      "description": "N-dimensional typed scientific array with dimension scales, calibration, and attributes (DFTAG_SD=702).",
+      "provenance": "NCSA HDF4 Specification v4.2 (1987)",
+      "aliases": [
+        "DFTAG_SD",
+        "SCIENTIFIC_DATA_SET"
+      ],
+      "parameters": [
+        {
+          "key": "tag",
+          "type": "real",
+          "defaultValue": 702,
+          "description": "DFTAG_SD primary data tag"
+        },
+        {
+          "key": "dataType",
+          "type": "real",
+          "defaultValue": 5,
+          "description": "DFNT_FLOAT32 (5) or DFNT_FLOAT64 (6)"
+        },
+        {
+          "key": "rank",
+          "type": "real",
+          "defaultValue": 2,
+          "description": "Number of array dimensions"
+        },
+        {
+          "key": "scaleFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "description": "Linear calibration gain"
+        },
+        {
+          "key": "addOffset",
+          "type": "real",
+          "defaultValue": 0,
+          "description": "Linear calibration offset"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "Vgroup",
+    "kind": "Class",
+    "namePath": "HDF4.Vgroup",
+    "exports": [
+      "tag",
+      "maxMembers"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Vgroup Container",
+      "category": "HDF4 Core Objects",
+      "domain": "scientific-data",
+      "description": "Hierarchical grouping container linking tag/ref pairs of SDS, Vdata, Raster8, and nested Vgroups (DFTAG_VG=1965).",
+      "provenance": "NCSA HDF4 Specification v4.2 (1987)",
+      "aliases": [
+        "DFTAG_VG",
+        "VGROUP"
+      ],
+      "parameters": [
+        {
+          "key": "tag",
+          "type": "real",
+          "defaultValue": 1965,
+          "description": "DFTAG_VG descriptor tag"
+        },
+        {
+          "key": "maxMembers",
+          "type": "real",
+          "defaultValue": 256,
+          "description": "Recommended member capacity"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "Vdata",
+    "kind": "Class",
+    "namePath": "HDF4.Vdata",
+    "exports": [
+      "headerTag",
+      "dataTag",
+      "interlace"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Vdata Table",
+      "category": "HDF4 Core Objects",
+      "domain": "scientific-data",
+      "description": "Heterogeneous multi-field record table stored as DFTAG_VH (1962) header + DFTAG_VS (1963) record payload.",
+      "provenance": "NCSA HDF4 Specification v4.2 (1987)",
+      "aliases": [
+        "DFTAG_VH",
+        "DFTAG_VS",
+        "VDATA"
+      ],
+      "parameters": [
+        {
+          "key": "headerTag",
+          "type": "real",
+          "defaultValue": 1962,
+          "description": "DFTAG_VH header tag"
+        },
+        {
+          "key": "dataTag",
+          "type": "real",
+          "defaultValue": 1963,
+          "description": "DFTAG_VS data tag"
+        },
+        {
+          "key": "interlace",
+          "type": "real",
+          "defaultValue": 0,
+          "description": "0=FULL_INTERLACE, 1=NO_INTERLACE"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "Raster8",
+    "kind": "Class",
+    "namePath": "HDF4.Raster8",
+    "exports": [
+      "dimTag",
+      "dataTag",
+      "width",
+      "height"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "8-Bit Raster Image",
+      "category": "HDF4 Core Objects",
+      "domain": "scientific-data",
+      "description": "Indexed 8-bit raster image with DFTAG_ID8 (200) dimensions and DFTAG_RI8 (202) pixel array.",
+      "provenance": "NCSA HDF4 Specification v4.2 (1987)",
+      "aliases": [
+        "DFTAG_RI8",
+        "RASTER8",
+        "DFR8"
+      ],
+      "parameters": [
+        {
+          "key": "dimTag",
+          "type": "real",
+          "defaultValue": 200,
+          "description": "DFTAG_ID8 dimension tag"
+        },
+        {
+          "key": "dataTag",
+          "type": "real",
+          "defaultValue": 202,
+          "description": "DFTAG_RI8 pixel tag"
+        },
+        {
+          "key": "width",
+          "type": "real",
+          "defaultValue": 256,
+          "unit": "px",
+          "description": "Image width in pixels"
+        },
+        {
+          "key": "height",
+          "type": "real",
+          "defaultValue": 256,
+          "unit": "px",
+          "description": "Image height in pixels"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "Palette",
+    "kind": "Class",
+    "namePath": "HDF4.Palette",
+    "exports": [
+      "tag",
+      "entries"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "8-Bit RGB Color Palette",
+      "category": "HDF4 Core Objects",
+      "domain": "scientific-data",
+      "description": "256-entry RGB lookup table (768 bytes) stored under DFTAG_IP8 (201).",
+      "provenance": "NCSA HDF4 Specification v4.2 (1987)",
+      "aliases": [
+        "DFTAG_IP8",
+        "PALETTE",
+        "DFP"
+      ],
+      "parameters": [
+        {
+          "key": "tag",
+          "type": "real",
+          "defaultValue": 201,
+          "description": "DFTAG_IP8 palette tag"
+        },
+        {
+          "key": "entries",
+          "type": "real",
+          "defaultValue": 768,
+          "unit": "bytes",
+          "description": "256 RGB triplets (768 bytes)"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "NDG",
+    "kind": "Class",
+    "namePath": "HDF4.NDG",
+    "exports": [
+      "tag",
+      "sddTag",
+      "sdTag"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Numeric Data Group (NDG)",
+      "category": "HDF4 Core Objects",
+      "domain": "scientific-data",
+      "description": "Composite group linking DFTAG_SDD, DFTAG_SD, DFTAG_NT, DFTAG_SDL, and DFTAG_SDU into an SDS (DFTAG_NDG=720).",
+      "provenance": "NCSA HDF4 Specification v4.2 (1987)",
+      "aliases": [
+        "DFTAG_NDG",
+        "NUMERIC_DATA_GROUP"
+      ],
+      "parameters": [
+        {
+          "key": "tag",
+          "type": "real",
+          "defaultValue": 720,
+          "description": "DFTAG_NDG group tag"
+        },
+        {
+          "key": "sddTag",
+          "type": "real",
+          "defaultValue": 701,
+          "description": "DFTAG_SDD dimension record tag"
+        },
+        {
+          "key": "sdTag",
+          "type": "real",
+          "defaultValue": 702,
+          "description": "DFTAG_SD numeric payload tag"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "EOS_SWATH",
+    "kind": "Class",
+    "namePath": "HDF4.EOS_SWATH",
+    "exports": [
+      "alongTrack",
+      "crossTrack",
+      "geoStride"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NASA HDF-EOS Swath",
+      "category": "NASA EOS-HDF Archetypes",
+      "domain": "scientific-data",
+      "description": "Orbital cross-track/along-track satellite swath pairing Geolocation Fields with Data Fields.",
+      "provenance": "NASA HDF-EOS2 Specification (1995)",
+      "aliases": [
+        "SWATH",
+        "HDF_EOS_SWATH"
+      ],
+      "parameters": [
+        {
+          "key": "alongTrack",
+          "type": "real",
+          "defaultValue": 2030,
+          "unit": "px",
+          "description": "Along-track scan lines"
+        },
+        {
+          "key": "crossTrack",
+          "type": "real",
+          "defaultValue": 1354,
+          "unit": "px",
+          "description": "Cross-track pixels per scan"
+        },
+        {
+          "key": "geoStride",
+          "type": "real",
+          "defaultValue": 5,
+          "description": "Geolocation decimation factor"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "EOS_GRID",
+    "kind": "Class",
+    "namePath": "HDF4.EOS_GRID",
+    "exports": [
+      "xDim",
+      "yDim",
+      "projectionCode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NASA HDF-EOS Grid",
+      "category": "NASA EOS-HDF Archetypes",
+      "domain": "scientific-data",
+      "description": "Map-projected rectilinear Earth observation grid (Sinusoidal, Geographic, Polar Stereographic).",
+      "provenance": "NASA HDF-EOS2 Specification (1995)",
+      "aliases": [
+        "GRID",
+        "HDF_EOS_GRID"
+      ],
+      "parameters": [
+        {
+          "key": "xDim",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "px",
+          "description": "Grid columns"
+        },
+        {
+          "key": "yDim",
+          "type": "real",
+          "defaultValue": 1200,
+          "unit": "px",
+          "description": "Grid rows"
+        },
+        {
+          "key": "projectionCode",
+          "type": "real",
+          "defaultValue": 16,
+          "description": "GCTP projection code (16=Sinusoidal)"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "EOS_POINT",
+    "kind": "Class",
+    "namePath": "HDF4.EOS_POINT",
+    "exports": [
+      "levels",
+      "recordCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NASA HDF-EOS Point",
+      "category": "NASA EOS-HDF Archetypes",
+      "domain": "scientific-data",
+      "description": "Multi-level Vdata point observation structure for in-situ atmospheric and oceanographic profiles.",
+      "provenance": "NASA HDF-EOS2 Specification (1995)",
+      "aliases": [
+        "POINT",
+        "HDF_EOS_POINT"
+      ],
+      "parameters": [
+        {
+          "key": "levels",
+          "type": "real",
+          "defaultValue": 2,
+          "description": "Relational Vdata hierarchy depth"
+        },
+        {
+          "key": "recordCount",
+          "type": "real",
+          "defaultValue": 1000,
+          "description": "Observation point records"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "MODIS_L1B",
+    "kind": "Class",
+    "namePath": "HDF4.MODIS_L1B",
+    "exports": [
+      "bands",
+      "radianceScale",
+      "radianceOffset"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MODIS Level-1B Calibrated Radiance",
+      "category": "NASA EOS-HDF Archetypes",
+      "domain": "scientific-data",
+      "description": "Terra/Aqua MODIS 1 km calibrated radiances & reflectances with EV_1KM_RefSB and EV_1KM_Emissive SDS.",
+      "provenance": "NASA LP DAAC MODIS Level-1B Product User Guide",
+      "aliases": [
+        "MOD021KM",
+        "MYD021KM"
+      ],
+      "parameters": [
+        {
+          "key": "bands",
+          "type": "real",
+          "defaultValue": 15,
+          "description": "Reflective/emissive spectral bands"
+        },
+        {
+          "key": "radianceScale",
+          "type": "real",
+          "defaultValue": 0.005,
+          "unit": "W/(m2.sr.um)",
+          "description": "Calibration slope"
+        },
+        {
+          "key": "radianceOffset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "W/(m2.sr.um)",
+          "description": "Calibration offset"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "AIRS_L2",
+    "kind": "Class",
+    "namePath": "HDF4.AIRS_L2",
+    "exports": [
+      "pressureLevels",
+      "scanLines",
+      "xTrack"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "AIRS Level-2 Atmospheric Retrieval",
+      "category": "NASA EOS-HDF Archetypes",
+      "domain": "scientific-data",
+      "description": "Aqua AIRS atmospheric temperature & water vapor vertical profile swath (28 standard pressure levels).",
+      "provenance": "NASA GES DISC AIRS Version 6 User Guide",
+      "aliases": [
+        "AIRX2RET"
+      ],
+      "parameters": [
+        {
+          "key": "pressureLevels",
+          "type": "real",
+          "defaultValue": 28,
+          "description": "Standard atmospheric pressure levels"
+        },
+        {
+          "key": "scanLines",
+          "type": "real",
+          "defaultValue": 45,
+          "description": "Granule along-track FOV lines"
+        },
+        {
+          "key": "xTrack",
+          "type": "real",
+          "defaultValue": 30,
+          "description": "Granule cross-track FOV pixels"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "LANDSAT_TM",
+    "kind": "Class",
+    "namePath": "HDF4.LANDSAT_TM",
+    "exports": [
+      "bands",
+      "gsdMeters",
+      "solarZenithDeg"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Landsat TM/ETM+ Multispectral Scene",
+      "category": "NASA EOS-HDF Archetypes",
+      "domain": "scientific-data",
+      "description": "30 m multispectral Earth imaging grid with calibrated reflectance bands and thermal IR channel.",
+      "provenance": "USGS / NASA Landsat Data Continuity Archive",
+      "aliases": [
+        "LANDSAT_ETM"
+      ],
+      "parameters": [
+        {
+          "key": "bands",
+          "type": "real",
+          "defaultValue": 7,
+          "description": "Spectral channels"
+        },
+        {
+          "key": "gsdMeters",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "m",
+          "description": "Ground sample distance"
+        },
+        {
+          "key": "solarZenithDeg",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "deg",
+          "description": "Scene center solar zenith angle"
+        }
+      ],
+      "wasmKernel": "hdf4ModelEval",
+      "archetypeId": 15
+    }
+  }
+]

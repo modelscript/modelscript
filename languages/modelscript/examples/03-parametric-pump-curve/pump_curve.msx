@@ -1,0 +1,52 @@
+struct PumpSpec {
+  shutoffHead: f64;
+  headCoeff: f64;
+  ratedSpeedRpm: f64;
+  fluidDensity: f64;
+  gravity: f64;
+  peakEfficiency: f64;
+  bepFlow: f64;
+}
+
+function pumpHead(spec: PumpSpec, flow: f64, speedRpm: f64): f64 {
+  let ratio: f64 = speedRpm / spec.ratedSpeedRpm;
+  let qScaled: f64 = flow / ratio;
+  let hBase: f64 = spec.shutoffHead - spec.headCoeff * qScaled * qScaled;
+  if (hBase < 0.0) {
+    return 0.0;
+  }
+  return hBase * ratio * ratio;
+}
+
+function pumpEfficiency(spec: PumpSpec, flow: f64, speedRpm: f64): f64 {
+  let ratio: f64 = speedRpm / spec.ratedSpeedRpm;
+  let qBep: f64 = spec.bepFlow * ratio;
+  let delta: f64 = (flow - qBep) / qBep;
+  let eta: f64 = spec.peakEfficiency * (1.0 - 0.65 * delta * delta);
+  if (eta < 0.1) {
+    return 0.1;
+  }
+  return eta;
+}
+
+function shaftPowerWatts(spec: PumpSpec, flow: f64, speedRpm: f64): f64 {
+  let head: f64 = pumpHead(spec, flow, speedRpm);
+  let eta: f64 = pumpEfficiency(spec, flow, speedRpm);
+  let hydraulicPower: f64 = spec.fluidDensity * spec.gravity * flow * head;
+  return hydraulicPower / eta;
+}
+
+function sweepMaxHydraulicPower(spec: PumpSpec, speedRpm: f64, samples: i32): f64 {
+  let bestPower: f64 = 0.0;
+  let i: i32 = 1;
+  while (i <= samples) {
+    let q: f64 = 0.002 * i;
+    let h: f64 = pumpHead(spec, q, speedRpm);
+    let pHyd: f64 = spec.fluidDensity * spec.gravity * q * h;
+    if (pHyd > bestPower) {
+      bestPower = pHyd;
+    }
+    i = i + 1;
+  }
+  return bestPower;
+}

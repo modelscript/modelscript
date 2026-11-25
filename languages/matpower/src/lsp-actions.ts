@@ -4,7 +4,16 @@ export const extractMatpowerTheoryConstraints = async (text: string) => {
   const { parseMatpowerCase } = await import("./index.js");
   const mpc = parseMatpowerCase(text);
   const ns = `MATPOWER::${mpc.caseName || "Case"}`;
-  const parameters: any[] = [
+  const parameters: Array<{
+    name: string;
+    fqn: string;
+    value: number;
+    rawValueText: string;
+    unit: string;
+    line: number;
+    startCol: number;
+    endCol: number;
+  }> = [
     {
       name: "baseMVA",
       fqn: `${ns}::baseMVA`,
@@ -16,7 +25,7 @@ export const extractMatpowerTheoryConstraints = async (text: string) => {
       endCol: 8,
     },
   ];
-  const ports: any[] = [];
+  const ports: Array<{ name: string; kind: string; line: number }> = [];
   for (const b of mpc.bus) {
     const bName = `bus_${b.bus_i}`;
     if (Number.isFinite(b.baseKv)) {

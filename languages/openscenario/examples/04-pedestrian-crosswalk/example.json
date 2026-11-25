@@ -1,0 +1,12 @@
+{
+  "id": "openscenario-04-pedestrian-crosswalk",
+  "lang": "openscenario",
+  "subFormats": ["xosc", "xodr"],
+  "difficulty": 4,
+  "title": "Pedestrian Crosswalk Occlusion Scenario",
+  "description": "Urban vulnerable road user (VRU) scenario where a pedestrian emerges from behind a parked delivery van at a crosswalk as the Ego vehicle approaches at 40 km/h.",
+  "category": "Urban ADAS Safety",
+  "tags": ["pedestrian", "vru", "occlusion", "crosswalk", "multi-file"],
+  "activeFile": "pedestrian_aeb.xosc",
+  "fileOrder": ["pedestrian_aeb.xosc", "urban_intersection.xodr"]
+}

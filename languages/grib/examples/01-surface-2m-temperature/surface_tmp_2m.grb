@@ -1,0 +1,32 @@
+# WMO GRIB1 Surface 2-Meter Air Temperature Analysis
+GRIB edition=1
+  IS {
+    edition = 1
+  }
+  PDS {
+    tableVersion = 2
+    center = 7
+    parameter = TMP
+    levelType = TGL
+    level = 2
+    date = "2026-07-15T12:00"
+    decimalScale = 1
+  }
+  GDS {
+    gridType = 0
+    ni = 3
+    nj = 2
+    la1 = 42.0
+    lo1 = -108.0
+    la2 = 38.0
+    lo2 = -100.0
+    di = 4.0
+    dj = 4.0
+  }
+  BDS {
+    bitsPerValue = 16
+    binaryScale = 0
+    referenceValue = 285.0
+    values = [291.4, 294.2, 297.8, 295.1, 298.6, 301.2]
+  }
+7777

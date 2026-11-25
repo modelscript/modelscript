@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_ev_types" name="EVQuantityTypesLibrary">
+    <packagedElement xmi:type="uml:Class" xmi:id="ev_vt_spec" name="ElectricalQuantitySpec">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_vt_volt" name="voltageV">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_vt_curr" name="currentA">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+  </uml:Model>
+  <sysml:Block xmi:id="st_ev_vt" base_Class="ev_vt_spec"/>
+</xmi:XMI>

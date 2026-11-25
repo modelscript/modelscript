@@ -1,0 +1,9 @@
+# Chapman-Jouguet Detonation of Stoichiometric H2/O2/N2 Mixture
+problem case=CJ_DET_H2O2 det
+  p,bar=1.0,2.0,5.0 t,k=298.15
+reactants
+  fuel=H2 moles=2.0 t(k)=298.15
+  oxid=O2 moles=1.0 t(k)=298.15
+  oxid=N2 moles=1.0 t(k)=298.15
+output siunits short trace=1e-5
+end

@@ -18,7 +18,7 @@ interface PackageViewCardProps {
     license?: string | undefined;
     dialect?: string | undefined;
     keywords?: string[] | undefined;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   isFullScreen?: boolean | undefined;
 }

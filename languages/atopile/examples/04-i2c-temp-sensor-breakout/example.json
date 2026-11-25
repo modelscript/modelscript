@@ -1,0 +1,11 @@
+{
+  "id": "atopile-04-i2c-temp-sensor-breakout",
+  "lang": "atopile",
+  "subFormats": ["ato"],
+  "difficulty": 4,
+  "title": "I2C Temperature Sensor Breakout with Bus Pull-Ups",
+  "description": "Digital I2C temperature sensor breakout module wiring typed I2C and Power interfaces with 4.7 kOhm SDA/SCL pull-up resistors and local decoupling.",
+  "category": "ECAD & Hardware Description",
+  "tags": ["atopile", "i2c", "sensor", "interfaces", "multi-file"],
+  "activeFile": "sensor.ato"
+}

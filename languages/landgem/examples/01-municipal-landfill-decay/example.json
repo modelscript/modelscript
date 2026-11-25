@@ -1,0 +1,12 @@
+{
+  "id": "landgem-01-municipal-landfill-decay",
+  "lang": "landgem",
+  "subFormats": ["landgem"],
+  "difficulty": 1,
+  "title": "Small Municipal Landfill First-Order Methane Decay",
+  "description": "EPA LandGEM first-order decomposition model for a small municipal solid waste landfill tracking annual methane generation using CAA conventional kinetic parameters.",
+  "category": "Environmental & Biogas Engineering",
+  "tags": ["landgem", "methane", "first-order-decay", "msw"],
+  "activeFile": "municipal_landfill.landgem",
+  "isDefaultStarter": true
+}

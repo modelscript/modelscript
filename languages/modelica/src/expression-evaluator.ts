@@ -37,7 +37,23 @@ import {
   splitTopLevel,
   stripLeadingDot,
 } from "./flattener/expressions/cst-utils.js";
-import type { ModificationValue } from "./modifications.js";
+import type { ModelicaModArgs, ModificationValue } from "./modifications.js";
+
+interface ExtendsModArgLike {
+  isBreak?: boolean | undefined;
+  name?: string | undefined;
+  value?: ModificationValue | null | undefined;
+}
+
+interface EvalCstNode {
+  type?: string | undefined;
+  text?: string | undefined;
+  children?: readonly EvalCstNode[] | undefined;
+}
+
+type QueryDBWithIndex = QueryDB & {
+  index?: { symbols?: Map<number, SymbolEntry> } | undefined;
+};
 
 function parseForInClause(inner: string): { bodyExpr: string; iterVar: string; rangeExpr: string } | null {
   let depth = 0;
@@ -181,9 +197,12 @@ function findInheritedExtendsMod(
   const children = db.childrenOf(clsId);
   for (const child of children) {
     if (child.kind === "Extends") {
-      const extModRaw = db.query<any>("extendsModificationParsed", child.id);
-      const extArgs: any[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
-      const found = extArgs.find((a: any) => !a.isBreak && a.name === targetName && a.value);
+      const extModRaw = db.query<ExtendsModArgLike[] | { args?: ExtendsModArgLike[] } | null>(
+        "extendsModificationParsed",
+        child.id,
+      );
+      const extArgs: ExtendsModArgLike[] = Array.isArray(extModRaw) ? extModRaw : (extModRaw?.args ?? []);
+      const found = extArgs.find((a) => !a.isBreak && a.name === targetName && a.value);
       if (found?.value) {
         return { modVal: found.value, evalScopeId: clsId };
       }
@@ -224,7 +243,7 @@ function getComponentEvaluatedValue(resolved: SymbolEntry, db: QueryDB, scope?: 
         }
       }
       if (res === resolved) {
-        const compMod = db.query<any>("effectiveModification", resolved.id);
+        const compMod = db.query<ModelicaModArgs | null>("effectiveModification", resolved.id);
         if (compMod?.bindingExpression) {
           const scopeId = compMod.evaluationScopeId ?? resolved.parentId;
           const scopeEntry = scopeId ? (db.symbol(scopeId) ?? null) : null;
@@ -253,27 +272,29 @@ function getEnumLiteralIndex(text: string, db: QueryDB): number | null {
   const parts = text.split(".");
   const litName = parts.pop()!;
   const typeName = parts.length > 0 ? parts.pop()! : null;
-  const candidateSyms = typeName
+  const dbWithIndex = db as QueryDBWithIndex;
+  const candidateSyms: SymbolEntry[] = typeName
     ? db.byName(typeName)
-    : (db as any).index?.symbols
-      ? Array.from((db as any).index.symbols.values()).filter((s: any) => (s as any).kind === "Class")
+    : dbWithIndex.index?.symbols
+      ? Array.from(dbWithIndex.index.symbols.values()).filter((s) => s.kind === "Class")
       : [];
-  for (const s of candidateSyms as any[]) {
+  for (const s of candidateSyms) {
     // 1. Check indexed metadata literals
-    const metaLits = (s.metadata as any)?.literals;
+    const meta = s.metadata as Record<string, unknown> | undefined;
+    const metaLits = meta?.["literals"];
     if (Array.isArray(metaLits)) {
       const idx = metaLits.indexOf(litName);
       if (idx >= 0) return idx + 1;
     }
 
     // 2. CST-native enumeration literals extraction
-    const cst = db.cstNode ? db.cstNode(s.id) : null;
+    const cst = (db.cstNode ? db.cstNode(s.id) : null) as EvalCstNode | null;
     if (cst) {
       const lits: string[] = [];
-      const collectEnumLits = (node: any) => {
+      const collectEnumLits = (node: EvalCstNode | null | undefined) => {
         if (!node) return;
         if (node.type === "enumeration_literal" || node.type === "EnumerationLiteral") {
-          const idNode = (node.children || []).find((c: any) => c.type === "identifier" || c.type === "IDENT");
+          const idNode = (node.children || []).find((c) => c.type === "identifier" || c.type === "IDENT");
           const name = idNode?.text?.trim() ?? (firstAsciiToken(node.text ?? "") || undefined);
           if (name) lits.push(name);
           return;
@@ -290,7 +311,7 @@ function getEnumLiteralIndex(text: string, db: QueryDB): number | null {
     }
 
     // 3. Fallback text parsing only if CST inspection did not find literals
-    const cstText = (cst as any)?.text ?? "";
+    const cstText = cst?.text ?? "";
     const lits = parseEnumLiteralsText(cstText);
     if (lits && lits.length > 0) {
       const idx = lits.indexOf(litName);
@@ -458,7 +479,12 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
       if (curr !== undefined) {
         return curr;
       }
-    } else if (baseVal && typeof baseVal === "object" && "id" in baseVal && (baseVal as any).kind === "Component") {
+    } else if (
+      baseVal &&
+      typeof baseVal === "object" &&
+      "id" in baseVal &&
+      (baseVal as SymbolEntry).kind === "Component"
+    ) {
       return baseVal;
     }
   }
@@ -475,7 +501,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
           if (rhs in (lhsVal as Record<string, unknown>)) {
             return (lhsVal as Record<string, unknown>)[rhs];
           }
-          if ("id" in lhsVal && (lhsVal as any).kind === "Component") {
+          if ("id" in lhsVal && (lhsVal as SymbolEntry).kind === "Component") {
             const sym = lhsVal as SymbolEntry;
             const typeSpec = db.query<string | null>("typeSpecifier", sym.id);
             if (typeSpec && sym.parentId) {
@@ -507,7 +533,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         if (resolved.kind === "EnumerationLiteral" || resolved.ruleName === "EnumerationLiteral") {
           if (resolved.parentId) {
             const siblings = db.childrenOf(resolved.parentId);
-            const idx = siblings.findIndex((c: any) => c.id === resolved.id);
+            const idx = siblings.findIndex((c: SymbolEntry) => c.id === resolved.id);
             if (idx >= 0) return idx + 1;
           }
           return resolved.name;
@@ -529,7 +555,7 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         if (resolved.kind === "EnumerationLiteral" || resolved.ruleName === "EnumerationLiteral") {
           if (resolved.parentId) {
             const siblings = db.childrenOf(resolved.parentId);
-            const idx = siblings.findIndex((c: any) => c.id === resolved.id);
+            const idx = siblings.findIndex((c: SymbolEntry) => c.id === resolved.id);
             if (idx >= 0) return idx + 1;
           }
           return resolved.name;
@@ -689,13 +715,25 @@ function evaluateExprText(text: string, scope: SymbolEntry | null, db: QueryDB):
         case "<>":
           return lhs !== rhs;
         case "<=":
-          return (lhs as any) <= (rhs as any);
+          if (typeof lhs === "number" && typeof rhs === "number") return lhs <= rhs;
+          if (typeof lhs === "string" && typeof rhs === "string") return lhs <= rhs;
+          if (typeof lhs === "boolean" && typeof rhs === "boolean") return lhs <= rhs;
+          return Number(lhs) <= Number(rhs);
         case ">=":
-          return (lhs as any) >= (rhs as any);
+          if (typeof lhs === "number" && typeof rhs === "number") return lhs >= rhs;
+          if (typeof lhs === "string" && typeof rhs === "string") return lhs >= rhs;
+          if (typeof lhs === "boolean" && typeof rhs === "boolean") return lhs >= rhs;
+          return Number(lhs) >= Number(rhs);
         case "<":
-          return (lhs as any) < (rhs as any);
+          if (typeof lhs === "number" && typeof rhs === "number") return lhs < rhs;
+          if (typeof lhs === "string" && typeof rhs === "string") return lhs < rhs;
+          if (typeof lhs === "boolean" && typeof rhs === "boolean") return lhs < rhs;
+          return Number(lhs) < Number(rhs);
         case ">":
-          return (lhs as any) > (rhs as any);
+          if (typeof lhs === "number" && typeof rhs === "number") return lhs > rhs;
+          if (typeof lhs === "string" && typeof rhs === "string") return lhs > rhs;
+          if (typeof lhs === "boolean" && typeof rhs === "boolean") return lhs > rhs;
+          return Number(lhs) > Number(rhs);
       }
     }
   }
@@ -985,12 +1023,12 @@ function evaluateBuiltinCall(name: string, argsText: string, scope: SymbolEntry 
     const val = args[0];
     const dims = args.slice(1);
     if (dims.every((d) => typeof d === "number")) {
-      const buildFill = (depth: number): any => {
+      const buildFill = (depth: number): unknown[] => {
         const count = dims[depth] as number;
         if (depth === dims.length - 1) {
           return Array(count).fill(val);
         }
-        const arr = [];
+        const arr: unknown[] = [];
         for (let i = 0; i < count; i++) {
           arr.push(buildFill(depth + 1));
         }

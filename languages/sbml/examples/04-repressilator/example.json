@@ -1,0 +1,11 @@
+{
+  "id": "sbml-04-repressilator",
+  "lang": "sbml",
+  "subFormats": ["sbml-l2v4"],
+  "difficulty": 4,
+  "title": "Repressilator Synthetic Genetic Oscillator",
+  "description": "Elowitz and Leibler three-gene transcriptional ring oscillator (LacI, TetR, cI) with Hill-function repression, mRNA translation, and first-order degradation.",
+  "category": "Synthetic Biology",
+  "tags": ["sbml", "repressilator", "genetic-circuit", "hill-kinetics"],
+  "activeFile": "repressilator.sbml"
+}

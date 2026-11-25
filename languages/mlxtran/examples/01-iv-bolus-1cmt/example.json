@@ -1,0 +1,13 @@
+{
+  "id": "mlxtran-01-iv-bolus-1cmt",
+  "lang": "mlxtran",
+  "subFormats": ["mlxtran"],
+  "difficulty": 1,
+  "title": "Single-Dose One-Compartment IV Bolus PK",
+  "description": "Foundational Monolix longitudinal one-compartment intravenous bolus pharmacokinetic model with linear clearance and companion plasma concentration dataset.",
+  "category": "Pharmacometrics",
+  "tags": ["mlxtran", "monolix", "pk", "iv-bolus", "multi-file"],
+  "activeFile": "pk1.mlxtran",
+  "fileOrder": ["pk1.mlxtran", "pk1_data.csv"],
+  "isDefaultStarter": true
+}

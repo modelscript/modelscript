@@ -1,0 +1,28 @@
+BEGIN NEW DATA CASE
+C 500 kV Substation Back-to-Back Shunt Capacitor Bank Switching
+C Captures high-frequency inrush oscillation and bus voltage magnification
+  5.0E-6  0.05
+/BRANCH
+C System equivalent impedance behind 500 kV bus
+SYS500  BUS500  1.8000  38.0000  0.0000
+C Existing energized capacitor bank C1 (100 MVAR at 500 kV)
+BUS500  CAP1    0.2500   0.1500  0.0000
+CAP1    GND     0.1000   0.0000  1.0610
+C Switched capacitor bank C2 with 0.8 mH inrush-limiting reactor
+BUS500  CAP2_R  0.4000   0.8000  0.0000
+CAP2_R  GND     0.1500   0.0000  1.0610
+C Substation load feeder
+BUS500  FEEDER  4.2000  28.0000  0.0450
+FEEDER  GND     180.000 12.0000  0.0000
+BLANK RECORD
+/SWITCH
+C Breaker energizes bank C2 at peak voltage (t = 12.5 ms) and clears at 45 ms
+BUS500  CAP2_R  0.012500    0.045000
+BLANK RECORD
+/SOURCE
+C 500 kVrms L-L => 408.25 kV peak L-G at 60 Hz
+14 SYS500  408248.00   60.00    0.00
+BLANK RECORD
+/OUTPUT
+SYS500 BUS500 CAP1 CAP2_R FEEDER
+BLANK RECORD

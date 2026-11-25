@@ -1,0 +1,11 @@
+{
+  "id": "three-mf-05-mandible-guide-qif",
+  "lang": "three-mf",
+  "subFormats": ["3mf", "qif"],
+  "difficulty": 5,
+  "title": "Craniofacial Mandible Osteotomy Guide with QIF Dimensional QA",
+  "description": "Patient-specific mandibular reconstruction osteotomy cutting guide in Surgical Guide Resin with dual resection planes, K-wire fixation sleeves, and companion QIF 3.0 metrology QA plan.",
+  "category": "Medical Additive Manufacturing & 3MF",
+  "tags": ["three-mf", "craniofacial", "osteotomy-guide", "qif-qa", "multi-file"],
+  "activeFile": "mandible_guide.3mf"
+}

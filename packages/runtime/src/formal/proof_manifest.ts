@@ -322,11 +322,12 @@ export class ProofManifestGenerator {
           isValid: true,
           computedRootHash,
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
         return {
           isValid: false,
           computedRootHash,
-          reason: `Cryptographic signature verification error: ${err.message}`,
+          reason: `Cryptographic signature verification error: ${message}`,
         };
       }
     }

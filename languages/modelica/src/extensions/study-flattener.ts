@@ -54,9 +54,9 @@ export class StudyFlattener {
             for (const arg of localMod.args) {
               if (arg.value) {
                 let val = this.db.evaluate(arg.value, arg.evaluationScopeId || child.parentId);
-                if (val === null && arg.value.kind === "expression" && typeof (arg.value as any).text === "string") {
-                  val = Number((arg.value as any).text);
-                  if (isNaN(val as number)) val = stripOuterDoubleQuotes((arg.value as any).text);
+                if (val === null && arg.value.kind === "expression" && typeof arg.value.text === "string") {
+                  const numVal = Number(arg.value.text);
+                  val = isNaN(numVal) ? stripOuterDoubleQuotes(arg.value.text) : numVal;
                 }
                 config.parameters[arg.name] = val;
               }
@@ -73,18 +73,15 @@ export class StudyFlattener {
     // Process direct parameters in the study class
     for (const child of children) {
       if (child.kind === "Component") {
-        const varType = this.db.query<any>("variability", child.id);
+        const varType = this.db.query<string | null | undefined>("variability", child.id);
         if (varType === "parameter") {
           const inlineMod = this.db.query<ModelicaModArgs | null>("effectiveModification", child.id);
-          if (inlineMod && inlineMod.args.length > 0 && inlineMod.args[0]?.value) {
-            let val = this.db.evaluate(inlineMod.args[0].value, child.parentId);
-            if (
-              val === null &&
-              inlineMod.args[0].value.kind === "expression" &&
-              typeof (inlineMod.args[0].value as any).text === "string"
-            ) {
-              val = Number((inlineMod.args[0].value as any).text);
-              if (isNaN(val as number)) val = stripOuterDoubleQuotes((inlineMod.args[0].value as any).text);
+          const firstVal = inlineMod?.args[0]?.value;
+          if (firstVal) {
+            let val = this.db.evaluate(firstVal, child.parentId);
+            if (val === null && firstVal.kind === "expression" && typeof firstVal.text === "string") {
+              const numVal = Number(firstVal.text);
+              val = isNaN(numVal) ? stripOuterDoubleQuotes(firstVal.text) : numVal;
             }
             config.parameters[child.name] = val;
           }

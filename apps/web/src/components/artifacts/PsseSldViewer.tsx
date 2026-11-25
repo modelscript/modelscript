@@ -12,7 +12,7 @@ import {
   type PsseTransformerLike,
   renderPsseSldSvg,
 } from "@modelscript/diagram";
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import {
   type PowerFlowResult,
   type PsseCase,
@@ -548,7 +548,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
 
   useEffect(() => {
     if (!loading && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [loading, rawText]);
 
@@ -645,12 +645,12 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     const totalGenMw =
       viewConfig.metrics?.totalGenMw ??
       (powerflow
-        ? Number(powerflow.buses.reduce((s, b) => s + (b.pgMw ?? (b as any).pGen ?? 0), 0).toFixed(1))
+        ? Number(powerflow.buses.reduce((s, b) => s + (b.pgMw ?? (b as { pGen?: number }).pGen ?? 0), 0).toFixed(1))
         : (parsedClient?.totalGenMw ?? 0));
     const totalLoadMw =
       viewConfig.metrics?.totalLoadMw ??
       (powerflow
-        ? Number(powerflow.buses.reduce((s, b) => s + (b.plMw ?? (b as any).pLoad ?? 0), 0).toFixed(1))
+        ? Number(powerflow.buses.reduce((s, b) => s + (b.plMw ?? (b as { pLoad?: number }).pLoad ?? 0), 0).toFixed(1))
         : (parsedClient?.totalLoadMw ?? 0));
     const lossesMw =
       viewConfig.metrics?.lossesMw ??
@@ -919,10 +919,10 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
     URL.revokeObjectURL(url);
   };
 
-  const handleOpenInPlayground = () => {
-    const hash = compressMorselPayload({
+  const handleOpenInAnsatzEditor = () => {
+    const hash = compressAnsatzPayload({
       v: 1,
-      lang: "psse" as any,
+      lang: "psse",
       code: rawText,
       title,
     });
@@ -977,7 +977,7 @@ export const PsseSldViewer: React.FC<PsseSldViewerProps> = ({ viewConfig, isFull
             {copied ? "Copied" : "Copy"}
           </Button>
           {Boolean(viewConfig?.standalone) && !isFullScreen && (
-            <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInPlayground}>
+            <Button size="small" leadingVisual={DraftingTriangleIcon} onClick={handleOpenInAnsatzEditor}>
               Open in Ansatz
             </Button>
           )}

@@ -1,0 +1,11 @@
+{
+  "id": "las-05-two-well-stratigraphic-correlation",
+  "lang": "las",
+  "subFormats": ["las"],
+  "difficulty": 5,
+  "title": "Two-Well Stratigraphic Reservoir Correlation Pair",
+  "description": "Multi-file LAS 2.0 basin correlation workspace pairing an updip discovery well (well_a.las) and a downdip appraisal well (well_b.las) offset by 25 m structural dip across a sandstone pay interval.",
+  "category": "Subsurface & Petrophysics",
+  "tags": ["las", "correlation", "stratigraphy", "multi-well", "multi-file"],
+  "activeFile": "well_a.las"
+}

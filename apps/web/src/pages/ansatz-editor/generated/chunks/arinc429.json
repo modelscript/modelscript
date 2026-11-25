@@ -1,0 +1,73 @@
+[
+  {
+    "id": "arinc429-01-adc-altitude-airspeed",
+    "lang": "arinc429",
+    "subFormats": ["arinc429-low"],
+    "difficulty": 1,
+    "title": "Air Data Computer Altitude & Airspeed Low-Speed Bus",
+    "description": "Low-speed (12.5 kbps) ARINC 429 Air Data Computer bus carrying pressure altitude (Label 203) and computed airspeed (Label 206) with valid odd-parity BNR words.",
+    "category": "Avionics Data Bus",
+    "tags": ["arinc429", "adc", "altitude", "airspeed", "bnr"],
+    "activeFile": "adc_low_speed.a429",
+    "fileNames": ["adc_low_speed.a429"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# Air Data Computer (ADC) Low-Speed ARINC 429 Bus (12.5 kbps)\nBUS ADC_PRIMARY_BUS\nRATE LOW\nLABEL 203 ALTITUDE ENCODING BNR SDI 0 RANGE 131072 RESOLUTION 0.5 UNITS ft RATE 16 EQUIPMENT ADC\nLABEL 206 COMPUTED_AIRSPEED ENCODING BNR SDI 0 RANGE 1024 RESOLUTION 0.00390625 UNITS kt RATE 16 EQUIPMENT ADC\nFRAME 0.000 WORD 0x614820C1 # 10500 ft\nFRAME 0.025 WORD 0x635C0061 # 215.0 kt\nFRAME 0.062 WORD 0x614960C1 # 10540 ft\nFRAME 0.087 WORD 0xE3620061 # 216.5 kt\n"
+  },
+  {
+    "id": "arinc429-02-irs-attitude-heading",
+    "lang": "arinc429",
+    "subFormats": ["arinc429-high"],
+    "difficulty": 2,
+    "title": "Inertial Reference System Pitch, Roll & True Heading Bus",
+    "description": "High-speed (100 kbps) ARINC 429 Inertial Reference System bus transmitting 50 Hz pitch angle (324), roll angle (325), and true heading (314) during a shallow left bank.",
+    "category": "Inertial Navigation",
+    "tags": ["arinc429", "irs", "attitude", "heading", "high-speed"],
+    "activeFile": "irs_attitude.a429",
+    "fileNames": ["irs_attitude.a429"],
+    "fileCount": 1,
+    "code": "# Inertial Reference System (IRS) High-Speed Attitude & Heading Bus (100 kbps)\nBUS IRS_ATTITUDE_BUS_1\nRATE HIGH\nLABEL 324 PITCH_ANGLE ENCODING BNR SDI 1 RANGE 180 RESOLUTION 0.0054931640625 UNITS deg RATE 50 EQUIPMENT IRS\nLABEL 325 ROLL_ANGLE ENCODING BNR SDI 1 RANGE 180 RESOLUTION 0.0054931640625 UNITS deg RATE 50 EQUIPMENT IRS\nLABEL 314 TRUE_HEADING ENCODING BNR SDI 1 RANGE 180 RESOLUTION 0.0054931640625 UNITS deg RATE 20 EQUIPMENT IRS\nFRAME 0.000 WORD 0x6009F42B # Pitch +3.5 deg\nFRAME 0.005 WORD 0xFFDD28AB # Roll -12.25 deg\nFRAME 0.010 WORD 0xE0F05C33 # Heading 084.5 deg\nFRAME 0.020 WORD 0x600AD02B # Pitch +3.8 deg\nFRAME 0.025 WORD 0x7FE390AB # Roll -10.0 deg\nFRAME 0.030 WORD 0xE0ECA833 # Heading 083.2 deg\n"
+  },
+  {
+    "id": "arinc429-03-vhf-vor-ils-radionav",
+    "lang": "arinc429",
+    "subFormats": ["arinc429-low"],
+    "difficulty": 3,
+    "title": "Dual-Channel VHF, VOR & ILS Radio Navigation Bus",
+    "description": "Mixed BCD and BNR ARINC 429 radio navigation bus encoding tuned ILS/VOR frequency (034), VHF comm frequency (035), localizer deviation (173), and glideslope deviation (174).",
+    "category": "Radio Navigation",
+    "tags": ["arinc429", "ils", "vor", "bcd", "bnr"],
+    "activeFile": "ils_radionav.a429",
+    "fileNames": ["ils_radionav.a429"],
+    "fileCount": 1,
+    "code": "# VHF / VOR / ILS Approach Radio Navigation Bus (Mixed BCD + BNR)\nBUS NAV_RADIO_BUS_1\nRATE LOW\nLABEL 034 VOR_ILS_FREQ ENCODING BCD SDI 1 RESOLUTION 0.01 UNITS MHz RATE 5 EQUIPMENT MMR\nLABEL 035 VHF_COMM_FREQ ENCODING BCD SDI 1 RESOLUTION 0.01 UNITS MHz RATE 5 EQUIPMENT VHF\nLABEL 173 LOCALIZER_DEV ENCODING BNR SDI 1 RANGE 0.4 RESOLUTION 0.0001 UNITS DDM RATE 20 EQUIPMENT MMR\nLABEL 174 GLIDESLOPE_DEV ENCODING BNR SDI 1 RANGE 0.8 RESOLUTION 0.0001 UNITS DDM RATE 20 EQUIPMENT MMR\nFRAME 0.000 WORD 0x8440C138 # ILS 110.30 MHz\nFRAME 0.020 WORD 0x846195B8 # Tower 118.65 MHz\nFRAME 0.040 WORD 0x600259DE # Localizer +0.015 DDM\nFRAME 0.060 WORD 0x7FFC913E # Glideslope -0.022 DDM\n"
+  },
+  {
+    "id": "arinc429-04-fadec-turbofan-engine",
+    "lang": "arinc429",
+    "subFormats": ["arinc429-high"],
+    "difficulty": 4,
+    "title": "FADEC Turbofan Engine N1, N2, EGT & Fuel-Flow Bus",
+    "description": "High-speed ARINC 429 FADEC propulsion telemetry bus streaming fan speed N1 (346), core speed N2 (344), exhaust gas temperature EGT (345), and fuel mass flow (244) at cruise thrust.",
+    "category": "Propulsion Avionics",
+    "tags": ["arinc429", "fadec", "turbofan", "egt", "engine"],
+    "activeFile": "fadec_eng1.a429",
+    "fileNames": ["fadec_eng1.a429"],
+    "fileCount": 1,
+    "code": "# FADEC Channel A Turbofan Engine #1 Telemetry Bus (Cruise Climb)\nBUS FADEC_ENG1_CH_A\nRATE HIGH\nLABEL 346 FAN_SPEED_N1 ENCODING BNR SDI 1 RANGE 128 RESOLUTION 0.015625 UNITS pct RATE 20 EQUIPMENT FADEC\nLABEL 344 CORE_SPEED_N2 ENCODING BNR SDI 1 RANGE 128 RESOLUTION 0.015625 UNITS pct RATE 20 EQUIPMENT FADEC\nLABEL 345 EXHAUST_GAS_TEMP ENCODING BNR SDI 1 RANGE 2048 RESOLUTION 0.25 UNITS degC RATE 10 EQUIPMENT FADEC\nLABEL 244 FUEL_FLOW ENCODING BNR SDI 1 RANGE 32768 RESOLUTION 0.5 UNITS pph RATE 10 EQUIPMENT FADEC\nFRAME 0.000 WORD 0xE0586967 # N1 88.4 pct\nFRAME 0.010 WORD 0x605E3527 # N2 94.2 pct\nFRAME 0.020 WORD 0xE02E61A7 # EGT 742.0 degC\nFRAME 0.030 WORD 0xE0627125 # Fuel Flow 3150 pph\nFRAME 0.050 WORD 0xE0589967 # N1 88.6 pct\nFRAME 0.060 WORD 0xE02E89A7 # EGT 744.5 degC\n"
+  },
+  {
+    "id": "arinc429-05-glass-cockpit-pfd-bus",
+    "lang": "arinc429",
+    "subFormats": ["arinc429-high"],
+    "difficulty": 5,
+    "title": "Flight-Control Glass-Cockpit Multi-Label PFD Bus Capture",
+    "description": "Integrated 100 kbps Primary Flight Display (PFD) ARINC 429 bus combining baro altitude, Mach number, vertical speed, pitch/roll attitude, ground speed, and autopilot discrete status.",
+    "category": "Flight Control Avionics",
+    "tags": ["arinc429", "pfd", "glass-cockpit", "discrete", "bnr", "mach"],
+    "activeFile": "pfd_integrated.a429",
+    "fileNames": ["pfd_integrated.a429"],
+    "fileCount": 1,
+    "code": "# Integrated Primary Flight Display (PFD) High-Speed ARINC 429 Bus Capture (FL350 Cruise)\nBUS PFD_EFIS_BUS_A\nRATE HIGH\nLABEL 203 BARO_ALTITUDE ENCODING BNR SDI 0 RANGE 131072 RESOLUTION 0.5 UNITS ft RATE 20 EQUIPMENT ADC\nLABEL 205 MACH_NUMBER ENCODING BNR SDI 0 RANGE 4.096 RESOLUTION 0.0000625 UNITS Mach RATE 20 EQUIPMENT ADC\nLABEL 212 ALTITUDE_RATE ENCODING BNR SDI 0 RANGE 32768 RESOLUTION 0.25 UNITS fpm RATE 20 EQUIPMENT ADC\nLABEL 324 PITCH_ANGLE ENCODING BNR SDI 1 RANGE 180 RESOLUTION 0.0054931640625 UNITS deg RATE 50 EQUIPMENT IRS\nLABEL 325 ROLL_ANGLE ENCODING BNR SDI 1 RANGE 180 RESOLUTION 0.0054931640625 UNITS deg RATE 50 EQUIPMENT IRS\nLABEL 312 GROUND_SPEED ENCODING BNR SDI 1 RANGE 4096 RESOLUTION 0.015625 UNITS kt RATE 20 EQUIPMENT IRS\nLABEL 270 AFCS_STATUS ENCODING DISCRETE SDI 0 UNITS bits RATE 10 EQUIPMENT FCC\nFRAME 0.000 WORD 0x6445C0C1 # FL350\nFRAME 0.004 WORD 0x60C440A1 # M 0.785\nFRAME 0.008 WORD 0x60078051 # +120 fpm\nFRAME 0.012 WORD 0xE005F92B # Pitch +2.1 deg\nFRAME 0.016 WORD 0x600125AB # Roll +0.4 deg\nFRAME 0.020 WORD 0xE1D40153 # GS 468.0 kt\nFRAME 0.024 WORD 0x0000541D # AP CMD A + LNAV + VNAV engaged\nFRAME 0.050 WORD 0x6445E8C1 # 35005 ft\nFRAME 0.054 WORD 0x61D48153 # GS 468.5 kt\n"
+  }
+]

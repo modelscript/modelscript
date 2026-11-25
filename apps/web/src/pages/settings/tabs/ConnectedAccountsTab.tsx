@@ -6,6 +6,7 @@ import React, { useEffect, useState } from "react";
 import { getConnectedAccounts, initiateOAuthLink, unlinkConnectedAccount, type ConnectedAccount } from "../../../api";
 import Box from "../../../components/Box";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { DangerButton, DetailSubtitle, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
 
 export interface ConnectedAccountsTabProps {
@@ -195,8 +196,8 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                               ),
                             );
                             setSuccess(`Unlinked ${prov.name} successfully.`);
-                          } catch (err: any) {
-                            setError(err?.response?.data?.error || `Failed to unlink ${prov.name}.`);
+                          } catch (err: unknown) {
+                            setError(getApiErrorMessage(err, `Failed to unlink ${prov.name}.`));
                           }
                         }}
                       >
@@ -222,10 +223,12 @@ export const ConnectedAccountsTab: React.FC<ConnectedAccountsTabProps> = ({ onBa
                       try {
                         const redirectUrl = await initiateOAuthLink(prov.id);
                         window.location.href = redirectUrl;
-                      } catch (err: any) {
+                      } catch (err: unknown) {
                         setError(
-                          err?.response?.data?.error ||
+                          getApiErrorMessage(
+                            err,
                             `Failed to initiate ${prov.name} linking. Ensure ${prov.name} is configured on this instance.`,
+                          ),
                         );
                       }
                     }}

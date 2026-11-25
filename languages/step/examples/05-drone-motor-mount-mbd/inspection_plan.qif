@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument xmlns="http://qifstandards.org/xsd/qif3" versionQIF="3.0.0" idMax="10">
+  <QPId>55555555-aaaa-4555-8555-555555555501</QPId>
+  <Header>
+    <Application>
+      <Name>Ansatz MBD Metrology</Name>
+    </Application>
+    <Description>CMM GD&amp;T inspection plan for UAV-MM-500 Motor Mount</Description>
+  </Header>
+  <Characteristics>
+    <CharacteristicDefinitions>
+      <DiameterCharacteristicDefinition id="1">
+        <Tolerance>
+          <MaxValue>10.025</MaxValue>
+          <MinValue>9.975</MinValue>
+        </Tolerance>
+      </DiameterCharacteristicDefinition>
+    </CharacteristicDefinitions>
+    <CharacteristicNominals>
+      <DiameterCharacteristicNominal id="2">
+        <CharacteristicDefinitionId>1</CharacteristicDefinitionId>
+        <TargetValue>10.000</TargetValue>
+      </DiameterCharacteristicNominal>
+    </CharacteristicNominals>
+    <CharacteristicItems>
+      <DiameterCharacteristicItem id="3">
+        <Name>CenterPilotBore_Diameter</Name>
+        <CharacteristicNominalId>2</CharacteristicNominalId>
+      </DiameterCharacteristicItem>
+    </CharacteristicItems>
+  </Characteristics>
+</QIFDocument>

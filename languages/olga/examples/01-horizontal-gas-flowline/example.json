@@ -1,0 +1,12 @@
+{
+  "id": "olga-01-horizontal-gas-flowline",
+  "lang": "olga",
+  "subFormats": ["opi"],
+  "difficulty": 1,
+  "title": "Horizontal Single-Phase Gas Flowline",
+  "description": "CFL-stable horizontal dry natural gas export flowline with single-section discretization, inlet mass source, and topside pressure boundary.",
+  "category": "Multiphase Flow Assurance",
+  "tags": ["olga", "gas-flowline", "steady-state", "cfl-stable"],
+  "activeFile": "horizontal_gas.opi",
+  "isDefaultStarter": true
+}

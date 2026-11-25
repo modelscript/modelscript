@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="LotkaVolterraOscillator" name="Lotka-Volterra Predator-Prey Oscillator">
+    <listOfCompartments>
+      <compartment id="ecosystem" name="Ecosystem Habitat" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="Prey" name="Prey Population" compartment="ecosystem" initialConcentration="40.0" constant="false"/>
+      <species id="Predator" name="Predator Population" compartment="ecosystem" initialConcentration="9.0" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="alpha" name="Prey Intrinsic Growth Rate" value="0.55" constant="true"/>
+      <parameter id="beta" name="Predation Encounter Rate" value="0.028" constant="true"/>
+      <parameter id="delta" name="Predator Reproduction Efficiency" value="0.024" constant="true"/>
+      <parameter id="gamma" name="Predator Natural Mortality Rate" value="0.80" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_prey_birth" name="Prey Reproduction" reversible="false">
+        <listOfReactants>
+          <speciesReference species="Prey" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="Prey" stoichiometry="2"/>
+        </listOfProducts>
+        <kineticLaw>
+          <formula>alpha * Prey</formula>
+        </kineticLaw>
+      </reaction>
+      <reaction id="R_predation" name="Prey Consumption" reversible="false">
+        <listOfReactants>
+          <speciesReference species="Prey" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfModifiers>
+          <modifierSpeciesReference species="Predator"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <formula>beta * Prey * Predator</formula>
+        </kineticLaw>
+      </reaction>
+      <reaction id="R_pred_birth" name="Predator Growth" reversible="false">
+        <listOfProducts>
+          <speciesReference species="Predator" stoichiometry="1"/>
+        </listOfProducts>
+        <listOfModifiers>
+          <modifierSpeciesReference species="Prey"/>
+          <modifierSpeciesReference species="Predator"/>
+        </listOfModifiers>
+        <kineticLaw>
+          <formula>delta * Prey * Predator</formula>
+        </kineticLaw>
+      </reaction>
+      <reaction id="R_pred_death" name="Predator Mortality" reversible="false">
+        <listOfReactants>
+          <speciesReference species="Predator" stoichiometry="1"/>
+        </listOfReactants>
+        <kineticLaw>
+          <formula>gamma * Predator</formula>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

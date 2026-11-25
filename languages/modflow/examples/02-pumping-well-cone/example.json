@@ -1,0 +1,11 @@
+{
+  "id": "modflow-02-pumping-well-cone",
+  "lang": "modflow",
+  "subFormats": ["nam", "dis", "npf", "ic", "chd", "wel"],
+  "difficulty": 2,
+  "title": "Single Pumping Well Cone of Depression",
+  "description": "2D MODFLOW 6 alluvial aquifer on a 9x9 grid with a central municipal extraction well generating a radial cone of depression bounded by perimeter constant-head cells.",
+  "category": "Groundwater Hydrogeology",
+  "tags": ["modflow", "mf6", "pumping-well", "drawdown", "multi-file"],
+  "activeFile": "gwf.dis"
+}

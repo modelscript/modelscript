@@ -73,11 +73,11 @@
     "transformers/**"
   ],
   "scripts": {
+    "ansatz": "npx tsx ../../scripts/tools/language-ansatz.ts .",
     "build": "node build.js && tsc",
     "build:parser": "node build.js --force",
     "clean": "rimraf dist *.wasm",
     "lint": "eslint src transformers tests scripts --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
     "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },

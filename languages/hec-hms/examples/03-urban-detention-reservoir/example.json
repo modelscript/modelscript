@@ -1,0 +1,11 @@
+{
+  "id": "hec-hms-03-urban-detention-reservoir",
+  "lang": "hec-hms",
+  "subFormats": ["hms", "basin", "met", "control"],
+  "difficulty": 3,
+  "title": "Urban Detention Reservoir Outflow Attenuation",
+  "description": "Impervious suburban drainage basin discharging into an inline stormwater detention reservoir and downstream Muskingum outfall channel to evaluate peak discharge attenuation.",
+  "category": "Urban Flood Control",
+  "tags": ["hec-hms", "reservoir", "detention", "attenuation", "multi-file"],
+  "activeFile": "detention.basin"
+}

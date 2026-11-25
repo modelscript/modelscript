@@ -1,0 +1,93 @@
+[
+  {
+    "id": "nmtran-01-iv-bolus-1cmt",
+    "lang": "nmtran",
+    "subFormats": ["nmtran"],
+    "difficulty": 1,
+    "title": "One-Compartment IV Bolus Population PK",
+    "description": "Single-compartment intravenous bolus pharmacokinetic control stream (ADVAN1 TRANS2) estimating clearance and central volume with proportional residual error.",
+    "category": "Pharmacometrics",
+    "tags": ["nmtran", "nonmem", "pk", "iv-bolus", "multi-file"],
+    "activeFile": "iv_1cmt.ctl",
+    "fileNames": ["iv_1cmt.ctl", "iv_1cmt.csv"],
+    "fileCount": 2,
+    "isDefaultStarter": true,
+    "code": "$PROBLEM One-Compartment IV Bolus Population PK Model\n$INPUT ID TIME AMT DV EVID\n$DATA iv_1cmt.csv IGNORE=@\n$SUBROUTINES ADVAN1 TRANS2\n$PK\n  CL = THETA(1) * EXP(ETA(1))\n  V  = THETA(2) * EXP(ETA(2))\n  S1 = V\n$ERROR\n  IPRED = F\n  Y = IPRED * (1 + EPS(1))\n$THETA\n  (0, 4.5, 50.0)   ; CL (L/h)\n  (0, 35.0, 200.0) ; V (L)\n$OMEGA\n  0.04 ; IIV_CL\n  0.04 ; IIV_V\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=500 RATE=0 CMT=1 EVID=1 II=0 ADDL=0\n",
+    "files": {
+      "iv_1cmt.ctl": "$PROBLEM One-Compartment IV Bolus Population PK Model\n$INPUT ID TIME AMT DV EVID\n$DATA iv_1cmt.csv IGNORE=@\n$SUBROUTINES ADVAN1 TRANS2\n$PK\n  CL = THETA(1) * EXP(ETA(1))\n  V  = THETA(2) * EXP(ETA(2))\n  S1 = V\n$ERROR\n  IPRED = F\n  Y = IPRED * (1 + EPS(1))\n$THETA\n  (0, 4.5, 50.0)   ; CL (L/h)\n  (0, 35.0, 200.0) ; V (L)\n$OMEGA\n  0.04 ; IIV_CL\n  0.04 ; IIV_V\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=500 RATE=0 CMT=1 EVID=1 II=0 ADDL=0\n",
+      "iv_1cmt.csv": "ID,TIME,AMT,DV,EVID\n1,0.0,500,0.0,1\n1,0.5,0,13.4,0\n1,2.0,0,11.1,0\n1,6.0,0,6.6,0\n1,12.0,0,3.1,0\n2,0.0,500,0.0,1\n2,0.5,0,14.8,0\n2,2.0,0,12.0,0\n2,6.0,0,7.2,0\n2,12.0,0,3.4,0\n"
+    }
+  },
+  {
+    "id": "nmtran-02-oral-first-order-advan2",
+    "lang": "nmtran",
+    "subFormats": ["nmtran"],
+    "difficulty": 2,
+    "title": "One-Compartment Oral First-Order Absorption (Theophylline)",
+    "description": "Classic one-compartment oral absorption population PK model (ADVAN2 TRANS2) for theophylline with first-order absorption rate KA, clearance CL, and volume V.",
+    "category": "Pharmacometrics",
+    "tags": ["nmtran", "oral-pk", "advan2", "theophylline", "multi-file"],
+    "activeFile": "oral_advan2.ctl",
+    "fileNames": ["oral_advan2.ctl", "theophylline.csv"],
+    "fileCount": 2,
+    "code": "$PROBLEM Theophylline One-Compartment Oral First-Order Absorption PK\n$INPUT ID TIME AMT DV CMT EVID\n$DATA theophylline.csv IGNORE=@\n$SUBROUTINES ADVAN2 TRANS2\n$PK\n  KA = THETA(1) * EXP(ETA(1))\n  CL = THETA(2) * EXP(ETA(2))\n  V  = THETA(3) * EXP(ETA(3))\n  S2 = V\n$ERROR\n  IPRED = F\n  Y = IPRED + EPS(1)\n$THETA\n  (0, 1.5, 10.0)   ; KA (1/h)\n  (0, 2.8, 25.0)   ; CL (L/h)\n  (0, 32.0, 150.0) ; V (L)\n$OMEGA\n  0.09 ; IIV_KA\n  0.04 ; IIV_CL\n  0.04 ; IIV_V\n$SIGMA\n  0.25 ; RUV_ADD\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=320 RATE=0 CMT=1 EVID=1 II=0 ADDL=0\n",
+    "files": {
+      "oral_advan2.ctl": "$PROBLEM Theophylline One-Compartment Oral First-Order Absorption PK\n$INPUT ID TIME AMT DV CMT EVID\n$DATA theophylline.csv IGNORE=@\n$SUBROUTINES ADVAN2 TRANS2\n$PK\n  KA = THETA(1) * EXP(ETA(1))\n  CL = THETA(2) * EXP(ETA(2))\n  V  = THETA(3) * EXP(ETA(3))\n  S2 = V\n$ERROR\n  IPRED = F\n  Y = IPRED + EPS(1)\n$THETA\n  (0, 1.5, 10.0)   ; KA (1/h)\n  (0, 2.8, 25.0)   ; CL (L/h)\n  (0, 32.0, 150.0) ; V (L)\n$OMEGA\n  0.09 ; IIV_KA\n  0.04 ; IIV_CL\n  0.04 ; IIV_V\n$SIGMA\n  0.25 ; RUV_ADD\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=320 RATE=0 CMT=1 EVID=1 II=0 ADDL=0\n",
+      "theophylline.csv": "ID,TIME,AMT,DV,CMT,EVID\n1,0.0,320,0.0,1,1\n1,0.5,0,5.2,2,0\n1,1.0,0,7.8,2,0\n1,2.0,0,8.4,2,0\n1,4.0,0,7.1,2,0\n1,8.0,0,5.0,2,0\n1,12.0,0,3.4,2,0\n2,0.0,320,0.0,1,1\n2,0.5,0,4.8,2,0\n2,1.0,0,7.1,2,0\n2,2.0,0,7.9,2,0\n2,8.0,0,4.6,2,0\n"
+    }
+  },
+  {
+    "id": "nmtran-03-two-cmt-iv-infusion",
+    "lang": "nmtran",
+    "subFormats": ["nmtran"],
+    "difficulty": 3,
+    "title": "Two-Compartment IV Infusion Population PK",
+    "description": "Two-compartment linear pharmacokinetic model (ADVAN3 TRANS4) with constant-rate intravenous infusion, inter-compartmental clearance Q, and combined error model.",
+    "category": "Pharmacometrics",
+    "tags": ["nmtran", "two-compartment", "infusion", "advan3", "multi-file"],
+    "activeFile": "pk_2cmt.ctl",
+    "fileNames": ["pk_2cmt.ctl", "infusion.csv"],
+    "fileCount": 2,
+    "code": "$PROBLEM Two-Compartment IV Infusion Population PK Model\n$INPUT ID TIME AMT RATE DV CMT EVID\n$DATA infusion.csv IGNORE=@\n$SUBROUTINES ADVAN3 TRANS4\n$PK\n  CL = THETA(1) * EXP(ETA(1))\n  V1 = THETA(2) * EXP(ETA(2))\n  Q  = THETA(3)\n  V2 = THETA(4)\n  S1 = V1\n$ERROR\n  IPRED = F\n  W = IPRED * 0.1\n  Y = IPRED + W * EPS(1)\n$THETA\n  (0, 6.0, 60.0)   ; CL (L/h)\n  (0, 18.0, 150.0) ; V1 (L)\n  (0, 5.0, 50.0)   ; Q (L/h)\n  (0, 45.0, 300.0) ; V2 (L)\n$OMEGA\n  0.05 ; IIV_CL\n  0.04 ; IIV_V1\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=1000 RATE=500 CMT=1 EVID=1 II=12 ADDL=1\n",
+    "files": {
+      "pk_2cmt.ctl": "$PROBLEM Two-Compartment IV Infusion Population PK Model\n$INPUT ID TIME AMT RATE DV CMT EVID\n$DATA infusion.csv IGNORE=@\n$SUBROUTINES ADVAN3 TRANS4\n$PK\n  CL = THETA(1) * EXP(ETA(1))\n  V1 = THETA(2) * EXP(ETA(2))\n  Q  = THETA(3)\n  V2 = THETA(4)\n  S1 = V1\n$ERROR\n  IPRED = F\n  W = IPRED * 0.1\n  Y = IPRED + W * EPS(1)\n$THETA\n  (0, 6.0, 60.0)   ; CL (L/h)\n  (0, 18.0, 150.0) ; V1 (L)\n  (0, 5.0, 50.0)   ; Q (L/h)\n  (0, 45.0, 300.0) ; V2 (L)\n$OMEGA\n  0.05 ; IIV_CL\n  0.04 ; IIV_V1\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=1000 RATE=500 CMT=1 EVID=1 II=12 ADDL=1\n",
+      "infusion.csv": "ID,TIME,AMT,RATE,DV,CMT,EVID\n1,0.0,1000,500,0.0,1,1\n1,1.0,0,0,22.4,1,0\n1,2.0,0,0,36.8,1,0\n1,4.0,0,0,18.5,1,0\n1,8.0,0,0,9.7,1,0\n1,12.0,0,0,5.4,1,0\n2,0.0,1000,500,0.0,1,1\n2,2.0,0,0,39.1,1,0\n2,4.0,0,0,20.2,1,0\n2,12.0,0,0,6.1,1,0\n"
+    }
+  },
+  {
+    "id": "nmtran-04-allometric-weight-covariate",
+    "lang": "nmtran",
+    "subFormats": ["nmtran"],
+    "difficulty": 4,
+    "title": "Covariate-Adjusted Allometric Pediatric Clearance Model",
+    "description": "Two-compartment oral population PK model (ADVAN4 TRANS4) incorporating allometric body-weight scaling on clearance and central volume for pediatric dosing.",
+    "category": "Clinical Pharmacology",
+    "tags": ["nmtran", "allometry", "covariates", "pediatrics", "multi-file"],
+    "activeFile": "cov_pk.ctl",
+    "fileNames": ["cov_pk.ctl", "pediatric_pk.csv"],
+    "fileCount": 2,
+    "code": "$PROBLEM Allometric Weight Covariate Two-Compartment Oral PK Model\n$INPUT ID TIME AMT DV CMT EVID WT\n$DATA pediatric_pk.csv IGNORE=@\n$SUBROUTINES ADVAN4 TRANS4\n$PK\n  TVCL = THETA(1) * (WT / 70.0)**0.75\n  TVV2 = THETA(2) * (WT / 70.0)\n  CL = TVCL * EXP(ETA(1))\n  V2 = TVV2 * EXP(ETA(2))\n  Q  = THETA(3)\n  V3 = THETA(4)\n  KA = THETA(5)\n  S2 = V2\n$ERROR\n  IPRED = F\n  W = IPRED * 0.1\n  Y = IPRED + W * EPS(1)\n$THETA\n  (0, 5.2, 50.0)   ; CL_70kg (L/h)\n  (0, 24.0, 200.0) ; V2_70kg (L)\n  (0, 3.8, 40.0)   ; Q (L/h)\n  (0, 42.0, 400.0) ; V3 (L)\n  (0, 1.3, 10.0)   ; KA (1/h)\n$OMEGA\n  0.04 ; IIV_CL\n  0.04 ; IIV_V2\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT POSTHOC\n$DOSE\n  TIME=0 AMT=150 RATE=0 CMT=1 EVID=1 II=12 ADDL=2\n",
+    "files": {
+      "cov_pk.ctl": "$PROBLEM Allometric Weight Covariate Two-Compartment Oral PK Model\n$INPUT ID TIME AMT DV CMT EVID WT\n$DATA pediatric_pk.csv IGNORE=@\n$SUBROUTINES ADVAN4 TRANS4\n$PK\n  TVCL = THETA(1) * (WT / 70.0)**0.75\n  TVV2 = THETA(2) * (WT / 70.0)\n  CL = TVCL * EXP(ETA(1))\n  V2 = TVV2 * EXP(ETA(2))\n  Q  = THETA(3)\n  V3 = THETA(4)\n  KA = THETA(5)\n  S2 = V2\n$ERROR\n  IPRED = F\n  W = IPRED * 0.1\n  Y = IPRED + W * EPS(1)\n$THETA\n  (0, 5.2, 50.0)   ; CL_70kg (L/h)\n  (0, 24.0, 200.0) ; V2_70kg (L)\n  (0, 3.8, 40.0)   ; Q (L/h)\n  (0, 42.0, 400.0) ; V3 (L)\n  (0, 1.3, 10.0)   ; KA (1/h)\n$OMEGA\n  0.04 ; IIV_CL\n  0.04 ; IIV_V2\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT POSTHOC\n$DOSE\n  TIME=0 AMT=150 RATE=0 CMT=1 EVID=1 II=12 ADDL=2\n",
+      "pediatric_pk.csv": "ID,TIME,AMT,DV,CMT,EVID,WT\n1,0.0,150,0.0,1,1,28.0\n1,1.0,0,8.2,2,0,28.0\n1,3.0,0,6.4,2,0,28.0\n1,8.0,0,2.9,2,0,28.0\n2,0.0,150,0.0,1,1,45.0\n2,1.0,0,5.5,2,0,45.0\n2,3.0,0,4.3,2,0,45.0\n2,8.0,0,2.1,2,0,45.0\n3,0.0,150,0.0,1,1,70.0\n3,1.0,0,3.9,2,0,70.0\n3,3.0,0,3.0,2,0,70.0\n3,8.0,0,1.4,2,0,70.0\n"
+    }
+  },
+  {
+    "id": "nmtran-05-joint-pkpd-indirect-response",
+    "lang": "nmtran",
+    "subFormats": ["nmtran"],
+    "difficulty": 5,
+    "title": "Joint PK/PD Indirect-Response Biomarker Model",
+    "description": "Custom $DES nonlinear ODE system (ADVAN6) coupling oral drug absorption and plasma kinetics with an Emax-inhibited indirect-response pharmacodynamic biomarker.",
+    "category": "Pharmacometrics",
+    "tags": ["nmtran", "pkpd", "indirect-response", "advan6", "multi-file"],
+    "activeFile": "pkpd_emax.ctl",
+    "fileNames": ["pkpd_emax.ctl", "clinical_trial.csv"],
+    "fileCount": 2,
+    "code": "$PROBLEM Joint Oral PK and Indirect-Response PD Biomarker Model\n$INPUT ID TIME AMT DV CMT EVID\n$DATA clinical_trial.csv IGNORE=@\n$SUBROUTINES ADVAN6 TOL=6\n$MODEL NCOMPARTMENTS=3 COMP=(DEPOT DEFDOSE) COMP=(CENTRAL DEFOBS) COMP=(BIOMARKER)\n$PK\n  KA   = THETA(1) * EXP(ETA(1))\n  CL   = THETA(2) * EXP(ETA(2))\n  V    = THETA(3)\n  KIN  = THETA(4)\n  KOUT = THETA(5)\n  IC50 = THETA(6)\n  K    = CL / V\n  S2   = V\n$DES\n  CONC    = A(2) / V\n  INH     = CONC / (IC50 + CONC)\n  DADT(1) = -KA * A(1)\n  DADT(2) = KA * A(1) - K * A(2)\n  DADT(3) = KIN * (1.0 - INH) - KOUT * A(3)\n$ERROR\n  IPRED = A(2) / V\n  Y = IPRED * (1 + EPS(1))\n$THETA\n  (0, 1.1, 10.0)   ; KA (1/h)\n  (0, 4.2, 40.0)   ; CL (L/h)\n  (0, 25.0, 200.0) ; V (L)\n  (0, 10.0, 100.0) ; KIN (U/h)\n  (0, 0.10, 2.0)   ; KOUT (1/h)\n  (0, 1.5, 50.0)   ; IC50 (mg/L)\n$OMEGA\n  0.06 ; IIV_KA\n  0.04 ; IIV_CL\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=200 RATE=0 CMT=1 EVID=1 II=24 ADDL=2\n",
+    "files": {
+      "pkpd_emax.ctl": "$PROBLEM Joint Oral PK and Indirect-Response PD Biomarker Model\n$INPUT ID TIME AMT DV CMT EVID\n$DATA clinical_trial.csv IGNORE=@\n$SUBROUTINES ADVAN6 TOL=6\n$MODEL NCOMPARTMENTS=3 COMP=(DEPOT DEFDOSE) COMP=(CENTRAL DEFOBS) COMP=(BIOMARKER)\n$PK\n  KA   = THETA(1) * EXP(ETA(1))\n  CL   = THETA(2) * EXP(ETA(2))\n  V    = THETA(3)\n  KIN  = THETA(4)\n  KOUT = THETA(5)\n  IC50 = THETA(6)\n  K    = CL / V\n  S2   = V\n$DES\n  CONC    = A(2) / V\n  INH     = CONC / (IC50 + CONC)\n  DADT(1) = -KA * A(1)\n  DADT(2) = KA * A(1) - K * A(2)\n  DADT(3) = KIN * (1.0 - INH) - KOUT * A(3)\n$ERROR\n  IPRED = A(2) / V\n  Y = IPRED * (1 + EPS(1))\n$THETA\n  (0, 1.1, 10.0)   ; KA (1/h)\n  (0, 4.2, 40.0)   ; CL (L/h)\n  (0, 25.0, 200.0) ; V (L)\n  (0, 10.0, 100.0) ; KIN (U/h)\n  (0, 0.10, 2.0)   ; KOUT (1/h)\n  (0, 1.5, 50.0)   ; IC50 (mg/L)\n$OMEGA\n  0.06 ; IIV_KA\n  0.04 ; IIV_CL\n$SIGMA\n  0.01 ; RUV_PROP\n$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT\n$DOSE\n  TIME=0 AMT=200 RATE=0 CMT=1 EVID=1 II=24 ADDL=2\n",
+      "clinical_trial.csv": "ID,TIME,AMT,DV,CMT,EVID\n1,0.0,200,0.0,1,1\n1,1.0,0,5.1,2,0\n1,2.0,0,6.0,2,0\n1,6.0,0,3.4,2,0\n1,12.0,0,1.3,2,0\n1,24.0,0,0.2,2,0\n2,0.0,200,0.0,1,1\n2,1.0,0,4.7,2,0\n2,2.0,0,5.6,2,0\n2,6.0,0,3.1,2,0\n2,12.0,0,1.1,2,0\n"
+    }
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "id": "cfd-01-channel-poiseuille-flow",
+  "lang": "cfd",
+  "subFormats": ["cfg", "su2"],
+  "difficulty": 1,
+  "title": "2D Channel Laminar Poiseuille Flow (SU2)",
+  "description": "Incompressible laminar Navier-Stokes SU2 configuration and companion 2D structured quad mesh for pressure-driven Poiseuille channel flow.",
+  "category": "Internal Laminar CFD",
+  "tags": ["cfd", "su2", "poiseuille", "laminar", "multi-file"],
+  "activeFile": "channel.cfg",
+  "isDefaultStarter": true
+}

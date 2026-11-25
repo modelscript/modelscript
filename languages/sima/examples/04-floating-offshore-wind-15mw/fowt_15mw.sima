@@ -1,0 +1,21 @@
+! SIMO / RIFLEX Model: IEA 15 MW VolturnUS-S Floating Offshore Wind Turbine
+SYS 200.0 1025.0 9.81
+BODY volturnus_s IEA15MW_FOWT 20093000 20206 0.0 0.0 -14.94 38.5 38.5 41.2 6.8 6.8
+
+FAIRLEAD fl_1 volturnus_s  58.000   0.000 -14.0
+FAIRLEAD fl_2 volturnus_s -29.000  50.229 -14.0
+FAIRLEAD fl_3 volturnus_s -29.000 -50.229 -14.0
+
+CRS chain_185mm 0.185 685.0 5820.0 3.27e9 1.5e5 2.45e7 1.2 2.0
+
+LINE line_1 catenary fl_1  837.6    0.0 -200.0
+SEGM chain_185mm 850.0 2.45e7
+LINE line_2 catenary fl_2 -418.8  725.4 -200.0
+SEGM chain_185mm 850.0 2.45e7
+LINE line_3 catenary fl_3 -418.8 -725.4 -200.0
+SEGM chain_185mm 850.0 2.45e7
+
+WAVE JONSWAP 6.5 11.2 3.3 0.0
+WIND 11.5 0.0
+CURR 0.85 0.0
+TIME 0.05 3600.0

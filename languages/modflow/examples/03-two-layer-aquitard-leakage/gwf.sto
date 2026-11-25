@@ -1,0 +1,7 @@
+# Transient Storage Package (Specific Storage & Specific Yield)
+BEGIN GRIDDATA
+  SS
+    CONSTANT 1.2e-5
+  SY
+    CONSTANT 0.20
+END GRIDDATA

@@ -1,0 +1,48 @@
+PROGRAM PITCH_AUTOPILOT
+  ! Short-period longitudinal pitch autopilot with TABLE lookup and discrete FCS
+  INITIAL
+    CONSTANT za = -1.15       ! Normal force derivative Z_alpha (1/s)
+    CONSTANT ma = -3.85       ! Pitch stiffness M_alpha (1/s^2)
+    CONSTANT mq = -0.92       ! Pitch damping M_q (1/s)
+    CONSTANT mde = -12.4      ! Elevator control effectiveness M_delta_e (1/s^2)
+    CONSTANT tau_act = 0.05   ! Elevator hydraulic actuator time constant (s)
+    CONSTANT kp = 1.8         ! Proportional pitch gain
+    CONSTANT kd = 0.45        ! Pitch rate damping gain
+    CONSTANT theta_cmd = 0.10 ! Commanded pitch attitude (rad)
+    TABLE cm_tab, 1, 5 / -0.2, -0.1, 0.0, 0.1, 0.2, 0.04, 0.02, 0.0, -0.02, -0.04 /
+    CINTERVAL cint = 0.02
+    MAXTERVAL maxt = 0.005
+    ALGORITHM ialg = 5
+  END
+
+  DYNAMIC
+    DERIVATIVE
+      err_theta = theta_cmd - theta
+      de_cmd = kp * err_theta - kd * q_rate
+      dde = (de_cmd - delta_e) / tau_act
+      delta_e = INTEG(dde, 0.0)
+
+      dalpha = za * alpha + q_rate
+      dq = ma * alpha + mq * q_rate + mde * delta_e
+      dtheta = q_rate
+
+      alpha = INTEG(dalpha, 0.0)
+      q_rate = INTEG(dq, 0.0)
+      theta = INTEG(dtheta, 0.0)
+
+      SCHEDULE fcs_tick .AT. 0.5
+    END
+
+    DISCRETE fcs_tick
+      INTERVAL dt_fcs = 0.1
+      logged_theta = theta
+      logged_alpha = alpha
+    END
+
+    TERMT(t .GE. 6.0, 'Autopilot step response complete')
+  END
+
+  TERMINAL
+    steady_err = theta_cmd - theta
+  END
+END

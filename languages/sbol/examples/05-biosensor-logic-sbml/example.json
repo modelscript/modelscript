@@ -1,0 +1,12 @@
+{
+  "id": "sbol-05-biosensor-logic-sbml",
+  "lang": "sbol",
+  "subFormats": ["sbol3-xml", "sbml"],
+  "difficulty": 5,
+  "title": "Whole-Cell Biosensor Logic Circuit with SBML Kinetics",
+  "description": "Two-input synthetic biosensor genetic circuit combining SBOL3 structural part definitions, regulatory interactions, and a companion SBML dynamic kinetic model.",
+  "category": "Synthetic Biology",
+  "tags": ["sbol", "biosensor", "sbml", "digital-thread", "multi-file"],
+  "activeFile": "biosensor.sbol",
+  "fileOrder": ["biosensor.sbol", "parts.sbol", "biosensor_kinetics.sbml"]
+}

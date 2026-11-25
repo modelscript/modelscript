@@ -1,0 +1,11 @@
+{
+  "id": "scad-04-articulated-robotic-arm",
+  "lang": "scad",
+  "subFormats": ["scad"],
+  "difficulty": 4,
+  "title": "Articulated 3-DOF Robotic Arm Assembly",
+  "description": "Kinematic OpenSCAD 3-DOF industrial robotic manipulator assembly with rotating pedestal, articulated shoulder and elbow links, and parallel gripper jaw.",
+  "category": "Robotics CAD",
+  "tags": ["scad", "robotics", "manipulator", "kinematics", "assembly"],
+  "activeFile": "robotic_arm.scad"
+}

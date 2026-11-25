@@ -1,0 +1,11 @@
+{
+  "id": "sinda-02-pcb-finned-heatsink",
+  "lang": "sinda",
+  "subFormats": ["sinda-g"],
+  "difficulty": 2,
+  "title": "Electronics PCB Finned Heatsink Convection Network",
+  "description": "Power MOSFET junction-to-ambient thermal resistance network modeling TIM interface, aluminum heatsink base, parallel convective fins, and PCB copper spread.",
+  "category": "Electronics Thermal Management",
+  "tags": ["sinda", "heatsink", "pcb", "convection"],
+  "activeFile": "pcb_heatsink.sin"
+}

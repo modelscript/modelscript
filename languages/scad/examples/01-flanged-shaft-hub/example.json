@@ -1,0 +1,12 @@
+{
+  "id": "scad-01-flanged-shaft-hub",
+  "lang": "scad",
+  "subFormats": ["scad"],
+  "difficulty": 1,
+  "title": "Parametric Flanged Shaft Hub",
+  "description": "Parametric OpenSCAD mechanical shaft hub with circular mounting flange, central bore, and radial M5 bolt pattern.",
+  "category": "Parametric CAD",
+  "tags": ["scad", "openscad", "hub", "flange", "parametric"],
+  "activeFile": "flanged_hub.scad",
+  "isDefaultStarter": true
+}

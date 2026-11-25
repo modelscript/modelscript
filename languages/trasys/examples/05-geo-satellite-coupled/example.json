@@ -1,0 +1,11 @@
+{
+  "id": "trasys-05-geo-satellite-coupled",
+  "lang": "trasys",
+  "subFormats": ["trasys", "sinda-coupled"],
+  "difficulty": 5,
+  "title": "GEO Satellite Thermal-Radiation Coupled Suite",
+  "description": "Geosynchronous communications satellite TRASYS radiation geometry (bus, north/south radiators, solar wings, HGA dish) paired with its companion SINDA thermal network.",
+  "category": "Spacecraft Thermal-Radiation",
+  "tags": ["trasys", "geo-satellite", "coupled-thermal", "multi-file"],
+  "activeFile": "sat_rad.tra"
+}

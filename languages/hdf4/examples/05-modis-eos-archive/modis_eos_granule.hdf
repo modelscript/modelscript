@@ -1,0 +1,67 @@
+# Complete NASA HDF-EOS MODIS Level-1B Granule Archive
+HDF4 MOD021KM_A2026196 VERSION="4.2"
+  ATTR Mission = "Terra"
+  ATTR Instrument = "MODIS"
+  ATTR Product = "MOD021KM"
+  ATTR GranuleID = "MOD021KM.A2026196.1835.061"
+
+  SDS EV_1KM_RefSB TYPE=FLOAT32 REF=10 UNIT="W/(m2.sr.um)"
+    DIM lines = 3
+    DIM pixels = 3
+    ATTR scale_factor = 0.01
+    ATTR add_offset = 0.0
+    ATTR _FillValue = -999.0
+    DATA [112.4, 118.2, 121.0, 109.8, 115.6, 124.3, 106.5, 113.1, 119.7]
+  END
+
+  SDS EV_1KM_Emissive TYPE=FLOAT32 REF=11 UNIT="W/(m2.sr.um)"
+    DIM lines = 3
+    DIM pixels = 3
+    ATTR scale_factor = 0.002
+    ATTR add_offset = 0.0
+    ATTR _FillValue = -999.0
+    DATA [9.12, 9.25, 9.18, 9.04, 9.19, 9.31, 8.95, 9.10, 9.22]
+  END
+
+  SDS Latitude TYPE=FLOAT32 REF=12 UNIT="degrees_north"
+    DIM lines = 3
+    DIM pixels = 3
+    DATA [36.0, 36.0, 36.0, 36.1, 36.1, 36.1, 36.2, 36.2, 36.2]
+  END
+
+  SDS Longitude TYPE=FLOAT32 REF=13 UNIT="degrees_east"
+    DIM lines = 3
+    DIM pixels = 3
+    DATA [-121.0, -120.9, -120.8, -121.0, -120.9, -120.8, -121.0, -120.9, -120.8]
+  END
+
+  VDATA OrbitEphemeris CLASS="Ephemeris" REF=20
+    FIELD tai_sec : FLOAT64
+    FIELD alt_km : FLOAT32
+    FIELD solar_zenith_deg : FLOAT32
+    DATA [1058294100.0, 705.2, 26.4]
+    DATA [1058294101.5, 705.2, 26.5]
+    DATA [1058294103.0, 705.1, 26.6]
+  END
+
+  RASTER8 Quicklook_RGB8 WIDTH=3 HEIGHT=3 REF=30
+    DATA [48, 72, 96, 64, 128, 160, 80, 144, 208]
+  END
+
+  VGROUP GeolocationGroup CLASS="SWATH_GEOLOC" REF=40
+    MEMBER SDS Latitude
+    MEMBER SDS Longitude
+  END
+
+  VGROUP ScienceGroup CLASS="SWATH_DATA" REF=41
+    MEMBER SDS EV_1KM_RefSB
+    MEMBER SDS EV_1KM_Emissive
+  END
+
+  VGROUP MODIS_SWATH_Type_L1B CLASS="SWATH" REF=50
+    MEMBER VGROUP GeolocationGroup
+    MEMBER VGROUP ScienceGroup
+    MEMBER VDATA OrbitEphemeris
+    MEMBER RASTER8 Quicklook_RGB8
+  END
+END

@@ -267,8 +267,8 @@ function buildLlmsTxt(): string {
     "- [Embedding ModelScript](https://modelscript.org/guide/embedding): Headless programmatic usage in Node.js, browsers, and WebAssembly.",
     "- [Administration](https://modelscript.org/guide/administration): Enterprise deployment, licensing, and security disclosures.",
     "",
-    "## Ansatz Platform (`ansatz.social`)",
-    "- [Ansatz Platform Overview](https://modelscript.org/ansatz/overview): Collaborative systems engineering cloud, package registry, literature hub, and cloud HPC dispatcher.",
+    "## Ansatz Network (`ansatz.social`)",
+    "- [Ansatz Network Overview](https://modelscript.org/ansatz/overview): Collaborative systems engineering cloud, package registry, literature hub, and cloud HPC dispatcher.",
     "- [Workflow Replacement Guide](https://modelscript.org/ansatz/workflow-replacement): Displacing legacy first-party engineering monoliths (Dymola, Cameo, Simulink, PSCAD, OLGA) through a 5-stage wedge.",
     "- [ActivityPub Federation](https://modelscript.org/ansatz/federation): W3C ActivityPub S2S federation, WebFinger, and peer verification.",
     "- [Package Registry](https://modelscript.org/ansatz/package-registry): Content-addressable package registry with Ed25519 signatures and multi-lens manifests.",
@@ -344,7 +344,7 @@ function buildLlmsTxt(): string {
 function buildLlmsFullTxt(): string {
   const sections: { title: string; route: string; file?: string; body?: string }[] = [];
 
-  // 1. Guides & Ansatz Platform
+  // 1. Guides & Ansatz Network
   const guides = [
     { title: "Introduction", route: "guide/introduction", file: "guide/introduction.md" },
     { title: "Installation", route: "guide/installation", file: "guide/installation.md" },
@@ -353,7 +353,7 @@ function buildLlmsFullTxt(): string {
     { title: "CI/CD & GitHub Actions", route: "guide/ci-cd", file: "guide/ci-cd.md" },
     { title: "Embedding ModelScript", route: "guide/embedding", file: "guide/embedding.md" },
     { title: "Administration", route: "guide/administration", file: "guide/administration.md" },
-    { title: "Ansatz Platform Overview", route: "ansatz/overview", file: "ansatz/overview.md" },
+    { title: "Ansatz Network Overview", route: "ansatz/overview", file: "ansatz/overview.md" },
     {
       title: "Workflow Replacement Guide",
       route: "ansatz/workflow-replacement",

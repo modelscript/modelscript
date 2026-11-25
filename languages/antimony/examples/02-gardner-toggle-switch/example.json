@@ -1,0 +1,11 @@
+{
+  "id": "antimony-02-gardner-toggle-switch",
+  "lang": "antimony",
+  "subFormats": ["antimony"],
+  "difficulty": 2,
+  "title": "Gardner Genetic Toggle Switch",
+  "description": "Bistable mutual-repression synthetic gene circuit (LacI and TetR) exhibiting two stable expression states under cooperative Hill repression kinetics.",
+  "category": "Synthetic Biology",
+  "tags": ["antimony", "toggle-switch", "bistability", "genetic-circuit"],
+  "activeFile": "toggle_switch.ant"
+}

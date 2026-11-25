@@ -417,7 +417,7 @@ export async function loadSparqlWasmParser(): Promise<SparqlParserLike> {
       return parser as unknown as SparqlParserLike;
     }
 
-    // Browser environment: try Morsel/Vite served WASM endpoints
+    // Browser environment: try Ansatz/Vite served WASM endpoints
     const candidateUrls = ["/lsp/server/dist/sparql.wasm", "/lsp/wasm/sparql.wasm", "/wasm/sparql.wasm"];
     let lastErr: unknown;
     for (const url of candidateUrls) {

@@ -1,0 +1,29 @@
+% Elevator Door Obstruction Reversal and Timeout Reactive Controller
+module ElevatorDoor:
+input OPEN_REQ, DOOR_OPENED, DOOR_CLOSED, OBSTRUCT, DWELL_DONE;
+output MOTOR_OPEN, MOTOR_CLOSE, CHIME;
+relation DOOR_OPENED # DOOR_CLOSED;
+
+loop
+  await OPEN_REQ;
+  trap CYCLE_DONE in
+    loop
+      abort
+        sustain MOTOR_OPEN
+      when DOOR_OPENED;
+      emit CHIME;
+      await DWELL_DONE;
+      abort
+        sustain MOTOR_CLOSE
+      when DOOR_CLOSED or OBSTRUCT do
+        present DOOR_CLOSED then
+          exit CYCLE_DONE
+        else
+          pause
+        end
+      end
+    end
+  end;
+  pause
+end
+end module

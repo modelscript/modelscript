@@ -114,9 +114,9 @@ export const Hdf4Panel: React.FC<LanguagePanelProps> = ({
                 Export CDL
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "hdf4", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "hdf4", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

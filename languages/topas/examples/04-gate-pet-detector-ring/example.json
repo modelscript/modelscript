@@ -1,0 +1,11 @@
+{
+  "id": "topas-04-gate-pet-detector-ring",
+  "lang": "topas",
+  "subFormats": ["mac"],
+  "difficulty": 4,
+  "title": "GATE PET Cylindrical Scintillator Detector Ring",
+  "description": "Geant4/GATE nuclear medicine PET macro defining a cylindrical water emission phantom, positron-annihilation 511 keV gamma source, and attached dose/energy deposition actor.",
+  "category": "Medical Physics & Monte Carlo",
+  "tags": ["topas", "gate", "pet-imaging", "nuclear-medicine", "geant4"],
+  "activeFile": "pet_ring.mac"
+}

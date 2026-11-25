@@ -229,6 +229,7 @@ export class ArenaExpr {
 
   /** Pretty-prints this expression into canonical Modelica text. */
   toString(): string {
-    return (this.arena as any).printExpr ? (this.arena as any).printExpr(this.id) : `expr#${this.id}`;
+    const printable = this.arena as DAEBuilder & { printExpr?: (id: number) => string };
+    return typeof printable.printExpr === "function" ? printable.printExpr(this.id) : `expr#${this.id}`;
   }
 }

@@ -1,0 +1,40 @@
+-- RFC 5280 X.509 v3 Digital Certificate Subset
+PKIX1ExplicitSubset { iso(1) identified-organization(3) dod(6) internet(1) security(5) mechanisms(5) pkix(7) id-mod(0) 18 }
+DEFINITIONS EXPLICIT TAGS ::= BEGIN
+
+EXPORTS Certificate, TBSCertificate;
+IMPORTS AlgorithmIdentifier FROM PKIX-AlgorithmIdentifiers;
+
+Certificate ::= SEQUENCE {
+  tbsCertificate      TBSCertificate,
+  signatureAlgorithm  AlgorithmIdentifier,
+  signatureValue      BIT STRING
+}
+
+TBSCertificate ::= SEQUENCE {
+  version               [0] INTEGER { v1(0), v2(1), v3(2) } DEFAULT 0,
+  serialNumber          INTEGER (1..2147483647),
+  signature             AlgorithmIdentifier,
+  issuer                DistinguishedName,
+  validity              Validity,
+  subject               DistinguishedName,
+  subjectPublicKeyInfo  SubjectPublicKeyInfo
+}
+
+DistinguishedName ::= SEQUENCE {
+  countryName       [0] PrintableString (SIZE (2)),
+  organizationName  [1] UTF8String (SIZE (1..64)),
+  commonName        [2] UTF8String (SIZE (1..64))
+}
+
+Validity ::= SEQUENCE {
+  notBefore  IA5String (SIZE (13..15)),
+  notAfter   IA5String (SIZE (13..15))
+}
+
+SubjectPublicKeyInfo ::= SEQUENCE {
+  algorithm         AlgorithmIdentifier,
+  subjectPublicKey  BIT STRING
+}
+
+END

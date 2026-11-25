@@ -1,0 +1,549 @@
+[
+  {
+    "namePath": "MCNP.Isotopes.1001",
+    "aliases": [
+      "H-1",
+      "1001.80c",
+      "1001.70c"
+    ],
+    "label": "H-1 (1001)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">H-1</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Isotopes.5010",
+    "aliases": [
+      "B-10",
+      "5010.80c",
+      "5010.70c"
+    ],
+    "label": "B-10 (5010)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">B-10</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Isotopes.6012",
+    "aliases": [
+      "C-12",
+      "6012.80c",
+      "6012.70c"
+    ],
+    "label": "C-12 (6012)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">C-12</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Isotopes.8016",
+    "aliases": [
+      "O-16",
+      "8016.80c",
+      "8016.70c"
+    ],
+    "label": "O-16 (8016)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">O-16</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Isotopes.26056",
+    "aliases": [
+      "Fe-56",
+      "26056.80c",
+      "26056.70c"
+    ],
+    "label": "Fe-56 (26056)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FE-56</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Isotopes.92235",
+    "aliases": [
+      "U-235",
+      "92235.80c",
+      "92235.70c"
+    ],
+    "label": "U-235 (92235)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">U-235</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Isotopes.92238",
+    "aliases": [
+      "U-238",
+      "92238.80c",
+      "92238.70c"
+    ],
+    "label": "U-238 (92238)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">U-238</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Isotopes.94239",
+    "aliases": [
+      "Pu-239",
+      "94239.80c",
+      "94239.70c"
+    ],
+    "label": "Pu-239 (94239)",
+    "category": "Isotope",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ZAID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PU-239</text></svg>",
+    "ports": [
+      {
+        "name": "flux_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "xs_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Surfaces.SO",
+    "aliases": [
+      "SphereOrigin"
+    ],
+    "label": "Sphere at Origin (SO)",
+    "category": "Surface",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SO</text></svg>",
+    "ports": [
+      {
+        "name": "inside",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outside",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Surfaces.SPH",
+    "aliases": [
+      "S",
+      "Sphere"
+    ],
+    "label": "Sphere Macrobody (SPH)",
+    "category": "Surface",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SPH</text></svg>",
+    "ports": [
+      {
+        "name": "inside",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outside",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Surfaces.RPP",
+    "aliases": [
+      "Box"
+    ],
+    "label": "Rectangular Parallelepiped (RPP)",
+    "category": "Surface",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RPP</text></svg>",
+    "ports": [
+      {
+        "name": "inside",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outside",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Surfaces.RCC",
+    "aliases": [
+      "RightCircularCylinder"
+    ],
+    "label": "Right Circular Cylinder (RCC)",
+    "category": "Surface",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RCC</text></svg>",
+    "ports": [
+      {
+        "name": "inside",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outside",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Surfaces.PX",
+    "aliases": [
+      "PY",
+      "PZ",
+      "P"
+    ],
+    "label": "Axis-Aligned Plane (PX/PY/PZ)",
+    "category": "Surface",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PX</text></svg>",
+    "ports": [
+      {
+        "name": "inside",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outside",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Surfaces.CZ",
+    "aliases": [
+      "CX",
+      "CY",
+      "C/X",
+      "C/Y",
+      "C/Z"
+    ],
+    "label": "Infinite Cylinder (CX/CY/CZ)",
+    "category": "Surface",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CZ</text></svg>",
+    "ports": [
+      {
+        "name": "inside",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "outside",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Tallies.F1",
+    "aliases": [
+      "F1:N",
+      "F1:P"
+    ],
+    "label": "Surface Current Tally (F1)",
+    "category": "Tally",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TALY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F1</text></svg>",
+    "ports": [
+      {
+        "name": "score_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Tallies.F2",
+    "aliases": [
+      "F2:N",
+      "F2:P"
+    ],
+    "label": "Surface Flux Tally (F2)",
+    "category": "Tally",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TALY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F2</text></svg>",
+    "ports": [
+      {
+        "name": "score_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Tallies.F4",
+    "aliases": [
+      "F4:N",
+      "F4:P"
+    ],
+    "label": "Cell Flux Tally (F4)",
+    "category": "Tally",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TALY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F4</text></svg>",
+    "ports": [
+      {
+        "name": "score_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Tallies.F5",
+    "aliases": [
+      "F5:N",
+      "F5:P"
+    ],
+    "label": "Point Detector Flux Tally (F5)",
+    "category": "Tally",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TALY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F5</text></svg>",
+    "ports": [
+      {
+        "name": "score_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Tallies.F6",
+    "aliases": [
+      "F6:N",
+      "F6:P"
+    ],
+    "label": "Energy Deposition Tally (F6)",
+    "category": "Tally",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TALY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F6</text></svg>",
+    "ports": [
+      {
+        "name": "score_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "MCNP.Tallies.F8",
+    "aliases": [
+      "F8:N",
+      "F8:P"
+    ],
+    "label": "Pulse Height Tally (F8)",
+    "category": "Tally",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TALY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F8</text></svg>",
+    "ports": [
+      {
+        "name": "score_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  }
+]

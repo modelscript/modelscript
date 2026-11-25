@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document version="5.1">
+  <Model name="MassSpringDamperBondGraph">
+    <Submodels>
+      <Submodel name="F_ext" type="Se" x="60" y="140">
+        <Parameters>
+          <Parameter name="effort" value="15.0" unit="N"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j_vel" type="1" x="200" y="140"/>
+      <Submodel name="mass" type="I" x="340" y="60">
+        <Parameters>
+          <Parameter name="i" value="2.5" unit="kg"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="damper" type="R" x="340" y="140">
+        <Parameters>
+          <Parameter name="r" value="1.8" unit="N*s/m"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="spring" type="C" x="340" y="220">
+        <Parameters>
+          <Parameter name="c" value="0.05" unit="m/N"/>
+        </Parameters>
+      </Submodel>
+    </Submodels>
+    <Connections>
+      <Connection id="b1" type="bond" from="F_ext.p" to="j_vel.p"/>
+      <Connection id="b2" type="bond" from="j_vel.p" to="mass.p"/>
+      <Connection id="b3" type="bond" from="j_vel.p" to="damper.p"/>
+      <Connection id="b4" type="bond" from="j_vel.p" to="spring.p"/>
+    </Connections>
+    <Experiment startTime="0" finishTime="6" stepSize="0.005" method="RungeKutta4"/>
+  </Model>
+</Document>

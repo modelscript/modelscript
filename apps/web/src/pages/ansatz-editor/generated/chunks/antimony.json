@@ -1,0 +1,82 @@
+[
+  {
+    "id": "antimony-01-michaelis-menten",
+    "lang": "antimony",
+    "subFormats": ["antimony"],
+    "difficulty": 1,
+    "title": "Michaelis-Menten Enzyme Kinetics",
+    "description": "Single-compartment enzymatic substrate-to-product conversion governed by a saturating Michaelis-Menten rate law with explicitly declared kinetic parameters.",
+    "category": "Systems Biology",
+    "tags": ["antimony", "enzyme-kinetics", "michaelis-menten", "biochemistry"],
+    "activeFile": "michaelis_menten.ant",
+    "fileNames": ["michaelis_menten.ant"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "model MichaelisMenten()\n  compartment cytosol = 1.0;\n  species S in cytosol = 15.0, P in cytosol = 0.0;\n  const Vmax = 2.4, Km = 1.8;\n\n  J_cat: S => P; (Vmax * S) / (Km + S);\n\n  S is \"Substrate\";\n  P is \"Product\";\n  J_cat is \"Enzymatic Catalysis\";\nend\n"
+  },
+  {
+    "id": "antimony-02-gardner-toggle-switch",
+    "lang": "antimony",
+    "subFormats": ["antimony"],
+    "difficulty": 2,
+    "title": "Gardner Genetic Toggle Switch",
+    "description": "Bistable mutual-repression synthetic gene circuit (LacI and TetR) exhibiting two stable expression states under cooperative Hill repression kinetics.",
+    "category": "Synthetic Biology",
+    "tags": ["antimony", "toggle-switch", "bistability", "genetic-circuit"],
+    "activeFile": "toggle_switch.ant",
+    "fileNames": ["toggle_switch.ant"],
+    "fileCount": 1,
+    "code": "model GardnerToggleSwitch()\n  compartment cell = 1.0;\n  species u in cell = 4.0, v in cell = 0.2;\n  const alpha1 = 10.0, alpha2 = 10.0;\n  const beta = 2.5, gamma = 2.5;\n  const kd_u = 1.0, kd_v = 1.0;\n\n  J_u_syn: => u; alpha1 / (1 + pow(v, beta));\n  J_u_deg: u => ; kd_u * u;\n  J_v_syn: => v; alpha2 / (1 + pow(u, gamma));\n  J_v_deg: v => ; kd_v * v;\n\n  u is \"Repressor 1 (LacI)\";\n  v is \"Repressor 2 (TetR)\";\nend\n"
+  },
+  {
+    "id": "antimony-03-sir-epidemic-vaccination",
+    "lang": "antimony",
+    "subFormats": ["antimony"],
+    "difficulty": 3,
+    "title": "SIR Epidemiological Model with Vaccination Event",
+    "description": "Susceptible-Infected-Recovered population dynamics with conserved total headcount assignment rule and a discrete public-health vaccination campaign event.",
+    "category": "Epidemiology",
+    "tags": ["antimony", "sir-model", "epidemiology", "events"],
+    "activeFile": "sir_vaccination.ant",
+    "fileNames": ["sir_vaccination.ant"],
+    "fileCount": 1,
+    "code": "model SirEpidemicVaccination()\n  compartment population = 1.0;\n  species S in population = 990.0, I in population = 10.0, R in population = 0.0;\n  const beta = 0.00035, gamma = 0.12, vax_frac = 0.35;\n  var N_tot = 1000.0;\n\n  J_inf: S => I; beta * S * I;\n  J_rec: I => R; gamma * I;\n\n  N_tot := S + I + R;\n\n  E_vax: at (time >= 20.0): S = S * (1.0 - vax_frac), R = R + S * vax_frac;\n\n  S is \"Susceptible Individuals\";\n  I is \"Infected Individuals\";\n  R is \"Recovered or Vaccinated Individuals\";\nend\n"
+  },
+  {
+    "id": "antimony-04-modular-metabolic-pathway",
+    "lang": "antimony",
+    "subFormats": ["antimony"],
+    "difficulty": 4,
+    "title": "Modular Metabolic Pathway with Imported Enzyme Module",
+    "description": "Multi-file biochemical pathway composing a reusable enzymatic kinetics submodel imported from an external Antimony library file.",
+    "category": "Systems Biology",
+    "tags": ["antimony", "modular", "metabolic-pathway", "multi-file"],
+    "activeFile": "pathway.ant",
+    "fileNames": ["pathway.ant", "enzymes.ant"],
+    "fileCount": 2,
+    "code": "import \"enzymes.ant\"\n\nmodel MetabolicPathway()\n  compartment cell = 1.0;\n  species $Glc_ext in cell = 20.0;\n  species Glc in cell = 5.0, G6P in cell = 0.5, F6P in cell = 0.2, Pyr in cell = 0.1;\n  const k_imp = 0.15, V_hk = 3.0, Km_hk = 2.0;\n  const kf_pgi = 1.2, kr_pgi = 0.8, k_gly = 0.5, k_out = 0.25;\n\n  J_import: $Glc_ext => Glc; k_imp * Glc_ext;\n  J_hexokinase: Glc => G6P; (V_hk * Glc) / (Km_hk + Glc);\n  J_isomerase: G6P -> F6P; kf_pgi * G6P - kr_pgi * F6P;\n  J_downstream: F6P => Pyr; k_gly * F6P;\n  J_export: Pyr => ; k_out * Pyr;\n\n  Glc is \"Intracellular Glucose\";\n  G6P is \"Glucose-6-Phosphate\";\n  F6P is \"Fructose-6-Phosphate\";\n  Pyr is \"Pyruvate\";\nend\n",
+    "files": {
+      "pathway.ant": "import \"enzymes.ant\"\n\nmodel MetabolicPathway()\n  compartment cell = 1.0;\n  species $Glc_ext in cell = 20.0;\n  species Glc in cell = 5.0, G6P in cell = 0.5, F6P in cell = 0.2, Pyr in cell = 0.1;\n  const k_imp = 0.15, V_hk = 3.0, Km_hk = 2.0;\n  const kf_pgi = 1.2, kr_pgi = 0.8, k_gly = 0.5, k_out = 0.25;\n\n  J_import: $Glc_ext => Glc; k_imp * Glc_ext;\n  J_hexokinase: Glc => G6P; (V_hk * Glc) / (Km_hk + Glc);\n  J_isomerase: G6P -> F6P; kf_pgi * G6P - kr_pgi * F6P;\n  J_downstream: F6P => Pyr; k_gly * F6P;\n  J_export: Pyr => ; k_out * Pyr;\n\n  Glc is \"Intracellular Glucose\";\n  G6P is \"Glucose-6-Phosphate\";\n  F6P is \"Fructose-6-Phosphate\";\n  Pyr is \"Pyruvate\";\nend\n",
+      "enzymes.ant": "model EnzymeStep(S, P)\n  compartment cell = 1.0;\n  species S in cell = 10.0, P in cell = 0.0;\n  const Vmax = 2.5, Km = 1.5;\n\n  J_step: S => P; (Vmax * S) / (Km + S);\nend\n"
+    }
+  },
+  {
+    "id": "antimony-05-glucose-insulin-homeostasis",
+    "lang": "antimony",
+    "subFormats": ["antimony"],
+    "difficulty": 5,
+    "title": "Multi-Compartment Glucose-Insulin Homeostasis",
+    "description": "Whole-body physiological glucose-insulin regulation integrating plasma kinetics with modular pancreatic beta-cell secretion and hepatic glycogenolysis submodels.",
+    "category": "Systems Physiology",
+    "tags": ["antimony", "physiology", "glucose-insulin", "multi-file"],
+    "activeFile": "patient.ant",
+    "fileNames": ["patient.ant", "pancreas.ant", "liver.ant"],
+    "fileCount": 3,
+    "code": "import \"pancreas.ant\"\nimport \"liver.ant\"\n\nmodel GlucoseInsulinPatient()\n  compartment plasma = 12.0;\n  species G in plasma = 95.0, I in plasma = 12.0, X in plasma = 0.0;\n  const Gb = 90.0, Ib = 10.0;\n  const Sg = 0.028, p2 = 0.025, p3 = 0.000015;\n  const k_sec = 0.4, Km_g = 140.0, n_i = 0.09, G_meal = 45.0;\n\n  J_g_uptake: G => ; (Sg + X) * G;\n  J_g_basal: => G; Sg * Gb;\n  J_i_sec: => I; k_sec * (G * G) / (Km_g * Km_g + G * G);\n  J_i_clear: I => ; n_i * I;\n  X' = -p2 * X + p3 * (I - Ib);\n\n  E_meal: at (time >= 30.0): G = G + G_meal;\n\n  G is \"Plasma Glucose (mg/dL)\";\n  I is \"Plasma Insulin (uU/mL)\";\n  X is \"Remote Insulin Action\";\nend\n",
+    "files": {
+      "patient.ant": "import \"pancreas.ant\"\nimport \"liver.ant\"\n\nmodel GlucoseInsulinPatient()\n  compartment plasma = 12.0;\n  species G in plasma = 95.0, I in plasma = 12.0, X in plasma = 0.0;\n  const Gb = 90.0, Ib = 10.0;\n  const Sg = 0.028, p2 = 0.025, p3 = 0.000015;\n  const k_sec = 0.4, Km_g = 140.0, n_i = 0.09, G_meal = 45.0;\n\n  J_g_uptake: G => ; (Sg + X) * G;\n  J_g_basal: => G; Sg * Gb;\n  J_i_sec: => I; k_sec * (G * G) / (Km_g * Km_g + G * G);\n  J_i_clear: I => ; n_i * I;\n  X' = -p2 * X + p3 * (I - Ib);\n\n  E_meal: at (time >= 30.0): G = G + G_meal;\n\n  G is \"Plasma Glucose (mg/dL)\";\n  I is \"Plasma Insulin (uU/mL)\";\n  X is \"Remote Insulin Action\";\nend\n",
+      "pancreas.ant": "model PancreasSecretion()\n  compartment islet = 1.0;\n  species G_islet in islet = 95.0, Ins_pool in islet = 50.0, Ins_rel in islet = 10.0;\n  const k_synth = 0.8, k_rel = 0.05, Km_sec = 120.0;\n\n  J_ins_synth: => Ins_pool; k_synth;\n  J_ins_release: Ins_pool => Ins_rel; k_rel * Ins_pool * G_islet / (Km_sec + G_islet);\nend\n",
+      "liver.ant": "model HepaticMetabolism()\n  compartment hepatocyte = 1.5;\n  species Glycogen in hepatocyte = 400.0, G_hep in hepatocyte = 90.0;\n  const k_glycolysis = 0.02, k_glycogenesis = 0.015;\n\n  J_glycogenolysis: Glycogen => G_hep; k_glycolysis * Glycogen;\n  J_glycogenesis: G_hep => Glycogen; k_glycogenesis * G_hep;\nend\n"
+    }
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "id": "hec-ras-02-natural-river-floodplains",
+  "lang": "hec-ras",
+  "subFormats": ["prj", "g01", "f01"],
+  "difficulty": 2,
+  "title": "Natural River Reach with Overbank Floodplains",
+  "description": "Natural meandering river reach with distinct left and right vegetated overbank floodplains, higher overbank Manning roughness, and steady 100-year flood profile.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec-ras", "floodplain", "overbank", "multi-file"],
+  "activeFile": "river.g01"
+}

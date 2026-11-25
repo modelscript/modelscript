@@ -1,0 +1,11 @@
+{
+  "id": "sel-03-sel487e-transformer-diff",
+  "lang": "sel",
+  "subFormats": ["txt"],
+  "difficulty": 3,
+  "title": "SEL-487E Power Transformer Protection & Backup Logic",
+  "description": "SEL-487E dual-group settings for a 138/34.5 kV 60 MVA substation power transformer with phase/ground backup overcurrent, overvoltage/underfrequency supervision, and lockout latch equations.",
+  "category": "Power System Protection",
+  "tags": ["sel", "sel-487e", "transformer", "multi-group", "selogic"],
+  "activeFile": "sel487e_xfmr.txt"
+}

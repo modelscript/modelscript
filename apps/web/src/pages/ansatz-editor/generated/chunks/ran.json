@@ -1,0 +1,79 @@
+[
+  {
+    "id": "ran-01-halfwave-dipole-adf",
+    "lang": "ran",
+    "subFormats": ["adf"],
+    "difficulty": 1,
+    "title": "Half-Wave Dipole Omnidirectional Pattern (.adf)",
+    "description": "NSMA WG16 .adf radiation pattern for a 900 MHz omnidirectional half-wave dipole antenna with 2.15 dBi peak gain and symmetric elevation roll-off.",
+    "category": "Antenna Radiation Patterns",
+    "tags": ["ran", "nsma", "adf", "dipole"],
+    "activeFile": "dipole_900mhz.adf",
+    "fileNames": ["dipole_900mhz.adf"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "REVNUM: 1.01\nPATTYP: C\nDESCR1: Half-Wave Omnidirectional Dipole Antenna\nDESCR2: 880-960MHz Vertical Polarization\nMANUF: Ansatz RF Systems\nMODEL: ANS-DIP-900-2\nGAIN: 2.15\nGAINU: DBI\nFRQREC: 880.0 960.0\nPOLARZ: V\nDTILTE: 0.0\nDTILTM: 0.0\nNOAVAL: 8\n0.0 0.0\n45.0 0.0\n90.0 0.0\n135.0 0.0\n180.0 0.0\n225.0 0.0\n270.0 0.0\n315.0 0.0\nNOEVAL: 9\n0.0 0.0\n20.0 1.2\n39.0 3.0\n60.0 8.5\n90.0 30.0\n270.0 30.0\n300.0 8.5\n321.0 3.0\n340.0 1.2\n"
+  },
+  {
+    "id": "ran-02-macro-sector-65deg",
+    "lang": "ran",
+    "subFormats": ["adf"],
+    "difficulty": 2,
+    "title": "65-Degree Macro Base Station Sector Antenna",
+    "description": "18 dBi dual-polarized 1710–2170 MHz macro cellular sector antenna with 65-degree horizontal half-power beamwidth and 2-degree electrical downtilt.",
+    "category": "Cellular Base Stations",
+    "tags": ["ran", "adf", "sector-antenna", "macro-cell"],
+    "activeFile": "macro_65deg.adf",
+    "fileNames": ["macro_65deg.adf"],
+    "fileCount": 1,
+    "code": "REVNUM: 1.01\nPATTYP: C\nDESCR1: 65deg 18dBi Dual-Pol Macro Sector Antenna\nDESCR2: 1710-2170MHz AWS/PCS Band\nMANUF: Ansatz Wireless\nMODEL: ANS-HEX-65-18\nGAIN: 18.0\nGAINU: DBI\nFRQREC: 1710.0 2170.0\nPOLARZ: D\nDTILTE: 2.0\nDTILTM: 0.0\nNOAVAL: 13\n0.0 0.0\n30.0 2.6\n32.5 3.0\n60.0 12.2\n90.0 22.0\n120.0 25.5\n150.0 28.0\n180.0 30.0\n210.0 28.0\n240.0 25.5\n270.0 22.0\n300.0 12.2\n330.0 2.6\nNOEVAL: 9\n0.0 0.0\n3.5 3.0\n7.0 12.0\n15.0 20.0\n30.0 25.0\n90.0 30.0\n270.0 30.0\n345.0 20.0\n356.5 3.0\n"
+  },
+  {
+    "id": "ran-03-5g-midband-array",
+    "lang": "ran",
+    "subFormats": ["adf"],
+    "difficulty": 3,
+    "title": "Dual-Polarized 3.5 GHz 5G Mid-Band Active Array",
+    "description": "High-gain 21.5 dBi C-band 3.5 GHz (n78) 5G NR active antenna array pattern with tight 45-degree azimuth beamwidth and 6-degree electrical downtilt.",
+    "category": "5G NR Mid-Band",
+    "tags": ["ran", "5g-nr", "n78", "active-array", "adf"],
+    "activeFile": "nr_3500mhz_array.adf",
+    "fileNames": ["nr_3500mhz_array.adf"],
+    "fileCount": 1,
+    "code": "REVNUM: 1.01\nPATTYP: C\nDESCR1: 5G NR 3.5GHz C-Band 64T64R Broadcast Beam\nDESCR2: 3400-3800MHz n78 Dual-Slant +/-45deg\nMANUF: Ansatz 5G Networks\nMODEL: ANS-AAU-3500-21\nGAIN: 21.5\nGAINU: DBI\nFRQREC: 3400.0 3800.0\nPOLARZ: D\nDTILTE: 6.0\nDTILTM: 0.0\nNOAVAL: 13\n0.0 0.0\n22.5 3.0\n45.0 11.5\n60.0 18.0\n90.0 25.0\n120.0 28.0\n150.0 31.0\n180.0 33.0\n210.0 31.0\n240.0 28.0\n270.0 25.0\n315.0 11.5\n337.5 3.0\nNOEVAL: 9\n0.0 0.0\n3.0 3.0\n6.0 11.0\n12.0 19.5\n25.0 26.0\n90.0 32.0\n270.0 32.0\n348.0 19.5\n357.0 3.0\n"
+  },
+  {
+    "id": "ran-04-planet-downtilt-panel",
+    "lang": "ran",
+    "subFormats": ["pat", "msi"],
+    "difficulty": 4,
+    "title": "Multi-Tilt Urban Microcell Panel Pattern (Planet/MSI)",
+    "description": "Planet/MSI antenna pattern for a 2.6 GHz urban macro/microcell panel with 4-degree electrical downtilt and upper-sidelobe suppression.",
+    "category": "RF Planning Formats",
+    "tags": ["ran", "planet", "msi", "downtilt"],
+    "activeFile": "urban_panel_tilt4.msi",
+    "fileNames": ["urban_panel_tilt4.msi"],
+    "fileCount": 1,
+    "code": "NAME UrbanPanel_2600_T4\nMAKE Ansatz Wireless\nFREQUENCY 2600\nGAIN 17.8\nTILT 4.0\nPOLARIZATION D\nHORIZONTAL 13\n0 0.0\n30 2.5\n32.5 3.0\n60 11.8\n90 21.5\n120 25.0\n150 28.0\n180 29.5\n210 28.0\n240 25.0\n270 21.5\n300 11.8\n330 2.5\nVERTICAL 9\n0 0.0\n3.2 3.0\n7.0 13.0\n15.0 21.0\n30.0 26.0\n90.0 30.0\n270.0 30.0\n345.0 21.0\n356.8 3.0\n"
+  },
+  {
+    "id": "ran-05-three-sector-site-bundle",
+    "lang": "ran",
+    "subFormats": ["adf", "pat"],
+    "difficulty": 5,
+    "title": "3-Sector Cellular Site Propagation Bundle",
+    "description": "Multi-file cellular macro site workspace providing three oriented NSMA .adf sector radiation patterns (0, 120, 240 deg) plus a Planet reference pattern.",
+    "category": "Multi-Sector Site Engineering",
+    "tags": ["ran", "3-sector", "adf", "planet", "multi-file"],
+    "activeFile": "sector1_0deg.adf",
+    "fileNames": ["sector1_0deg.adf", "sector2_120deg.adf", "sector3_240deg.adf", "site_reference.pat"],
+    "fileCount": 4,
+    "code": "REVNUM: 1.01\nPATTYP: C\nDESCR1: 3-Sector Site Sector 1 (Azimuth 0 deg)\nDESCR2: 1900MHz PCS Macro Panel\nMANUF: Ansatz Wireless\nMODEL: ANS-SEC-65-18-S1\nGAIN: 18.0\nGAINU: DBI\nFRQREC: 1850.0 1990.0\nPOLARZ: D\nDTILTE: 3.0\nDTILTM: 0.0\nNOAVAL: 9\n0.0 0.0\n32.5 3.0\n60.0 12.0\n90.0 22.0\n180.0 30.0\n270.0 22.0\n300.0 12.0\n327.5 3.0\n350.0 0.4\nNOEVAL: 7\n0.0 0.0\n3.5 3.0\n10.0 15.0\n30.0 25.0\n90.0 30.0\n270.0 30.0\n356.5 3.0\n",
+    "files": {
+      "sector1_0deg.adf": "REVNUM: 1.01\nPATTYP: C\nDESCR1: 3-Sector Site Sector 1 (Azimuth 0 deg)\nDESCR2: 1900MHz PCS Macro Panel\nMANUF: Ansatz Wireless\nMODEL: ANS-SEC-65-18-S1\nGAIN: 18.0\nGAINU: DBI\nFRQREC: 1850.0 1990.0\nPOLARZ: D\nDTILTE: 3.0\nDTILTM: 0.0\nNOAVAL: 9\n0.0 0.0\n32.5 3.0\n60.0 12.0\n90.0 22.0\n180.0 30.0\n270.0 22.0\n300.0 12.0\n327.5 3.0\n350.0 0.4\nNOEVAL: 7\n0.0 0.0\n3.5 3.0\n10.0 15.0\n30.0 25.0\n90.0 30.0\n270.0 30.0\n356.5 3.0\n",
+      "sector2_120deg.adf": "REVNUM: 1.01\nPATTYP: C\nDESCR1: 3-Sector Site Sector 2 (Azimuth 120 deg)\nDESCR2: 1900MHz PCS Macro Panel\nMANUF: Ansatz Wireless\nMODEL: ANS-SEC-65-18-S2\nGAIN: 18.0\nGAINU: DBI\nFRQREC: 1850.0 1990.0\nPOLARZ: D\nDTILTE: 4.0\nDTILTM: 0.0\nNOAVAL: 9\n0.0 0.0\n32.5 3.0\n60.0 12.0\n90.0 22.0\n180.0 30.0\n270.0 22.0\n300.0 12.0\n327.5 3.0\n350.0 0.4\nNOEVAL: 7\n0.0 0.0\n3.5 3.0\n10.0 15.0\n30.0 25.0\n90.0 30.0\n270.0 30.0\n356.5 3.0\n",
+      "sector3_240deg.adf": "REVNUM: 1.01\nPATTYP: C\nDESCR1: 3-Sector Site Sector 3 (Azimuth 240 deg)\nDESCR2: 1900MHz PCS Macro Panel\nMANUF: Ansatz Wireless\nMODEL: ANS-SEC-65-18-S3\nGAIN: 18.0\nGAINU: DBI\nFRQREC: 1850.0 1990.0\nPOLARZ: D\nDTILTE: 2.0\nDTILTM: 0.0\nNOAVAL: 9\n0.0 0.0\n32.5 3.0\n60.0 12.0\n90.0 22.0\n180.0 30.0\n270.0 22.0\n300.0 12.0\n327.5 3.0\n350.0 0.4\nNOEVAL: 7\n0.0 0.0\n3.5 3.0\n10.0 15.0\n30.0 25.0\n90.0 30.0\n270.0 30.0\n356.5 3.0\n",
+      "site_reference.pat": "NAME Site_Macro_Ref\nFREQUENCY 1900\nGAIN 18.0\nTILT 3.0\nPOLARIZATION D\nHORIZONTAL 5\n0 0.0\n32.5 3.0\n90 22.0\n180 30.0\n270 22.0\nVERTICAL 5\n0 0.0\n3.5 3.0\n10 15.0\n90 30.0\n270 30.0\n"
+    }
+  }
+]

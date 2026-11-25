@@ -361,10 +361,14 @@ getErrorString();
                   if (st.mtimeMs < cutoffMs) {
                     fs.rmSync(fp, { force: true });
                   }
-                } catch {}
+                } catch {
+                  // Ignore individual file stat/rm errors during stale cache sweep
+                }
               }
             }
-          } catch {}
+          } catch {
+            // Best-effort cleanup of expired simulation CSV files
+          }
           const safeJobFileName = `${path.basename(jobId).replace(/[^a-zA-Z0-9_.-]/g, "_")}_res.csv`;
           const persistedCsvPath = path.resolve(resultDir, safeJobFileName);
           const relPersisted = path.relative(resultDir, persistedCsvPath);

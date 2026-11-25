@@ -38,6 +38,7 @@ import {
   type ScholarlyWorkRecord,
   type ScholarlyYearCount,
 } from "../services/openalex.js";
+import { publicErrorMessage } from "../utils/http-error.js";
 
 const ALL_STYLES: CitationStyleId[] = ["apa", "mla", "ieee", "chicago", "harvard", "vancouver", "acm", "ansatz-urn"];
 
@@ -678,7 +679,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         searchEngine: ftsMatch ? "sqlite-fts5-bm25" : "sqlite-index",
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to search scholarly works", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to search scholarly works") });
     }
   });
 
@@ -851,7 +852,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         communityCited,
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to compute scholarly catalog facets", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to compute scholarly catalog facets") });
     }
   });
 
@@ -977,7 +978,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         libraryItem,
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to resolve citation URN", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to resolve citation URN") });
     }
   };
 
@@ -1071,7 +1072,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
       res.setHeader("Content-Disposition", `attachment; filename="${fileSlug}.${meta.ext}"`);
       res.send(output);
     } catch (err) {
-      res.status(500).json({ error: "Failed to export citations", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to export citations") });
     }
   });
 
@@ -1177,7 +1178,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         exports: buildAllCitationExports(saved),
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to save scholarly work", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to save scholarly work") });
     }
   });
 
@@ -1235,7 +1236,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
       const refreshed = lookupLocalWork(database, work.urn)!;
       res.json({ work: refreshed });
     } catch (err) {
-      res.status(500).json({ error: "Failed to attach local PDF to work", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to attach local PDF to work") });
     }
   });
 
@@ -1320,7 +1321,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         works: importedWorks,
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to import references", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to import references") });
     }
   });
 
@@ -1421,7 +1422,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
 
       res.json({ items, totalCount: items.length });
     } catch (err) {
-      res.status(500).json({ error: "Failed to fetch reference library", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to fetch reference library") });
     }
   });
 
@@ -1513,7 +1514,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         },
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to save item to reference library", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to save item to reference library") });
     }
   });
 
@@ -1585,8 +1586,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
       }
 
       const updated = database.db.prepare(`SELECT * FROM reference_library_items WHERE id = ?`).get(itemId) as
-        | ReferenceLibraryDbRow
-        | undefined;
+        ReferenceLibraryDbRow | undefined;
       if (!updated) {
         res.status(404).json({ error: "Reference library item not found after update" });
         return;
@@ -1613,7 +1613,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         },
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to update reference library item", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to update reference library item") });
     }
   });
 
@@ -1633,7 +1633,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
       }
       res.json({ success: true, deletedId: itemId });
     } catch (err) {
-      res.status(500).json({ error: "Failed to remove item from library", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to remove item from library") });
     }
   });
 
@@ -1681,7 +1681,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         })),
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to list reference collections", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to list reference collections") });
     }
   });
 
@@ -1753,7 +1753,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         },
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to create reference collection", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to create reference collection") });
     }
   });
 
@@ -1773,7 +1773,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
       }
       res.json({ success: true, deletedId: colId });
     } catch (err) {
-      res.status(500).json({ error: "Failed to delete collection", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to delete collection") });
     }
   });
 
@@ -1788,7 +1788,9 @@ export function referencesRouter(database: LibraryDatabase): Router {
       if (fs.existsSync(p)) {
         try {
           total += fs.statSync(p).size;
-        } catch {}
+        } catch {
+          // SQLite WAL/SHM sidecar files may disappear between existsSync and statSync
+        }
       }
     }
     return total;
@@ -1872,10 +1874,11 @@ export function referencesRouter(database: LibraryDatabase): Router {
       let ftsIndexedCount = 0;
       try {
         const ftsRow = oaDb.prepare(`SELECT COUNT(*) AS cnt FROM scholarly_works_fts`).get() as
-          | { cnt: number }
-          | undefined;
+          { cnt: number } | undefined;
         ftsIndexedCount = Number(ftsRow?.cnt || 0);
-      } catch {}
+      } catch {
+        // FTS5 table may not be initialized yet
+      }
 
       const partitionRows = oaDb
         .prepare(
@@ -1901,7 +1904,9 @@ export function referencesRouter(database: LibraryDatabase): Router {
             }
           }
         }
-      } catch {}
+      } catch {
+        // Cache directory may not exist or be unreadable
+      }
 
       res.json({
         mode: "self-hosted-s3-sqlite-fts5",
@@ -1930,7 +1935,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         awsCliSyncCommand: "aws s3 sync s3://openalex/data/jsonl/works/ ./data/cache/openalex/ --no-sign-request",
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to query S3 snapshot catalog status", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to query S3 snapshot catalog status") });
     }
   });
 
@@ -1946,7 +1951,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
       const result = await preloadOpenAlexS3Slice(database, { force, maxRecords, s3Url });
       res.status(200).json(result);
     } catch (err) {
-      res.status(500).json({ error: "Failed to preload OpenAlex first slice", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to preload OpenAlex first slice") });
     }
   });
 
@@ -2038,7 +2043,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         partitions: allRows.map(mapPartitionRow),
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to sync OpenAlex S3 partition manifest", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to sync OpenAlex S3 partition manifest") });
     }
   });
 
@@ -2205,7 +2210,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         partitions: allPartitions.map(mapPartitionRow),
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to load OpenAlex S3 partition(s)", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to load OpenAlex S3 partition(s)") });
     }
   });
 
@@ -2271,7 +2276,9 @@ export function referencesRouter(database: LibraryDatabase): Router {
 
       try {
         oaDb.exec(`INSERT INTO scholarly_works_fts(scholarly_works_fts) VALUES('optimize');`);
-      } catch {}
+      } catch {
+        // FTS5 index optimization is best-effort
+      }
 
       const allPartitions = oaDb
         .prepare(`SELECT * FROM openalex_s3_partitions ORDER BY COALESCE(updated_date, '') DESC, part_name ASC`)
@@ -2283,7 +2290,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         partitions: allPartitions.map(mapPartitionRow),
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to unload OpenAlex S3 partition(s)", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to unload OpenAlex S3 partition(s)") });
     }
   });
 
@@ -2300,8 +2307,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         INSERT INTO scholarly_works_fts(scholarly_works_fts) VALUES('optimize');
       `);
       const ftsRow = oaDb.prepare(`SELECT COUNT(*) AS cnt FROM scholarly_works_fts`).get() as
-        | { cnt: number }
-        | undefined;
+        { cnt: number } | undefined;
       res.json({
         ok: true,
         optimized: true,
@@ -2310,7 +2316,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         durationMs: Date.now() - startMs,
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to optimize FTS5 index", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to optimize FTS5 index") });
     }
   });
 
@@ -2386,7 +2392,7 @@ export function referencesRouter(database: LibraryDatabase): Router {
         error: "Provide 's3PartitionUrl', 'localFilePath', or 'jsonl' to ingest OpenAlex snapshot records.",
       });
     } catch (err) {
-      res.status(500).json({ error: "Failed to ingest OpenAlex S3 snapshot", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to ingest OpenAlex S3 snapshot") });
     }
   });
 

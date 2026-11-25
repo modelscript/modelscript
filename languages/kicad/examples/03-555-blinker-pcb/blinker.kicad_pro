@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "filename": "blinker.kicad_pro",
+    "version": 1
+  },
+  "board": {
+    "design_settings": {
+      "rules": {
+        "min_track_width": 0.15,
+        "min_clearance": 0.15,
+        "min_via_diameter": 0.5
+      }
+    }
+  }
+}

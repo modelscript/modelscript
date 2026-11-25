@@ -1,0 +1,11 @@
+{
+  "id": "lps-04-linepack-diurnal-swing",
+  "lang": "lps",
+  "subFormats": ["lps"],
+  "difficulty": 4,
+  "title": "Linepack Transient Diurnal Demand Swing",
+  "description": "24-hour transient linepack management study across a 220 km gas transmission corridor with looped parallel sections, centrifugal compression, and underground storage buffer.",
+  "category": "Pipeline Hydraulics",
+  "tags": ["lps", "linepack", "transient", "diurnal-swing"],
+  "activeFile": "linepack_swing.lps"
+}

@@ -73,9 +73,9 @@ export const ReqifPanel: React.FC<LanguagePanelProps> = ({
         subtitle="OMG ReqIF 1.2 Requirements"
         badge={computed.error ? { label: "Parse Error", tone: "danger" } : { label: "ReqIF", tone: "info" }}
         actions={
-          mode === "artifact" && host.openInMorsel && code ? (
-            <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "reqif", title)}>
-              Open in Morsel
+          mode === "artifact" && host.openInAnsatzEditor && code ? (
+            <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "reqif", title)}>
+              Open in Ansatz Editor
             </PanelButton>
           ) : undefined
         }

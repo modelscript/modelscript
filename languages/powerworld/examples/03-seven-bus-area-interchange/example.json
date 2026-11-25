@@ -1,0 +1,11 @@
+{
+  "id": "powerworld-03-seven-bus-area-interchange",
+  "lang": "powerworld",
+  "subFormats": ["aux"],
+  "difficulty": 3,
+  "title": "7-Bus Multi-Area Interchange with Tie-Line Transformer",
+  "description": "Seven-bus 138 kV meshed network modeling scheduled interchange across parallel inter-area tie lines and an inter-tie regulating transformer.",
+  "category": "Transmission Power Flow",
+  "tags": ["powerworld", "aux", "7-bus", "interchange", "tie-line"],
+  "activeFile": "area7.aux"
+}

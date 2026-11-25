@@ -419,7 +419,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: string,
       password: string,
       acceptTerms: boolean = true,
-      captchaToken: string = (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "",
+      captchaToken: string = (typeof window !== "undefined" && window.__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "",
       inviteCode?: string,
     ) => {
       const { data } = await api.post("/auth/register", {

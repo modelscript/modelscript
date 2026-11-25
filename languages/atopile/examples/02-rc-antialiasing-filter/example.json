@@ -1,0 +1,11 @@
+{
+  "id": "atopile-02-rc-antialiasing-filter",
+  "lang": "atopile",
+  "subFormats": ["ato"],
+  "difficulty": 2,
+  "title": "RC Low-Pass Anti-Aliasing Filter",
+  "description": "First-order analog anti-aliasing RC low-pass filter (fc = 15.9 kHz) for a 12-bit ADC front-end importing standard resistor and capacitor generic components.",
+  "category": "ECAD & Hardware Description",
+  "tags": ["atopile", "rc-filter", "analog", "adc", "multi-file"],
+  "activeFile": "filter.ato"
+}

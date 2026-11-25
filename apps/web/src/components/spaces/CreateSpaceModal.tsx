@@ -35,6 +35,7 @@ import {
   type SpaceVisibility,
 } from "../../api";
 import { useAuth } from "../../AuthContext";
+import { getApiErrorMessage } from "../../util/error";
 import { useToast } from "../ToastContext";
 
 interface CreateSpaceModalProps {
@@ -259,8 +260,8 @@ export const CreateSpaceModal: React.FC<CreateSpaceModalProps> = ({
       setNewOrgSlug("");
       setNewOrgName("");
       toast.success(`Created organization @${createdOrg.slug}`);
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || "Failed to create organization");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to create organization"));
     } finally {
       setSubmitting(false);
     }
@@ -298,8 +299,8 @@ export const CreateSpaceModal: React.FC<CreateSpaceModalProps> = ({
       } else {
         navigate(`/@${ns}/${res.space.slug}`);
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || "Failed to create Space");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to create Space"));
     } finally {
       setSubmitting(false);
     }

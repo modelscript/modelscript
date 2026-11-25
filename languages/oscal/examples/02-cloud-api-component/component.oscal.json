@@ -1,0 +1,38 @@
+{
+  "component-definition": {
+    "uuid": "22222222-2222-4222-8222-222222222201",
+    "metadata": {
+      "title": "Cloud Telemetry API Gateway Component Definition",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.2.0",
+      "oscal-version": "1.1.2"
+    },
+    "components": [
+      {
+        "uuid": "22222222-2222-4222-8222-222222222202",
+        "type": "software",
+        "title": "TelemetryApiGateway",
+        "description": "Mutual-TLS ingress proxy enforcing JWT bearer token validation and per-tenant rate limiting.",
+        "control-implementations": [
+          {
+            "uuid": "22222222-2222-4222-8222-222222222203",
+            "source": "builtin://nist-sp-800-53-r5",
+            "description": "NIST SP 800-53 Rev 5 API security controls.",
+            "implemented-requirements": [
+              {
+                "uuid": "22222222-2222-4222-8222-222222222204",
+                "control-id": "ac-3",
+                "description": "Role-based access control policy evaluated on every REST and gRPC request."
+              },
+              {
+                "uuid": "22222222-2222-4222-8222-222222222205",
+                "control-id": "sc-7",
+                "description": "Ingress firewall terminates TLS 1.3 and restricts egress to approved telemetry sinks."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

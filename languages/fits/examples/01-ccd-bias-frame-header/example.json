@@ -1,0 +1,12 @@
+{
+  "id": "fits-01-ccd-bias-frame-header",
+  "lang": "fits",
+  "subFormats": ["fits"],
+  "difficulty": 1,
+  "title": "Primary 2D CCD Bias Calibration Frame Header",
+  "description": "FITS 4.0 primary HDU header for a 1024x1024 16-bit integer zero-exposure CCD bias calibration frame with detector gain, readout noise, temperature, and complete linear WCS keywords.",
+  "category": "Astronomy & Scientific Imaging",
+  "tags": ["fits", "ccd", "calibration", "wcs"],
+  "activeFile": "ccd_bias.fits",
+  "isDefaultStarter": true
+}

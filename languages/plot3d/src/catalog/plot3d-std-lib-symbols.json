@@ -1,0 +1,344 @@
+[
+  {
+    "name": "Grid3D",
+    "kind": "Class",
+    "namePath": "Plot3d.Grid3D",
+    "exports": [
+      "ni",
+      "nj",
+      "nk",
+      "lx",
+      "ly",
+      "lz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3D Multi-Block Grid (.xyz)",
+      "category": "Structured Grids",
+      "domain": "cfd",
+      "description": "NASA Ames PLOT3D 3D structured multi-block curvilinear grid (.xyz/.g) in Fortran column-major i-fastest storage.",
+      "provenance": "NASA TM-101067 / Walatka et al. (1990) PLOT3D User's Manual",
+      "aliases": [
+        "XYZ",
+        "PLOT3D_GRID",
+        "StructuredGrid3D"
+      ],
+      "parameters": [
+        {
+          "key": "ni",
+          "type": "real",
+          "defaultValue": 21,
+          "unit": "1",
+          "description": "Number of grid points in I-direction"
+        },
+        {
+          "key": "nj",
+          "type": "real",
+          "defaultValue": 11,
+          "unit": "1",
+          "description": "Number of grid points in J-direction"
+        },
+        {
+          "key": "nk",
+          "type": "real",
+          "defaultValue": 11,
+          "unit": "1",
+          "description": "Number of grid points in K-direction"
+        },
+        {
+          "key": "lx",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Domain length in X"
+        },
+        {
+          "key": "ly",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m",
+          "description": "Domain height in Y"
+        },
+        {
+          "key": "lz",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "m",
+          "description": "Domain span in Z"
+        }
+      ],
+      "wasmKernel": "plot3dEvalArchetype",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SolutionQ",
+    "kind": "Class",
+    "namePath": "Plot3d.SolutionQ",
+    "exports": [
+      "fsmach",
+      "alpha",
+      "re",
+      "time",
+      "gamma",
+      "pRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Conservative Solution (.q)",
+      "category": "Flow Solutions",
+      "domain": "cfd",
+      "description": "NASA Ames PLOT3D conservative CFD solution file (.q) storing FSMACH, ALPHA, RE, TIME and (rho, rhou, rhov, rhow, e).",
+      "provenance": "NASA TM-101067 / Walatka et al. (1990) PLOT3D User's Manual",
+      "aliases": [
+        "QFILE",
+        "PLOT3D_Q",
+        "ConservativeSolution"
+      ],
+      "parameters": [
+        {
+          "key": "fsmach",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Freestream Mach number"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Angle of attack"
+        },
+        {
+          "key": "re",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "1",
+          "description": "Freestream Reynolds number"
+        },
+        {
+          "key": "time",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Simulation time"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Ratio of specific heats"
+        },
+        {
+          "key": "pRef",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Reference static pressure"
+        }
+      ],
+      "wasmKernel": "plot3dEvalArchetype",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "FunctionF",
+    "kind": "Class",
+    "namePath": "Plot3d.FunctionF",
+    "exports": [
+      "nVars",
+      "ni",
+      "nj",
+      "nk"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Scalar Function File (.f)",
+      "category": "Flow Solutions",
+      "domain": "cfd",
+      "description": "NASA Ames PLOT3D auxiliary scalar/vector function file (.f) paired with variable names (.nam).",
+      "provenance": "NASA TM-101067 / Walatka et al. (1990) PLOT3D User's Manual",
+      "aliases": [
+        "FFILE",
+        "PLOT3D_F",
+        "FunctionField"
+      ],
+      "parameters": [
+        {
+          "key": "nVars",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "Number of auxiliary function variables"
+        },
+        {
+          "key": "ni",
+          "type": "real",
+          "defaultValue": 21,
+          "unit": "1",
+          "description": "I-dimension"
+        },
+        {
+          "key": "nj",
+          "type": "real",
+          "defaultValue": 11,
+          "unit": "1",
+          "description": "J-dimension"
+        },
+        {
+          "key": "nk",
+          "type": "real",
+          "defaultValue": 11,
+          "unit": "1",
+          "description": "K-dimension"
+        }
+      ],
+      "wasmKernel": "plot3dEvalArchetype",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "IsentropicNozzle",
+    "kind": "Class",
+    "namePath": "Plot3d.IsentropicNozzle",
+    "exports": [
+      "length",
+      "throatArea",
+      "areaRatioMax",
+      "p0",
+      "t0",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Isentropic C-D Nozzle",
+      "category": "CFD Benchmarks",
+      "domain": "cfd",
+      "description": "Quasi-1D / 3D structured converging-diverging nozzle benchmark verifying isentropic Mach, total pressure ratio, and mass conservation.",
+      "provenance": "Anderson (Modern Compressible Flow) / NASA TMR Verification",
+      "aliases": [
+        "Nozzle3D",
+        "ConvergingDivergingNozzle"
+      ],
+      "parameters": [
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Nozzle axial length"
+        },
+        {
+          "key": "throatArea",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m2",
+          "description": "Throat cross-sectional area A*"
+        },
+        {
+          "key": "areaRatioMax",
+          "type": "real",
+          "defaultValue": 2.2,
+          "unit": "1",
+          "description": "Inlet/Exit to throat area ratio"
+        },
+        {
+          "key": "p0",
+          "type": "real",
+          "defaultValue": 500000,
+          "unit": "Pa",
+          "description": "Stagnation pressure"
+        },
+        {
+          "key": "t0",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Stagnation temperature"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "1",
+          "description": "Ratio of specific heats"
+        }
+      ],
+      "wasmKernel": "plot3dEvalArchetype",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "FlatPlateMesh",
+    "kind": "Class",
+    "namePath": "Plot3d.FlatPlateMesh",
+    "exports": [
+      "ni",
+      "nj",
+      "nk",
+      "plateLength",
+      "domainHeight",
+      "stretchingRatio"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Flat Plate Boundary Layer Mesh",
+      "category": "CFD Benchmarks",
+      "domain": "cfd",
+      "description": "NASA Turbulence Modeling Resource (TMR) 2D/3D stretched structured flat-plate mesh with wall-normal clustering.",
+      "provenance": "NASA Langley Turbulence Modeling Resource (TMR) 2DZP Flat Plate",
+      "aliases": [
+        "FlatPlate",
+        "BoundaryLayerMesh"
+      ],
+      "parameters": [
+        {
+          "key": "ni",
+          "type": "real",
+          "defaultValue": 65,
+          "unit": "1",
+          "description": "Streamwise grid nodes"
+        },
+        {
+          "key": "nj",
+          "type": "real",
+          "defaultValue": 49,
+          "unit": "1",
+          "description": "Wall-normal grid nodes"
+        },
+        {
+          "key": "nk",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Spanwise grid nodes"
+        },
+        {
+          "key": "plateLength",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Flat plate length L"
+        },
+        {
+          "key": "domainHeight",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Farfield height H"
+        },
+        {
+          "key": "stretchingRatio",
+          "type": "real",
+          "defaultValue": 1.15,
+          "unit": "1",
+          "description": "Wall-normal geometric stretching ratio"
+        }
+      ],
+      "wasmKernel": "plot3dEvalArchetype",
+      "archetypeId": 5
+    }
+  }
+]

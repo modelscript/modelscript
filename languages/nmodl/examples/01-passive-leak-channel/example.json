@@ -1,0 +1,12 @@
+{
+  "id": "nmodl-01-passive-leak-channel",
+  "lang": "nmodl",
+  "subFormats": ["nmodl"],
+  "difficulty": 1,
+  "title": "Passive Leak Membrane Conductance",
+  "description": "Ohmic passive neuronal membrane leak current mechanism (pas) establishing resting membrane potential and input resistance in NEURON compartmental simulations.",
+  "category": "Computational Neuroscience",
+  "tags": ["nmodl", "neuron", "passive-leak", "electrophysiology"],
+  "activeFile": "pas.mod",
+  "isDefaultStarter": true
+}

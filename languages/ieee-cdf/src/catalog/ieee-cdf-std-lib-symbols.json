@@ -1,0 +1,405 @@
+[
+  {
+    "name": "PQ_BUS",
+    "kind": "Class",
+    "namePath": "ieee_cdf.buses.PQ_BUS",
+    "exports": [
+      "P_LOAD",
+      "Q_LOAD",
+      "G_SHUNT",
+      "B_SHUNT",
+      "BASE_KV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PQ Load Bus",
+      "category": "Buses",
+      "domain": "electrical-power",
+      "description": "Unregulated IEEE CDF Type 0/1 (BPA 'B ') load bus with specified active and reactive power.",
+      "provenance": "IEEE Working Group 1973 Common Format / BPA IPF",
+      "aliases": [
+        "BUS_PQ",
+        "LOAD_BUS",
+        "B ",
+        "TYPE_0",
+        "TYPE_1"
+      ],
+      "parameters": [
+        {
+          "key": "P_LOAD",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "MW",
+          "description": "Active power load"
+        },
+        {
+          "key": "Q_LOAD",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "MVAR",
+          "description": "Reactive power load"
+        },
+        {
+          "key": "G_SHUNT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Nodal shunt conductance"
+        },
+        {
+          "key": "B_SHUNT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Nodal shunt susceptance"
+        },
+        {
+          "key": "BASE_KV",
+          "type": "real",
+          "defaultValue": 138,
+          "unit": "kV",
+          "description": "Nominal bus base voltage"
+        }
+      ],
+      "wasmKernel": "ieeeCdfModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "PV_BUS",
+    "kind": "Class",
+    "namePath": "ieee_cdf.buses.PV_BUS",
+    "exports": [
+      "P_GEN",
+      "V_SET",
+      "Q_MAX",
+      "Q_MIN",
+      "BASE_KV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PV Generator Bus",
+      "category": "Buses",
+      "domain": "electrical-power",
+      "description": "Voltage-controlled IEEE CDF Type 2 (BPA 'BQ'/'BE') generator bus with reactive limits Qmin/Qmax.",
+      "provenance": "IEEE Working Group 1973 Common Format / BPA IPF",
+      "aliases": [
+        "BUS_PV",
+        "GEN_BUS",
+        "BQ",
+        "BE",
+        "TYPE_2"
+      ],
+      "parameters": [
+        {
+          "key": "P_GEN",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "MW",
+          "description": "Scheduled active power generation"
+        },
+        {
+          "key": "V_SET",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Scheduled voltage magnitude"
+        },
+        {
+          "key": "Q_MAX",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "MVAR",
+          "description": "Maximum reactive power limit"
+        },
+        {
+          "key": "Q_MIN",
+          "type": "real",
+          "defaultValue": -40,
+          "unit": "MVAR",
+          "description": "Minimum reactive power limit"
+        },
+        {
+          "key": "BASE_KV",
+          "type": "real",
+          "defaultValue": 138,
+          "unit": "kV",
+          "description": "Nominal bus base voltage"
+        }
+      ],
+      "wasmKernel": "ieeeCdfModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "SLACK_BUS",
+    "kind": "Class",
+    "namePath": "ieee_cdf.buses.SLACK_BUS",
+    "exports": [
+      "V_SET",
+      "ANGLE_DEG",
+      "BASE_KV"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Slack / Swing Bus",
+      "category": "Buses",
+      "domain": "electrical-power",
+      "description": "Reference angle and voltage magnitude bus (IEEE CDF Type 3 / BPA 'BS') balancing system losses.",
+      "provenance": "IEEE Working Group 1973 Common Format / BPA IPF",
+      "aliases": [
+        "SWING_BUS",
+        "REF_BUS",
+        "BS",
+        "TYPE_3"
+      ],
+      "parameters": [
+        {
+          "key": "V_SET",
+          "type": "real",
+          "defaultValue": 1.06,
+          "unit": "pu",
+          "description": "Slack bus voltage magnitude"
+        },
+        {
+          "key": "ANGLE_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Reference voltage phase angle"
+        },
+        {
+          "key": "BASE_KV",
+          "type": "real",
+          "defaultValue": 138,
+          "unit": "kV",
+          "description": "Nominal bus base voltage"
+        }
+      ],
+      "wasmKernel": "ieeeCdfModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "TRANSMISSION_LINE",
+    "kind": "Class",
+    "namePath": "ieee_cdf.branches.TRANSMISSION_LINE",
+    "exports": [
+      "R",
+      "X",
+      "B",
+      "RATE_A"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Transmission Line",
+      "category": "Branches",
+      "domain": "electrical-power",
+      "description": "Nominal-pi transmission line (IEEE CDF Branch Type 0 / BPA 'L ') with series R+jX and total charging B.",
+      "provenance": "IEEE Working Group 1973 Common Format / BPA IPF",
+      "aliases": [
+        "LINE",
+        "PI_LINE",
+        "L ",
+        "E ",
+        "BRANCH_0"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "pu",
+          "description": "Series resistance"
+        },
+        {
+          "key": "X",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "pu",
+          "description": "Series reactance"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "pu",
+          "description": "Total line charging susceptance"
+        },
+        {
+          "key": "RATE_A",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "MVA",
+          "description": "Normal thermal rating"
+        }
+      ],
+      "wasmKernel": "ieeeCdfModelEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "TAP_TRANSFORMER",
+    "kind": "Class",
+    "namePath": "ieee_cdf.branches.TAP_TRANSFORMER",
+    "exports": [
+      "R",
+      "X",
+      "TAP_RATIO",
+      "MIN_TAP",
+      "MAX_TAP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tap-Changing Transformer",
+      "category": "Branches",
+      "domain": "electrical-power",
+      "description": "Off-nominal tap-changing transformer (IEEE CDF Branch Type 1/2/3 / BPA 'T '/'R ') with turns ratio a.",
+      "provenance": "IEEE Working Group 1973 Common Format / BPA IPF",
+      "aliases": [
+        "TRANSFORMER",
+        "XFMR",
+        "TCUL",
+        "T ",
+        "R ",
+        "BRANCH_1",
+        "BRANCH_2"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Winding resistance"
+        },
+        {
+          "key": "X",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "pu",
+          "description": "Leakage reactance"
+        },
+        {
+          "key": "TAP_RATIO",
+          "type": "real",
+          "defaultValue": 0.978,
+          "unit": "pu",
+          "description": "Off-nominal turns ratio on tap side"
+        },
+        {
+          "key": "MIN_TAP",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "pu",
+          "description": "Minimum tap ratio"
+        },
+        {
+          "key": "MAX_TAP",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "pu",
+          "description": "Maximum tap ratio"
+        }
+      ],
+      "wasmKernel": "ieeeCdfModelEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "PHASE_SHIFTER",
+    "kind": "Class",
+    "namePath": "ieee_cdf.branches.PHASE_SHIFTER",
+    "exports": [
+      "R",
+      "X",
+      "TAP_RATIO",
+      "PHASE_SHIFT_DEG"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Phase-Shifting Transformer",
+      "category": "Branches",
+      "domain": "electrical-power",
+      "description": "Phase-angle regulating transformer (IEEE CDF Branch Type 4) with complex turns ratio a * exp(j * phi).",
+      "provenance": "IEEE Working Group 1973 Common Format",
+      "aliases": [
+        "PAR",
+        "PHASE_SHIFTING_TRANSFORMER",
+        "BRANCH_4"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Winding resistance"
+        },
+        {
+          "key": "X",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "pu",
+          "description": "Leakage reactance"
+        },
+        {
+          "key": "TAP_RATIO",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "pu",
+          "description": "Off-nominal turns ratio"
+        },
+        {
+          "key": "PHASE_SHIFT_DEG",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "deg",
+          "description": "Phase shift angle"
+        }
+      ],
+      "wasmKernel": "ieeeCdfModelEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "SHUNT_ELEMENT",
+    "kind": "Class",
+    "namePath": "ieee_cdf.shunts.SHUNT_ELEMENT",
+    "exports": [
+      "G_SHUNT",
+      "B_SHUNT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Nodal Shunt Element",
+      "category": "Shunts",
+      "domain": "electrical-power",
+      "description": "Fixed nodal shunt admittance G + jB on system MVA base.",
+      "provenance": "IEEE Working Group 1973 Common Format",
+      "aliases": [
+        "SHUNT",
+        "CAPACITOR_BANK",
+        "REACTOR"
+      ],
+      "parameters": [
+        {
+          "key": "G_SHUNT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "pu",
+          "description": "Shunt conductance"
+        },
+        {
+          "key": "B_SHUNT",
+          "type": "real",
+          "defaultValue": 0.19,
+          "unit": "pu",
+          "description": "Shunt susceptance (positive = capacitive)"
+        }
+      ],
+      "wasmKernel": "ieeeCdfModelEval",
+      "archetypeId": 20
+    }
+  }
+]

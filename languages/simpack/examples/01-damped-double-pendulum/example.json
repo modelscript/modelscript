@@ -1,0 +1,12 @@
+{
+  "id": "simpack-01-damped-double-pendulum",
+  "lang": "simpack",
+  "subFormats": ["spck"],
+  "difficulty": 1,
+  "title": "Damped Double Pendulum",
+  "description": "Two-link planar double pendulum with positive-definite principal inertia tensors, revolute joints from the inertial frame, and rotational spring-damper stabilization.",
+  "category": "Multibody Dynamics",
+  "tags": ["pendulum", "revolute-joint", "inertia-tensor", "mbd"],
+  "activeFile": "double_pendulum.spck",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "smiles-03-chiral-amino-acids",
+  "lang": "smiles",
+  "subFormats": ["smiles"],
+  "difficulty": 3,
+  "title": "Chiral Amino Acids and E/Z Stereoisomers",
+  "description": "Proteinogenic L-amino acids with tetrahedral chirality tags (@/@@) alongside geometric cis/trans alkene stereoisomers using directional bonds.",
+  "category": "Biochemistry & Stereochemistry",
+  "tags": ["smiles", "chirality", "amino-acids", "stereochemistry"],
+  "activeFile": "chiral_amino_acids.smi"
+}

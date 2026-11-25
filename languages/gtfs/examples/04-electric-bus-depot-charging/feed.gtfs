@@ -1,0 +1,31 @@
+# STOPS
+stop_id,stop_name,stop_lat,stop_lon
+DEPOT_CHG,North Electric Bus Depot,37.8044,-122.2712
+UPTOWN_19,19th Street Uptown,37.8080,-122.2685
+LAKE_MERRITT,Lake Merritt Plaza,37.7975,-122.2650
+FRUITVALE,Fruitvale Transit Village,37.7748,-122.2242
+
+# ROUTES
+route_id,route_short_name,route_long_name,route_type
+EBUS_1T,1T,Tempo Zero-Emission Trunk,3
+
+# TRIPS
+route_id,service_id,trip_id,shape_id
+EBUS_1T,WEEKDAY,EB_AM_01,SHP_1T
+EBUS_1T,WEEKDAY,EB_PM_01,SHP_1T
+
+# STOP_TIMES
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,shape_dist_traveled
+EB_AM_01,06:30:00,06:31:00,DEPOT_CHG,1,0.0
+EB_AM_01,06:36:00,06:37:00,UPTOWN_19,2,1400.0
+EB_AM_01,06:43:00,06:44:00,LAKE_MERRITT,3,3100.0
+EB_AM_01,06:58:00,06:58:00,FRUITVALE,4,8200.0
+EB_PM_01,16:30:00,16:31:00,DEPOT_CHG,1,0.0
+EB_PM_01,16:37:00,16:38:00,UPTOWN_19,2,1400.0
+EB_PM_01,16:45:00,16:46:00,LAKE_MERRITT,3,3100.0
+EB_PM_01,17:02:00,17:02:00,FRUITVALE,4,8200.0
+
+# VEHICLE
+mass 19200
+battery 440
+aux 9.5

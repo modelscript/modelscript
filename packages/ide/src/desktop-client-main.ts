@@ -4,7 +4,7 @@
  *
  * Bootstraps the platform-native `@modelscript/native` (`wasm2c` + Dawn WebGPU)
  * N-API addon bundled under `<extensionPath>/native/modelscript_native.node`
- * before delegating to the shared ModelScript IDE activation lifecycle.
+ * before delegating to the shared Ansatz Studio activation lifecycle.
  *
  * Falls back transparently to WebAssembly if the native binary is absent or
  * if `MODELSCRIPT_BACKEND=wasm` is set.

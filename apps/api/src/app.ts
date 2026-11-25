@@ -162,6 +162,7 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   if (shouldEnableWorkers && isFederationActive) {
     federationWorker.start();
   }
+  app.locals["database"] = database;
   app.locals["federationWorker"] = federationWorker;
   app.locals["analyticsBuffer"] = database.analyticsBuffer;
 
@@ -556,9 +557,9 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
       req.path.startsWith("/embed") ||
       req.path.startsWith("/render-artifact") ||
       req.path.startsWith("/editor") ||
-      req.path.startsWith("/morsel") ||
+      req.path.startsWith("/ansatz") ||
       req.path.startsWith("/api/v1/oembed") ||
-      req.path.startsWith("/api/v1/morsels") ||
+      req.path.startsWith("/api/v1/ansatz-snippets") ||
       req.path.startsWith("/static/solutions/") ||
       req.path === "/static/embed.js" ||
       req.path === "/api/v1/embed.js";
@@ -887,9 +888,12 @@ export function createApp(options?: AppOptions | LibraryStorage): express.Expres
   app.use("/api/v1/pscad", optionalAuth, pscadRouter());
   app.use("/api/v1/alm", optionalAuth, almRouter());
   app.use("/git", gitServerRouter(database));
+  const webPublicRoot = path.resolve(API_ROOT, "../web/public");
   app.use("/thumbnails", express.static(path.resolve(API_ROOT, "public/thumbnails")));
   app.use("/avatars", express.static(path.resolve(API_ROOT, "public/avatars")));
+  app.use("/avatars", express.static(path.resolve(webPublicRoot, "avatars")));
   app.use("/banners", express.static(path.resolve(API_ROOT, "public/banners")));
+  app.use("/banners", express.static(path.resolve(webPublicRoot, "banners")));
   app.use("/uploads", express.static(path.resolve(API_ROOT, "uploads")));
 
   if (!isProductionEnv || isExplicitDevOverride) {

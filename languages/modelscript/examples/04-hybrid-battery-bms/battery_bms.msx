@@ -1,0 +1,58 @@
+struct PackConfig {
+  capacityAh: f64;
+  internalResistance: f64;
+  thermalCapJK: f64;
+  coolingConductanceWK: f64;
+  ambientTempC: f64;
+  maxTempC: f64;
+  derateTempC: f64;
+}
+
+function selectBmsMode(soc: f64, tempC: f64, reqCurrentA: f64, cfg: PackConfig): i32 {
+  if (tempC >= cfg.maxTempC) {
+    return 4;
+  }
+  if (soc <= 0.05 && reqCurrentA > 0.0) {
+    return 0;
+  }
+  if (soc >= 0.98 && reqCurrentA < 0.0) {
+    return 0;
+  }
+  if (tempC >= cfg.derateTempC) {
+    return 3;
+  }
+  if (reqCurrentA > 0.0) {
+    return 2;
+  }
+  if (reqCurrentA < 0.0) {
+    return 1;
+  }
+  return 0;
+}
+
+function effectiveCurrent(mode: i32, reqCurrentA: f64): f64 {
+  if (mode == 4 || mode == 0) {
+    return 0.0;
+  }
+  if (mode == 3) {
+    return reqCurrentA * 0.5;
+  }
+  return reqCurrentA;
+}
+
+function simulateBmsCycle(cfg: PackConfig, initSoc: f64, reqCurrentA: f64, dt: f64, steps: i32): f64 {
+  let soc: f64 = initSoc;
+  let tempC: f64 = cfg.ambientTempC;
+  let k: i32 = 0;
+
+  while (k < steps) {
+    let mode: i32 = selectBmsMode(soc, tempC, reqCurrentA, cfg);
+    let current: f64 = effectiveCurrent(mode, reqCurrentA);
+    let qGen: f64 = current * current * cfg.internalResistance;
+    let qCool: f64 = cfg.coolingConductanceWK * (tempC - cfg.ambientTempC);
+    tempC = tempC + ((qGen - qCool) / cfg.thermalCapJK) * dt;
+    soc = soc - (current * dt) / (cfg.capacityAh * 3600.0);
+    k = k + 1;
+  }
+  return tempC;
+}

@@ -1,0 +1,73 @@
+[
+  {
+    "id": "grib-01-surface-2m-temperature",
+    "lang": "grib",
+    "subFormats": ["grib1"],
+    "difficulty": 1,
+    "title": "Surface 2m Air Temperature Regular Lat-Lon Grid",
+    "description": "Single-message WMO GRIB1 descriptor representing a 3x2 regular latitude-longitude surface 2-meter air temperature analysis in Kelvin.",
+    "category": "Numerical Weather Prediction",
+    "tags": ["grib", "grib1", "temperature", "surface", "nwp"],
+    "activeFile": "surface_tmp_2m.grb",
+    "fileNames": ["surface_tmp_2m.grb"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# WMO GRIB1 Surface 2-Meter Air Temperature Analysis\nGRIB edition=1\n  IS {\n    edition = 1\n  }\n  PDS {\n    tableVersion = 2\n    center = 7\n    parameter = TMP\n    levelType = TGL\n    level = 2\n    date = \"2026-07-15T12:00\"\n    decimalScale = 1\n  }\n  GDS {\n    gridType = 0\n    ni = 3\n    nj = 2\n    la1 = 42.0\n    lo1 = -108.0\n    la2 = 38.0\n    lo2 = -100.0\n    di = 4.0\n    dj = 4.0\n  }\n  BDS {\n    bitsPerValue = 16\n    binaryScale = 0\n    referenceValue = 285.0\n    values = [291.4, 294.2, 297.8, 295.1, 298.6, 301.2]\n  }\n7777\n"
+  },
+  {
+    "id": "grib-02-mslp-isobar-field",
+    "lang": "grib",
+    "subFormats": ["grib1"],
+    "difficulty": 2,
+    "title": "Mean Sea-Level Pressure Mid-Latitude Cyclone Field",
+    "description": "GRIB1 mean sea-level pressure (PRMSL) 4x3 synoptic grid depicting a 992 hPa extratropical low-pressure center over the North Atlantic.",
+    "category": "Synoptic Meteorology",
+    "tags": ["grib", "prmsl", "isobar", "cyclone"],
+    "activeFile": "north_atlantic_prmsl.grb",
+    "fileNames": ["north_atlantic_prmsl.grb"],
+    "fileCount": 1,
+    "code": "# North Atlantic Extratropical Low Mean Sea-Level Pressure (Pa)\nGRIB edition=1\n  IS {\n    edition = 1\n  }\n  PDS {\n    tableVersion = 2\n    center = 7\n    parameter = PRMSL\n    levelType = MSL\n    level = 0\n    date = \"2026-11-04T00:00\"\n    decimalScale = 0\n  }\n  GDS {\n    gridType = 0\n    ni = 4\n    nj = 3\n    la1 = 55.0\n    lo1 = -40.0\n    la2 = 45.0\n    lo2 = -25.0\n    di = 5.0\n    dj = 5.0\n  }\n  BDS {\n    bitsPerValue = 16\n    binaryScale = 0\n    referenceValue = 99000.0\n    values = [\n      100800.0, 100250.0, 100400.0, 101100.0,\n      100100.0,  99200.0,  99550.0, 100650.0,\n      101200.0, 100450.0, 100700.0, 101500.0\n    ]\n  }\n7777\n"
+  },
+  {
+    "id": "grib-03-500hpa-height-and-wind",
+    "lang": "grib",
+    "subFormats": ["grib1"],
+    "difficulty": 3,
+    "title": "500 hPa Geopotential Height & Geostrophic Wind Vectors",
+    "description": "Multi-message GRIB1 upper-air synoptic analysis bundling 500 hPa geopotential height (HGT), zonal wind (UGRD), and meridional wind (VGRD) on a shared 3x3 grid.",
+    "category": "Synoptic Meteorology",
+    "tags": ["grib", "500hpa", "geopotential", "wind-vectors", "multi-message"],
+    "activeFile": "upper_air_500hpa.grb",
+    "fileNames": ["upper_air_500hpa.grb"],
+    "fileCount": 1,
+    "code": "# 500 hPa Geopotential Height (gpm)\nGRIB edition=1\n  PDS {\n    tableVersion = 2\n    center = 7\n    parameter = HGT\n    levelType = ISBL\n    level = 500\n    date = \"2026-01-20T12:00\"\n    decimalScale = 0\n  }\n  GDS {\n    gridType = 0\n    ni = 3\n    nj = 3\n    la1 = 50.0\n    lo1 = -105.0\n    la2 = 40.0\n    lo2 = -95.0\n    di = 5.0\n    dj = 5.0\n  }\n  BDS {\n    bitsPerValue = 16\n    binaryScale = 0\n    referenceValue = 5300.0\n    values = [5380, 5350, 5410, 5460, 5430, 5490, 5560, 5540, 5590]\n  }\n7777\n\n# 500 hPa Zonal Wind U-Component (m/s)\nGRIB edition=1\n  PDS {\n    tableVersion = 2\n    center = 7\n    parameter = UGRD\n    levelType = ISBL\n    level = 500\n    date = \"2026-01-20T12:00\"\n    decimalScale = 1\n  }\n  GDS {\n    gridType = 0\n    ni = 3\n    nj = 3\n    la1 = 50.0\n    lo1 = -105.0\n    la2 = 40.0\n    lo2 = -95.0\n    di = 5.0\n    dj = 5.0\n  }\n  BDS {\n    bitsPerValue = 16\n    binaryScale = 0\n    referenceValue = 0.0\n    values = [18.5, 21.0, 19.2, 24.6, 28.4, 26.1, 22.0, 25.5, 23.8]\n  }\n7777\n\n# 500 hPa Meridional Wind V-Component (m/s)\nGRIB edition=1\n  PDS {\n    tableVersion = 2\n    center = 7\n    parameter = VGRD\n    levelType = ISBL\n    level = 500\n    date = \"2026-01-20T12:00\"\n    decimalScale = 1\n  }\n  GDS {\n    gridType = 0\n    ni = 3\n    nj = 3\n    la1 = 50.0\n    lo1 = -105.0\n    la2 = 40.0\n    lo2 = -95.0\n    di = 5.0\n    dj = 5.0\n  }\n  BDS {\n    bitsPerValue = 16\n    binaryScale = 0\n    referenceValue = -20.0\n    values = [-8.4, -2.1, 9.6, -11.2, -3.5, 12.4, -7.8, -1.2, 10.5]\n  }\n7777\n"
+  },
+  {
+    "id": "grib-04-multilevel-vertical-sounding",
+    "lang": "grib",
+    "subFormats": ["grib1"],
+    "difficulty": 4,
+    "title": "Multi-Level Tropospheric Vertical Sounding Profile",
+    "description": "Four-level isobaric GRIB1 stack (850, 700, 500, and 300 hPa) encoding temperature and relative humidity grids for convective instability diagnosis.",
+    "category": "Atmospheric Thermodynamics",
+    "tags": ["grib", "sounding", "isobaric", "humidity", "troposphere"],
+    "activeFile": "vertical_sounding.grb",
+    "fileNames": ["vertical_sounding.grb"],
+    "fileCount": 1,
+    "code": "# 850 hPa Air Temperature (K)\nGRIB edition=1\n  PDS { center = 7, parameter = TMP, levelType = ISBL, level = 850, date = \"2026-05-22T18:00\", decimalScale = 1 }\n  GDS { ni = 2, nj = 2, la1 = 38.0, lo1 = -99.0, la2 = 34.0, lo2 = -95.0, di = 4.0, dj = 4.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 280.0, values = [291.2, 290.5, 293.8, 292.9] }\n7777\n\n# 700 hPa Air Temperature (K)\nGRIB edition=1\n  PDS { center = 7, parameter = TMP, levelType = ISBL, level = 700, date = \"2026-05-22T18:00\", decimalScale = 1 }\n  GDS { ni = 2, nj = 2, la1 = 38.0, lo1 = -99.0, la2 = 34.0, lo2 = -95.0, di = 4.0, dj = 4.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 270.0, values = [281.4, 280.8, 283.1, 282.5] }\n7777\n\n# 500 hPa Air Temperature (K)\nGRIB edition=1\n  PDS { center = 7, parameter = TMP, levelType = ISBL, level = 500, date = \"2026-05-22T18:00\", decimalScale = 1 }\n  GDS { ni = 2, nj = 2, la1 = 38.0, lo1 = -99.0, la2 = 34.0, lo2 = -95.0, di = 4.0, dj = 4.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 250.0, values = [261.2, 260.7, 262.4, 261.9] }\n7777\n\n# 300 hPa Air Temperature (K)\nGRIB edition=1\n  PDS { center = 7, parameter = TMP, levelType = ISBL, level = 300, date = \"2026-05-22T18:00\", decimalScale = 1 }\n  GDS { ni = 2, nj = 2, la1 = 38.0, lo1 = -99.0, la2 = 34.0, lo2 = -95.0, di = 4.0, dj = 4.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 220.0, values = [232.6, 232.1, 233.5, 233.0] }\n7777\n\n# 850 hPa Relative Humidity (%)\nGRIB edition=1\n  PDS { center = 7, parameter = RH, levelType = ISBL, level = 850, date = \"2026-05-22T18:00\", decimalScale = 0 }\n  GDS { ni = 2, nj = 2, la1 = 38.0, lo1 = -99.0, la2 = 34.0, lo2 = -95.0, di = 4.0, dj = 4.0 }\n  BDS { bitsPerValue = 12, binaryScale = 0, referenceValue = 0.0, values = [74, 81, 79, 86] }\n7777\n"
+  },
+  {
+    "id": "grib-05-cyclone-precip-ensemble",
+    "lang": "grib",
+    "subFormats": ["grib1"],
+    "difficulty": 5,
+    "title": "Multi-Forecast-Hour Cyclone Pressure & Precipitation Suite",
+    "description": "Time-sequenced GRIB1 forecast suite tracking a landfalling coastal storm across 00Z, 06Z, and 12Z with mean sea-level pressure, 10m wind, and accumulated precipitation (APCP).",
+    "category": "Numerical Weather Prediction",
+    "tags": ["grib", "forecast", "precipitation", "cyclone", "multi-message"],
+    "activeFile": "cyclone_forecast_suite.grb",
+    "fileNames": ["cyclone_forecast_suite.grb"],
+    "fileCount": 1,
+    "code": "# T+00h Mean Sea-Level Pressure (Pa)\nGRIB edition=1\n  PDS { center = 7, parameter = PRMSL, levelType = MSL, level = 0, date = \"2026-09-12T00:00\", decimalScale = 0 }\n  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 97000.0, values = [100600, 100200, 100500, 100100, 98400, 99900, 100400, 99800, 100700] }\n7777\n\n# T+06h Mean Sea-Level Pressure (Pa) - Storm Moving NW and Deepening\nGRIB edition=1\n  PDS { center = 7, parameter = PRMSL, levelType = MSL, level = 0, date = \"2026-09-12T06:00\", decimalScale = 0 }\n  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 97000.0, values = [99600, 99100, 100100, 98200, 97800, 99600, 100200, 99900, 100900] }\n7777\n\n# T+06h 6-Hour Accumulated Total Precipitation (kg/m^2)\nGRIB edition=1\n  PDS { center = 7, parameter = APCP, levelType = SFC, level = 0, date = \"2026-09-12T06:00\", decimalScale = 1 }\n  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 0.0, values = [18.5, 42.0, 12.4, 54.2, 78.6, 21.0, 9.8, 16.5, 4.2] }\n7777\n\n# T+12h Mean Sea-Level Pressure (Pa) - Post-Landfall Filling\nGRIB edition=1\n  PDS { center = 7, parameter = PRMSL, levelType = MSL, level = 0, date = \"2026-09-12T12:00\", decimalScale = 0 }\n  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 97000.0, values = [98800, 99400, 100400, 99500, 99800, 100600, 100700, 100800, 101100] }\n7777\n\n# T+12h Accumulated Total Precipitation (kg/m^2)\nGRIB edition=1\n  PDS { center = 7, parameter = APCP, levelType = MSL, level = 0, date = \"2026-09-12T12:00\", decimalScale = 1 }\n  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }\n  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 0.0, values = [62.4, 34.8, 8.1, 29.0, 15.2, 5.4, 3.0, 1.8, 0.5] }\n7777\n"
+  }
+]

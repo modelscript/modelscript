@@ -1,0 +1,168 @@
+{
+  "type": "FeatureCollection",
+  "name": "FTTH-Neighborhood-PON",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.985,
+          40.748
+        ]
+      },
+      "properties": {
+        "id": "CO_OLT",
+        "name": "Neighborhood OLT Hub",
+        "node-type": "central-office"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.982,
+          40.7495
+        ]
+      },
+      "properties": {
+        "id": "FDH_OAK",
+        "name": "Oak St Splitter Cabinet",
+        "node-type": "splice-closure"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.98,
+          40.7505
+        ]
+      },
+      "properties": {
+        "id": "ONT_RES1",
+        "name": "Residence Block A",
+        "node-type": "customer-premise"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -73.9805,
+          40.7485
+        ]
+      },
+      "properties": {
+        "id": "ONT_RES2",
+        "name": "Residence Block B",
+        "node-type": "customer-premise"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -73.985,
+            40.748
+          ],
+          [
+            -73.982,
+            40.7495
+          ]
+        ]
+      },
+      "properties": {
+        "id": "FEEDER-72F",
+        "name": "Oak St Feeder",
+        "from": "CO_OLT",
+        "to": "FDH_OAK",
+        "strands": 72,
+        "length": 290,
+        "slack": 20,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -73.982,
+            40.7495
+          ],
+          [
+            -73.98,
+            40.7505
+          ]
+        ]
+      },
+      "properties": {
+        "id": "DIST-12F-A",
+        "name": "Block A Drop",
+        "from": "FDH_OAK",
+        "to": "ONT_RES1",
+        "strands": 12,
+        "length": 195,
+        "slack": 10,
+        "helix-factor": 1.02
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -73.982,
+            40.7495
+          ],
+          [
+            -73.9805,
+            40.7485
+          ]
+        ]
+      },
+      "properties": {
+        "id": "DIST-12F-B",
+        "name": "Block B Drop",
+        "from": "FDH_OAK",
+        "to": "ONT_RES2",
+        "strands": 12,
+        "length": 175,
+        "slack": 10,
+        "helix-factor": 1.02
+      }
+    }
+  ],
+  "splices": [
+    {
+      "id": "SPL-OAK-01",
+      "closure": "FDH_OAK",
+      "tray": 1,
+      "in": "FEEDER-72F",
+      "in-strand": 1,
+      "out": "DIST-12F-A",
+      "out-strand": 1,
+      "type": "fusion",
+      "loss": 0.04
+    },
+    {
+      "id": "SPL-OAK-02",
+      "closure": "FDH_OAK",
+      "tray": 1,
+      "in": "FEEDER-72F",
+      "in-strand": 2,
+      "out": "DIST-12F-B",
+      "out-strand": 1,
+      "type": "fusion",
+      "loss": 0.05
+    }
+  ]
+}

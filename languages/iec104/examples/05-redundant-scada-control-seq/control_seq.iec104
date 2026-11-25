@@ -1,0 +1,5 @@
+station Gateway_Backup_B ca=502 oa=2 port=2404 k=12 w=8 t1=15 t2=10
+point 1001 M_SP_TB_1 Redundancy_Standby_Ready init=1
+point 1002 M_SP_TB_1 Primary_Heartbeat_OK init=1
+point 4001 C_DC_NA_1 Emergency_LoadShed_Cmd init=0
+point 4002 C_IC_NA_1 Backup_General_Interrogation init=0

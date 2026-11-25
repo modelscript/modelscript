@@ -49,6 +49,45 @@ export interface GPUArenaBufferPointers {
   memoryBuffer: ArrayBuffer;
 }
 
+export interface GpuBuffersWasmExports {
+  memory?: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  gpu_serializeBuffers?: (
+    daePtr: number,
+    blockCount: number,
+    rawBlocksPtr: number,
+    stateCount: number,
+    stateVarsPtr: number,
+    derivVarsPtr: number,
+  ) => number;
+  gpu_getStateBufferPtr?: (packPtr: number) => number;
+  gpu_getStateBufferSize?: (packPtr: number) => number;
+  gpu_getNameToVarIdxPtr?: (packPtr: number) => number;
+  gpu_getNameToVarIdxCap?: (packPtr: number) => number;
+  gpu_getBlockCount?: (packPtr: number) => number;
+  gpu_getTotalEqs?: (packPtr: number) => number;
+  gpu_getTotalVars?: (packPtr: number) => number;
+  gpu_getScalarBlockCount?: (packPtr: number) => number;
+  gpu_getLoopBlockCount?: (packPtr: number) => number;
+  gpu_getMaxBlockSize?: (packPtr: number) => number;
+  gpu_getBlockStartsPtr?: (packPtr: number) => number;
+  gpu_getSortedEqsPtr?: (packPtr: number) => number;
+  gpu_getBlockFlagsPtr?: (packPtr: number) => number;
+  gpu_getBlockVarsPtr?: (packPtr: number) => number;
+  gpu_getBlockVarStartsPtr?: (packPtr: number) => number;
+  gpu_getStateVarIndicesPtr?: (packPtr: number) => number;
+  gpu_getDerivVarIndicesPtr?: (packPtr: number) => number;
+  gpu_getStateCount?: (packPtr: number) => number;
+  gpu_initializeStateBuffer?: (daePtr: number, wasmBufPtr: number) => void;
+}
+
+interface ArenaInternalAccess {
+  exports?: GpuBuffersWasmExports;
+  memory?: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  ptr?: number;
+}
+
 /**
  * Serializes an DAEBuilder and its BLT result using the in-WASM GPU buffer kernel.
  * Packs double-single state vectors, CSR execution block plans, and lookup tables
@@ -58,19 +97,20 @@ export function serializeArenaForGPUWasm(
   arena: DAEBuilder,
   bltResult: ArenaBltResult,
   stateVars: Set<number>,
-  wasmExports?: any,
+  wasmExports?: GpuBuffersWasmExports,
 ): GPUArenaBuffers | null {
-  const exports = wasmExports ?? (arena as any).exports ?? getDefaultWasmExports();
+  const arenaInternal = arena as unknown as ArenaInternalAccess;
+  const exports = wasmExports ?? arenaInternal.exports ?? (getDefaultWasmExports() as GpuBuffersWasmExports | null);
   if (!exports || typeof exports.gpu_serializeBuffers !== "function") {
     return null;
   }
 
-  const memory = (exports.memory ?? (arena as any).memory) as WebAssembly.Memory | undefined;
+  const memory = exports.memory ?? arenaInternal.memory;
   if (!memory || !memory.buffer) {
     return null;
   }
 
-  const alloc = (exports.alloc ?? (arena as any).alloc) as ((size: number) => number) | undefined;
+  const alloc = exports.alloc ?? arenaInternal.alloc;
 
   // 1. Pack raw BLT blocks into WASM memory
   // Layout: [b0EqCount, b0VarCount, eq0, eq1, ..., var0, var1, ..., b1EqCount, b1VarCount, ...]
@@ -111,7 +151,7 @@ export function serializeArenaForGPUWasm(
     }
   }
 
-  const daePtr = (arena as any).ptr ?? 0;
+  const daePtr = arenaInternal.ptr ?? 0;
   const packPtr = exports.gpu_serializeBuffers(
     daePtr,
     bltResult.blocks.length,
@@ -124,27 +164,27 @@ export function serializeArenaForGPUWasm(
   if (packPtr === 0) return null;
 
   // 3. Read metadata and construct typed array views
-  const stateBufPtr = exports.gpu_getStateBufferPtr(packPtr);
-  const stateBufSize = exports.gpu_getStateBufferSize(packPtr);
-  const nameToVarIdxPtr = exports.gpu_getNameToVarIdxPtr(packPtr);
-  const nameToVarIdxCap = exports.gpu_getNameToVarIdxCap(packPtr);
+  const stateBufPtr = exports.gpu_getStateBufferPtr!(packPtr);
+  const stateBufSize = exports.gpu_getStateBufferSize!(packPtr);
+  const nameToVarIdxPtr = exports.gpu_getNameToVarIdxPtr!(packPtr);
+  const nameToVarIdxCap = exports.gpu_getNameToVarIdxCap!(packPtr);
 
-  const blockCount = exports.gpu_getBlockCount(packPtr);
-  const totalEqs = exports.gpu_getTotalEqs(packPtr);
-  const totalVars = exports.gpu_getTotalVars(packPtr);
-  const scalarBlockCount = exports.gpu_getScalarBlockCount(packPtr);
-  const loopBlockCount = exports.gpu_getLoopBlockCount(packPtr);
-  const maxBlockSize = exports.gpu_getMaxBlockSize(packPtr);
+  const blockCount = exports.gpu_getBlockCount!(packPtr);
+  const totalEqs = exports.gpu_getTotalEqs!(packPtr);
+  const totalVars = exports.gpu_getTotalVars!(packPtr);
+  const scalarBlockCount = exports.gpu_getScalarBlockCount!(packPtr);
+  const loopBlockCount = exports.gpu_getLoopBlockCount!(packPtr);
+  const maxBlockSize = exports.gpu_getMaxBlockSize!(packPtr);
 
-  const blockStartsPtr = exports.gpu_getBlockStartsPtr(packPtr);
-  const sortedEqsPtr = exports.gpu_getSortedEqsPtr(packPtr);
-  const blockFlagsPtr = exports.gpu_getBlockFlagsPtr(packPtr);
-  const blockVarsPtr = exports.gpu_getBlockVarsPtr(packPtr);
-  const blockVarStartsPtr = exports.gpu_getBlockVarStartsPtr(packPtr);
+  const blockStartsPtr = exports.gpu_getBlockStartsPtr!(packPtr);
+  const sortedEqsPtr = exports.gpu_getSortedEqsPtr!(packPtr);
+  const blockFlagsPtr = exports.gpu_getBlockFlagsPtr!(packPtr);
+  const blockVarsPtr = exports.gpu_getBlockVarsPtr!(packPtr);
+  const blockVarStartsPtr = exports.gpu_getBlockVarStartsPtr!(packPtr);
 
-  const sIndicesPtr = exports.gpu_getStateVarIndicesPtr(packPtr);
-  const dIndicesPtr = exports.gpu_getDerivVarIndicesPtr(packPtr);
-  const returnedStateCount = exports.gpu_getStateCount(packPtr);
+  const sIndicesPtr = exports.gpu_getStateVarIndicesPtr!(packPtr);
+  const dIndicesPtr = exports.gpu_getDerivVarIndicesPtr!(packPtr);
+  const returnedStateCount = exports.gpu_getStateCount!(packPtr);
 
   const varBuffer = new Int32Array(arena.varView());
   const eqBuffer = new Int32Array(arena.eqView());
@@ -186,16 +226,21 @@ export function serializeArenaForGPUWasm(
 /**
  * Direct in-WASM parameter initialization for the stateBuffer.
  */
-export function initializeGPUStateBufferWasm(arena: DAEBuilder, stateBuffer: Float32Array, wasmExports?: any): boolean {
-  const exports = wasmExports ?? (arena as any).exports ?? getDefaultWasmExports();
+export function initializeGPUStateBufferWasm(
+  arena: DAEBuilder,
+  stateBuffer: Float32Array,
+  wasmExports?: GpuBuffersWasmExports,
+): boolean {
+  const arenaInternal = arena as unknown as ArenaInternalAccess;
+  const exports = wasmExports ?? arenaInternal.exports ?? (getDefaultWasmExports() as GpuBuffersWasmExports | null);
   if (!exports || typeof exports.gpu_initializeStateBuffer !== "function") {
     return false;
   }
-  const daePtr = (arena as any).ptr ?? 0;
-  const memory = (exports.memory ?? (arena as any).memory) as WebAssembly.Memory | undefined;
+  const daePtr = arenaInternal.ptr ?? 0;
+  const memory = exports.memory ?? arenaInternal.memory;
   if (!memory) return false;
 
-  const alloc = exports.alloc as (size: number) => number;
+  const alloc = exports.alloc;
   if (!alloc) return false;
 
   const bufBytes = stateBuffer.length * 4;

@@ -15,8 +15,17 @@ import styled from "styled-components";
 import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 
+export interface VideoViewerConfig {
+  url?: string | undefined;
+  src?: string | undefined;
+  title?: string | undefined;
+  fps?: number | string | undefined;
+  frameRate?: number | string | undefined;
+  [key: string]: unknown;
+}
+
 interface VideoViewerProps {
-  viewConfig: any;
+  viewConfig?: VideoViewerConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 

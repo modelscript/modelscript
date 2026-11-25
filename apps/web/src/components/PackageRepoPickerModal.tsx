@@ -4,7 +4,7 @@ import { GitBranchIcon, MarkGithubIcon, PackageIcon, RepoIcon, SearchIcon } from
 import { Dialog, Text, TextInput } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
 import styled from "styled-components";
-import { createArtifactView, getLibraries, getRepos, type LibraryListItem } from "../api";
+import { createArtifactView, getLibraries, getRepos, type LibraryListItem, type SocialRepoRecord } from "../api";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import Box from "./Box";
 import Spinner from "./Spinner";
@@ -62,10 +62,20 @@ const ItemCard = styled.div`
   }
 `;
 
+interface PickerLibraryItem extends LibraryListItem {
+  version?: string | undefined;
+  dialect?: string | undefined;
+}
+
 interface PackageRepoPickerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelect: (result: { id: number; artifactId: number; title: string; type: "package" | "repository" }) => void;
+  onSelect: (result: {
+    id: number | string;
+    artifactId: number | string;
+    title: string;
+    type: "package" | "repository";
+  }) => void;
 }
 
 export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ isOpen, onClose, onSelect }) => {
@@ -73,8 +83,8 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
   const [activeTab, setActiveTab] = useState<"packages" | "repositories">("packages");
   const effectiveTab = hasRepos ? activeTab : "packages";
   const [searchQuery, setSearchQuery] = useState("");
-  const [packages, setPackages] = useState<LibraryListItem[]>([]);
-  const [repos, setRepos] = useState<any[]>([]);
+  const [packages, setPackages] = useState<PickerLibraryItem[]>([]);
+  const [repos, setRepos] = useState<SocialRepoRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [attaching, setAttaching] = useState(false);
 
@@ -122,10 +132,10 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
 
   if (!isOpen) return null;
 
-  const handleSelectPackage = async (pkg: LibraryListItem) => {
+  const handleSelectPackage = async (pkg: PickerLibraryItem) => {
     setAttaching(true);
     try {
-      const pkgVersion = (pkg as any).version || pkg.versions?.[0] || "latest";
+      const pkgVersion = pkg.version || pkg.versions?.[0] || "latest";
       const data = await createArtifactView({
         artifact_type: "package",
         source_type: "registry",
@@ -135,7 +145,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
           version: pkgVersion,
           description: pkg.description,
           license: pkg.license,
-          dialect: (pkg as any).dialect || "modelica",
+          dialect: pkg.dialect || "modelica",
         }),
       });
       onSelect({
@@ -152,7 +162,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
     }
   };
 
-  const handleSelectRepo = async (repo: any) => {
+  const handleSelectRepo = async (repo: SocialRepoRecord) => {
     setAttaching(true);
     try {
       const fullName = `${repo.namespace}/${repo.project}`;
@@ -242,7 +252,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
               </Box>
             ) : (
               packages.map((pkg) => {
-                const pkgVersion = (pkg as any).version || pkg.versions?.[0] || "latest";
+                const pkgVersion = pkg.version || pkg.versions?.[0] || "latest";
                 return (
                   <ItemCard key={`${pkg.name}-${pkgVersion}`} onClick={() => !attaching && handleSelectPackage(pkg)}>
                     <Box display="flex" justifyContent="space-between" alignItems="center">
@@ -271,7 +281,7 @@ export const PackageRepoPickerModal: React.FC<PackageRepoPickerModalProps> = ({ 
                           fontWeight: 600,
                         }}
                       >
-                        ⚡ {((pkg as any).dialect || "modelica").toUpperCase()}
+                        ⚡ {(pkg.dialect || "modelica").toUpperCase()}
                       </span>
                     </Box>
                     {pkg.description && (

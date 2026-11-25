@@ -9,6 +9,7 @@ import type {
   AttachEditableView,
   AttachFlowState,
   AttachIssue,
+  AttachProfile,
   WizardStep,
 } from "./types";
 
@@ -17,11 +18,11 @@ export function fileExtension(name: string): string {
   return match ? match[0] : "";
 }
 
-export function visibleSteps(profile: AnyAttachProfile, draft: unknown): WizardStep<unknown>[] {
-  return profile.steps.filter((s: WizardStep<unknown>) => !s.when || s.when(draft));
+export function visibleSteps<D>(profile: AttachProfile<D>, draft: D): WizardStep<D>[] {
+  return profile.steps.filter((s: WizardStep<D>) => !s.when || s.when(draft));
 }
 
-export function stepIssues(step: WizardStep<unknown>, draft: unknown): AttachIssue[] {
+export function stepIssues<D>(step: WizardStep<D>, draft: D): AttachIssue[] {
   return step.validate ? step.validate(draft) : [];
 }
 
@@ -30,9 +31,9 @@ export function hasBlocking(issues: AttachIssue[]): boolean {
 }
 
 /** Blocking issues across the analysis result and every visible step. */
-export function allBlockingIssues(
-  profile: AnyAttachProfile,
-  draft: unknown,
+export function allBlockingIssues<D>(
+  profile: AttachProfile<D>,
+  draft: D,
   analysisIssues: AttachIssue[],
 ): AttachIssue[] {
   const fromSteps = visibleSteps(profile, draft).flatMap((s) => stepIssues(s, draft));
@@ -40,12 +41,12 @@ export function allBlockingIssues(
 }
 
 /** The wizard is only shown when there is a decision to make or something to report. */
-export function needsWizard(profile: AnyAttachProfile, analysis: AttachAnalysis<unknown>): boolean {
+export function needsWizard<D>(profile: AttachProfile<D>, analysis: AttachAnalysis<D>): boolean {
   return visibleSteps(profile, analysis.draft).length > 0 || hasBlocking(analysis.issues);
 }
 
 /** Clamp a step index to the currently visible steps (visibility can change as the draft changes). */
-export function clampStepIndex(profile: AnyAttachProfile, draft: unknown, index: number): number {
+export function clampStepIndex<D>(profile: AttachProfile<D>, draft: D, index: number): number {
   const count = visibleSteps(profile, draft).length;
   if (count === 0) return 0;
   return Math.max(0, Math.min(index, count - 1));

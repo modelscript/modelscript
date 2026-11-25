@@ -1,0 +1,99 @@
+// 13-Node Distribution Feeder with EV Chargers & BESS Peak Shaving
+clock {
+  timezone EST+5EDT;
+  starttime '2026-09-10 00:00:00';
+  stoptime '2026-09-11 00:00:00';
+}
+
+module powerflow {
+  solver_method NR;
+}
+
+module generators;
+
+object transformer_configuration:600 {
+  name sub_xfmr_cfg;
+  connect_type WYE_WYE;
+  power_rating 5000 kVA;
+  primary_voltage 115000 V;
+  secondary_voltage 4160 V;
+  resistance 0.011;
+  reactance 0.08;
+}
+
+object node {
+  name bus_650;
+  phases ABCN;
+  bustype SWING;
+  nominal_voltage 66395 V;
+}
+
+object node {
+  name bus_632;
+  phases ABCN;
+  nominal_voltage 2401 V;
+}
+
+object load {
+  name bus_671_ev_hub;
+  phases ABCN;
+  nominal_voltage 2401 V;
+  constant_power_A 385+220j kVA;
+  constant_power_B 385+220j kVA;
+  constant_power_C 385+220j kVA;
+
+  object inverter {
+    name bess_inv_671;
+    rated_power 500 kW;
+
+    object battery {
+      name bess_pack_671;
+      battery_capacity 2000 kWh;
+      state_of_charge 0.85;
+    }
+  }
+}
+
+object load {
+  name bus_680_pv_park;
+  phases ABCN;
+  nominal_voltage 2401 V;
+  constant_power_A 210+95j kVA;
+  constant_power_B 210+95j kVA;
+  constant_power_C 210+95j kVA;
+
+  object inverter {
+    name pv_inv_680;
+    rated_power 400 kW;
+
+    object solar {
+      name pv_680;
+      area 2200;
+      efficiency 0.21;
+    }
+  }
+}
+
+object transformer {
+  name sub_xfmr;
+  phases ABCN;
+  from bus_650;
+  to bus_632;
+  configuration sub_xfmr_cfg;
+}
+
+object overhead_line {
+  name line_632_671;
+  phases ABCN;
+  from bus_632;
+  to bus_671_ev_hub;
+  length 2000 ft;
+}
+
+object overhead_line {
+  name line_671_680;
+  phases ABCN;
+  from bus_671_ev_hub;
+  to bus_680_pv_park;
+  length 1000 ft;
+}

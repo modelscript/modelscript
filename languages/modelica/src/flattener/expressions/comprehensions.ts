@@ -8,12 +8,29 @@
  */
 
 import { ExprKind } from "@modelscript/dsl";
-import { BinOp, DAEBuilder, VarType, type QueryDB } from "@modelscript/runtime";
-import type { SyntaxNode } from "../../../src-gen/bindings.js";
+import {
+  BinOp,
+  DAEBuilder,
+  VarType,
+  type DaeDiagnosticRange,
+  type QueryDB,
+  type SymbolEntry,
+} from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../../errors.js";
-import { getFlatteningState } from "../support/state.js";
+import { getFlatteningState, type SourceSpan } from "../support/state.js";
+import type { FlattenerCstNode } from "../types.js";
 import { isAsciiDigitsOnly } from "./cst-utils.js";
 import { getConstVal } from "./eval.js";
+
+function toDiagnosticRange(span: SourceSpan | undefined): DaeDiagnosticRange | undefined {
+  if (!span) return undefined;
+  return {
+    startOffset: span.startOffset,
+    endOffset: span.endOffset,
+    startPosition: span.startPosition as { row: number; column: number } | undefined,
+    endPosition: span.endPosition as { row: number; column: number } | undefined,
+  };
+}
 
 export function cartesianProduct<T>(arrays: T[][]): T[][] {
   return arrays.reduce<T[][]>((acc, curr) => acc.flatMap((c) => curr.map((n) => [...c, n])), [[]]);
@@ -40,9 +57,9 @@ export function reduceNestedValues(values: number[], shape: number[], op: "sum" 
 }
 
 export function getEnclosingClauseRange(
-  node: SyntaxNode | null | undefined,
+  node: FlattenerCstNode | null | undefined,
   dae: DAEBuilder,
-): { startOffset: number; endOffset: number; startPosition?: any; endPosition?: any } | undefined {
+): SourceSpan | undefined {
   const state = getFlatteningState(dae);
   if (state.currentCompClauseRange) {
     return state.currentCompClauseRange;
@@ -60,8 +77,8 @@ export function getEnclosingClauseRange(
     curr = curr.parent;
   }
   if (curr) {
-    const startOffset = curr.startIndex ?? curr.startOffset;
-    const endOffset = curr.endIndex ?? curr.endOffset;
+    const startOffset = curr.startIndex ?? curr.startOffset ?? 0;
+    const endOffset = curr.endIndex ?? curr.endOffset ?? 0;
     return {
       startOffset,
       endOffset,
@@ -72,14 +89,16 @@ export function getEnclosingClauseRange(
   return undefined;
 }
 
+type CstNodeOrList = FlattenerCstNode | readonly (FlattenerCstNode | null | undefined)[] | null | undefined;
+
 export function findArraySubscriptsForIter(
-  exprNode: any,
+  exprNode: CstNodeOrList,
   iterName: string,
   dae: DAEBuilder,
   db?: QueryDB,
   prefix?: string,
   isImplicit = false,
-  clauseNode?: any,
+  clauseNode?: FlattenerCstNode | null,
 ): (number | string)[] {
   interface SubscriptOccurrence {
     baseName: string;
@@ -90,32 +109,37 @@ export function findArraySubscriptsForIter(
   }
   const occurrences: SubscriptOccurrence[] = [];
 
-  const search = (n: any) => {
+  const search = (n: CstNodeOrList) => {
     if (!n) return;
     if (Array.isArray(n)) {
       for (const item of n) search(item);
       return;
     }
+    const node = n as FlattenerCstNode;
     if (!isImplicit && occurrences.length > 0) return;
+    const nodeChildCount = node.childCount ?? 0;
     if (
-      n.type === "component_reference" ||
-      (n.childCount >= 2 && n.child(n.childCount - 1)?.type === "array_subscripts")
+      node.type === "component_reference" ||
+      (nodeChildCount >= 2 && node.child?.(nodeChildCount - 1)?.type === "array_subscripts")
     ) {
-      const subsNode = (n.children || []).find((c: any) => c.type === "array_subscripts") ?? n.child(n.childCount - 1);
+      const subsNode =
+        (node.children || []).find((c) => c.type === "array_subscripts") ?? node.child?.(nodeChildCount - 1);
       if (subsNode && subsNode.type === "array_subscripts") {
         let subIdx = 0;
-        for (let i = 0; i < subsNode.childCount; i++) {
-          const sc = subsNode.child(i);
+        const subsChildCount = subsNode.childCount ?? 0;
+        for (let i = 0; i < subsChildCount; i++) {
+          const sc = subsNode.child?.(i);
+          if (!sc) continue;
           if (sc.type === "subscript" || sc.type === "expression") {
             if (sc.text?.trim() === iterName) {
               let baseName = "";
-              for (const ch of n.children || []) {
+              for (const ch of node.children || []) {
                 if (ch === subsNode || ch.type === "array_subscripts") break;
                 if (ch.type === "identifier" || ch.type === "name") {
                   baseName = baseName ? `${baseName}.${ch.text?.trim()}` : (ch.text?.trim() ?? "");
                 }
               }
-              if (!baseName) baseName = n.child(0)?.text?.trim() ?? "";
+              if (!baseName) baseName = node.child?.(0)?.text?.trim() ?? "";
               if (baseName.startsWith(".")) baseName = baseName.slice(1);
 
               const daePrefixes = [prefix ? `${prefix}.${baseName}[` : `${baseName}[`, `${baseName}[`];
@@ -145,12 +169,14 @@ export function findArraySubscriptsForIter(
               } else if (db) {
                 const state = getFlatteningState(dae);
                 const parts = baseName.split(".");
-                let pkgOrClass: any = null;
+                let pkgOrClass: SymbolEntry | null = null;
                 const currentScopeId =
                   state.currentClassId ?? state.flattener?.currentClassId ?? state.flattener?.currentRootClassId;
                 if (currentScopeId) {
+                  type NameResolver = (name: string) => SymbolEntry | null | undefined;
                   const resolver =
-                    db.query<any>("resolveName", currentScopeId) ?? db.query<any>("resolveSimpleName", currentScopeId);
+                    db.query<NameResolver | null | undefined>("resolveName", currentScopeId) ??
+                    db.query<NameResolver | null | undefined>("resolveSimpleName", currentScopeId);
                   const res = resolver?.(parts[0]!);
                   if (res && (res.kind === "Class" || res.kind === "Package")) {
                     pkgOrClass = res;
@@ -158,7 +184,7 @@ export function findArraySubscriptsForIter(
                 }
                 if (!pkgOrClass) {
                   const matches = db.byName(parts[0]!);
-                  pkgOrClass = matches.find((e: any) => e.kind === "Class" || e.kind === "Package");
+                  pkgOrClass = matches.find((e) => e.kind === "Class" || e.kind === "Package") ?? null;
                 }
                 if (pkgOrClass) {
                   found = true;
@@ -196,15 +222,17 @@ export function findArraySubscriptsForIter(
         return;
       }
     }
-    for (let i = 0; i < n.childCount; i++) search(n.child(i));
+    for (let i = 0; i < nodeChildCount; i++) search(node.child?.(i));
   };
   search(exprNode);
 
   if (isImplicit) {
     const state = getFlatteningState(dae);
+    const diagNode: FlattenerCstNode | null | undefined =
+      clauseNode ?? (Array.isArray(exprNode) ? exprNode[0] : (exprNode as FlattenerCstNode | null | undefined));
     const notFound = occurrences.find((o) => !o.found);
     if (notFound) {
-      const compRange = state.currentCompClauseRange ?? getEnclosingClauseRange(clauseNode ?? exprNode, dae);
+      const compRange = toDiagnosticRange(state.currentCompClauseRange ?? getEnclosingClauseRange(diagNode, dae));
       dae.diagnostics.push({
         severity: "error",
         code: ModelicaErrorCode.VARIABLE_NOT_FOUND.code,
@@ -214,7 +242,7 @@ export function findArraySubscriptsForIter(
       return [];
     }
     if (occurrences.length === 0) {
-      const compRange = state.currentCompClauseRange ?? getEnclosingClauseRange(clauseNode ?? exprNode, dae);
+      const compRange = toDiagnosticRange(state.currentCompClauseRange ?? getEnclosingClauseRange(diagNode, dae));
       dae.diagnostics.push({
         severity: "error",
         code: ModelicaErrorCode.IMPLICIT_ITERATOR_SUBSCRIPT_MISSING.code,
@@ -227,7 +255,7 @@ export function findArraySubscriptsForIter(
     for (let i = 1; i < occurrences.length; i++) {
       const curr = occurrences[i]!;
       if (curr.count !== first.count) {
-        const compRange = state.currentCompClauseRange ?? getEnclosingClauseRange(clauseNode ?? exprNode, dae);
+        const compRange = toDiagnosticRange(state.currentCompClauseRange ?? getEnclosingClauseRange(diagNode, dae));
         dae.diagnostics.push({
           severity: "error",
           code: ModelicaErrorCode.IMPLICIT_ITERATION_DIM_MISMATCH.code,
@@ -248,21 +276,28 @@ export function findArraySubscriptsForIter(
   return occurrences.length > 0 ? occurrences[0]!.subs : [];
 }
 
-export function findImplicitArrayDim(bodyNodes: any[], iterName: string, dae: DAEBuilder): number | null {
+export function findImplicitArrayDim(
+  bodyNodes: readonly (FlattenerCstNode | null | undefined)[],
+  iterName: string,
+  dae: DAEBuilder,
+): number | null {
   let foundDim: number | null = null;
-  const search = (n: any) => {
+  const search = (n: FlattenerCstNode | null | undefined) => {
     if (!n || foundDim !== null) return;
+    const nChildCount = n.childCount ?? 0;
     if (
       n.type === "component_reference" ||
-      (n.childCount >= 2 && n.child(n.childCount - 1)?.type === "array_subscripts")
+      (nChildCount >= 2 && n.child?.(nChildCount - 1)?.type === "array_subscripts")
     ) {
-      const subsNode = (n.children || []).find((c: any) => c.type === "array_subscripts") ?? n.child(n.childCount - 1);
+      const subsNode = (n.children || []).find((c) => c.type === "array_subscripts") ?? n.child?.(nChildCount - 1);
       if (subsNode && subsNode.type === "array_subscripts") {
-        for (let i = 0; i < subsNode.childCount; i++) {
-          const sc = subsNode.child(i);
+        const subsChildCount = subsNode.childCount ?? 0;
+        for (let i = 0; i < subsChildCount; i++) {
+          const sc = subsNode.child?.(i);
+          if (!sc) continue;
           if (sc.type === "subscript" || sc.type === "expression") {
             if (sc.text?.trim() === iterName) {
-              const baseName = n.child(0)?.text?.trim();
+              const baseName = n.child?.(0)?.text?.trim();
               if (baseName) {
                 let count = 0;
                 for (let k = 1; ; k++) {
@@ -282,8 +317,8 @@ export function findImplicitArrayDim(bodyNodes: any[], iterName: string, dae: DA
         }
       }
     }
-    for (let i = 0; i < n.childCount; i++) {
-      search(n.child(i));
+    for (let i = 0; i < nChildCount; i++) {
+      search(n.child?.(i));
     }
   };
   for (const b of bodyNodes) {

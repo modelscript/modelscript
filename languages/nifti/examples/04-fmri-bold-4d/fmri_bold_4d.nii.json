@@ -1,0 +1,22 @@
+{
+  "nifti_version": 1,
+  "sizeof_hdr": 348,
+  "magic": "n+1",
+  "descrip": "3T Gradient-Echo EPI Resting-State fMRI BOLD (TR=2.0s, 240 vols)",
+  "dim": [4, 64, 64, 36, 240, 1, 1, 1],
+  "pixdim": [1.0, 3.0, 3.0, 3.5, 2.0, 0.0, 0.0, 0.0],
+  "datatype": "FLOAT32",
+  "scl_slope": 1.0,
+  "scl_inter": 0.0,
+  "qform_code": 1,
+  "sform_code": 2,
+  "quatern_b": 0.0,
+  "quatern_c": 0.0,
+  "quatern_d": 0.0,
+  "qoffset_x": -96.0,
+  "qoffset_y": -96.0,
+  "qoffset_z": -63.0,
+  "srow_x": [3.0, 0.0, 0.0, -96.0],
+  "srow_y": [0.0, 3.0, 0.0, -96.0],
+  "srow_z": [0.0, 0.0, 3.5, -63.0]
+}

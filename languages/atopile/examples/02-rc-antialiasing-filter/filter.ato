@@ -1,0 +1,19 @@
+from "generics/resistors.ato" import Resistor
+from "generics/capacitors.ato" import Capacitor
+
+module AntiAliasingFilter:
+    signal sig_in
+    signal adc_in
+    signal gnd
+
+    r_series = new Resistor
+    c_shunt = new Capacitor
+
+    r_series.resistance = 1kohm +/- 1%
+    c_shunt.capacitance = 10nF +/- 5%
+
+    sig_in ~> r_series ~> adc_in
+    adc_in ~> c_shunt ~> gnd
+
+    assert r_series.resistance within 980ohm to 1020ohm
+    assert c_shunt.capacitance within 9nF to 11nF

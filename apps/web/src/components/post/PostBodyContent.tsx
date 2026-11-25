@@ -4,27 +4,27 @@ import { BookIcon, CodeIcon, NoteIcon, PackageIcon, PinIcon } from "@primer/octi
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { buildEditorUrlForArtifact, isMultiFileArtifact } from "../../util/editor-routing";
-import { safeJsonParse } from "../../util/json";
-import { isLongFormArticle } from "../../util/notebook";
+import { isLongFormArticle, type NotebookMetadata } from "../../util/notebook";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
+import type { SpatialPin } from "../artifacts/spatial-pin";
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import PostArtifactSlider, { extractShortPostSlides } from "./PostArtifactSlider";
 import type { PostAuthorHeaderProps } from "./PostAuthorHeader";
 import { PostMarkdownContent } from "./PostMarkdownContent";
 import { PostNotebookHeader } from "./PostNotebookHeader";
-import { ContentWarningBox, parseUtcDate } from "./styles";
+import { ContentWarningBox, parsePostMetadata, parseUtcDate, type PostRecord } from "./styles";
 
 export interface PostBodyContentProps {
-  displayPost: any;
+  displayPost: PostRecord;
   isDetailView: boolean;
   isNotebook: boolean;
-  notebookData?: any;
+  notebookData?: NotebookMetadata | null | undefined;
   notebookHeadings: { id?: string; slug?: string; level: number; text: string }[];
   readTimeMinutes: number;
   canEditPost: boolean;
   onOpenEditModal: () => void;
-  onPinCreated: (pin: any) => void;
+  onPinCreated: (pin: SpatialPin) => void;
   showAiDetails?: boolean | undefined;
   setShowAiDetails?: ((show: boolean) => void) | undefined;
   authorHeaderProps?: PostAuthorHeaderProps | undefined;
@@ -33,7 +33,7 @@ export interface PostBodyContentProps {
 export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   displayPost,
   isDetailView,
-  _isNotebook,
+  isNotebook: _isNotebook,
   notebookData,
   notebookHeadings,
   readTimeMinutes,
@@ -45,13 +45,10 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   const navigate = useNavigate();
   const [isNotebookExpanded, setIsNotebookExpanded] = useState(false);
 
-  const parsedMeta =
-    typeof displayPost?.metadata === "string"
-      ? safeJsonParse<Record<string, any>>(displayPost.metadata, {})
-      : displayPost?.metadata || {};
+  const parsedMeta = parsePostMetadata(displayPost?.metadata);
   const contentWarning =
     (typeof displayPost?.content_warning === "string" && displayPost.content_warning.trim()) ||
-    (typeof parsedMeta?.contentWarning === "string" && parsedMeta.contentWarning.trim()) ||
+    (typeof parsedMeta.contentWarning === "string" && parsedMeta.contentWarning.trim()) ||
     (displayPost?.is_sensitive ? "Sensitive content" : "");
   const [cwRevealed, setCwRevealed] = useState(false);
 
@@ -92,7 +89,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   if (isArticle && notebookData && notebookData.cells.length > 0) {
     let previewEndIdx = notebookData.cells.length;
     if (!isDetailView && !isNotebookExpanded) {
-      const firstArtIdx = notebookData.cells.findIndex((c: any) => c.type === "artifact");
+      const firstArtIdx = notebookData.cells.findIndex((c) => c.type === "artifact");
       if (firstArtIdx !== -1 && firstArtIdx + 1 < notebookData.cells.length) {
         previewEndIdx = firstArtIdx + 1;
       } else if (notebookData.cells.length > 2) {
@@ -102,9 +99,9 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
 
     const visibleCells = notebookData.cells.slice(0, previewEndIdx);
     const hiddenCount = notebookData.cells.length - visibleCells.length;
-    const cellsWithFig = visibleCells.map((cell: any, index: number) => {
+    const cellsWithFig = visibleCells.map((cell, index) => {
       if (cell.type !== "markdown") {
-        const figureNum = visibleCells.slice(0, index + 1).filter((c: any) => c.type !== "markdown").length;
+        const figureNum = visibleCells.slice(0, index + 1).filter((c) => c.type !== "markdown").length;
         return { cell, figureNum };
       }
       return { cell, figureNum: 0 };
@@ -118,9 +115,15 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
       isMultiFileArtifact({
         ...primaryArtifactView,
         view_type:
-          primaryArtifactView.view_type || primaryArtifactView.artifact_type || (displayPost as any).artifact_type,
+          primaryArtifactView.view_type || primaryArtifactView.artifact_type || displayPost.artifact_type || undefined,
       }),
     );
+
+    const metaForkId = parsedMeta["forkedFromArtifactId"];
+    const articleForkedFromId =
+      displayPost.forked_from_post_id ||
+      displayPost.forked_from_artifact_id ||
+      (typeof metaForkId === "number" || typeof metaForkId === "string" ? metaForkId : undefined);
 
     return (
       <Box
@@ -154,7 +157,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
         {cwBanner}
 
         {(!contentWarning || cwRevealed) &&
-          cellsWithFig.map(({ cell, figureNum }: { cell: any; figureNum: number }) => {
+          cellsWithFig.map(({ cell, figureNum }) => {
             if (cell.type === "markdown") {
               const shouldTruncateMd =
                 !isDetailView && !isNotebookExpanded && cell.content.length > 520 && notebookData.cells.length === 1;
@@ -196,14 +199,10 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               >
                 <ArtifactViewCard
                   artifactId={cell.artifactId}
-                  initialArtifactView={initialView}
+                  initialArtifactView={initialView ?? undefined}
                   figureNumber={currentFigNum}
                   caption={distinctCaption}
-                  forkedFromId={
-                    (displayPost as any)?.forked_from_post_id ||
-                    (displayPost as any)?.forked_from_artifact_id ||
-                    safeJsonParse<Record<string, any>>((displayPost as any)?.metadata, {})?.["forkedFromArtifactId"]
-                  }
+                  forkedFromId={articleForkedFromId}
                   onPinCreated={onPinCreated}
                 />
               </Box>
@@ -386,8 +385,9 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
                       viewType:
                         primaryArtifactView?.view_type ||
                         primaryArtifactView?.artifact_type ||
-                        (displayPost as any).artifact_type,
-                      viewConfig: primaryArtifactView?.view_config || (displayPost as any).artifact_config,
+                        displayPost.artifact_type ||
+                        undefined,
+                      viewConfig: primaryArtifactView?.view_config || displayPost.artifact_config || undefined,
                       code: combinedSource || (!primaryArtifactId ? displayPost.content || "" : undefined),
                       title: notebookData.title || `Article-${displayPost.id}`,
                       dialect: notebookData.dialect || firstFenceLang || undefined,
@@ -430,13 +430,16 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
   }
 
   const { proseText, slides } = extractShortPostSlides(displayPost, notebookData);
-  const dpObj = displayPost as Record<string, unknown>;
+  const metaForkRaw = parsedMeta["forkedFromArtifactId"];
   const forkedFromId =
-    (dpObj["forked_from_post_id"] as number | undefined) ||
-    (dpObj["forked_from_artifact_id"] as number | undefined) ||
-    (safeJsonParse<Record<string, unknown>>(typeof dpObj["metadata"] === "string" ? dpObj["metadata"] : "", {})?.[
-      "forkedFromArtifactId"
-    ] as number | undefined);
+    (displayPost.forked_from_post_id as number | string | undefined) ||
+    (displayPost.forked_from_artifact_id as number | string | undefined) ||
+    (typeof metaForkRaw === "number" || typeof metaForkRaw === "string" ? metaForkRaw : undefined);
+  const rawSpatialPin = parsedMeta["spatialPin"];
+  const spatialPin =
+    rawSpatialPin && typeof rawSpatialPin === "object" && "fieldName" in rawSpatialPin && "scalarValue" in rawSpatialPin
+      ? (rawSpatialPin as SpatialPin)
+      : undefined;
 
   // Standard Post Body
   return (
@@ -455,7 +458,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
         </Box>
       )}
 
-      {displayPost.metadata?.spatialPin && (
+      {spatialPin && (
         <Box
           mt={2}
           p={2}
@@ -465,7 +468,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
           style={{ cursor: "pointer", display: "inline-block" }}
           onClick={(e) => {
             e.stopPropagation();
-            window.dispatchEvent(new CustomEvent("focus-spatial-pin", { detail: displayPost.metadata.spatialPin }));
+            window.dispatchEvent(new CustomEvent("focus-spatial-pin", { detail: spatialPin }));
           }}
         >
           <span
@@ -481,8 +484,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
               <PinIcon size={12} />
             </span>
             <span>
-              View Pin on <b>{displayPost.metadata.spatialPin.fieldName}</b> (Value:{" "}
-              {displayPost.metadata.spatialPin.scalarValue.toFixed(2)})
+              View Pin on <b>{spatialPin.fieldName}</b> (Value: {spatialPin.scalarValue.toFixed(2)})
             </span>
           </span>
         </Box>
@@ -496,7 +498,7 @@ export const PostBodyContent: React.FC<PostBodyContentProps> = ({
         <Box mt={2} style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
           <ArtifactViewCard
             artifactId={displayPost.artifact_view_id}
-            initialArtifactView={displayPost.artifact_view}
+            initialArtifactView={displayPost.artifact_view ?? undefined}
             forkedFromId={forkedFromId}
             onPinCreated={onPinCreated}
           />

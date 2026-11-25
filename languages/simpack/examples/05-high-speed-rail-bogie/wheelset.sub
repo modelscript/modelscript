@@ -1,0 +1,7 @@
+<simpack_model name="S1002WheelsetSubstructure">
+  <!-- Reusable High-Speed S1002 Wheelset Substructure (.sub) -->
+  <body id="axle_assembly" name="S1002Wheelset" mass="1480.0" ixx="820.0" iyy="140.0" izz="820.0" />
+  <marker id="m_axle_center" body="axle_assembly" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_ground_ref" body="$inertial" x="0.0" y="0.0" z="0.0" />
+  <spring id="rail_contact_equiv" from="m_ground_ref" to="m_axle_center" kx="1.0e5" ky="1.8e7" kz="8.5e7" cx="2000" cy="35000" cz="65000" />
+</simpack_model>

@@ -1,0 +1,12 @@
+{
+  "id": "cif-01-poly-metal-contact",
+  "lang": "cif",
+  "subFormats": ["cif"],
+  "difficulty": 1,
+  "title": "DRC-Clean Polysilicon-Metal Contact Cut",
+  "description": "Caltech Intermediate Form (CIF 2.0) MOSIS SCMOS polysilicon-to-Metal-1 contact cell satisfying all lambda minimum-width design rules (>= 3 lambda).",
+  "category": "IC Mask Primitives",
+  "tags": ["cif", "mosis", "scmos", "contact", "drc-clean"],
+  "activeFile": "contact_cut.cif",
+  "isDefaultStarter": true
+}

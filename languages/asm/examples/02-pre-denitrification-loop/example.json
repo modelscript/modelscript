@@ -1,0 +1,11 @@
+{
+  "id": "asm-02-pre-denitrification-loop",
+  "lang": "asm",
+  "subFormats": ["asm"],
+  "difficulty": 2,
+  "title": "Pre-Denitrification Anoxic-Aerobic Nitrification Loop",
+  "description": "Modified Ludzack-Ettinger (MLE) ASM1 activated sludge configuration pairing an upstream anoxic denitrification tank with an aerated nitrification basin and 2.5x internal nitrate recycle.",
+  "category": "Wastewater Biokinetics",
+  "tags": ["asm", "asm1", "mle", "nitrification", "denitrification"],
+  "activeFile": "mle_nitrification.asm"
+}

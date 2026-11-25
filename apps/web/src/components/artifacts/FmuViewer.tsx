@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CheckIcon, CopyIcon, PlayIcon, SearchIcon, ZapIcon } from "@primer/octicons-react";
 import { Button, Heading, Text, TextInput } from "@primer/react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -366,7 +366,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, []);
 
@@ -540,7 +540,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
     (typeof viewConfig.description === "string" ? viewConfig.description : undefined) ||
     (!isModelDescriptionXml && rawModelDescription ? rawModelDescription : undefined);
 
-  const handleOpenInPlayground = () => {
+  const handleOpenInAnsatzEditor = () => {
     const safeIdent = modelName.replace(/[^A-Za-z0-9_]/g, "_") || "FmuModel";
     const seenSafeNames = new Set<string>();
     const normalizedVars = allVariables
@@ -583,9 +583,9 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
       typeof viewConfig.code === "string" && viewConfig.code.trim()
         ? viewConfig.code
         : `block ${safeIdent} "FMI ${fmiVer} FMU Interface (${viewConfig.guid || "unverified"})"\n${varDecls ? `${varDecls}\n` : ""}end ${safeIdent};\n`;
-    const hash = compressMorselPayload({
+    const hash = compressAnsatzPayload({
       v: 1,
-      lang: "modelica" as any,
+      lang: "modelica",
       code: wrapperCode,
       title: `${safeIdent}.mo`,
     });
@@ -622,7 +622,7 @@ const FmuViewer: React.FC<FmuViewerProps> = ({ viewConfig, isFullScreen = false 
             <Button
               size="small"
               variant="primary"
-              onClick={handleOpenInPlayground}
+              onClick={handleOpenInAnsatzEditor}
               title="Open FMU interface wrapper in Ansatz"
             >
               <DraftingTriangleIcon size={14} />

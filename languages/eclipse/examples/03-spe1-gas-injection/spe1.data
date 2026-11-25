@@ -1,0 +1,72 @@
+-- SPE-1 Three-Phase Black-Oil Gas Injection Benchmark
+RUNSPEC
+TITLE
+  SPE-1 Comparative Solution Project Gas Injection
+/
+
+DIMENS
+  10 10 3 /
+
+FIELD
+OIL
+WATER
+GAS
+DISGAS
+
+START
+  1 'JAN' 2026 /
+
+GRID
+DX
+  300*1000.0 /
+DY
+  300*1000.0 /
+DZ
+  100*20.0 100*30.0 100*50.0 /
+TOPS
+  100*8325.0 /
+PORO
+  300*0.30 /
+PERMX
+  100*500.0 100*50.0 100*200.0 /
+PERMY
+  100*500.0 100*50.0 100*200.0 /
+PERMZ
+  100*50.0 100*10.0 100*25.0 /
+
+PROPS
+INCLUDE
+  'spe1_pvt.inc' /
+
+SOLUTION
+EQUIL
+  8400.0 4800.0 8500.0 0.0 8200.0 0.0 1 0 0 /
+
+PRESSURE
+  300*4800.0 /
+SWAT
+  300*0.12 /
+
+SCHEDULE
+WELSPECS
+  'INJ'  'G1' 1  1  8335.0 'GAS' /
+  'PROD' 'G1' 10 10 8400.0 'OIL' /
+/
+
+COMPDAT
+  'INJ'  1  1  1 1 'OPEN' 1* 24.0 0.5 /
+  'PROD' 10 10 3 3 'OPEN' 1* 22.0 0.5 /
+/
+
+WCONINJE
+  'INJ' 'GAS' 'OPEN' 'RATE' 100000.0 9000.0 /
+/
+
+WCONPROD
+  'PROD' 'OPEN' 'ORAT' 20000.0 1* 1* 1* 1000.0 /
+/
+
+TSTEP
+  30.0 60.0 90.0 180.0 365.0 365.0 /
+
+END

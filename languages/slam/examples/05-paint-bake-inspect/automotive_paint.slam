@@ -1,0 +1,36 @@
+; SLAM II Automated Automotive Paint-Bake-Inspect Line with Rework & Oven Thermal Model
+GEN, PRITSKER, AUTOMOTIVE_PAINT_LINE, 1/1/1979, 1;
+LIMITS, 5, 4, 250;
+CONTINUOUS, 1, 0, 0.05, 0.5, 0.5;
+INTLC, SS(1)=160.0, XX(1)=1.0;
+INITIALIZE, 0.0, 480.0;
+
+; Curing oven temperature control dynamics (C)
+DD(1) = 0.08 * (180.0 * XX(1) - SS(1));
+
+NETWORK;
+  RESOURCE/BOOTH(2), 1;
+  RESOURCE/OVEN(4), 2;
+  RESOURCE/INSPECTOR(2), 3;
+  GATE/CONVEYOR, OPEN, 4;
+
+  CREATE, EXPON(3.0), 0.0, 1;
+  PAINT AWAIT(1), BOOTH/1;
+        ACTIVITY/1, UNFRM(4.0, 5.5), 1.0, RBOOTH;
+  RBOOTH FREE, BOOTH/1;
+  BAKE  AWAIT(2), OVEN/1;
+        ACTIVITY/2, RNORM(10.0, 0.8), 1.0, ROVEN;
+  ROVEN FREE, OVEN/1;
+  INSP  AWAIT(3), INSPECTOR/1;
+        ACTIVITY/3, UNFRM(2.0, 3.0), 1.0, RINSP;
+  RINSP FREE, INSPECTOR/1;
+        ACTIVITY/4, 0.5, 0.12, PAINT;
+        ACTIVITY/5, 0.5, 0.88, SHIP;
+  SHIP  COLCT, INT(1), BODY_LEAD_TIME;
+        TERMINATE;
+
+  OVHI  DETECT, SS(1), XP, 178.0, 0.1;
+        ASSIGN, XX(1)=0.95;
+        TERMINATE;
+ENDNETWORK;
+FIN;

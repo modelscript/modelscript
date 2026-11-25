@@ -12,22 +12,29 @@ import {
 } from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
-import { getPostRevisions } from "../../api/social";
+import { getPostRevisions, type SocialPostRevisionRecord } from "../../api/social";
 import Box from "../Box";
 import { computeSimpleLineDiff } from "./diff";
+
+export interface PostRevisionItem extends SocialPostRevisionRecord {
+  post_id?: string | number | undefined;
+  content_warning?: string | null | undefined;
+  artifact_view_id?: string | number | null | undefined;
+  key_id?: string | null | undefined;
+  isCurrentPublished?: boolean | undefined;
+}
 
 export interface PostRevisionHistoryModalProps {
   postId: string | number;
   displayPost: {
-    id?: number | string;
+    id?: number | string | undefined;
     username: string;
-    display_name?: string | null;
-    content?: string | null;
-    created_at?: string | null;
-    updated_at?: string | null;
-    content_warning?: string | null;
-    artifact_view_id?: string | number | null;
-    [key: string]: any;
+    display_name?: string | null | undefined;
+    content?: string | null | undefined;
+    created_at?: string | null | undefined;
+    updated_at?: string | null | undefined;
+    content_warning?: string | null | undefined;
+    artifact_view_id?: string | number | null | undefined;
   };
   onClose: () => void;
 }
@@ -36,7 +43,7 @@ export { computeSimpleLineDiff, type DiffLine } from "./diff";
 
 export const PostRevisionHistoryModal: React.FC<PostRevisionHistoryModalProps> = ({ postId, displayPost, onClose }) => {
   const [loading, setLoading] = useState(true);
-  const [revisions, setRevisions] = useState<any[]>([]);
+  const [revisions, setRevisions] = useState<PostRevisionItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [selectedRevIndex, setSelectedRevIndex] = useState(0);
   const [showDiff, setShowDiff] = useState(true);
@@ -60,10 +67,10 @@ export const PostRevisionHistoryModal: React.FC<PostRevisionHistoryModalProps> =
             {
               rev: 1,
               post_id: postId,
-              content: displayPost.content,
+              content: displayPost.content || "",
               content_warning: displayPost.content_warning,
               artifact_view_id: displayPost.artifact_view_id,
-              created_at: displayPost.updated_at || displayPost.created_at,
+              created_at: displayPost.updated_at || displayPost.created_at || "",
               isCurrentPublished: true,
             },
           ]);

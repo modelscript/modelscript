@@ -1,0 +1,33 @@
+PROGRAM SPRING_MASS_OSCILLATOR
+  ! Damped spring-mass oscillator with energy conservation procedural block
+  INITIAL
+    CONSTANT m = 2.0         ! Mass (kg)
+    CONSTANT c = 0.6         ! Viscous damping coefficient (N*s/m)
+    CONSTANT k = 18.0        ! Spring stiffness (N/m)
+    CONSTANT x0 = 0.5        ! Initial displacement (m)
+    CONSTANT v0 = 0.0        ! Initial velocity (m/s)
+    CINTERVAL cint = 0.05
+    MAXTERVAL maxt = 0.01
+    ALGORITHM ialg = 5
+  END
+
+  DYNAMIC
+    DERIVATIVE
+      accel = (-k * x - c * v) / m
+      v = INTEG(accel, v0)
+      x = INTEG(v, x0)
+
+      PROCEDURAL(energy = x, v)
+        ke = 0.5 * m * v**2
+        pe = 0.5 * k * x**2
+        energy = ke + pe
+      END
+    END
+
+    TERMT(t .GE. 10.0, 'Oscillator simulation complete')
+  END
+
+  TERMINAL
+    final_energy = 0.5 * m * v**2 + 0.5 * k * x**2
+  END
+END

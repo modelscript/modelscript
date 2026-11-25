@@ -28,10 +28,26 @@ export interface HtmlReportStageInput {
         margin?: number | undefined;
         verificationMethod?: string | undefined;
         location?: { uri?: string | undefined; line?: number | undefined; column?: number | undefined } | undefined;
-        witness?: any;
+        witness?: unknown;
       }[]
     | undefined;
-  details?: any;
+  details?: unknown;
+}
+
+interface StageDetailsView {
+  formattedMatrix?: string | undefined;
+  verdict?:
+    | {
+        kind?: string | undefined;
+        rigor?: string | undefined;
+        reason?: string | undefined;
+      }
+    | undefined;
+}
+
+function asStageDetailsView(details: unknown): StageDetailsView | undefined {
+  if (typeof details !== "object" || details === null) return undefined;
+  return details as StageDetailsView;
 }
 
 export interface HtmlReportInput {
@@ -64,6 +80,7 @@ export function generateHtmlReport(
       const statusClass = st.passed ? (st.certified ? "badge-cert" : "badge-pass") : "badge-fail";
       const statusText = st.passed ? (st.certified ? "CERTIFIED" : "PASSED") : "FAILED";
       const violationCount = st.violations?.length || 0;
+      const details = asStageDetailsView(st.details);
 
       let violationDetails = "";
       if (violationCount > 0) {
@@ -89,11 +106,11 @@ export function generateHtmlReport(
       }
 
       let matrixSection = "";
-      if (st.details?.formattedMatrix) {
+      if (details?.formattedMatrix) {
         matrixSection = `
           <div class="matrix-container">
             <div class="matrix-title">Algorithmic Formal Proof Matrix</div>
-            <pre class="matrix-pre">${escapeHtml(st.details.formattedMatrix)}</pre>
+            <pre class="matrix-pre">${escapeHtml(details.formattedMatrix)}</pre>
           </div>
         `;
       }
@@ -108,12 +125,12 @@ export function generateHtmlReport(
           </div>
           <div class="stage-body">
             ${
-              st.details?.verdict
+              details?.verdict
                 ? `
               <div style="margin-bottom: 8px; font-weight: 500; font-size: 0.9em;">
-                Verdict: <span style="font-family: monospace; text-transform: uppercase;">${escapeHtml(st.details.verdict.kind)}</span>
-                ${st.details.verdict.rigor ? `<span style="opacity: 0.8;"> (rigor: ${escapeHtml(st.details.verdict.rigor)})</span>` : ""}
-                ${st.details.verdict.reason ? `<span style="opacity: 0.8;"> (reason: ${escapeHtml(st.details.verdict.reason)})</span>` : ""}
+                Verdict: <span style="font-family: monospace; text-transform: uppercase;">${escapeHtml(details.verdict.kind ?? "")}</span>
+                ${details.verdict.rigor ? `<span style="opacity: 0.8;"> (rigor: ${escapeHtml(details.verdict.rigor)})</span>` : ""}
+                ${details.verdict.reason ? `<span style="opacity: 0.8;"> (reason: ${escapeHtml(details.verdict.reason)})</span>` : ""}
               </div>
             `
                 : ""

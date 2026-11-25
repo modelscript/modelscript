@@ -18,7 +18,7 @@ describe("Web App Security Hardening & Remediation Verification", () => {
     (globalThis as any).document = dom.window.document;
   });
 
-  describe("Morsel Placement Coordinator", () => {
+  describe("Ansatz Placement Coordinator", () => {
     it("safely handles placement calls when handlers are not registered without throwing", () => {
       assert.doesNotThrow(() => {
         startPlacement({ className: "Modelica.Electrical.Analog.Basic.Resistor" });
@@ -113,12 +113,12 @@ describe("Web App Security Hardening & Remediation Verification", () => {
         "utf-8",
       );
       assert.ok(
-        !composeBoxSrc.includes('import MorselComposeModal from "./MorselComposeModal";'),
-        "ComposeBox must not statically import MorselComposeModal",
+        !composeBoxSrc.includes('import AnsatzComposeModal from "./AnsatzComposeModal";'),
+        "ComposeBox must not statically import AnsatzComposeModal",
       );
       assert.ok(
-        composeBoxSrc.includes('React.lazy(() => import("./MorselComposeModal"))'),
-        "ComposeBox must lazy load MorselComposeModal",
+        composeBoxSrc.includes('React.lazy(() => import("./AnsatzComposeModal"))'),
+        "ComposeBox must lazy load AnsatzComposeModal",
       );
 
       const cardSrc = fs.readFileSync(

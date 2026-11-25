@@ -1,0 +1,11 @@
+{
+  "id": "lsdyna-04-crash-box-axial-crush",
+  "lang": "lsdyna",
+  "subFormats": ["k"],
+  "difficulty": 4,
+  "title": "Automotive Crash Box Axial Crush",
+  "description": "Thin-walled DP600 dual-phase steel automotive front crash box modeled with Belytschko-Tsay shell elements, elasto-plastic hardening, rigid barrier SPC constraints, and modular mesh/material include decks.",
+  "category": "Explicit FEA & Impact",
+  "tags": ["lsdyna", "crashworthiness", "shell", "multi-file"],
+  "activeFile": "crashbox.k"
+}

@@ -56,7 +56,7 @@ import CommitInfoBar from "../components/CommitInfoBar";
 import RepoAboutSidebar from "../components/RepoAboutSidebar";
 import { FileRow, MarkdownBody, StyledBox } from "../styles";
 import {
-  canOpenFileInPlayground,
+  canOpenFileInAnsatzEditor,
   formatBytes,
   getDialectForFileName,
   getFileDomainBadge,
@@ -863,7 +863,7 @@ git push -u origin ${defaultBranch}`}
                   </Box>
 
                   <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
-                    {canOpenFileInPlayground(currentFile) && (
+                    {canOpenFileInAnsatzEditor(currentFile) && (
                       <Button
                         size="small"
                         variant="primary"

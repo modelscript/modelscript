@@ -1,0 +1,11 @@
+{
+  "id": "eclipse-05-full-field-development",
+  "lang": "eclipse",
+  "subFormats": ["data", "grdecl", "inc"],
+  "difficulty": 5,
+  "title": "Full Field Development with Multi-Well Schedule & Faults",
+  "description": "Modular full-field black-oil development simulation combining a master deck with separate GRDECL geometry, three-phase PVT tables, and multi-well production/injection schedule INCLUDE files.",
+  "category": "Reservoir Simulation",
+  "tags": ["eclipse", "full-field", "multi-file", "grdecl", "schedule"],
+  "activeFile": "field_master.data"
+}

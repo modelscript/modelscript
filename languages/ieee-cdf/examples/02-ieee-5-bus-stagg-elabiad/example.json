@@ -1,0 +1,11 @@
+{
+  "id": "ieee-cdf-02-ieee-5-bus-stagg-elabiad",
+  "lang": "ieee-cdf",
+  "subFormats": ["cdf"],
+  "difficulty": 2,
+  "title": "IEEE 5-Bus Stagg and El-Abiad System",
+  "description": "Classic five-bus, seven-branch Stagg & El-Abiad power flow benchmark in IEEE Common Data Format featuring two generation buses (North Slack, South PV) and three interconnected load substations.",
+  "category": "Power Flow & Grid Heritage",
+  "tags": ["ieee-cdf", "5-bus", "stagg-elabiad", "power-flow"],
+  "activeFile": "ieee5.cdf"
+}

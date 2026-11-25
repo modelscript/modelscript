@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CheckIcon, CodeIcon, CopyIcon, GraphIcon, StackIcon, WorkflowIcon } from "@primer/octicons-react";
 import { Button, Text } from "@primer/react";
 import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
@@ -13,10 +13,23 @@ import { CompactTabStrip, FloatingToolBtn, FloatingTools, FooterTabs, useHasFoot
 import { highlightPolyglotLine, InteractiveSvgStage, sanitizeSvgMarkup } from "./PolyglotArtifactViewer";
 
 const MonacoEditor = React.lazy(() => import("@monaco-editor/react"));
-const MorselEditor = React.lazy(() => import("@modelscript/editor/workbench/Morsel"));
+const AnsatzEditor = React.lazy(() => import("@modelscript/editor/workbench/AnsatzEditor"));
+
+export interface ModelicaCodeViewConfig {
+  code?: string | undefined;
+  content?: string | undefined;
+  url?: string | undefined;
+  model?: string | undefined;
+  title?: string | undefined;
+  dialect?: string | undefined;
+  svg?: string | undefined;
+  standalone?: boolean | undefined;
+  artifactId?: string | number | undefined;
+  [key: string]: unknown;
+}
 
 interface ModelicaCodeViewerProps {
-  viewConfig: any;
+  viewConfig?: ModelicaCodeViewConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 
@@ -82,7 +95,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
 
   useEffect(() => {
     if (!isFetchingCode && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [isFetchingCode, code]);
 
@@ -124,20 +137,20 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
   const codeLines = useMemo(() => code.split(/\r?\n/), [code]);
   const hasFooter = useHasFooterSlot();
 
-  const usesMorselRuntime =
+  const usesAnsatzRuntime =
     viewMode === "simulate" ||
     viewMode === "3d" ||
     viewMode === "split" ||
     (viewMode === "diagram" && (!svgMarkup || isInteractiveDiagram || isFullScreen));
 
-  const [hasActivatedMorsel, setHasActivatedMorsel] = useState(usesMorselRuntime);
+  const [hasActivatedAnsatz, setHasActivatedAnsatz] = useState(usesAnsatzRuntime);
   useEffect(() => {
-    if (usesMorselRuntime) {
-      setHasActivatedMorsel(true);
+    if (usesAnsatzRuntime) {
+      setHasActivatedAnsatz(true);
     }
-  }, [usesMorselRuntime]);
+  }, [usesAnsatzRuntime]);
 
-  const morselInitialView =
+  const ansatzInitialView =
     viewMode === "simulate"
       ? "simulation"
       : viewMode === "3d"
@@ -336,9 +349,9 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
                 variant="primary"
                 leadingVisual={DraftingTriangleIcon}
                 onClick={() => {
-                  const hash = compressMorselPayload({
+                  const hash = compressAnsatzPayload({
                     v: 1,
-                    lang: dialect as any,
+                    lang: dialect,
                     code,
                     title,
                   });
@@ -354,12 +367,12 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
       )}
 
       <Box flex={1} style={{ minHeight: "220px", height: "100%", overflow: "auto", position: "relative" }}>
-        {hasActivatedMorsel && (
+        {hasActivatedAnsatz && (
           <div
             style={{
               width: "100%",
               height: "100%",
-              display: usesMorselRuntime ? "block" : "none",
+              display: usesAnsatzRuntime ? "block" : "none",
             }}
           >
             {isFetchingCode && !inlineCode && !fetchedCode ? (
@@ -380,12 +393,12 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
                   </Box>
                 }
               >
-                <MorselEditor
+                <AnsatzEditor
                   dataUrl={null}
                   initialCode={code}
                   embed={true}
                   initialDialect={dialect}
-                  initialView={morselInitialView}
+                  initialView={ansatzInitialView}
                   simulateTriggerCount={viewMode === "simulate" || viewMode === "3d" ? 1 : undefined}
                   showParameterRibbon={true}
                   hideFloatingDock={true}
@@ -395,7 +408,7 @@ const ModelicaCodeViewer: React.FC<ModelicaCodeViewerProps> = ({ viewConfig, isF
             )}
           </div>
         )}
-        {!usesMorselRuntime &&
+        {!usesAnsatzRuntime &&
           (viewMode === "diagram" && svgMarkup ? (
             <InteractiveSvgStage svgMarkup={svgMarkup} isFullScreen={isFullScreen} />
           ) : !isFullScreen ? (

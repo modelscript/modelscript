@@ -1,0 +1,12 @@
+{
+  "id": "modelscript-01-typed-beam-stress",
+  "lang": "modelscript",
+  "subFormats": ["msx"],
+  "difficulty": 1,
+  "title": "Typed Cantilever Beam Stress Calculator",
+  "description": "Statically typed ModelScript structural calculation computing bending moment, section modulus, tip deflection, and safety factor for a cantilever beam.",
+  "category": "Structural Mechanics",
+  "tags": ["modelscript", "beam", "stress", "structs", "typed"],
+  "activeFile": "beam_stress.msx",
+  "isDefaultStarter": true
+}

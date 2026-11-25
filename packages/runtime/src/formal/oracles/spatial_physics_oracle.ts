@@ -742,8 +742,8 @@ export class SpatialPhysicsOracle implements TheoryOracle {
     }
   }
 
-  public getModel(): Record<string, any> {
-    const stressStatus: Record<string, any> = {};
+  public getModel(): Record<string, unknown> {
+    const stressStatus: Record<string, unknown> = {};
     for (const [name, spec] of this.stressSpecs.entries()) {
       const sf = spec.safetyFactor ?? 1.0;
       const allowable = spec.yieldStrengthPa / sf;
@@ -756,7 +756,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       };
     }
 
-    const deflectionStatus: Record<string, any> = {};
+    const deflectionStatus: Record<string, unknown> = {};
     for (const [name, spec] of this.deflectionSpecs.entries()) {
       deflectionStatus[name] = {
         maxDisplacementMeters: spec.maxDisplacementMeters,
@@ -765,7 +765,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       };
     }
 
-    const fsiStatus: Record<string, any> = {};
+    const fsiStatus: Record<string, unknown> = {};
     for (const [name, spec] of this.fsiSpecs.entries()) {
       fsiStatus[name] = {
         fluidForce: spec.fluidForce,
@@ -774,7 +774,7 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       };
     }
 
-    const solidStatus: Record<string, any> = {};
+    const solidStatus: Record<string, unknown> = {};
     for (const [name, spec] of this.solidSpecs.entries()) {
       solidStatus[name] = {
         isWatertight: spec.isWatertight,
@@ -820,13 +820,14 @@ export class SpatialPhysicsOracle implements TheoryOracle {
       if (l.args.includes(entity)) return true;
       for (const a of l.args) {
         if (a && typeof a === "object") {
+          const obj = a as Record<string, unknown>;
           if (
-            a.partName === entity ||
-            a.interfaceName === entity ||
-            a.solidName === entity ||
-            a.connectionName === entity ||
-            a.sourcePort === entity ||
-            a.targetPort === entity
+            obj["partName"] === entity ||
+            obj["interfaceName"] === entity ||
+            obj["solidName"] === entity ||
+            obj["connectionName"] === entity ||
+            obj["sourcePort"] === entity ||
+            obj["targetPort"] === entity
           ) {
             return true;
           }

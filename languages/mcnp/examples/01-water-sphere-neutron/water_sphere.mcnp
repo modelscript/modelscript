@@ -1,0 +1,16 @@
+14.1 MeV Point Neutron Source in 30 cm Light-Water Sphere
+C Block 1: Cell Cards
+1 1 -1.00 -1 IMP:N=1 VOL=113097.3 $ Light water moderator sphere
+2 0        1 IMP:N=0              $ External void graveyard
+
+C Block 2: Surface Cards
+1 SO 30.0 $ Outer water sphere radius (cm)
+
+C Block 3: Data Cards
+MODE N
+M1 1001.80c 2.0 8016.80c 1.0
+MT1 lwtr.01t
+SDEF POS=0 0 0 ERG=14.1 PAR=N
+F4:N 1
+E4 1.0e-7 1.0e-4 0.1 1.0 14.2
+NPS 10000

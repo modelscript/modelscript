@@ -1,0 +1,12 @@
+{
+  "id": "mps-01-production-mix-lp",
+  "lang": "mps",
+  "subFormats": ["mps", "lp"],
+  "difficulty": 1,
+  "title": "Two-Product Manufacturing Production Mix LP",
+  "description": "Classic two-variable linear program in standard MPS format maximizing manufacturing margin subject to machining and assembly hour capacities.",
+  "category": "Linear Programming",
+  "tags": ["mps", "lp", "production-mix"],
+  "activeFile": "production_mix.mps",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "rinex-04-kinematic-rover-trajectory",
+  "lang": "rinex",
+  "subFormats": ["rinex-2.11-obs", "rinex-2.11-nav"],
+  "difficulty": 4,
+  "title": "Multi-Epoch 1 Hz Kinematic Rover Trajectory",
+  "description": "Four-epoch 1 Hz kinematic GPS rover RINEX v2.11 dataset paired with broadcast ephemeris for vehicle trajectory and Doppler velocity estimation.",
+  "category": "Kinematic GNSS",
+  "tags": ["rinex", "kinematic", "rover", "trajectory", "1hz"],
+  "activeFile": "rover.obs"
+}

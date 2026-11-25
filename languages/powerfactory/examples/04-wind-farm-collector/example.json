@@ -1,0 +1,11 @@
+{
+  "id": "powerfactory-04-wind-farm-collector",
+  "lang": "powerfactory",
+  "subFormats": ["dgs"],
+  "difficulty": 4,
+  "title": "Offshore Wind Farm 33/220 kV Collector Grid",
+  "description": "180 MW offshore wind collector network with dual 33 kV subsea array strings, offshore substation transformer, and 220 kV export cable to shore.",
+  "category": "Renewable Integration",
+  "tags": ["powerfactory", "wind-farm", "collector-grid", "offshore"],
+  "activeFile": "wind_collector.dgs"
+}

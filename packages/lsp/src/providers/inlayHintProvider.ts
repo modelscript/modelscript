@@ -36,9 +36,9 @@ export function registerInlayHintProvider(context: LspContext) {
 
       const fileIndex =
         plugin?.workspaceIndex?.getFileIndex?.(uri) ??
-        (plugin ? context.workspaceManager.getWorkspaceIndex(plugin.id)?.getFileIndex(uri) : undefined) ??
-        context.workspaceManager.getWorkspaceIndex("modelica")?.getFileIndex(uri) ??
-        context.workspaceManager.getWorkspaceIndex("sysml2")?.getFileIndex(uri);
+        (plugin ? context.workspaceManager.getWorkspaceIndex(plugin.id)?.getFileIndex?.(uri) : undefined) ??
+        context.workspaceManager.getWorkspaceIndex("modelica")?.getFileIndex?.(uri) ??
+        context.workspaceManager.getWorkspaceIndex("sysml2")?.getFileIndex?.(uri);
 
       if (!fileIndex) return hints;
 

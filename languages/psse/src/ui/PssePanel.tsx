@@ -184,9 +184,9 @@ export const PssePanel: React.FC<LanguagePanelProps> = ({
             {mode !== "artifact" && computed.parsed && (host.exportFile || host.onUpdateProjectFile) && (
               <PanelButton onClick={handleExportModelica}>Export Modelica</PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "psse", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "psse", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

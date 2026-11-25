@@ -1,0 +1,19 @@
+Meteorology: Design_Storm_72hr
+  Unit System: Metric
+  Precipitation Method: Gage Weights
+End:
+
+Subbasin: Upper Forest
+  Gage: HighlandGage
+  Depth: 165.0
+End:
+
+Subbasin: Central Farmland
+  Gage: ValleyGage
+  Depth: 142.0
+End:
+
+Subbasin: Lower Valley
+  Gage: ValleyGage
+  Depth: 138.0
+End:

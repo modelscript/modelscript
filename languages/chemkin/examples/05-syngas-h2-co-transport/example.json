@@ -1,0 +1,11 @@
+{
+  "id": "chemkin-05-syngas-h2-co-transport",
+  "lang": "chemkin",
+  "subFormats": ["inp", "dat"],
+  "difficulty": 5,
+  "title": "Syngas H2/CO Elementary Kinetics with Transport Database",
+  "description": "Complete wet syngas (H2/CO/O2/N2) elementary combustion mechanism including HCO radical pathways, pressure-dependent third-body reactions, NASA-7 therm.dat, and Lennard-Jones tran.dat molecular transport database.",
+  "category": "Combustion & Chemical Kinetics",
+  "tags": ["chemkin", "syngas", "transport", "multi-file"],
+  "activeFile": "syngas_chem.inp"
+}

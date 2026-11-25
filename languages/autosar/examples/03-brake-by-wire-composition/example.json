@@ -1,0 +1,12 @@
+{
+  "id": "autosar-03-brake-by-wire-composition",
+  "lang": "autosar",
+  "subFormats": ["arxml"],
+  "difficulty": 3,
+  "title": "Brake-by-Wire Multi-SWC Composition",
+  "description": "Multi-file AUTOSAR Brake-by-Wire architecture splitting shared port interfaces, pedal force sensor SWC, brake torque controller SWC, and the assembly composition across four ARXML files.",
+  "category": "Automotive Safety Systems",
+  "tags": ["brake-by-wire", "asil-d", "arxml", "multi-file"],
+  "activeFile": "Composition.arxml",
+  "fileOrder": ["Composition.arxml", "Interfaces.arxml", "SensorSwc.arxml", "BrakeCtrlSwc.arxml"]
+}

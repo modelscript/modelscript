@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DNP3DeviceProfile xmlns="http://www.dnp.org/DNP3/DeviceProfile/2010" id="SUBSTATION_B_OUTSTATION">
+  <DeviceIdentity>
+    <Vendor>ABB</Vendor>
+    <DeviceName>RTU560 Substation South BESS Controller</DeviceName>
+    <Version>12.6.0</Version>
+  </DeviceIdentity>
+  <CommunicationSettings>
+    <OutstationAddress>502</OutstationAddress>
+    <MasterAddress>1</MasterAddress>
+  </CommunicationSettings>
+  <DNP3PointList>
+    <BinaryInputs>
+      <BinaryInput index="0" name="BESS_INVERTER_ONLINE" class="1" normalState="1"/>
+      <BinaryInput index="1" name="TIE_SOUTH_CB_CLOSED" class="1" normalState="1"/>
+    </BinaryInputs>
+    <BinaryOutputs>
+      <BinaryOutput index="0" name="TIE_SOUTH_TRIP"/>
+    </BinaryOutputs>
+    <AnalogInputs>
+      <AnalogInput index="0" name="BESS_POWER_MW" class="2" deadband="0.5" mult="0.1" offset="0.0" units="MW" min="-100" max="100"/>
+      <AnalogInput index="1" name="BESS_SOC_PCT" class="2" deadband="0.5" mult="0.1" offset="0.0" units="%" min="0" max="100"/>
+    </AnalogInputs>
+    <AnalogOutputs>
+      <AnalogOutput index="0" name="BESS_POWER_SETPOINT_MW" units="MW" min="-100" max="100"/>
+    </AnalogOutputs>
+    <Counters>
+      <Counter index="0" name="BESS_DISCHARGE_MWH" class="3" units="MWh"/>
+    </Counters>
+  </DNP3PointList>
+</DNP3DeviceProfile>

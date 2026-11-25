@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { ComponentDefaultTransform } from "@modelscript/cad";
+import type { CadDynamicBinding, ComponentDefaultTransform } from "@modelscript/cad";
 import {
   createMslGridSurfaceMesh,
   createMslPipeSurfaceMesh,
@@ -10,6 +10,7 @@ import {
   extractArenaVisualizers,
   type ExtractedVisualizerComponent,
   type ProceduralMeshPayload,
+  type VisualizerArenaLike,
 } from "./visualizers.js";
 
 export {
@@ -23,10 +24,19 @@ export {
   type ProceduralMeshPayload,
 };
 
+export type ModelicaCadDynamicBinding =
+  CadDynamicBinding | { property: string; variable: string; value?: number | undefined };
+
+export interface ModelicaCadContextLike {
+  flattenArena?:
+    | ((targetClassName: string, targetSymbolId?: number, uri?: string) => VisualizerArenaLike | null | undefined)
+    | undefined;
+}
+
 export interface ModelicaCadComponent {
   name: string;
   cad: string;
-  dynamicBindings: any[];
+  dynamicBindings: ModelicaCadDynamicBinding[];
   shapeType?: string | undefined;
   defaults?: ComponentDefaultTransform | undefined;
   proceduralMesh?: ProceduralMeshPayload | undefined;
@@ -37,17 +47,19 @@ export interface ModelicaCadComponent {
  * from a Modelica model using linear memory arena flattening.
  */
 export function extractModelicaCadComponents(
-  sharedContext: any,
+  sharedContext: ModelicaCadContextLike | VisualizerArenaLike | null | undefined,
   targetClassName: string,
   targetSymbolId?: number,
   uri?: string,
 ): ModelicaCadComponent[] {
   if (!sharedContext || !targetClassName) return [];
 
-  const arena =
-    typeof sharedContext.flattenArena === "function"
+  const arena: VisualizerArenaLike | null | undefined =
+    "flattenArena" in sharedContext && typeof sharedContext.flattenArena === "function"
       ? sharedContext.flattenArena(targetClassName, targetSymbolId, uri)
-      : sharedContext;
+      : "varCount" in sharedContext
+        ? sharedContext
+        : null;
   if (!arena) return [];
 
   const data: ModelicaCadComponent[] = [];
@@ -55,22 +67,22 @@ export function extractModelicaCadComponents(
 
   // 1. Explicit `annotation(CAD(...))` variables
   for (let i = 0; i < arena.varCount; i++) {
-    if (arena.isVarRemoved(i)) continue;
-    const cad = arena.getVarCadAnnotation(i);
+    if (arena.isVarRemoved?.(i)) continue;
+    const cad = arena.getVarCadAnnotation?.(i);
     if (cad) {
       const varName = arena.getVarName(i);
       const prefix = `${varName}.`;
       const bindings: { property: string; variable: string; value?: number | undefined }[] = [];
 
       for (let j = 0; j < arena.varCount; j++) {
-        if (arena.isVarRemoved(j)) continue;
+        if (arena.isVarRemoved?.(j)) continue;
         const subName = arena.getVarName(j);
         if (subName.startsWith(prefix)) {
           const prop = subName.slice(prefix.length);
           bindings.push({
             property: prop,
             variable: subName,
-            value: arena.getVarStartValue(j),
+            value: arena.getVarStartValue?.(j),
           });
         }
       }

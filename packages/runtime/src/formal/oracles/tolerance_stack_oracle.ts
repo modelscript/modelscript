@@ -313,8 +313,8 @@ export class ToleranceStackOracle implements TheoryOracle {
     }
   }
 
-  public getModel(): Record<string, any> {
-    const model: Record<string, any> = {};
+  public getModel(): Record<string, unknown> {
+    const model: Record<string, unknown> = {};
     for (const [chainId, chain] of this.chains.entries()) {
       model[chainId] = this.calculateChain(chain);
     }

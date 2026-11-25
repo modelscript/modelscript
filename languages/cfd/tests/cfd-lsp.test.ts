@@ -183,11 +183,11 @@ OUTLET_MASS_FLOW= 9.8
     assert.ok(solveRes.liftN > 0, "Expected positive lift force");
   });
 
-  test("parses Morsel defaultCode and OpenFOAM dictionaries via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
+  test("parses Ansatz defaultCode and OpenFOAM dictionaries via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
     const { getCfdWasmParser } = await import("../src/wasm-loader.js");
     const parser = getCfdWasmParser();
 
-    const morselDefaultCode = `% SU2 Compressible Flow Configuration
+    const ansatzDefaultCode = `% SU2 Compressible Flow Configuration
 SOLVER= EULER
 MATH_PROBLEM= DIRECT
 MACH_NUMBER= 0.8
@@ -196,7 +196,7 @@ FREESTREAM_PRESSURE= 101325.0
 FREESTREAM_TEMPERATURE= 288.15
 MESH_FILENAME= mesh_naca0012.su2
 `;
-    const su2Tree = parser.parse(morselDefaultCode);
+    const su2Tree = parser.parse(ansatzDefaultCode);
     assert.ok(su2Tree?.rootNode);
     assert.equal(su2Tree.rootNode.hasError, false);
 

@@ -1,0 +1,7 @@
+# Transient Storage Package
+BEGIN GRIDDATA
+  SS
+    CONSTANT 1.0e-5
+  SY
+    CONSTANT 0.22
+END GRIDDATA

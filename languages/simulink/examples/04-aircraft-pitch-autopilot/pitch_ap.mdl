@@ -1,0 +1,115 @@
+Model {
+  Name "AircraftPitchAutopilot"
+  System {
+    Name "AircraftPitchAutopilot"
+    Block {
+      BlockType Constant
+      Name "ThetaCmd"
+      SID "1"
+      Value 0.10
+    }
+    Block {
+      BlockType Sum
+      Name "ThetaError"
+      SID "2"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Gain
+      Name "KpTheta"
+      SID "3"
+      Gain 4.5
+    }
+    Block {
+      BlockType Sum
+      Name "RateDamperSum"
+      SID "4"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Gain
+      Name "KqDamper"
+      SID "5"
+      Gain 1.2
+    }
+    Block {
+      BlockType Gain
+      Name "ElevatorEffectiveness"
+      SID "6"
+      Gain 3.8
+    }
+    Block {
+      BlockType Integrator
+      Name "PitchRateQ"
+      SID "7"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Integrator
+      Name "PitchAngleTheta"
+      SID "8"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Scope
+      Name "PitchScope"
+      SID "9"
+    }
+    Line {
+      SrcBlock "ThetaCmd"
+      SrcPort 1
+      DstBlock "ThetaError"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "ThetaError"
+      SrcPort 1
+      DstBlock "KpTheta"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "KpTheta"
+      SrcPort 1
+      DstBlock "RateDamperSum"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "RateDamperSum"
+      SrcPort 1
+      DstBlock "ElevatorEffectiveness"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "ElevatorEffectiveness"
+      SrcPort 1
+      DstBlock "PitchRateQ"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "PitchRateQ"
+      SrcPort 1
+      DstBlock "PitchAngleTheta"
+      DstPort 1
+      Branch {
+        DstBlock "KqDamper"
+        DstPort 1
+      }
+    }
+    Line {
+      SrcBlock "KqDamper"
+      SrcPort 1
+      DstBlock "RateDamperSum"
+      DstPort 2
+    }
+    Line {
+      SrcBlock "PitchAngleTheta"
+      SrcPort 1
+      DstBlock "PitchScope"
+      DstPort 1
+      Branch {
+        DstBlock "ThetaError"
+        DstPort 2
+      }
+    }
+  }
+}

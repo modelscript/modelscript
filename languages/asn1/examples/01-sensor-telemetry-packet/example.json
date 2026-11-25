@@ -1,0 +1,12 @@
+{
+  "id": "asn1-01-sensor-telemetry-packet",
+  "lang": "asn1",
+  "subFormats": ["x680"],
+  "difficulty": 1,
+  "title": "Industrial Sensor Telemetry Packet Schema",
+  "description": "Clean ASN.1 X.680 module defining an industrial temperature and pressure telemetry packet using SEQUENCE, constrained INTEGER, REAL, and PrintableString.",
+  "category": "Industrial Telemetry",
+  "tags": ["asn1", "x680", "telemetry", "sequence", "iot"],
+  "activeFile": "sensor_telemetry.asn",
+  "isDefaultStarter": true
+}

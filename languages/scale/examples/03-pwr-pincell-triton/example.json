@@ -1,0 +1,11 @@
+{
+  "id": "scale-03-pwr-pincell-triton",
+  "lang": "scale",
+  "subFormats": ["triton", "depletion"],
+  "difficulty": 3,
+  "title": "PWR 17x17 Pin-Cell Depletion (TRITON)",
+  "description": "SCALE TRITON 2D lattice physics and depletion model of a 17x17 PWR UO2 fuel pin cell with Zircaloy-4 cladding and reflective mirror boundaries.",
+  "category": "Nuclear Reactor Physics",
+  "tags": ["scale", "triton", "pwr", "pincell", "depletion"],
+  "activeFile": "pwr_pincell.scale"
+}

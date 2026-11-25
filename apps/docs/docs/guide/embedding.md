@@ -186,7 +186,7 @@ Every ModelScript post (`https://modelscript.org/p/:id`) includes standard auto-
 
 ### Direct oEmbed Query
 
-Clients can query the oEmbed endpoint directly using either a post URL or a morsel permalink hash (`#m=...`):
+Clients can query the oEmbed endpoint directly using either a post URL or a ansatz permalink hash (`#m=...`):
 
 ```bash
 curl "https://api.modelscript.org/api/v1/oembed?url=https%3A%2F%2Fmodelscript.org%2F%23m%3DeJy...&maxwidth=800&format=json"

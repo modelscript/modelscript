@@ -1,0 +1,11 @@
+{
+  "id": "apdl-02-parametric-truss-bridge",
+  "lang": "apdl",
+  "subFormats": ["apdl"],
+  "difficulty": 2,
+  "title": "Parametric 2D Warren Truss Bridge",
+  "description": "Parametric 2D structural steel truss bridge built with APDL *DO loops and LINK180 spar elements, pinned-roller bridge abutment supports, and mid-span deck point loads.",
+  "category": "Structural & Thermal FEA",
+  "tags": ["apdl", "truss", "link180", "parametric"],
+  "activeFile": "truss_bridge.apdl"
+}

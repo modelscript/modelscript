@@ -1,0 +1,11 @@
+{
+  "id": "endf6-02-c12-graphite-moderator",
+  "lang": "endf6",
+  "subFormats": ["endf-6"],
+  "difficulty": 2,
+  "title": "Carbon-12 Graphite Moderator Total & Elastic Cross Sections",
+  "description": "ENDF-6 tape for C-12 (MAT=625) combining MF=1/MT=451 descriptive directory with physically consistent MF=3 total (MT=1) and elastic (MT=2) neutron cross sections.",
+  "category": "Reactor Physics",
+  "tags": ["endf6", "carbon-12", "moderator", "mf1", "mf3"],
+  "activeFile": "c12_moderator.endf"
+}

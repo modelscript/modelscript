@@ -22,10 +22,18 @@ import { buildCitationFromPost } from "../../util/citations";
 import AnimatedCount from "../AnimatedCount";
 import Box from "../Box";
 import { CitationModal } from "../citations/CitationModal";
-import { ActionButton, MenuButton, ViewsLink, formatFullTimestamp, formatNumber, parseUtcDate } from "./styles";
+import {
+  ActionButton,
+  MenuButton,
+  ViewsLink,
+  formatFullTimestamp,
+  formatNumber,
+  parseUtcDate,
+  type PostRecord,
+} from "./styles";
 
 export interface PostActionsBarProps {
-  displayPost: any;
+  displayPost: PostRecord;
   reposted: boolean;
   repostCount: number;
   liked: boolean;

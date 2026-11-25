@@ -7,8 +7,10 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import {
-  buildPodiumSpatialPlane,
+  buildDeskSpatialPlane,
   clampNumber,
+  DEFAULT_DESK_SCALE,
+  resolveDeskLayout,
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
   ROTUNDA_BOARD_TEX_OFFSET_X,
@@ -26,6 +28,18 @@ export interface MultiplayerPresenceProps {
   bridge: SpatialSurfaceBridge;
   podiumTiltDeg: number;
   plinthCenter: [number, number, number];
+  /** Live desk size multiplier (must match `DraftingPodium`'s `deskScale`). */
+  deskScale?: number | undefined;
+  /** Live calibrated desk height (must match `DraftingPodium`'s `deskHeightY`). */
+  deskHeightY?: number | null | undefined;
+  /** Uniform plinth root scale for the active scale mode (hero ≈ 4.1) used for plinth laser targets. */
+  plinthScale?: number | undefined;
+}
+
+interface PeerDeskContext {
+  deskScale: number;
+  deskHeightY: number | null;
+  plinthScale: number;
 }
 
 const ROTUNDA_FOCAL_Z = -1.55;
@@ -116,6 +130,7 @@ function resolvePeerLaserTarget(
   bridge: SpatialSurfaceBridge,
   podiumTiltDeg: number,
   plinthCenter: [number, number, number],
+  desk: PeerDeskContext = { deskScale: DEFAULT_DESK_SCALE, deskHeightY: null, plinthScale: 1 },
 ): { target: [number, number, number]; onPodium: boolean } {
   if (peer.cursor && Number.isFinite(peer.cursor.x) && Number.isFinite(peer.cursor.y)) {
     const u = clampNumber(
@@ -134,8 +149,8 @@ function resolvePeerLaserTarget(
       return { target: projected, onPodium: true };
     }
 
-    // Fallback projection using the exact current podium tilt if plane isn't registered yet
-    const plane = buildPodiumSpatialPlane(podiumTiltDeg);
+    // Fallback projection using the exact current podium tilt & desk layout if plane isn't registered yet
+    const plane = buildDeskSpatialPlane(podiumTiltDeg, resolveDeskLayout(desk.deskScale, desk.deskHeightY));
     const um = u / plane.unitsPerMeter;
     const vm = v / plane.unitsPerMeter;
     return {
@@ -149,7 +164,7 @@ function resolvePeerLaserTarget(
   }
 
   return {
-    target: [plinthCenter[0], plinthCenter[1] + 0.36, plinthCenter[2]],
+    target: [plinthCenter[0], plinthCenter[1] + 0.36 * desk.plinthScale, plinthCenter[2]],
     onPodium: false,
   };
 }
@@ -269,9 +284,22 @@ interface PeerAvatarProps {
   bridge: SpatialSurfaceBridge;
   podiumTiltDeg: number;
   plinthCenter: [number, number, number];
+  deskScale: number;
+  deskHeightY: number | null;
+  plinthScale: number;
 }
 
-function PeerAvatar({ peer, index, total, bridge, podiumTiltDeg, plinthCenter }: PeerAvatarProps): React.ReactElement {
+function PeerAvatar({
+  peer,
+  index,
+  total,
+  bridge,
+  podiumTiltDeg,
+  plinthCenter,
+  deskScale,
+  deskHeightY,
+  plinthScale,
+}: PeerAvatarProps): React.ReactElement {
   const bodyRef = useRef<THREE.Group | null>(null);
   const haloRef = useRef<THREE.Mesh | null>(null);
 
@@ -282,7 +310,7 @@ function PeerAvatar({ peer, index, total, bridge, podiumTiltDeg, plinthCenter }:
   const [laserInfo, setLaserInfo] = useState<{
     target: [number, number, number];
     onPodium: boolean;
-  }>(() => resolvePeerLaserTarget(peer, bridge, podiumTiltDeg, plinthCenter));
+  }>(() => resolvePeerLaserTarget(peer, bridge, podiumTiltDeg, plinthCenter, { deskScale, deskHeightY, plinthScale }));
 
   // Refresh laser world target after DraftingPodium registers any podiumTiltDeg change on bridge
   const cursorX = peer.cursor?.x;
@@ -292,8 +320,14 @@ function PeerAvatar({ peer, index, total, bridge, podiumTiltDeg, plinthCenter }:
   const plinthZ = plinthCenter[2];
 
   useEffect(() => {
-    setLaserInfo(resolvePeerLaserTarget(peer, bridge, podiumTiltDeg, [plinthX, plinthY, plinthZ]));
-  }, [peer, cursorX, cursorY, bridge, podiumTiltDeg, plinthX, plinthY, plinthZ]);
+    setLaserInfo(
+      resolvePeerLaserTarget(peer, bridge, podiumTiltDeg, [plinthX, plinthY, plinthZ], {
+        deskScale,
+        deskHeightY,
+        plinthScale,
+      }),
+    );
+  }, [peer, cursorX, cursorY, bridge, podiumTiltDeg, plinthX, plinthY, plinthZ, deskScale, deskHeightY, plinthScale]);
 
   useFrame((state) => {
     const t = state.clock.elapsedTime;
@@ -464,6 +498,9 @@ export function MultiplayerPresence({
   bridge,
   podiumTiltDeg,
   plinthCenter,
+  deskScale = DEFAULT_DESK_SCALE,
+  deskHeightY = null,
+  plinthScale = 1,
 }: MultiplayerPresenceProps): React.ReactElement | null {
   if (peers.length === 0) return null;
 
@@ -478,6 +515,9 @@ export function MultiplayerPresence({
           bridge={bridge}
           podiumTiltDeg={podiumTiltDeg}
           plinthCenter={plinthCenter}
+          deskScale={deskScale}
+          deskHeightY={deskHeightY}
+          plinthScale={plinthScale}
         />
       ))}
     </group>

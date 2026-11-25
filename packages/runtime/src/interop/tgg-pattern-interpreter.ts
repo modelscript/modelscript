@@ -10,7 +10,13 @@
  */
 
 import { invertExpression } from "@modelscript/dsl/codegen/analysis/inversion";
-import type { TGGConstraint, TGGPattern, TGGRuleOptions } from "@modelscript/dsl/dsl/language.js";
+import type {
+  TGGConstraint,
+  TGGExprPattern,
+  TGGPattern,
+  TGGPatternBuilderProxy,
+  TGGRuleOptions,
+} from "@modelscript/dsl/dsl/language.js";
 import type { PolyglotNode, PolyglotTransformer } from "./polyglot-transformer.js";
 
 const NODE_NAME_KEYS: string[] = [
@@ -47,7 +53,7 @@ export interface EvaluatedTGGRule {
 
 export interface PatternMatchResult {
   rule: EvaluatedTGGRule;
-  env: Record<string, any>;
+  env: Record<string, unknown>;
   specificity: number;
   varToProp: Record<string, string>;
 }
@@ -56,9 +62,9 @@ export interface GraphSyncChange {
   elementId: string;
   ruleName: string;
   property: string;
-  sourceOldVal: any;
-  targetNewVal: any;
-  reconciledVal: any;
+  sourceOldVal: unknown;
+  targetNewVal: unknown;
+  reconciledVal: unknown;
   strategy: string;
 }
 
@@ -78,19 +84,19 @@ function stripVar(val: unknown): string {
   return isVarToken(val) ? val.slice(VAR_PREFIX.length) : String(val ?? "");
 }
 
-const patternBuilderProxy: any = new Proxy(
+const patternBuilderProxy: TGGPatternBuilderProxy = new Proxy(
   {},
   {
     get:
       (_, prop: string) =>
-      (bindings: Record<string, any> = {}, children?: TGGPattern[], expr?: any): TGGPattern => ({
+      (bindings: Record<string, unknown> = {}, children?: TGGPattern[], expr?: TGGExprPattern): TGGPattern => ({
         nodeType: prop,
         bindings: bindings || {},
         ...(children ? { children } : {}),
         ...(expr ? { expr } : {}),
       }),
   },
-);
+) as unknown as TGGPatternBuilderProxy;
 
 const varTokenProxy = (name: string): string => `${VAR_PREFIX}${name}`;
 
@@ -116,9 +122,15 @@ export function evaluateRuleDescriptor(rule: TGGRuleOptions): EvaluatedTGGRule {
     typeof rule.where === "function" ? rule.where(varTokenProxy) : (rule.where ?? []);
 
   const ctxObj = typeof rule.context === "function" ? rule.context(patternBuilderProxy, varTokenProxy) : rule.context;
-  const evalPat = (p: any): TGGPattern | undefined => {
+  const evalPat = (p: unknown): TGGPattern | undefined => {
     if (!p) return undefined;
-    return typeof p === "function" ? p(patternBuilderProxy, varTokenProxy) : p;
+    if (typeof p === "function") {
+      return (p as ($: TGGPatternBuilderProxy, v: (name: string) => string) => TGGPattern)(
+        patternBuilderProxy,
+        varTokenProxy,
+      );
+    }
+    return p as TGGPattern;
   };
   const contextSourcePattern = evalPat(ctxObj?.source);
   const contextTargetPattern = evalPat(ctxObj?.target);
@@ -136,15 +148,15 @@ export function evaluateRuleDescriptor(rule: TGGRuleOptions): EvaluatedTGGRule {
   return result;
 }
 
-function readNodeProperty(node: PolyglotNode, key: string): any {
+function readNodeProperty(node: PolyglotNode, key: string): unknown {
   if (key in node && node[key] !== undefined) {
     return node[key];
   }
-  const props = node["properties"] as Record<string, any> | undefined;
+  const props = node["properties"] as Record<string, unknown> | undefined;
   if (props && key in props && props[key] !== undefined) {
     return props[key];
   }
-  const mods = node["modifications"] as Record<string, any> | undefined;
+  const mods = node["modifications"] as Record<string, unknown> | undefined;
   if (mods && key in mods && mods[key] !== undefined) {
     return mods[key];
   }
@@ -179,13 +191,14 @@ export function matchNodePattern(
   }
 
   let specificity = 0;
-  const env: Record<string, any> = {};
+  const env: Record<string, unknown> = {};
   const varToProp: Record<string, string> = {};
 
   if (contextPattern) {
     if (!contextNode) return null;
     if (contextNode.kind && contextPattern.nodeType && contextNode.kind !== contextPattern.nodeType) {
-      if (!contextNode["typeSpecifier"] || !typesMatch(contextNode["typeSpecifier"], contextPattern.nodeType)) {
+      const ctxTypeSpec = typeof contextNode["typeSpecifier"] === "string" ? contextNode["typeSpecifier"] : undefined;
+      if (!ctxTypeSpec || !typesMatch(ctxTypeSpec, contextPattern.nodeType)) {
         return null;
       }
     }
@@ -207,10 +220,11 @@ export function matchNodePattern(
     }
   }
 
+  const nodeTypeSpec = typeof node["typeSpecifier"] === "string" ? node["typeSpecifier"] : undefined;
   if (node.kind && pattern.nodeType) {
     if (node.kind === pattern.nodeType) {
       specificity += 2;
-    } else if (node["typeSpecifier"] && typesMatch(node["typeSpecifier"], pattern.nodeType)) {
+    } else if (nodeTypeSpec && typesMatch(nodeTypeSpec, pattern.nodeType)) {
       specificity += 2;
     } else {
       return null;
@@ -231,7 +245,7 @@ export function matchNodePattern(
       }
     } else if (expectedVal !== undefined) {
       if (propKey === "typeSpecifier" && typeof expectedVal === "string") {
-        if (!typesMatch(typeof actualVal === "string" ? actualVal : node["typeSpecifier"], expectedVal)) {
+        if (!typesMatch(typeof actualVal === "string" ? actualVal : nodeTypeSpec, expectedVal)) {
           return null;
         }
       } else if (String(actualVal) !== String(expectedVal)) {
@@ -430,7 +444,7 @@ function evalSafeArithmeticExpr(expr: string): number | null {
   }
 }
 
-function evalSimpleInvertibleExpr(exprStr: string, env: Record<string, any>): void {
+function evalSimpleInvertibleExpr(exprStr: string, env: Record<string, unknown>): void {
   const s = exprStr.trim();
   const assignIdx = s.indexOf("=");
   if (assignIdx === -1 || s[assignIdx + 1] === "=") return;
@@ -463,7 +477,7 @@ function evalSimpleInvertibleExpr(exprStr: string, env: Record<string, any>): vo
  */
 export function solveWhereConstraints(
   constraints: TGGConstraint[],
-  env: Record<string, any>,
+  env: Record<string, unknown>,
   direction: "forward" | "backward",
   typeMaps: Record<string, Record<string, string>> = {},
 ): void {
@@ -518,7 +532,7 @@ export function solveWhereConstraints(
         const targetVar = isVarToken(rawTarget) ? stripVar(rawTarget) : null;
         const pfx = String(prefix ?? "");
         if (direction === "forward" && idVar && targetVar && env[idVar] !== undefined && env[targetVar] === undefined) {
-          env[targetVar] = `${pfx}${env[idVar]}`;
+          env[targetVar] = `${pfx}${String(env[idVar])}`;
         } else if (
           direction === "backward" &&
           idVar &&
@@ -572,10 +586,13 @@ export function solveWhereConstraints(
           typeof rootObj === "object" &&
           typeof pathStr === "string"
         ) {
-          let cur: any = rootObj;
+          let cur: unknown = rootObj;
           for (const seg of pathStr.split("/").filter(Boolean)) {
-            if (cur == null) break;
-            cur = cur[seg];
+            if (cur == null || typeof cur !== "object") {
+              cur = undefined;
+              break;
+            }
+            cur = (cur as Record<string, unknown>)[seg];
           }
           if (cur !== undefined) env[targetVar] = cur;
         }
@@ -584,7 +601,7 @@ export function solveWhereConstraints(
         const srcVar = isVarToken(rawSrc) ? stripVar(rawSrc) : null;
         const tgtVar = isVarToken(rawTgt) ? stripVar(rawTgt) : null;
         if (direction === "forward" && srcVar && tgtVar && Array.isArray(env[srcVar]) && env[tgtVar] === undefined) {
-          env[tgtVar] = [...env[srcVar]];
+          env[tgtVar] = [...(env[srcVar] as unknown[])];
         } else if (
           direction === "backward" &&
           srcVar &&
@@ -592,7 +609,7 @@ export function solveWhereConstraints(
           Array.isArray(env[tgtVar]) &&
           env[srcVar] === undefined
         ) {
-          env[srcVar] = [...env[tgtVar]];
+          env[srcVar] = [...(env[tgtVar] as unknown[])];
         }
       }
     }
@@ -648,11 +665,11 @@ export function extractComplementFields(constraints: TGGConstraint[]): string[] 
  */
 export function instantiateNodePattern(
   pattern: TGGPattern,
-  env: Record<string, any>,
+  env: Record<string, unknown>,
   fallbackName: string,
-  complementData?: Record<string, any>,
+  complementData?: Record<string, unknown>,
 ): PolyglotNode {
-  const properties: Record<string, any> = {};
+  const properties: Record<string, unknown> = {};
   if (complementData) {
     for (const [k, v] of Object.entries(complementData)) {
       if (v !== undefined && k !== "properties") {

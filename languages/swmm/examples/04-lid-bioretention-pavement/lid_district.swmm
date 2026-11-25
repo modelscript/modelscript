@@ -1,0 +1,56 @@
+[TITLE]
+Green Infrastructure LID Bioretention and Permeable Pavement District
+
+[OPTIONS]
+FLOW_UNITS          CMS
+FLOW_ROUTING        DYNWAVE
+INFILTRATION        HORTON
+START_DATE          05/01/2026
+START_TIME          00:00:00
+REPORT_START_DATE   05/01/2026
+REPORT_START_TIME   00:00:00
+END_DATE            05/01/2026
+END_TIME            12:00:00
+ALLOW_PONDING       YES
+
+[JUNCTIONS]
+;;Name           Elevation  MaxDepth   InitDepth  SurDepth   Apond
+J_BIO            35.00      2.50       0.00       0.00       25.0
+J_PERM           34.50      2.50       0.00       0.00       25.0
+J_CONV           34.20      2.80       0.00       0.00       30.0
+J_TRUNK          32.00      3.20       0.10       0.00       50.0
+
+[OUTFALLS]
+;;Name           Elevation  Type       Stage Data       Gated
+OF_WETLAND       29.50      FREE                        NO
+
+[CONDUITS]
+;;Name           From Node        To Node          Length     Roughness  InOffset   OutOffset  InitFlow   MaxFlow
+C_BIO            J_BIO            J_TRUNK          160.00     0.013      0.00       0.00       0.00       0.00
+C_PERM           J_PERM           J_TRUNK          145.00     0.013      0.00       0.00       0.00       0.00
+C_CONV           J_CONV           J_TRUNK          130.00     0.013      0.00       0.00       0.00       0.00
+C_BOX            J_TRUNK          OF_WETLAND       220.00     0.014      0.00       0.00       0.00       0.00
+
+[XSECTIONS]
+;;Link           Shape        Geom1      Geom2      Geom3      Geom4      Barrels
+C_BIO            CIRCULAR     0.60       0.00       0.00       0.00       1
+C_PERM           CIRCULAR     0.75       0.00       0.00       0.00       1
+C_CONV           CIRCULAR     1.05       0.00       0.00       0.00       1
+C_BOX            RECT_CLOSED  1.80       1.40       0.00       0.00       1
+
+[SUBCATCHMENTS]
+;;Name           RainGage         Outlet           Area     PctImperv Width    PctSlope CurbLen  SnowPack
+SC_BIOCELL       RG1              J_BIO            4.20     35.00     190.00   1.20     0.00
+SC_PERMPAVE      RG1              J_PERM           5.00     45.00     220.00   1.00     0.00
+SC_COMMERCIAL    RG1              J_CONV           6.80     88.00     290.00   1.80     0.00
+
+[INFILTRATION]
+;;Subcatchment   MaxRate    MinRate    Decay      DryTime    MaxInfil
+SC_BIOCELL       110.00     18.00      3.00       5.00       0.00
+SC_PERMPAVE      95.00      14.00      3.00       5.00       0.00
+SC_COMMERCIAL    65.00      5.00       3.50       7.00       0.00
+
+[INFLOWS]
+;;Node           Parameter        Time Series      Type     Mfactor  Sfactor  Base     Pat
+J_BIO            FLOW             ""               FLOW     1.0      1.0      0.20     ""
+J_CONV           FLOW             ""               FLOW     1.0      1.0      0.95     ""

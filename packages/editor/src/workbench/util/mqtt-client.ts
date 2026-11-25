@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Browser-side MQTT client for Morsel.
+ * Browser-side MQTT client for Ansatz.
  *
  * Provides a singleton MQTT client that runs in the browser via WebSocket.
  * Used by the MQTT model tree and real-time simulation integration to
@@ -39,14 +39,14 @@ export interface MqttParticipantMeta {
 }
 
 /**
- * Singleton MQTT client for the Morsel browser environment.
+ * Singleton MQTT client for the Ansatz browser environment.
  *
  * Connects to the MQTT broker via WebSocket (port 9001) and provides:
  * - Live variable value caching
  * - Participant discovery from retained messages
  * - Event-driven variable update callbacks
  */
-export class MorselMqttClient {
+export class AnsatzMqttClient {
   private client: MqttJsClient | null = null;
   private state: MqttConnectionState = "disconnected";
   private stateListeners: ((state: MqttConnectionState) => void)[] = [];
@@ -79,7 +79,7 @@ export class MorselMqttClient {
     this.setState("connecting");
 
     this.client = mqtt.connect(brokerWsUrl, {
-      clientId: `morsel-${Math.random().toString(36).slice(2, 8)}`,
+      clientId: `ansatz-${Math.random().toString(36).slice(2, 8)}`,
       clean: true,
       connectTimeout: 10_000,
       reconnectPeriod: 5_000,
@@ -228,12 +228,12 @@ export class MorselMqttClient {
 }
 
 /** Global singleton instance. */
-let instance: MorselMqttClient | null = null;
+let instance: AnsatzMqttClient | null = null;
 
 /** Get or create the global MQTT client instance. */
-export function getMorselMqttClient(): MorselMqttClient {
+export function getAnsatzMqttClient(): AnsatzMqttClient {
   if (!instance) {
-    instance = new MorselMqttClient();
+    instance = new AnsatzMqttClient();
   }
   return instance;
 }

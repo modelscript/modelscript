@@ -1,0 +1,77 @@
+[
+  {
+    "id": "gproms-01-isothermal-batch-reactor",
+    "lang": "gproms",
+    "subFormats": ["gproms"],
+    "difficulty": 1,
+    "title": "Isothermal Batch Reactor First-Order Decay",
+    "description": "Foundational gPROMS dynamic model of an isothermal well-mixed batch reactor with first-order irreversible conversion A -> B and typed physical variables.",
+    "category": "Chemical Process Engineering",
+    "tags": ["gproms", "batch-reactor", "kinetics", "dae"],
+    "activeFile": "batch_reactor.gproms",
+    "fileNames": ["batch_reactor.gproms"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "DECLARE\n  TYPE\n    Concentration = 1.0 : 0.0 : 100.0 UNIT = \"mol/L\"\n    ReactionRate  = 0.0 : -1000.0 : 1000.0 UNIT = \"mol/(L*s)\"\n  END\nEND\n\nMODEL IsothermalBatchReactor\n  PARAMETER\n    k AS REAL DEFAULT 0.25\n\n  VARIABLE\n    C_A AS Concentration\n    C_B AS Concentration\n    r   AS ReactionRate\n\n  EQUATION\n    r = k * C_A ;\n    $C_A = -r ;\n    $C_B = r ;\nEND\n\nPROCESS BatchSimulation\n  UNIT\n    B101 AS IsothermalBatchReactor\n  SET\n    B101.k := 0.25 ;\n  INITIAL\n    B101.C_A := 5.0 ;\n    B101.C_B := 0.0 ;\n  SOLUTIONPARAMETERS\n    ReportingInterval := 0.1 ;\n    TotalTime := 20.0 ;\nEND\n"
+  },
+  {
+    "id": "gproms-02-nonisothermal-jacketed-cstr",
+    "lang": "gproms",
+    "subFormats": ["gproms"],
+    "difficulty": 2,
+    "title": "Non-Isothermal Jacketed CSTR with Cooling Control",
+    "description": "Coupled mass and energy balance for an exothermic continuous stirred-tank reactor (CSTR) with Arrhenius kinetics and cooling-jacket heat removal.",
+    "category": "Chemical Process Engineering",
+    "tags": ["gproms", "cstr", "energy-balance", "arrhenius"],
+    "activeFile": "jacketed_cstr.gproms",
+    "fileNames": ["jacketed_cstr.gproms"],
+    "fileCount": 1,
+    "code": "DECLARE\n  TYPE\n    Concentration = 1.0 : 0.0 : 100.0 UNIT = \"mol/L\"\n    Temperature   = 350.0 : 250.0 : 600.0 UNIT = \"K\"\n    FlowRate      = 1.0 : 0.0 : 100.0 UNIT = \"L/s\"\n    ReactionRate  = 0.0 : -1000.0 : 1000.0 UNIT = \"mol/(L*s)\"\n  END\nEND\n\nMODEL JacketedCSTR\n  PARAMETER\n    V     AS REAL DEFAULT 100.0\n    k0    AS REAL DEFAULT 7.2e6\n    E_R   AS REAL DEFAULT 5500.0\n    dH_rx AS REAL DEFAULT -50000.0\n    rhoCp AS REAL DEFAULT 4184.0\n    UA    AS REAL DEFAULT 5000.0\n\n  VARIABLE\n    C_A    AS Concentration\n    T      AS Temperature\n    F      AS FlowRate\n    C_A_in AS Concentration\n    T_in   AS Temperature\n    T_cool AS Temperature\n    r      AS ReactionRate\n\n  EQUATION\n    r = k0 * EXP(-E_R / T) * C_A ;\n    $C_A = (F / V) * (C_A_in - C_A) - r ;\n    $T = (F / V) * (T_in - T) + (-dH_rx / rhoCp) * r - (UA / (V * rhoCp)) * (T - T_cool) ;\nEND\n\nPROCESS JacketedCstrRun\n  UNIT\n    R201 AS JacketedCSTR\n  SET\n    R201.V := 100.0 ;\n    R201.k0 := 7.2e6 ;\n    R201.E_R := 5500.0 ;\n    R201.dH_rx := -50000.0 ;\n    R201.rhoCp := 4184.0 ;\n    R201.UA := 5000.0 ;\n  ASSIGN\n    R201.F := 1.5 ;\n    R201.C_A_in := 2.0 ;\n    R201.T_in := 330.0 ;\n    R201.T_cool := 300.0 ;\n  INITIAL\n    R201.C_A := 1.0 ;\n    R201.T := 340.0 ;\n  SOLUTIONPARAMETERS\n    ReportingInterval := 0.5 ;\n    TotalTime := 60.0 ;\nEND\n"
+  },
+  {
+    "id": "gproms-03-tubular-pfr-axial-pde",
+    "lang": "gproms",
+    "subFormats": ["gproms"],
+    "difficulty": 3,
+    "title": "Tubular Plug-Flow Reactor Axial Dispersion PDE",
+    "description": "Distributed-parameter gPROMS PDE model of a tubular plug-flow reactor with axial dispersion, first-order reaction, and Danckwerts inlet boundary condition.",
+    "category": "Chemical Process Engineering",
+    "tags": ["gproms", "pfr", "pde", "distribution-domain"],
+    "activeFile": "tubular_pfr.gproms",
+    "fileNames": ["tubular_pfr.gproms"],
+    "fileCount": 1,
+    "code": "DECLARE\n  TYPE\n    Concentration = 1.0 : 0.0 : 100.0 UNIT = \"mol/L\"\n  END\nEND\n\nMODEL AxialDispersionPFR\n  PARAMETER\n    v    AS REAL DEFAULT 0.6\n    D_ax AS REAL DEFAULT 0.015\n    k    AS REAL DEFAULT 0.35\n    C_in AS REAL DEFAULT 8.0\n\n  DISTRIBUTION_DOMAIN\n    Axial AS [ 0.0 : 1.0 ] N = 15\n\n  VARIABLE\n    C AS DISTRIBUTION(Axial) OF Concentration\n\n  BOUNDARY\n    C(0.0) = C_in ;\n\n  EQUATION\n    $C = -v * PARTIAL(C, Axial) + D_ax * PARTIAL(PARTIAL(C, Axial), Axial) - k * C ;\nEND\n\nPROCESS TubularPfrSimulation\n  UNIT\n    T301 AS AxialDispersionPFR\n  SET\n    T301.v := 0.6 ;\n    T301.D_ax := 0.015 ;\n    T301.k := 0.35 ;\n    T301.C_in := 8.0 ;\n  INITIAL\n    T301.C := 0.0 ;\n  SOLUTIONPARAMETERS\n    TotalTime := 8.0 ;\n    TimeStep := 0.005 ;\nEND\n"
+  },
+  {
+    "id": "gproms-04-binary-distillation-startup",
+    "lang": "gproms",
+    "subFormats": ["gproms"],
+    "difficulty": 4,
+    "title": "Multi-Stage Binary Distillation Dynamic Startup",
+    "description": "Dynamic three-section benzene-toluene distillation column (reboiler, feed tray, condenser) with constant relative volatility vapor-liquid equilibrium.",
+    "category": "Separation Processes",
+    "tags": ["gproms", "distillation", "vle", "separation"],
+    "activeFile": "distillation.gproms",
+    "fileNames": ["distillation.gproms"],
+    "fileCount": 1,
+    "code": "DECLARE\n  TYPE\n    MoleFraction = 0.5 : 0.0 : 1.0 UNIT = \"mol/mol\"\n    MolarFlow    = 10.0 : 0.0 : 500.0 UNIT = \"mol/s\"\n  END\nEND\n\nMODEL BinaryDistillationColumn\n  PARAMETER\n    alpha AS REAL DEFAULT 2.4\n    M_reb AS REAL DEFAULT 50.0\n    M_tr  AS REAL DEFAULT 20.0\n    M_con AS REAL DEFAULT 30.0\n\n  VARIABLE\n    x_reb AS MoleFraction\n    x_tr  AS MoleFraction\n    x_con AS MoleFraction\n    y_reb AS MoleFraction\n    y_tr  AS MoleFraction\n    F_in  AS MolarFlow\n    z_in  AS MoleFraction\n    L_ref AS MolarFlow\n    V_boil AS MolarFlow\n\n  EQUATION\n    y_reb = (alpha * x_reb) / (1.0 + (alpha - 1.0) * x_reb) ;\n    y_tr  = (alpha * x_tr) / (1.0 + (alpha - 1.0) * x_tr) ;\n    M_reb * $x_reb = (L_ref + F_in) * x_tr - V_boil * y_reb - (L_ref + F_in - V_boil) * x_reb ;\n    M_tr  * $x_tr  = F_in * z_in + L_ref * x_con + V_boil * y_reb - (L_ref + F_in) * x_tr - V_boil * y_tr ;\n    M_con * $x_con = V_boil * y_tr - L_ref * x_con - (V_boil - L_ref) * x_con ;\nEND\n\nPROCESS DistillationStartup\n  UNIT\n    C401 AS BinaryDistillationColumn\n  SET\n    C401.alpha := 2.4 ;\n    C401.M_reb := 50.0 ;\n    C401.M_tr  := 20.0 ;\n    C401.M_con := 30.0 ;\n  ASSIGN\n    C401.F_in   := 10.0 ;\n    C401.z_in   := 0.50 ;\n    C401.L_ref  := 15.0 ;\n    C401.V_boil := 20.0 ;\n  INITIAL\n    C401.x_reb := 0.50 ;\n    C401.x_tr  := 0.50 ;\n    C401.x_con := 0.50 ;\n  SOLUTIONPARAMETERS\n    ReportingInterval := 0.5 ;\n    TotalTime := 40.0 ;\nEND\n"
+  },
+  {
+    "id": "gproms-05-reactor-separator-recycle",
+    "lang": "gproms",
+    "subFormats": ["gproms"],
+    "difficulty": 5,
+    "title": "Integrated Reactor-Separator-Recycle Chemical Plant",
+    "description": "Closed-loop plantwide dynamic flowsheet coupling a CSTR with a flash separator and unreacted-feed recycle stream, paired with experimental kinetic calibration data.",
+    "category": "Process Systems Engineering",
+    "tags": ["gproms", "plantwide", "recycle-loop", "cstr", "multi-file"],
+    "activeFile": "plant.gproms",
+    "fileNames": ["plant.gproms", "kinetics_data.csv"],
+    "fileCount": 2,
+    "code": "DECLARE\n  TYPE\n    Concentration = 1.0 : 0.0 : 100.0 UNIT = \"mol/L\"\n    FlowRate      = 2.0 : 0.0 : 1000.0 UNIT = \"L/s\"\n    ReactionRate  = 0.0 : -1000.0 : 1000.0 UNIT = \"mol/(L*s)\"\n  END\nEND\n\nMODEL ReactorSeparatorPlant\n  PARAMETER\n    V_rx  AS REAL DEFAULT 25.0\n    V_sep AS REAL DEFAULT 15.0\n    k_rx  AS REAL DEFAULT 0.35\n    eta_s AS REAL DEFAULT 0.85\n\n  VARIABLE\n    C_A_rx  AS Concentration\n    C_B_rx  AS Concentration\n    C_A_sep AS Concentration\n    C_B_sep AS Concentration\n    F_fresh AS FlowRate\n    F_rec   AS FlowRate\n    C_A0    AS Concentration\n    r_rx    AS ReactionRate\n\n  EQUATION\n    r_rx = k_rx * C_A_rx ;\n    V_rx * $C_A_rx = F_fresh * C_A0 + F_rec * C_A_sep - (F_fresh + F_rec) * C_A_rx - V_rx * r_rx ;\n    V_rx * $C_B_rx = F_rec * (1.0 - eta_s) * C_B_sep - (F_fresh + F_rec) * C_B_rx + V_rx * r_rx ;\n    V_sep * $C_A_sep = (F_fresh + F_rec) * (C_A_rx - C_A_sep) ;\n    V_sep * $C_B_sep = (F_fresh + F_rec) * (C_B_rx - C_B_sep) ;\nEND\n\nPROCESS PlantwideRecycleRun\n  UNIT\n    P501 AS ReactorSeparatorPlant\n  SET\n    P501.V_rx  := 25.0 ;\n    P501.V_sep := 15.0 ;\n    P501.k_rx  := 0.35 ;\n    P501.eta_s := 0.85 ;\n  ASSIGN\n    P501.F_fresh := 2.0 ;\n    P501.F_rec   := 1.5 ;\n    P501.C_A0    := 10.0 ;\n  INITIAL\n    P501.C_A_rx  := 2.0 ;\n    P501.C_B_rx  := 0.0 ;\n    P501.C_A_sep := 2.0 ;\n    P501.C_B_sep := 0.0 ;\n  SOLUTIONPARAMETERS\n    ReportingInterval := 0.2 ;\n    TotalTime := 30.0 ;\nEND\n",
+    "files": {
+      "plant.gproms": "DECLARE\n  TYPE\n    Concentration = 1.0 : 0.0 : 100.0 UNIT = \"mol/L\"\n    FlowRate      = 2.0 : 0.0 : 1000.0 UNIT = \"L/s\"\n    ReactionRate  = 0.0 : -1000.0 : 1000.0 UNIT = \"mol/(L*s)\"\n  END\nEND\n\nMODEL ReactorSeparatorPlant\n  PARAMETER\n    V_rx  AS REAL DEFAULT 25.0\n    V_sep AS REAL DEFAULT 15.0\n    k_rx  AS REAL DEFAULT 0.35\n    eta_s AS REAL DEFAULT 0.85\n\n  VARIABLE\n    C_A_rx  AS Concentration\n    C_B_rx  AS Concentration\n    C_A_sep AS Concentration\n    C_B_sep AS Concentration\n    F_fresh AS FlowRate\n    F_rec   AS FlowRate\n    C_A0    AS Concentration\n    r_rx    AS ReactionRate\n\n  EQUATION\n    r_rx = k_rx * C_A_rx ;\n    V_rx * $C_A_rx = F_fresh * C_A0 + F_rec * C_A_sep - (F_fresh + F_rec) * C_A_rx - V_rx * r_rx ;\n    V_rx * $C_B_rx = F_rec * (1.0 - eta_s) * C_B_sep - (F_fresh + F_rec) * C_B_rx + V_rx * r_rx ;\n    V_sep * $C_A_sep = (F_fresh + F_rec) * (C_A_rx - C_A_sep) ;\n    V_sep * $C_B_sep = (F_fresh + F_rec) * (C_B_rx - C_B_sep) ;\nEND\n\nPROCESS PlantwideRecycleRun\n  UNIT\n    P501 AS ReactorSeparatorPlant\n  SET\n    P501.V_rx  := 25.0 ;\n    P501.V_sep := 15.0 ;\n    P501.k_rx  := 0.35 ;\n    P501.eta_s := 0.85 ;\n  ASSIGN\n    P501.F_fresh := 2.0 ;\n    P501.F_rec   := 1.5 ;\n    P501.C_A0    := 10.0 ;\n  INITIAL\n    P501.C_A_rx  := 2.0 ;\n    P501.C_B_rx  := 0.0 ;\n    P501.C_A_sep := 2.0 ;\n    P501.C_B_sep := 0.0 ;\n  SOLUTIONPARAMETERS\n    ReportingInterval := 0.2 ;\n    TotalTime := 30.0 ;\nEND\n",
+      "kinetics_data.csv": "time_s,C_A_rx_mol_L,C_B_rx_mol_L,C_A_sep_mol_L\n0.0,2.00,0.00,2.00\n5.0,3.15,2.40,2.78\n10.0,3.42,4.15,3.25\n20.0,3.55,5.32,3.50\n30.0,3.58,5.61,3.56\n"
+    }
+  }
+]

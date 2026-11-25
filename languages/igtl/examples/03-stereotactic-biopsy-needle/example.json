@@ -1,0 +1,11 @@
+{
+  "id": "igtl-03-stereotactic-biopsy-needle",
+  "lang": "igtl",
+  "subFormats": ["igtl"],
+  "difficulty": 3,
+  "title": "Stereotactic Biopsy Needle Target and Status Telemetry",
+  "description": "OpenIGTLink stereotactic biopsy navigation stream pairing needle-tip kinematic transforms with skull-mounted fiducial registration RMS accuracy and device status telemetry.",
+  "category": "Image-Guided Surgery & Navigation",
+  "tags": ["igtl", "stereotactic", "biopsy", "fiducial-registration"],
+  "activeFile": "biopsy.igtl"
+}

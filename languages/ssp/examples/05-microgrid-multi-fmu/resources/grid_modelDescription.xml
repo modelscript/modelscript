@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="GridFeeder" guid="{55555555-5555-5555-5555-555555555502}">
+  <CoSimulation modelIdentifier="GridFeeder" />
+  <ModelVariables>
+    <ScalarVariable name="p_load_kw" valueReference="0" causality="input"><Real start="1200.0" /></ScalarVariable>
+    <ScalarVariable name="p_bess_kw" valueReference="1" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="q_bess_kvar" valueReference="2" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="f_bus_hz" valueReference="3" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="v_bus_pu" valueReference="4" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="breaker_open" valueReference="5" causality="output"><Boolean /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

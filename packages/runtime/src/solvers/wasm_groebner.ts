@@ -343,13 +343,23 @@ export function reduceGroebnerBasis(G: Polynomial[], vars: string[], orderFn = T
   return reduced;
 }
 
+export interface WasmGroebnerExports {
+  groebner_triangularize?: (
+    daePtr: number,
+    eqIdxsPtr: number,
+    nEqs: number,
+    varIdxsPtr: number,
+    nVars: number,
+  ) => number;
+}
+
 /**
  * WASM Gröbner basis bridge wrapper.
  */
 export class WasmGroebner {
-  private readonly exports: any;
+  private readonly exports: WasmGroebnerExports;
 
-  constructor(wasmExports: any) {
+  constructor(wasmExports: WasmGroebnerExports) {
     this.exports = wasmExports;
   }
 

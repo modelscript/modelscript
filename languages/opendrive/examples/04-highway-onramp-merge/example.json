@@ -1,0 +1,11 @@
+{
+  "id": "opendrive-04-highway-onramp-merge",
+  "lang": "opendrive",
+  "subFormats": ["xodr"],
+  "difficulty": 4,
+  "title": "Multi-Lane Highway On-Ramp Merge and Acceleration Lane",
+  "description": "Three-lane motorway corridor with a tapered acceleration lane section and a curved entry ramp connected through a highway merge junction with overhead gantry signage.",
+  "category": "Highway Interchanges",
+  "tags": ["on-ramp", "merge", "acceleration-lane", "motorway"],
+  "activeFile": "highway_merge.xodr"
+}

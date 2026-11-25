@@ -197,7 +197,7 @@ export interface LiveValueBadgeOptions {
 /**
  * Applies inline live simulation value badges (and optional Turbo heat-map stroke coloring)
  * to diagram nodes and edges whose IDs match keys in `values` (e.g., `R1.v`, `bus_1`, `wire_2`).
- * Shared across Morsel and VS Code for unified live telemetry overlays.
+ * Shared across Ansatz and VS Code for unified live telemetry overlays.
  */
 export function applyLiveValueBadges(
   cells: {

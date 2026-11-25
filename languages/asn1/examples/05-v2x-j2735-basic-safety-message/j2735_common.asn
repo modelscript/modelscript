@@ -1,0 +1,32 @@
+-- SAE J2735 Shared Kinematic & Vehicle Primitive Types
+J2735-Common { iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprise(1) 48001 1 }
+DEFINITIONS AUTOMATIC TAGS ::= BEGIN
+
+EXPORTS Latitude, Longitude, Elevation, Speed, Heading, AccelerationSet4Way, BrakeSystemStatus, VehicleSize;
+
+Latitude ::= INTEGER (-900000000..900000001)
+Longitude ::= INTEGER (-1799999999..1800000001)
+Elevation ::= INTEGER (-4096..61439)
+Speed ::= INTEGER (0..8191)
+Heading ::= INTEGER (0..28800)
+
+AccelerationSet4Way ::= SEQUENCE {
+  longAccel  INTEGER (-2000..2001),
+  latAccel   INTEGER (-2000..2001),
+  vertAccel  INTEGER (-127..127),
+  yawRate    INTEGER (-32767..32767)
+}
+
+BrakeSystemStatus ::= SEQUENCE {
+  wheelBrakes  BIT STRING { unavailable(0), leftFront(1), leftRear(2), rightFront(3), rightRear(4) } (SIZE (5)),
+  traction     ENUMERATED { unavailable(0), off(1), on(2), engaged(3) },
+  abs          ENUMERATED { unavailable(0), off(1), on(2), engaged(3) },
+  scs          ENUMERATED { unavailable(0), off(1), on(2), engaged(3) }
+}
+
+VehicleSize ::= SEQUENCE {
+  widthCm   INTEGER (0..1023),
+  lengthCm  INTEGER (0..4095)
+}
+
+END

@@ -1,0 +1,18 @@
+MODEL: Helmholtz_Acoustic_Resonator
+SPEED: 2500.0
+LAMBDA: 1.0
+
+COMPONENTS:
+  INLET = environment_inlet (P = 101325, T = 298.15)
+  DUCT_UP = pipe (D = 0.055, L = 0.60, CELLS = 6)
+  NECK = pipe (D = 0.032, L = 0.20, CELLS = 2)
+  CAVITY = plenum (VOL = 0.0025, P = 101325, T = 298.15)
+  DUCT_DN = pipe (D = 0.055, L = 0.60, CELLS = 6)
+  OUTLET = environment_outlet (P = 101325, T = 298.15)
+
+CONNECTIONS:
+  INLET.out -> DUCT_UP.in
+  DUCT_UP.out -> NECK.in
+  NECK.out -> CAVITY.port1
+  CAVITY.port2 -> DUCT_DN.in
+  DUCT_DN.out -> OUTLET.in

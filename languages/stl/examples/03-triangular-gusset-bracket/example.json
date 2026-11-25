@@ -1,0 +1,11 @@
+{
+  "id": "stl-03-triangular-gusset-bracket",
+  "lang": "stl",
+  "subFormats": ["ascii-stl"],
+  "difficulty": 3,
+  "title": "Closed Triangular Gusset Aerospace Bracket",
+  "description": "Watertight right-triangular structural gusset bracket (30 x 20 x 8 mm) in ASCII STL with 8 manifold facets and outward right-hand-rule normals.",
+  "category": "Mechanical CAD",
+  "tags": ["stl", "bracket", "gusset", "prism", "cad"],
+  "activeFile": "gusset_bracket.stl"
+}

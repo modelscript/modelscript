@@ -1,0 +1,77 @@
+[
+  {
+    "id": "ibis-01-cmos-single-ended-driver",
+    "lang": "ibis",
+    "subFormats": ["ibs"],
+    "difficulty": 1,
+    "title": "3.3V LVCMOS Single-Ended Output Driver & Receiver",
+    "description": "Standard IBIS 3.2 component model for a 3.3V LVCMOS buffer pair with package RLC parasitics, IV pullup/pulldown tables, clamps, and ramp rates.",
+    "category": "Signal Integrity",
+    "tags": ["ibis", "lvcmos", "buffer", "signal-integrity"],
+    "activeFile": "lvcmos33.ibs",
+    "fileNames": ["lvcmos33.ibs"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "[IBIS Ver] 3.2\n[File Name] lvcmos33.ibs\n[File Rev] 1.0\n[Date] November 24, 2026\n\n[Component] LVCMOS33_BUFFER\n[Manufacturer] Ansatz Semiconductor\n[Package]\n| variable   typ          min          max\nR_pkg        0.1400       0.0800       0.2200\nL_pkg        2.800nH      1.400nH      4.500nH\nC_pkg        1.100pF      0.600pF      1.800pF\n\n[Pin] signal_name model_name R_pin L_pin C_pin\n1     VDD         POWER\n2     VSS         GND\n3     TX_OUT      LVCMOS33_OUT\n4     RX_IN       LVCMOS33_IN\n\n[Model] LVCMOS33_OUT\nModel_type Output\nPolarity Non-Inverting\nC_comp 2.4pF 1.8pF 3.1pF\n[Voltage Range] 3.3V 3.0V 3.6V\n\n[Pulldown]\n| Voltage   I(typ)       I(min)       I(max)\n-3.300      -0.0850      -0.0550      -0.1200\n 0.000       0.0000       0.0000       0.0000\n 0.400       0.0180       0.0110       0.0260\n 1.650       0.0420       0.0280       0.0580\n 3.300       0.0540       0.0360       0.0750\n\n[Pullup]\n| Voltage   I(typ)       I(min)       I(max)\n-3.300      -0.0750      -0.0480      -0.1050\n 0.000       0.0000       0.0000       0.0000\n 0.400       0.0160       0.0100       0.0240\n 1.650       0.0380       0.0250       0.0540\n 3.300       0.0500       0.0330       0.0680\n\n[GND Clamp]\n-1.000      -0.0550      -0.0320      -0.0850\n 0.000       0.0000       0.0000       0.0000\n 3.300       0.0000       0.0000       0.0000\n\n[Ramp]\ndV/dt_r 1.3V/0.75ns 0.95V/0.95ns 1.6V/0.55ns\ndV/dt_f 1.3V/0.75ns 0.95V/0.95ns 1.6V/0.55ns\nR_load 50\n\n[Model] LVCMOS33_IN\nModel_type Input\nC_comp 1.4pF 1.0pF 1.9pF\n[Voltage Range] 3.3V 3.0V 3.6V\nVinl = 0.8V\nVinh = 2.0V\n\n[End]\n"
+  },
+  {
+    "id": "ibis-02-lvds-differential-pair",
+    "lang": "ibis",
+    "subFormats": ["ibs"],
+    "difficulty": 2,
+    "title": "LVDS 1.8V Differential Driver & Receiver Pair",
+    "description": "High-speed LVDS differential transmitter and receiver IBIS model with 100 ohm differential load ramp characterization and matched pin parasitics.",
+    "category": "High-Speed Differential I/O",
+    "tags": ["ibis", "lvds", "differential", "transceiver"],
+    "activeFile": "lvds_pair.ibs",
+    "fileNames": ["lvds_pair.ibs"],
+    "fileCount": 1,
+    "code": "[IBIS Ver] 5.0\n[File Name] lvds_pair.ibs\n[File Rev] 1.2\n[Date] November 24, 2026\n\n[Component] LVDS_XCVR_1V8\n[Manufacturer] Ansatz High-Speed IO\n[Package]\nR_pkg        0.0950       0.0550       0.1450\nL_pkg        1.650nH      0.950nH      2.400nH\nC_pkg        0.750pF      0.450pF      1.150pF\n\n[Pin] signal_name model_name R_pin L_pin C_pin\n1     VDD18       POWER\n2     VSS         GND\n3     TX_P        LVDS_TX\n4     TX_N        LVDS_TX\n5     RX_P        LVDS_RX\n6     RX_N        LVDS_RX\n\n[Model] LVDS_TX\nModel_type Output\nPolarity Non-Inverting\nC_comp 1.2pF 0.9pF 1.6pF\n[Voltage Range] 1.8V 1.71V 1.89V\n\n[Pulldown]\n-1.800      -0.0250      -0.0180      -0.0320\n 0.000       0.0000       0.0000       0.0000\n 0.900       0.0035       0.0030       0.0040\n 1.800       0.0038       0.0032       0.0044\n\n[Pullup]\n-1.800      -0.0240      -0.0170      -0.0310\n 0.000       0.0000       0.0000       0.0000\n 0.900       0.0035       0.0030       0.0040\n 1.800       0.0037       0.0031       0.0043\n\n[Ramp]\ndV/dt_r 0.28V/0.22ns 0.22V/0.28ns 0.34V/0.16ns\ndV/dt_f 0.28V/0.22ns 0.22V/0.28ns 0.34V/0.16ns\nR_load 100\n\n[Model] LVDS_RX\nModel_type Input\nC_comp 1.0pF 0.75pF 1.35pF\n[Voltage Range] 1.8V 1.71V 1.89V\nVinl = 0.85V\nVinh = 0.95V\n\n[End]\n"
+  },
+  {
+    "id": "ibis-03-ddr4-dq-bidirectional-io",
+    "lang": "ibis",
+    "subFormats": ["ibs"],
+    "difficulty": 3,
+    "title": "DDR4 1.2V DQ Bidirectional I/O Buffer with ODT",
+    "description": "1.2V POD12 DDR4 memory data (DQ) and strobe (DQS) bidirectional I/O buffer model featuring 34 ohm output drive and 48 ohm on-die termination.",
+    "category": "Memory Interfaces",
+    "tags": ["ibis", "ddr4", "pod12", "odt", "bidirectional"],
+    "activeFile": "ddr4_dq.ibs",
+    "fileNames": ["ddr4_dq.ibs"],
+    "fileCount": 1,
+    "code": "[IBIS Ver] 5.1\n[File Name] ddr4_dq.ibs\n[File Rev] 2.0\n[Date] November 24, 2026\n\n[Component] DDR4_DRAM_X8\n[Manufacturer] Ansatz Memory Systems\n[Package]\nR_pkg        0.0800       0.0450       0.1250\nL_pkg        1.200nH      0.700nH      1.850nH\nC_pkg        0.650pF      0.400pF      0.950pF\n\n[Pin] signal_name model_name R_pin L_pin C_pin\nA1    VDDQ        POWER\nA2    VSSQ        GND\nB1    DQ0         DDR4_DQ_34OHM\nB2    DQ1         DDR4_DQ_34OHM\nC1    DQS_T       DDR4_DQ_34OHM\nC2    DQS_C       DDR4_DQ_34OHM\n\n[Model] DDR4_DQ_34OHM\nModel_type I/O\nPolarity Non-Inverting\nVinl = 0.72V\nVinh = 0.96V\nC_comp 1.15pF 0.85pF 1.45pF\n[Voltage Range] 1.2V 1.14V 1.26V\n\n[Pulldown]\n-1.200      -0.0600      -0.0450      -0.0780\n 0.000       0.0000       0.0000       0.0000\n 0.300       0.0088       0.0072       0.0108\n 0.600       0.0175       0.0142       0.0215\n 1.200       0.0340       0.0280       0.0410\n\n[Pullup]\n-1.200      -0.0580      -0.0430      -0.0740\n 0.000       0.0000       0.0000       0.0000\n 0.300       0.0086       0.0070       0.0104\n 0.600       0.0170       0.0138       0.0208\n 1.200       0.0332       0.0272       0.0402\n\n[GND Clamp]\n-0.800      -0.0480      -0.0300      -0.0720\n 0.000       0.0000       0.0000       0.0000\n 1.200       0.0000       0.0000       0.0000\n\n[Ramp]\ndV/dt_r 0.60V/0.11ns 0.48V/0.15ns 0.72V/0.08ns\ndV/dt_f 0.60V/0.11ns 0.48V/0.15ns 0.72V/0.08ns\nR_load 50\n\n[End]\n"
+  },
+  {
+    "id": "ibis-04-pcie-gen4-serdes-tx",
+    "lang": "ibis",
+    "subFormats": ["ibs"],
+    "difficulty": 4,
+    "title": "PCIe Gen4 16 GT/s SerDes Transmitter Buffer",
+    "description": "Ultra-low-capacitance 0.85V PCIe Gen4 SerDes differential transmitter and receiver IBIS model with 50 ohm single-ended impedance matching and sub-30ps edge rates.",
+    "category": "SerDes & High-Speed Links",
+    "tags": ["ibis", "pcie-gen4", "serdes", "16gtps"],
+    "activeFile": "pcie_gen4_serdes.ibs",
+    "fileNames": ["pcie_gen4_serdes.ibs"],
+    "fileCount": 1,
+    "code": "[IBIS Ver] 6.1\n[File Name] pcie_gen4_serdes.ibs\n[File Rev] 1.0\n[Date] November 24, 2026\n\n[Component] PCIE4_SERDES_PHY\n[Manufacturer] Ansatz Photonics SerDes\n[Package]\nR_pkg        0.0450       0.0280       0.0720\nL_pkg        0.650nH      0.380nH      0.980nH\nC_pkg        0.320pF      0.200pF      0.480pF\n\n[Pin] signal_name model_name R_pin L_pin C_pin\n1     AVDD085     POWER\n2     AVSS        GND\n3     PETP0       SERDES_16G_TX\n4     PETN0       SERDES_16G_TX\n5     PERP0       SERDES_16G_RX\n6     PERN0       SERDES_16G_RX\n\n[Model] SERDES_16G_TX\nModel_type Output\nPolarity Non-Inverting\nC_comp 0.35pF 0.25pF 0.48pF\n[Voltage Range] 0.85V 0.80V 0.90V\n\n[Pulldown]\n-0.850      -0.0220      -0.0170      -0.0280\n 0.000       0.0000       0.0000       0.0000\n 0.425       0.0085       0.0072       0.0098\n 0.850       0.0170       0.0145       0.0196\n\n[Pullup]\n-0.850      -0.0215      -0.0168      -0.0275\n 0.000       0.0000       0.0000       0.0000\n 0.425       0.0084       0.0071       0.0096\n 0.850       0.0168       0.0143       0.0193\n\n[Ramp]\ndV/dt_r 0.40V/0.024ns 0.32V/0.032ns 0.48V/0.018ns\ndV/dt_f 0.40V/0.024ns 0.32V/0.032ns 0.48V/0.018ns\nR_load 50\n\n[Model] SERDES_16G_RX\nModel_type Input\nC_comp 0.30pF 0.22pF 0.42pF\n[Voltage Range] 0.85V 0.80V 0.90V\nVinl = 0.35V\nVinh = 0.50V\n\n[End]\n"
+  },
+  {
+    "id": "ibis-05-soc-bga-channel-model",
+    "lang": "ibis",
+    "subFormats": ["ibs", "pkg"],
+    "difficulty": 5,
+    "title": "High-Speed SoC Multi-Bank I/O & BGA Package Model",
+    "description": "Multi-file IBIS workspace combining a multi-voltage SoC I/O buffer file (.ibs) with a coupled BGA substrate package parasitic matrix (.pkg).",
+    "category": "Package & Channel Co-Design",
+    "tags": ["ibis", "pkg", "bga", "soc", "multi-file"],
+    "activeFile": "soc_io.ibs",
+    "fileNames": ["soc_io.ibs", "bga_package.pkg"],
+    "fileCount": 2,
+    "code": "[IBIS Ver] 6.1\n[File Name] soc_io.ibs\n[File Rev] 1.4\n[Date] November 24, 2026\n\n[Component] ANSATZ_SOC_BGA484\n[Manufacturer] Ansatz Silicon Corp\n[Package]\nR_pkg        0.1100       0.0650       0.1750\nL_pkg        1.850nH      1.050nH      2.900nH\nC_pkg        0.820pF      0.480pF      1.250pF\n\n[Pin] signal_name model_name R_pin L_pin C_pin\nA1    VDD_IO      POWER\nA2    VSS         GND\nB1    SPI_CLK     SOC_CMOS_1V8\nB2    SPI_MOSI    SOC_CMOS_1V8\nB3    SPI_MISO    SOC_CMOS_IN\nC1    CLK_P       SOC_HSTL_TX\nC2    CLK_N       SOC_HSTL_TX\n\n[Model] SOC_CMOS_1V8\nModel_type Output\nPolarity Non-Inverting\nC_comp 1.6pF 1.1pF 2.1pF\n[Voltage Range] 1.8V 1.65V 1.95V\n\n[Pulldown]\n-1.800      -0.0520      -0.0360      -0.0720\n 0.000       0.0000       0.0000       0.0000\n 0.450       0.0130       0.0092       0.0178\n 1.800       0.0360       0.0255       0.0490\n\n[Pullup]\n-1.800      -0.0490      -0.0340      -0.0680\n 0.000       0.0000       0.0000       0.0000\n 0.450       0.0124       0.0088       0.0170\n 1.800       0.0345       0.0245       0.0470\n\n[Ramp]\ndV/dt_r 0.90V/0.35ns 0.72V/0.46ns 1.08V/0.26ns\ndV/dt_f 0.90V/0.35ns 0.72V/0.46ns 1.08V/0.26ns\nR_load 50\n\n[Model] SOC_CMOS_IN\nModel_type Input\nC_comp 1.1pF 0.8pF 1.5pF\n[Voltage Range] 1.8V 1.65V 1.95V\nVinl = 0.63V\nVinh = 1.17V\n\n[Model] SOC_HSTL_TX\nModel_type Output\nPolarity Non-Inverting\nC_comp 0.9pF 0.65pF 1.2pF\n[Voltage Range] 1.5V 1.42V 1.58V\n\n[Pulldown]\n-1.500      -0.0450      -0.0320      -0.0600\n 0.000       0.0000       0.0000       0.0000\n 0.750       0.0160       0.0120       0.0210\n 1.500       0.0300       0.0230       0.0390\n\n[Pullup]\n-1.500      -0.0440      -0.0310      -0.0580\n 0.000       0.0000       0.0000       0.0000\n 0.750       0.0155       0.0115       0.0205\n 1.500       0.0295       0.0225       0.0385\n\n[Ramp]\ndV/dt_r 0.75V/0.18ns 0.60V/0.24ns 0.90V/0.14ns\ndV/dt_f 0.75V/0.18ns 0.60V/0.24ns 0.90V/0.14ns\nR_load 50\n\n[End]\n",
+    "files": {
+      "soc_io.ibs": "[IBIS Ver] 6.1\n[File Name] soc_io.ibs\n[File Rev] 1.4\n[Date] November 24, 2026\n\n[Component] ANSATZ_SOC_BGA484\n[Manufacturer] Ansatz Silicon Corp\n[Package]\nR_pkg        0.1100       0.0650       0.1750\nL_pkg        1.850nH      1.050nH      2.900nH\nC_pkg        0.820pF      0.480pF      1.250pF\n\n[Pin] signal_name model_name R_pin L_pin C_pin\nA1    VDD_IO      POWER\nA2    VSS         GND\nB1    SPI_CLK     SOC_CMOS_1V8\nB2    SPI_MOSI    SOC_CMOS_1V8\nB3    SPI_MISO    SOC_CMOS_IN\nC1    CLK_P       SOC_HSTL_TX\nC2    CLK_N       SOC_HSTL_TX\n\n[Model] SOC_CMOS_1V8\nModel_type Output\nPolarity Non-Inverting\nC_comp 1.6pF 1.1pF 2.1pF\n[Voltage Range] 1.8V 1.65V 1.95V\n\n[Pulldown]\n-1.800      -0.0520      -0.0360      -0.0720\n 0.000       0.0000       0.0000       0.0000\n 0.450       0.0130       0.0092       0.0178\n 1.800       0.0360       0.0255       0.0490\n\n[Pullup]\n-1.800      -0.0490      -0.0340      -0.0680\n 0.000       0.0000       0.0000       0.0000\n 0.450       0.0124       0.0088       0.0170\n 1.800       0.0345       0.0245       0.0470\n\n[Ramp]\ndV/dt_r 0.90V/0.35ns 0.72V/0.46ns 1.08V/0.26ns\ndV/dt_f 0.90V/0.35ns 0.72V/0.46ns 1.08V/0.26ns\nR_load 50\n\n[Model] SOC_CMOS_IN\nModel_type Input\nC_comp 1.1pF 0.8pF 1.5pF\n[Voltage Range] 1.8V 1.65V 1.95V\nVinl = 0.63V\nVinh = 1.17V\n\n[Model] SOC_HSTL_TX\nModel_type Output\nPolarity Non-Inverting\nC_comp 0.9pF 0.65pF 1.2pF\n[Voltage Range] 1.5V 1.42V 1.58V\n\n[Pulldown]\n-1.500      -0.0450      -0.0320      -0.0600\n 0.000       0.0000       0.0000       0.0000\n 0.750       0.0160       0.0120       0.0210\n 1.500       0.0300       0.0230       0.0390\n\n[Pullup]\n-1.500      -0.0440      -0.0310      -0.0580\n 0.000       0.0000       0.0000       0.0000\n 0.750       0.0155       0.0115       0.0205\n 1.500       0.0295       0.0225       0.0385\n\n[Ramp]\ndV/dt_r 0.75V/0.18ns 0.60V/0.24ns 0.90V/0.14ns\ndV/dt_f 0.75V/0.18ns 0.60V/0.24ns 0.90V/0.14ns\nR_load 50\n\n[End]\n",
+      "bga_package.pkg": "[IBIS Ver] 6.1\n[File Name] bga_package.pkg\n[File Rev] 1.0\n[Date] November 24, 2026\n[Define Package Model] BGA484_SUBSTRATE\n[Manufacturer] Ansatz Silicon Corp\n[OEM] Ansatz Packaging Lab\n[Description] Coupled RLC Package Parasitic Model for BGA484 High-Speed Pins\n[Number Of Pins] 4\n[Pin Numbers]\nB1\nB2\nC1\nC2\n[Model Data]\n[Resistance Matrix] Banded_matrix\n[Bandwidth] 1\n[Row] B1\n0.115  0.004\n[Row] B2\n0.118  0.003\n[Row] C1\n0.088  0.005\n[Row] C2\n0.089\n[Inductance Matrix] Banded_matrix\n[Bandwidth] 1\n[Row] B1\n1.82e-9  2.40e-10\n[Row] B2\n1.85e-9  1.90e-10\n[Row] C1\n1.42e-9  3.10e-10\n[Row] C2\n1.44e-9\n[Capacitance Matrix] Banded_matrix\n[Bandwidth] 1\n[Row] B1\n0.78e-12 -0.09e-12\n[Row] B2\n0.80e-12 -0.07e-12\n[Row] C1\n0.64e-12 -0.14e-12\n[Row] C2\n0.65e-12\n[End Model Data]\n[End Package Model]\n[End]\n"
+    }
+  }
+]

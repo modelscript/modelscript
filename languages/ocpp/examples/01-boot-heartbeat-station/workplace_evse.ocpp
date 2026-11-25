@@ -1,0 +1,19 @@
+station "Workplace_L2_01" {
+  model: "Wallbox-Pro-22"
+  vendor: "ChargePoint"
+  gridLimitKW: 22.0
+
+  evse 1 {
+    connector 1 {
+      type: "Type2"
+      maxPowerKW: 22.0
+      currentSession: {
+        transactionId: "TX-WP-1001"
+        evBatteryCapacityKWh: 64.0
+        currentSoC: 0.35
+        targetSoC: 0.80
+        departureMinutes: 180
+      }
+    }
+  }
+}

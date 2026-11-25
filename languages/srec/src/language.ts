@@ -28,7 +28,7 @@ export const srecLanguage = language({
         shortTitle: "SREC",
         selector: ["*.srec", "*.s19", "*.s28", "*.s37", "*.mot"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/SrecPanel.tsx",
         artifactViewTypes: ["srec", "s19", "s28", "s37", "mot"],
       },

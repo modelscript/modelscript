@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="BiosensorKinetics" name="Arsenite Biosensor Dynamic Model">
+    <listOfCompartments>
+      <compartment id="cell" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="ArsR" compartment="cell" initialConcentration="3.0" constant="false"/>
+      <species id="GFP_out" compartment="cell" initialConcentration="0.1" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="k_max" value="16.0" constant="true"/>
+      <parameter id="K_rep" value="1.5" constant="true"/>
+      <parameter id="kd" value="0.5" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_gfp_syn" reversible="false">
+        <listOfProducts><speciesReference species="GFP_out" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="ArsR"/></listOfModifiers>
+        <kineticLaw><formula>k_max / (1 + pow(ArsR / K_rep, 2))</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_gfp_deg" reversible="false">
+        <listOfReactants><speciesReference species="GFP_out" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>kd * GFP_out</formula></kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

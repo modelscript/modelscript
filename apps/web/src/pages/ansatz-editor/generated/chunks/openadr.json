@@ -1,0 +1,77 @@
+[
+  {
+    "id": "openadr-01-peak-shaving-price-signal",
+    "lang": "openadr",
+    "subFormats": ["oadr"],
+    "difficulty": 1,
+    "title": "Simple Peak-Shaving Price Signal Event",
+    "description": "Minimal OpenADR 2.0b demand response program broadcasting a single 2-hour afternoon peak-shaving setpoint event to a commercial building VEN.",
+    "category": "Demand Response",
+    "tags": ["openadr", "peak-shaving", "dr-event", "ven"],
+    "activeFile": "peak_shave.oadr",
+    "fileNames": ["peak_shave.oadr"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "program \"Commercial_Peak_Shave\" {\n  event \"DR_PEAK_001\" {\n    status: \"active\"\n    signalType: \"setpoint\"\n    targetVenId: \"VEN-OFFICE-TOWER-01\"\n\n    interval {\n      start: \"2026-07-20T15:00:00Z\"\n      durationSeconds: 7200\n      payload: 85.0\n    }\n  }\n}\n"
+  },
+  {
+    "id": "openadr-02-industrial-load-shedding",
+    "lang": "openadr",
+    "subFormats": ["oadr"],
+    "difficulty": 2,
+    "title": "4-Interval Industrial Load Shedding Event",
+    "description": "Staged 4-interval industrial curtailment schedule ramping load reduction up during system peak and stepping down for controlled recovery.",
+    "category": "Industrial Demand Response",
+    "tags": ["openadr", "load-shedding", "curtailment", "intervals"],
+    "activeFile": "industrial_shed.oadr",
+    "fileNames": ["industrial_shed.oadr"],
+    "fileCount": 1,
+    "code": "program \"Industrial_Curtailment_Tier1\" {\n  event \"DR_IND_SHED_02\" {\n    status: \"active\"\n    signalType: \"delta\"\n    targetVenId: \"VEN-COLD-STORAGE-04\"\n\n    interval {\n      start: \"2026-08-05T14:00:00Z\"\n      durationSeconds: 1800\n      payload: 150.0\n    }\n\n    interval {\n      start: \"2026-08-05T14:30:00Z\"\n      durationSeconds: 3600\n      payload: 320.0\n    }\n\n    interval {\n      start: \"2026-08-05T15:30:00Z\"\n      durationSeconds: 3600\n      payload: 280.0\n    }\n\n    interval {\n      start: \"2026-08-05T16:30:00Z\"\n      durationSeconds: 1800\n      payload: 100.0\n    }\n  }\n}\n"
+  },
+  {
+    "id": "openadr-03-xml-distribute-event",
+    "lang": "openadr",
+    "subFormats": ["oadr.xml"],
+    "difficulty": 3,
+    "title": "OpenADR 2.0b XML Chiller Plant Dispatch (oadrDistributeEvent)",
+    "description": "Standards-compliant OpenADR 2.0b XML oadrDistributeEvent payload dispatching a 3-interval HVAC chiller curtailment signal to a campus VEN.",
+    "category": "OpenADR 2.0b XML",
+    "tags": ["openadr", "xml", "oadr20b", "chiller-plant"],
+    "activeFile": "chiller_dispatch.oadr.xml",
+    "fileNames": ["chiller_dispatch.oadr.xml"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<oadrPayload xmlns=\"http://openadr.org/oadr-2.0b/2012/07\">\n  <oadrDistributeEvent>\n    <oadrEvent>\n      <eiEvent>\n        <eventDescriptor>\n          <eventID>EVENT-CAMPUS-CHILLER-03</eventID>\n          <eventStatus>active</eventStatus>\n        </eventDescriptor>\n        <eiTarget>\n          <venID>VEN-CAMPUS-CHILLER-02</venID>\n        </eiTarget>\n        <eiEventSignals>\n          <eiEventSignal>\n            <signalType>setpoint</signalType>\n            <intervals>\n              <interval>\n                <dtstart><date-time>2026-08-10T14:00:00Z</date-time></dtstart>\n                <duration><duration>PT1800S</duration></duration>\n                <signalPayload><payloadFloat>60.0</payloadFloat></signalPayload>\n              </interval>\n              <interval>\n                <dtstart><date-time>2026-08-10T14:30:00Z</date-time></dtstart>\n                <duration><duration>PT3600S</duration></duration>\n                <signalPayload><payloadFloat>110.0</payloadFloat></signalPayload>\n              </interval>\n              <interval>\n                <dtstart><date-time>2026-08-10T15:30:00Z</date-time></dtstart>\n                <duration><duration>PT1800S</duration></duration>\n                <signalPayload><payloadFloat>45.0</payloadFloat></signalPayload>\n              </interval>\n            </intervals>\n          </eiEventSignal>\n        </eiEventSignals>\n      </eiEvent>\n    </oadrEvent>\n  </oadrDistributeEvent>\n</oadrPayload>\n"
+  },
+  {
+    "id": "openadr-04-fast-adr-frequency-regulation",
+    "lang": "openadr",
+    "subFormats": ["oadr"],
+    "difficulty": 4,
+    "title": "Fast-ADR Ancillary Frequency Regulation Event",
+    "description": "High-resolution Fast-ADR ancillary services program dispatching 5-minute dynamic battery fleet regulation setpoints across two coordinated events.",
+    "category": "Ancillary Services",
+    "tags": ["openadr", "fast-adr", "frequency-regulation", "bess"],
+    "activeFile": "fast_adr_reg.oadr",
+    "fileNames": ["fast_adr_reg.oadr"],
+    "fileCount": 1,
+    "code": "program \"ISO_FastADR_RegUp\" {\n  event \"FAST_REG_BESS_A\" {\n    status: \"active\"\n    signalType: \"setpoint\"\n    targetVenId: \"VEN-BESS-AGGREGATOR-NORTH\"\n\n    interval {\n      start: \"2026-09-02T17:00:00Z\"\n      durationSeconds: 300\n      payload: 250.0\n    }\n\n    interval {\n      start: \"2026-09-02T17:05:00Z\"\n      durationSeconds: 300\n      payload: 400.0\n    }\n\n    interval {\n      start: \"2026-09-02T17:10:00Z\"\n      durationSeconds: 300\n      payload: 320.0\n    }\n  }\n\n  event \"FAST_REG_EV_DEPOT\" {\n    status: \"active\"\n    signalType: \"delta\"\n    targetVenId: \"VEN-EV-FLEET-DEPOT-WEST\"\n\n    interval {\n      start: \"2026-09-02T17:00:00Z\"\n      durationSeconds: 900\n      payload: 180.0\n    }\n  }\n}\n"
+  },
+  {
+    "id": "openadr-05-vtn-ven-full-exchange",
+    "lang": "openadr",
+    "subFormats": ["oadr", "oadr.xml"],
+    "difficulty": 5,
+    "title": "VTN-to-VEN Multi-Site Demand Response Exchange",
+    "description": "Multi-file OpenADR workspace pairing a declarative utility VTN program schedule with companion OpenADR 2.0b XML dispatch payloads for commercial and EV depot VENs.",
+    "category": "Utility VTN/VEN Operations",
+    "tags": ["openadr", "vtn", "ven", "xml", "multi-file"],
+    "activeFile": "vtn_program.oadr",
+    "fileNames": ["vtn_program.oadr", "ven_dispatch.oadr.xml"],
+    "fileCount": 2,
+    "code": "program \"Regional_Grid_Flex_2026\" {\n  event \"DR_METRO_PEAK_05\" {\n    status: \"active\"\n    signalType: \"setpoint\"\n    targetVenId: \"VEN-METRO-AGGREGATOR-01\"\n\n    interval {\n      start: \"2026-08-18T16:00:00Z\"\n      durationSeconds: 3600\n      payload: 500.0\n    }\n\n    interval {\n      start: \"2026-08-18T17:00:00Z\"\n      durationSeconds: 3600\n      payload: 750.0\n    }\n\n    interval {\n      start: \"2026-08-18T18:00:00Z\"\n      durationSeconds: 3600\n      payload: 400.0\n    }\n  }\n}\n",
+    "files": {
+      "vtn_program.oadr": "program \"Regional_Grid_Flex_2026\" {\n  event \"DR_METRO_PEAK_05\" {\n    status: \"active\"\n    signalType: \"setpoint\"\n    targetVenId: \"VEN-METRO-AGGREGATOR-01\"\n\n    interval {\n      start: \"2026-08-18T16:00:00Z\"\n      durationSeconds: 3600\n      payload: 500.0\n    }\n\n    interval {\n      start: \"2026-08-18T17:00:00Z\"\n      durationSeconds: 3600\n      payload: 750.0\n    }\n\n    interval {\n      start: \"2026-08-18T18:00:00Z\"\n      durationSeconds: 3600\n      payload: 400.0\n    }\n  }\n}\n",
+      "ven_dispatch.oadr.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<oadrPayload xmlns=\"http://openadr.org/oadr-2.0b/2012/07\">\n  <oadrDistributeEvent>\n    <oadrEvent>\n      <eiEvent>\n        <eventDescriptor>\n          <eventID>DR_METRO_PEAK_05_XML</eventID>\n          <eventStatus>active</eventStatus>\n        </eventDescriptor>\n        <eiTarget>\n          <venID>VEN-METRO-AGGREGATOR-01</venID>\n        </eiTarget>\n        <eiEventSignals>\n          <eiEventSignal>\n            <signalType>setpoint</signalType>\n            <intervals>\n              <interval>\n                <dtstart><date-time>2026-08-18T16:00:00Z</date-time></dtstart>\n                <duration><duration>PT3600S</duration></duration>\n                <signalPayload><payloadFloat>500.0</payloadFloat></signalPayload>\n              </interval>\n            </intervals>\n          </eiEventSignal>\n        </eiEventSignals>\n      </eiEvent>\n    </oadrEvent>\n  </oadrDistributeEvent>\n</oadrPayload>\n"
+    }
+  }
+]

@@ -1,0 +1,78 @@
+[
+  {
+    "id": "gtsuite-01-helmholtz-resonator-pipe",
+    "lang": "gtsuite",
+    "subFormats": ["gtm"],
+    "difficulty": 1,
+    "title": "Acoustic Helmholtz Resonator Pipe",
+    "description": "1D acoustic wave-action intake duct coupled to a Helmholtz side-branch resonator cavity with CFL-stable finite-volume cell discretization between ambient inlet and outlet boundaries.",
+    "category": "1D Gas Dynamics",
+    "tags": ["helmholtz", "acoustics", "1d-cfd", "cfl-stable"],
+    "activeFile": "helmholtz.gtm",
+    "fileNames": ["helmholtz.gtm"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "MODEL: Helmholtz_Acoustic_Resonator\nSPEED: 2500.0\nLAMBDA: 1.0\n\nCOMPONENTS:\n  INLET = environment_inlet (P = 101325, T = 298.15)\n  DUCT_UP = pipe (D = 0.055, L = 0.60, CELLS = 6)\n  NECK = pipe (D = 0.032, L = 0.20, CELLS = 2)\n  CAVITY = plenum (VOL = 0.0025, P = 101325, T = 298.15)\n  DUCT_DN = pipe (D = 0.055, L = 0.60, CELLS = 6)\n  OUTLET = environment_outlet (P = 101325, T = 298.15)\n\nCONNECTIONS:\n  INLET.out -> DUCT_UP.in\n  DUCT_UP.out -> NECK.in\n  NECK.out -> CAVITY.port1\n  CAVITY.port2 -> DUCT_DN.in\n  DUCT_DN.out -> OUTLET.in\n"
+  },
+  {
+    "id": "gtsuite-02-single-cylinder-si-engine",
+    "lang": "gtsuite",
+    "subFormats": ["gtm"],
+    "difficulty": 2,
+    "title": "Single-Cylinder 4-Stroke SI Engine Breathing",
+    "description": "Naturally aspirated single-cylinder 500 cc spark-ignition engine with intake plenum, tuned intake and exhaust runners, Wiebe combustion model, and CFL-stable pipe discretization.",
+    "category": "Internal Combustion Engines",
+    "tags": ["si-engine", "wiebe", "breathing", "gas-dynamics"],
+    "activeFile": "single_cyl_si.gtm",
+    "fileNames": ["single_cyl_si.gtm"],
+    "fileCount": 1,
+    "code": "MODEL: SingleCyl_500cc_SI\nSPEED: 3200.0\nLAMBDA: 1.0\n\nCOMPONENTS:\n  INLET = environment_inlet (P = 101325, T = 298.15)\n  AIRBOX = plenum (VOL = 0.0045, P = 101325, T = 298.15)\n  RUNNER_IN = intake_runner (D = 0.044, L = 0.40, CELLS = 4)\n  CYL1 = cylinder (BORE = 0.086, STROKE = 0.086, ROD = 0.145, CR = 10.5, ANCHOR = 14, DURATION = 42)\n  RUNNER_EXH = exhaust_runner (D = 0.038, L = 0.60, CELLS = 4)\n  MUFFLER = plenum (VOL = 0.008, P = 103000, T = 750.0)\n  TAILPIPE = pipe (D = 0.048, L = 0.80, CELLS = 5)\n  OUTLET = environment_outlet (P = 101325, T = 298.15)\n\nCONNECTIONS:\n  INLET.out -> AIRBOX.in\n  AIRBOX.port1 -> RUNNER_IN.in\n  RUNNER_IN.out -> CYL1.intake\n  CYL1.exhaust -> RUNNER_EXH.in\n  RUNNER_EXH.out -> MUFFLER.in\n  MUFFLER.out -> TAILPIPE.in\n  TAILPIPE.out -> OUTLET.in\n"
+  },
+  {
+    "id": "gtsuite-03-turbo-i4-powertrain",
+    "lang": "gtsuite",
+    "subFormats": ["gtm"],
+    "difficulty": 3,
+    "title": "Turbocharged 4-Cylinder Inline Powertrain",
+    "description": "2.0L turbocharged inline-4 GDI engine with surge-free compressor, charge-air intercooler, four-cylinder intake and exhaust manifolds, and exhaust gas turbine.",
+    "category": "Turbocharged Powertrains",
+    "tags": ["turbocharger", "intercooler", "inline-4", "engine"],
+    "activeFile": "turbo_i4.gtm",
+    "fileNames": ["turbo_i4.gtm"],
+    "fileCount": 1,
+    "code": "MODEL: Turbo_I4_2L_GDI\nSPEED: 3800.0\nLAMBDA: 1.0\n\nCOMPONENTS:\n  INLET = environment_inlet (P = 101325, T = 298.15)\n  COMP = turbo_compressor (PR = 2.0, EFF = 0.77, MASS_FLOW = 0.16)\n  INTERCOOLER = intercooler (VOL = 0.0055, DP = 0.035, EFF = 0.84)\n  PLENUM_IN = plenum (VOL = 0.0042, P = 195000, T = 315.0)\n  RUN_IN1 = intake_runner (D = 0.044, L = 0.40, CELLS = 4)\n  RUN_IN2 = intake_runner (D = 0.044, L = 0.40, CELLS = 4)\n  RUN_IN3 = intake_runner (D = 0.044, L = 0.40, CELLS = 4)\n  RUN_IN4 = intake_runner (D = 0.044, L = 0.40, CELLS = 4)\n  CYL1 = cylinder (BORE = 0.0825, STROKE = 0.0928, ROD = 0.144, CR = 9.8, ANCHOR = 15, DURATION = 45)\n  CYL2 = cylinder (BORE = 0.0825, STROKE = 0.0928, ROD = 0.144, CR = 9.8, ANCHOR = 15, DURATION = 45)\n  CYL3 = cylinder (BORE = 0.0825, STROKE = 0.0928, ROD = 0.144, CR = 9.8, ANCHOR = 15, DURATION = 45)\n  CYL4 = cylinder (BORE = 0.0825, STROKE = 0.0928, ROD = 0.144, CR = 9.8, ANCHOR = 15, DURATION = 45)\n  RUN_EX1 = exhaust_runner (D = 0.038, L = 0.60, CELLS = 4)\n  RUN_EX2 = exhaust_runner (D = 0.038, L = 0.60, CELLS = 4)\n  RUN_EX3 = exhaust_runner (D = 0.038, L = 0.60, CELLS = 4)\n  RUN_EX4 = exhaust_runner (D = 0.038, L = 0.60, CELLS = 4)\n  PLENUM_EXH = plenum (VOL = 0.0030, P = 235000, T = 1020.0)\n  TURB = turbo_turbine (ER = 1.92, EFF = 0.74)\n  OUTLET = environment_outlet (P = 101325, T = 298.15)\n\nCONNECTIONS:\n  INLET.out -> COMP.in\n  COMP.out -> INTERCOOLER.in\n  INTERCOOLER.out -> PLENUM_IN.in\n  PLENUM_IN.port1 -> RUN_IN1.in\n  PLENUM_IN.port2 -> RUN_IN2.in\n  PLENUM_IN.port3 -> RUN_IN3.in\n  PLENUM_IN.port4 -> RUN_IN4.in\n  RUN_IN1.out -> CYL1.intake\n  RUN_IN2.out -> CYL2.intake\n  RUN_IN3.out -> CYL3.intake\n  RUN_IN4.out -> CYL4.intake\n  CYL1.exhaust -> RUN_EX1.in\n  CYL2.exhaust -> RUN_EX2.in\n  CYL3.exhaust -> RUN_EX3.in\n  CYL4.exhaust -> RUN_EX4.in\n  RUN_EX1.out -> PLENUM_EXH.port1\n  RUN_EX2.out -> PLENUM_EXH.port2\n  RUN_EX3.out -> PLENUM_EXH.port3\n  RUN_EX4.out -> PLENUM_EXH.port4\n  PLENUM_EXH.out -> TURB.in\n  TURB.out -> OUTLET.in\n"
+  },
+  {
+    "id": "gtsuite-04-exhaust-catalytic-converter",
+    "lang": "gtsuite",
+    "subFormats": ["gtm"],
+    "difficulty": 4,
+    "title": "Exhaust Aftertreatment Catalytic Converter Model",
+    "description": "Engine exhaust aftertreatment line featuring exhaust manifold collector, close-coupled three-way catalytic converter (TWC) brick volume, underfloor resonator, and acoustic tailpipe.",
+    "category": "Exhaust Aftertreatment",
+    "tags": ["aftertreatment", "catalyst", "exhaust", "thermal"],
+    "activeFile": "exhaust_cat.gtm",
+    "fileNames": ["exhaust_cat.gtm"],
+    "fileCount": 1,
+    "code": "MODEL: Exhaust_TWC_Aftertreatment\nSPEED: 2800.0\nLAMBDA: 1.0\n\nCOMPONENTS:\n  INLET = environment_inlet (P = 101325, T = 298.15)\n  INTAKE_PIPE = intake_runner (D = 0.050, L = 0.45, CELLS = 4)\n  CYL1 = cylinder (BORE = 0.084, STROKE = 0.090, ROD = 0.146, CR = 10.2, ANCHOR = 15, DURATION = 44)\n  CYL2 = cylinder (BORE = 0.084, STROKE = 0.090, ROD = 0.146, CR = 10.2, ANCHOR = 15, DURATION = 44)\n  EXH_MANIFOLD = plenum (VOL = 0.0022, P = 115000, T = 980.0)\n  DOWNPIPE = pipe (D = 0.055, L = 0.65, CELLS = 4)\n  TWC_INLET_CONE = plenum (VOL = 0.0012, P = 112000, T = 950.0)\n  TWC_MONOLITH = pipe (D = 0.110, L = 0.50, CELLS = 3)\n  UNDERFLOOR_RES = plenum (VOL = 0.0065, P = 105000, T = 780.0)\n  TAILPIPE = pipe (D = 0.055, L = 1.00, CELLS = 6)\n  OUTLET = environment_outlet (P = 101325, T = 298.15)\n\nCONNECTIONS:\n  INLET.out -> INTAKE_PIPE.in\n  INTAKE_PIPE.out -> CYL1.intake\n  INTAKE_PIPE.out -> CYL2.intake\n  CYL1.exhaust -> EXH_MANIFOLD.port1\n  CYL2.exhaust -> EXH_MANIFOLD.port2\n  EXH_MANIFOLD.out -> DOWNPIPE.in\n  DOWNPIPE.out -> TWC_INLET_CONE.in\n  TWC_INLET_CONE.out -> TWC_MONOLITH.in\n  TWC_MONOLITH.out -> UNDERFLOOR_RES.in\n  UNDERFLOOR_RES.out -> TAILPIPE.in\n  TAILPIPE.out -> OUTLET.in\n"
+  },
+  {
+    "id": "gtsuite-05-hev-turbo-engine-maps",
+    "lang": "gtsuite",
+    "subFormats": ["gtm", "csv"],
+    "difficulty": 5,
+    "title": "Hybrid EV Turbocharged Engine with Performance Maps",
+    "description": "Miller-cycle turbocharged hybrid-electric range-extender engine with intercooler, charge-air plenum, two-cylinder boosted gas path, and companion cam valve-lift and turbocharger compressor map tables.",
+    "category": "Hybrid Powertrains",
+    "tags": ["hev", "miller-cycle", "turbo-map", "multi-file"],
+    "activeFile": "hev_engine.gtm",
+    "fileNames": ["hev_engine.gtm", "valve_lift.csv", "turbo_map.csv"],
+    "fileCount": 3,
+    "code": "MODEL: HEV_Miller_Turbo_Engine\nSPEED: 3000.0\nLAMBDA: 1.0\n\nCOMPONENTS:\n  INLET = environment_inlet (P = 101325, T = 298.15)\n  AIR_DUCT = pipe (D = 0.058, L = 0.50, CELLS = 4)\n  COMP = turbo_compressor (PR = 1.85, EFF = 0.78, MASS_FLOW = 0.14)\n  CAC = intercooler (VOL = 0.0048, DP = 0.03, EFF = 0.86)\n  PLENUM_IN = plenum (VOL = 0.0038, P = 182000, T = 310.0)\n  RUN_IN1 = intake_runner (D = 0.042, L = 0.40, CELLS = 4)\n  RUN_IN2 = intake_runner (D = 0.042, L = 0.40, CELLS = 4)\n  CYL1 = cylinder (BORE = 0.080, STROKE = 0.094, ROD = 0.148, CR = 12.2, ANCHOR = 16, DURATION = 40)\n  CYL2 = cylinder (BORE = 0.080, STROKE = 0.094, ROD = 0.148, CR = 12.2, ANCHOR = 16, DURATION = 40)\n  RUN_EX1 = exhaust_runner (D = 0.036, L = 0.60, CELLS = 4)\n  RUN_EX2 = exhaust_runner (D = 0.036, L = 0.60, CELLS = 4)\n  PLENUM_EXH = plenum (VOL = 0.0024, P = 215000, T = 980.0)\n  TURB = turbo_turbine (ER = 1.78, EFF = 0.75)\n  EXH_PIPE = pipe (D = 0.054, L = 0.80, CELLS = 5)\n  OUTLET = environment_outlet (P = 101325, T = 298.15)\n\nCONNECTIONS:\n  INLET.out -> AIR_DUCT.in\n  AIR_DUCT.out -> COMP.in\n  COMP.out -> CAC.in\n  CAC.out -> PLENUM_IN.in\n  PLENUM_IN.port1 -> RUN_IN1.in\n  PLENUM_IN.port2 -> RUN_IN2.in\n  RUN_IN1.out -> CYL1.intake\n  RUN_IN2.out -> CYL2.intake\n  CYL1.exhaust -> RUN_EX1.in\n  CYL2.exhaust -> RUN_EX2.in\n  RUN_EX1.out -> PLENUM_EXH.port1\n  RUN_EX2.out -> PLENUM_EXH.port2\n  PLENUM_EXH.out -> TURB.in\n  TURB.out -> EXH_PIPE.in\n  EXH_PIPE.out -> OUTLET.in\n",
+    "files": {
+      "hev_engine.gtm": "MODEL: HEV_Miller_Turbo_Engine\nSPEED: 3000.0\nLAMBDA: 1.0\n\nCOMPONENTS:\n  INLET = environment_inlet (P = 101325, T = 298.15)\n  AIR_DUCT = pipe (D = 0.058, L = 0.50, CELLS = 4)\n  COMP = turbo_compressor (PR = 1.85, EFF = 0.78, MASS_FLOW = 0.14)\n  CAC = intercooler (VOL = 0.0048, DP = 0.03, EFF = 0.86)\n  PLENUM_IN = plenum (VOL = 0.0038, P = 182000, T = 310.0)\n  RUN_IN1 = intake_runner (D = 0.042, L = 0.40, CELLS = 4)\n  RUN_IN2 = intake_runner (D = 0.042, L = 0.40, CELLS = 4)\n  CYL1 = cylinder (BORE = 0.080, STROKE = 0.094, ROD = 0.148, CR = 12.2, ANCHOR = 16, DURATION = 40)\n  CYL2 = cylinder (BORE = 0.080, STROKE = 0.094, ROD = 0.148, CR = 12.2, ANCHOR = 16, DURATION = 40)\n  RUN_EX1 = exhaust_runner (D = 0.036, L = 0.60, CELLS = 4)\n  RUN_EX2 = exhaust_runner (D = 0.036, L = 0.60, CELLS = 4)\n  PLENUM_EXH = plenum (VOL = 0.0024, P = 215000, T = 980.0)\n  TURB = turbo_turbine (ER = 1.78, EFF = 0.75)\n  EXH_PIPE = pipe (D = 0.054, L = 0.80, CELLS = 5)\n  OUTLET = environment_outlet (P = 101325, T = 298.15)\n\nCONNECTIONS:\n  INLET.out -> AIR_DUCT.in\n  AIR_DUCT.out -> COMP.in\n  COMP.out -> CAC.in\n  CAC.out -> PLENUM_IN.in\n  PLENUM_IN.port1 -> RUN_IN1.in\n  PLENUM_IN.port2 -> RUN_IN2.in\n  RUN_IN1.out -> CYL1.intake\n  RUN_IN2.out -> CYL2.intake\n  CYL1.exhaust -> RUN_EX1.in\n  CYL2.exhaust -> RUN_EX2.in\n  RUN_EX1.out -> PLENUM_EXH.port1\n  RUN_EX2.out -> PLENUM_EXH.port2\n  PLENUM_EXH.out -> TURB.in\n  TURB.out -> EXH_PIPE.in\n  EXH_PIPE.out -> OUTLET.in\n",
+      "valve_lift.csv": "CrankAngle_deg,IntakeLift_mm,ExhaustLift_mm\n0.0,0.20,0.00\n30.0,2.85,0.00\n60.0,6.40,0.00\n90.0,9.10,0.00\n120.0,8.20,0.00\n150.0,4.15,0.00\n180.0,0.35,0.00\n510.0,0.00,0.25\n540.0,0.00,3.40\n570.0,0.00,7.10\n600.0,0.00,8.60\n630.0,0.00,7.20\n660.0,0.00,3.60\n690.0,0.00,0.30\n720.0,0.20,0.00\n",
+      "turbo_map.csv": "Speed_rpm,MassFlow_kg_s,PressureRatio,Efficiency\n80000,0.045,1.25,0.68\n80000,0.085,1.22,0.74\n110000,0.075,1.58,0.75\n110000,0.125,1.52,0.78\n140000,0.110,1.92,0.77\n140000,0.165,1.84,0.78\n165000,0.145,2.25,0.75\n165000,0.205,2.10,0.73\n"
+    }
+  }
+]

@@ -344,7 +344,9 @@ export async function seedPolyglotSocialData(
             fs.writeFileSync(filePath, spec.code, "utf8");
           }
           pre = await pregenerateServerSvgThumbnail(filePath, spec.viewType, spec.filename, uploadDir);
-        } catch {}
+        } catch {
+          // Thumbnail pregeneration is best-effort during seeding
+        }
       }
 
       for (const art of artifactsToSync) {
@@ -380,7 +382,9 @@ export async function seedPolyglotSocialData(
           if (changed) {
             db.updateArtifactViewConfig(art.id, JSON.stringify(parsedVc), spec.title);
           }
-        } catch {}
+        } catch {
+          // Ignore malformed view_config during seed sync
+        }
       }
 
       if (isStaleRasterThumb && typeof existingArtifact.thumbnail_url === "string") {
@@ -390,7 +394,9 @@ export async function seedPolyglotSocialData(
           if (fs.existsSync(stalePath)) {
             fs.unlinkSync(stalePath);
           }
-        } catch {}
+        } catch {
+          // Best-effort cleanup of stale raster thumbnail
+        }
       }
       continue;
     }

@@ -1,0 +1,84 @@
+[
+  {
+    "id": "lsdyna-01-uniaxial-cube-compression",
+    "lang": "lsdyna",
+    "subFormats": ["k"],
+    "difficulty": 1,
+    "title": "Uniaxial Cube Elastic Compression",
+    "description": "Single 8-node hexahedral solid steel cube subjected to uniaxial compressive nodal force with full bottom-face SPC constraints and explicit central-difference time integration.",
+    "category": "Explicit FEA & Impact",
+    "tags": ["lsdyna", "solid", "elastic", "compression"],
+    "activeFile": "cube_compress.k",
+    "fileNames": ["cube_compress.k"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "*KEYWORD\n*TITLE\nUniaxial Elastic Compression of 100mm Steel Cube\n$ Units: m, kg, s, N, Pa\n*NODE\n1, 0.0, 0.0, 0.0, 0, 0\n2, 0.1, 0.0, 0.0, 0, 0\n3, 0.1, 0.1, 0.0, 0, 0\n4, 0.0, 0.1, 0.0, 0, 0\n5, 0.0, 0.0, 0.1, 0, 0\n6, 0.1, 0.0, 0.1, 0, 0\n7, 0.1, 0.1, 0.1, 0, 0\n8, 0.0, 0.1, 0.1, 0, 0\n*ELEMENT_SOLID\n1, 1, 1, 2, 3, 4, 5, 6, 7, 8\n*PART\nSteel Cube\n1, 1, 1, 0, 0, 0, 0, 0\n*SECTION_SOLID\n1, 1\n*MAT_ELASTIC\n1, 7850.0, 2.1e11, 0.3\n*BOUNDARY_SPC_NODE\n1, 0, 1, 1, 1, 0, 0, 0\n2, 0, 0, 1, 1, 0, 0, 0\n3, 0, 0, 0, 1, 0, 0, 0\n4, 0, 1, 0, 1, 0, 0, 0\n*DEFINE_CURVE\n1, 0, 1.0, 1.0, 0.0, 0.0\n0.0, 0.0\n0.002, 1.0\n0.01, 1.0\n*LOAD_NODE_POINT\n5, 3, 1, -25000.0\n6, 3, 1, -25000.0\n7, 3, 1, -25000.0\n8, 3, 1, -25000.0\n*CONTROL_TERMINATION\n0.01, 0, 0.0, 0.0, 0.0\n*CONTROL_TIMESTEP\n0.0, 0.9, 0, 0.0, 0.0\n*DATABASE_GLSTAT\n0.0005\n*END\n"
+  },
+  {
+    "id": "lsdyna-02-cantilever-beam-impact",
+    "lang": "lsdyna",
+    "subFormats": ["k"],
+    "difficulty": 2,
+    "title": "Cantilever Beam Transverse Impact Transient",
+    "description": "Four-element Euler-Bernoulli steel cantilever beam subjected to a triangular tip impulse load with clamped root SPC boundary conditions and explicit transient response.",
+    "category": "Explicit FEA & Impact",
+    "tags": ["lsdyna", "beam", "impact", "transient"],
+    "activeFile": "cantilever_impact.k",
+    "fileNames": ["cantilever_impact.k"],
+    "fileCount": 1,
+    "code": "*KEYWORD\n*TITLE\nCantilever Steel Beam Transverse Tip Impact Transient\n*NODE\n1, 0.00, 0.0, 0.0, 0, 0\n2, 0.25, 0.0, 0.0, 0, 0\n3, 0.50, 0.0, 0.0, 0, 0\n4, 0.75, 0.0, 0.0, 0, 0\n5, 1.00, 0.0, 0.0, 0, 0\n*ELEMENT_BEAM\n1, 1, 1, 2, 0\n2, 1, 2, 3, 0\n3, 1, 3, 4, 0\n4, 1, 4, 5, 0\n*PART\nCantilever Steel Beam\n1, 1, 1, 0, 0, 0, 0, 0\n*SECTION_BEAM\n1, 1, 1.0\n0.04, 0.04, 0.04, 0.04\n*MAT_ELASTIC\n1, 7850.0, 2.1e11, 0.3\n*BOUNDARY_SPC_NODE\n1, 0, 1, 1, 1, 1, 1, 1\n*DEFINE_CURVE\n1, 0, 1.0, 1.0, 0.0, 0.0\n0.0, 0.0\n0.002, 1.0\n0.004, 0.0\n0.02, 0.0\n*LOAD_NODE_POINT\n5, 2, 1, -15000.0\n*CONTROL_TERMINATION\n0.02, 0, 0.0, 0.0, 0.0\n*CONTROL_TIMESTEP\n0.0, 0.9, 0, 0.0, 0.0\n*DATABASE_GLSTAT\n0.0005\n*END\n"
+  },
+  {
+    "id": "lsdyna-03-taylor-bar-impact",
+    "lang": "lsdyna",
+    "subFormats": ["k"],
+    "difficulty": 3,
+    "title": "Taylor Bar Elasto-Plastic Axial Impact",
+    "description": "Classic OFHC copper Taylor cylinder impact benchmark modeled with MAT_PIECEWISE_LINEAR_PLASTICITY, initial axial velocity, and rigid anvil SPC boundary constraints.",
+    "category": "Explicit FEA & Impact",
+    "tags": ["lsdyna", "plasticity", "taylor-bar", "high-strain-rate"],
+    "activeFile": "taylor_bar.k",
+    "fileNames": ["taylor_bar.k"],
+    "fileCount": 1,
+    "code": "*KEYWORD\n*TITLE\nOFHC Copper Taylor Bar Elasto-Plastic Axial Impact\n*NODE\n1, 0.000, 0.000, 0.000, 0, 0\n2, 0.010, 0.000, 0.000, 0, 0\n3, 0.010, 0.010, 0.000, 0, 0\n4, 0.000, 0.010, 0.000, 0, 0\n5, 0.000, 0.000, 0.016, 0, 0\n6, 0.010, 0.000, 0.016, 0, 0\n7, 0.010, 0.010, 0.016, 0, 0\n8, 0.000, 0.010, 0.016, 0, 0\n9, 0.000, 0.000, 0.032, 0, 0\n10, 0.010, 0.000, 0.032, 0, 0\n11, 0.010, 0.010, 0.032, 0, 0\n12, 0.000, 0.010, 0.032, 0, 0\n*ELEMENT_SOLID\n1, 1, 1, 2, 3, 4, 5, 6, 7, 8\n2, 1, 5, 6, 7, 8, 9, 10, 11, 12\n*PART\nOFHC Copper Cylinder\n1, 1, 1, 0, 0, 0, 0, 0\n*SECTION_SOLID\n1, 1\n*MAT_PIECEWISE_LINEAR_PLASTICITY\n1, 8930.0, 1.17e11, 0.35, 4.0e8, 1.0e8, 0.0\n*SET_NODE_LIST\n1\n5, 6, 7, 8, 9, 10, 11, 12\n*INITIAL_VELOCITY\n1, 0.0, 0.0, -227.0\n*BOUNDARY_SPC_NODE\n1, 0, 1, 1, 1, 0, 0, 0\n2, 0, 0, 1, 1, 0, 0, 0\n3, 0, 0, 0, 1, 0, 0, 0\n4, 0, 1, 0, 1, 0, 0, 0\n*CONTROL_TERMINATION\n0.00008, 0, 0.0, 0.0, 0.0\n*CONTROL_TIMESTEP\n0.0, 0.85, 0, 0.0, 0.0\n*DATABASE_GLSTAT\n0.000002\n*END\n"
+  },
+  {
+    "id": "lsdyna-04-crash-box-axial-crush",
+    "lang": "lsdyna",
+    "subFormats": ["k"],
+    "difficulty": 4,
+    "title": "Automotive Crash Box Axial Crush",
+    "description": "Thin-walled DP600 dual-phase steel automotive front crash box modeled with Belytschko-Tsay shell elements, elasto-plastic hardening, rigid barrier SPC constraints, and modular mesh/material include decks.",
+    "category": "Explicit FEA & Impact",
+    "tags": ["lsdyna", "crashworthiness", "shell", "multi-file"],
+    "activeFile": "crashbox.k",
+    "fileNames": ["crashbox.k", "mesh.k", "steel_dp600.k"],
+    "fileCount": 3,
+    "code": "*KEYWORD\n*TITLE\nAutomotive DP600 Steel Crash Box Axial Crush Simulation\n$ Modular companion decks: mesh.k and steel_dp600.k\n*INCLUDE\nmesh.k\nsteel_dp600.k\n*NODE\n1, 0.00, 0.00, 0.00, 0, 0\n2, 0.08, 0.00, 0.00, 0, 0\n3, 0.08, 0.08, 0.00, 0, 0\n4, 0.00, 0.08, 0.00, 0, 0\n5, 0.00, 0.00, 0.15, 0, 0\n6, 0.08, 0.00, 0.15, 0, 0\n7, 0.08, 0.08, 0.15, 0, 0\n8, 0.00, 0.08, 0.15, 0, 0\n*ELEMENT_SHELL\n1, 1, 1, 2, 6, 5\n2, 1, 2, 3, 7, 6\n3, 1, 3, 4, 8, 7\n4, 1, 4, 1, 5, 8\n*PART\nDP600 Crash Box Tube\n1, 1, 1, 0, 0, 0, 0, 0\n*SECTION_SHELL\n1, 2, 0.833, 5\n0.002, 0.002, 0.002, 0.002\n*MAT_PLASTIC_KINEMATIC\n1, 7850.0, 2.1e11, 0.3, 3.8e8, 1.5e9, 0.0\n*SET_NODE_LIST\n1\n5, 6, 7, 8\n*INITIAL_VELOCITY\n1, 0.0, 0.0, -15.6\n*BOUNDARY_SPC_NODE\n1, 0, 1, 1, 1, 1, 1, 1\n2, 0, 1, 1, 1, 1, 1, 1\n3, 0, 1, 1, 1, 1, 1, 1\n4, 0, 1, 1, 1, 1, 1, 1\n*CONTROL_TERMINATION\n0.015, 0, 0.0, 0.0, 0.0\n*CONTROL_TIMESTEP\n0.0, 0.9, 0, 0.0, 0.0\n*DATABASE_GLSTAT\n0.0002\n*END\n",
+    "files": {
+      "crashbox.k": "*KEYWORD\n*TITLE\nAutomotive DP600 Steel Crash Box Axial Crush Simulation\n$ Modular companion decks: mesh.k and steel_dp600.k\n*INCLUDE\nmesh.k\nsteel_dp600.k\n*NODE\n1, 0.00, 0.00, 0.00, 0, 0\n2, 0.08, 0.00, 0.00, 0, 0\n3, 0.08, 0.08, 0.00, 0, 0\n4, 0.00, 0.08, 0.00, 0, 0\n5, 0.00, 0.00, 0.15, 0, 0\n6, 0.08, 0.00, 0.15, 0, 0\n7, 0.08, 0.08, 0.15, 0, 0\n8, 0.00, 0.08, 0.15, 0, 0\n*ELEMENT_SHELL\n1, 1, 1, 2, 6, 5\n2, 1, 2, 3, 7, 6\n3, 1, 3, 4, 8, 7\n4, 1, 4, 1, 5, 8\n*PART\nDP600 Crash Box Tube\n1, 1, 1, 0, 0, 0, 0, 0\n*SECTION_SHELL\n1, 2, 0.833, 5\n0.002, 0.002, 0.002, 0.002\n*MAT_PLASTIC_KINEMATIC\n1, 7850.0, 2.1e11, 0.3, 3.8e8, 1.5e9, 0.0\n*SET_NODE_LIST\n1\n5, 6, 7, 8\n*INITIAL_VELOCITY\n1, 0.0, 0.0, -15.6\n*BOUNDARY_SPC_NODE\n1, 0, 1, 1, 1, 1, 1, 1\n2, 0, 1, 1, 1, 1, 1, 1\n3, 0, 1, 1, 1, 1, 1, 1\n4, 0, 1, 1, 1, 1, 1, 1\n*CONTROL_TERMINATION\n0.015, 0, 0.0, 0.0, 0.0\n*CONTROL_TIMESTEP\n0.0, 0.9, 0, 0.0, 0.0\n*DATABASE_GLSTAT\n0.0002\n*END\n",
+      "mesh.k": "*KEYWORD\n$ Companion Mesh Include Deck for Automotive Crash Box\n*NODE\n1, 0.00, 0.00, 0.00, 0, 0\n2, 0.08, 0.00, 0.00, 0, 0\n3, 0.08, 0.08, 0.00, 0, 0\n4, 0.00, 0.08, 0.00, 0, 0\n5, 0.00, 0.00, 0.15, 0, 0\n6, 0.08, 0.00, 0.15, 0, 0\n7, 0.08, 0.08, 0.15, 0, 0\n8, 0.00, 0.08, 0.15, 0, 0\n*ELEMENT_SHELL\n1, 1, 1, 2, 6, 5\n2, 1, 2, 3, 7, 6\n3, 1, 3, 4, 8, 7\n4, 1, 4, 1, 5, 8\n*END\n",
+      "steel_dp600.k": "*KEYWORD\n$ Companion Material Card Include Deck: DP600 Dual-Phase Steel\n*MAT_PLASTIC_KINEMATIC\n1, 7850.0, 2.1e11, 0.3, 3.8e8, 1.5e9, 0.0\n*END\n"
+    }
+  },
+  {
+    "id": "lsdyna-05-three-point-bending-composite",
+    "lang": "lsdyna",
+    "subFormats": ["k"],
+    "difficulty": 5,
+    "title": "Three-Point Bending Composite Beam with Rigid Impactor",
+    "description": "Multi-part explicit three-point bending assembly combining a deformable composite beam, rigid cylindrical striker, roller support SPCs, load curve, and modular include files for mesh, impactor, and material properties.",
+    "category": "Explicit FEA & Impact",
+    "tags": ["lsdyna", "three-point-bending", "composite", "multi-file"],
+    "activeFile": "bend_main.k",
+    "fileNames": ["bend_main.k", "beam_mesh.k", "impactor.k", "mat_comp.k"],
+    "fileCount": 4,
+    "code": "*KEYWORD\n*TITLE\nThree-Point Bending of Composite Beam with Rigid Impactor\n$ Multi-file assembly companion decks: beam_mesh.k, impactor.k, mat_comp.k\n*INCLUDE\nbeam_mesh.k\nimpactor.k\nmat_comp.k\n*NODE\n1, 0.00, 0.00, 0.00, 0, 0\n2, 0.15, 0.00, 0.00, 0, 0\n3, 0.30, 0.00, 0.00, 0, 0\n4, 0.45, 0.00, 0.00, 0, 0\n5, 0.60, 0.00, 0.00, 0, 0\n10, 0.30, 0.02, 0.00, 0, 0\n11, 0.30, 0.06, 0.00, 0, 0\n*ELEMENT_BEAM\n1, 1, 1, 2, 0\n2, 1, 2, 3, 0\n3, 1, 3, 4, 0\n4, 1, 4, 5, 0\n5, 2, 10, 11, 0\n*PART\nComposite Structural Beam\n1, 1, 1, 0, 0, 0, 0, 0\nRigid Steel Impactor\n2, 2, 2, 0, 0, 0, 0, 0\n*SECTION_BEAM\n1, 1, 1.0\n0.03, 0.03, 0.015, 0.015\n*SECTION_BEAM\n2, 1, 1.0\n0.04, 0.04, 0.04, 0.04\n*MAT_PLASTIC_KINEMATIC\n1, 1600.0, 6.8e10, 0.28, 4.2e8, 2.5e9, 0.0\n*MAT_RIGID\n2, 7850.0, 2.1e11, 0.3\n*BOUNDARY_SPC_NODE\n1, 0, 1, 1, 1, 0, 0, 0\n5, 0, 0, 1, 1, 0, 0, 0\n*DEFINE_CURVE\n1, 0, 1.0, 1.0, 0.0, 0.0\n0.0, 0.0\n0.005, 1.0\n0.015, 1.0\n*LOAD_NODE_POINT\n3, 2, 1, -18000.0\n*SET_NODE_LIST\n1\n10, 11\n*INITIAL_VELOCITY\n1, 0.0, -5.0, 0.0\n*CONTROL_TERMINATION\n0.015, 0, 0.0, 0.0, 0.0\n*CONTROL_TIMESTEP\n0.0, 0.9, 0, 0.0, 0.0\n*DATABASE_GLSTAT\n0.00025\n*END\n",
+    "files": {
+      "bend_main.k": "*KEYWORD\n*TITLE\nThree-Point Bending of Composite Beam with Rigid Impactor\n$ Multi-file assembly companion decks: beam_mesh.k, impactor.k, mat_comp.k\n*INCLUDE\nbeam_mesh.k\nimpactor.k\nmat_comp.k\n*NODE\n1, 0.00, 0.00, 0.00, 0, 0\n2, 0.15, 0.00, 0.00, 0, 0\n3, 0.30, 0.00, 0.00, 0, 0\n4, 0.45, 0.00, 0.00, 0, 0\n5, 0.60, 0.00, 0.00, 0, 0\n10, 0.30, 0.02, 0.00, 0, 0\n11, 0.30, 0.06, 0.00, 0, 0\n*ELEMENT_BEAM\n1, 1, 1, 2, 0\n2, 1, 2, 3, 0\n3, 1, 3, 4, 0\n4, 1, 4, 5, 0\n5, 2, 10, 11, 0\n*PART\nComposite Structural Beam\n1, 1, 1, 0, 0, 0, 0, 0\nRigid Steel Impactor\n2, 2, 2, 0, 0, 0, 0, 0\n*SECTION_BEAM\n1, 1, 1.0\n0.03, 0.03, 0.015, 0.015\n*SECTION_BEAM\n2, 1, 1.0\n0.04, 0.04, 0.04, 0.04\n*MAT_PLASTIC_KINEMATIC\n1, 1600.0, 6.8e10, 0.28, 4.2e8, 2.5e9, 0.0\n*MAT_RIGID\n2, 7850.0, 2.1e11, 0.3\n*BOUNDARY_SPC_NODE\n1, 0, 1, 1, 1, 0, 0, 0\n5, 0, 0, 1, 1, 0, 0, 0\n*DEFINE_CURVE\n1, 0, 1.0, 1.0, 0.0, 0.0\n0.0, 0.0\n0.005, 1.0\n0.015, 1.0\n*LOAD_NODE_POINT\n3, 2, 1, -18000.0\n*SET_NODE_LIST\n1\n10, 11\n*INITIAL_VELOCITY\n1, 0.0, -5.0, 0.0\n*CONTROL_TERMINATION\n0.015, 0, 0.0, 0.0, 0.0\n*CONTROL_TIMESTEP\n0.0, 0.9, 0, 0.0, 0.0\n*DATABASE_GLSTAT\n0.00025\n*END\n",
+      "beam_mesh.k": "*KEYWORD\n$ Companion Beam Mesh Deck for Three-Point Bending\n*NODE\n1, 0.00, 0.00, 0.00, 0, 0\n2, 0.15, 0.00, 0.00, 0, 0\n3, 0.30, 0.00, 0.00, 0, 0\n4, 0.45, 0.00, 0.00, 0, 0\n5, 0.60, 0.00, 0.00, 0, 0\n*ELEMENT_BEAM\n1, 1, 1, 2, 0\n2, 1, 2, 3, 0\n3, 1, 3, 4, 0\n4, 1, 4, 5, 0\n*END\n",
+      "impactor.k": "*KEYWORD\n$ Companion Impactor Sub-Assembly Deck\n*NODE\n10, 0.30, 0.02, 0.00, 0, 0\n11, 0.30, 0.06, 0.00, 0, 0\n*ELEMENT_BEAM\n5, 2, 10, 11, 0\n*END\n",
+      "mat_comp.k": "*KEYWORD\n$ Companion Material Deck: CFRP Composite + Rigid Steel Impactor\n*MAT_PLASTIC_KINEMATIC\n1, 1600.0, 6.8e10, 0.28, 4.2e8, 2.5e9, 0.0\n*MAT_RIGID\n2, 7850.0, 2.1e11, 0.3\n*END\n"
+    }
+  }
+]

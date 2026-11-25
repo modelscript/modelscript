@@ -206,7 +206,9 @@ export class ArtifactRegistry {
       if (tarballBuffer && typeof handler.extractMetadata === "function") {
         try {
           extracted = await handler.extractMetadata(tarballBuffer, artifactPath);
-        } catch {}
+        } catch {
+          // Metadata extraction is best-effort; continue with fallback fields
+        }
       }
 
       if (extracted) {

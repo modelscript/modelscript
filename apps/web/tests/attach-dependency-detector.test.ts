@@ -97,16 +97,16 @@ describe("Modelica Dependency Detector", () => {
     assert.ok(names.includes("PlanarMechanics"));
   });
 
-  it("preserves dependencies in encodeMorselPermalink and decompressMorselPayload", async () => {
-    const { compressMorselPayload, decompressMorselPayload } =
+  it("preserves dependencies in encodeAnsatzPermalink and decompressAnsatzPayload", async () => {
+    const { compressAnsatzPayload, decompressAnsatzPayload } =
       await import("../../../packages/editor/src/workbench/util/permalink");
     const original = {
       code: "model M end M;",
       title: "M with deps",
       dependencies: [{ name: "Buildings", version: "11.0.0" }],
     };
-    const hash = compressMorselPayload(original);
-    const decoded = decompressMorselPayload(`m=${hash}`);
+    const hash = compressAnsatzPayload(original);
+    const decoded = decompressAnsatzPayload(`m=${hash}`);
     assert.ok(decoded);
     assert.ok(Array.isArray(decoded.dependencies));
     assert.strictEqual(decoded.dependencies[0].name, "Buildings");

@@ -10,6 +10,66 @@
 
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 
+interface AnalysisKernelsWasmExports {
+  memory: WebAssembly.Memory;
+  alloc: (size: number) => number;
+  free: (ptr: number) => void;
+  sbg_intervalIntersect?: (
+    lo1: number,
+    step1: number,
+    hi1: number,
+    lo2: number,
+    step2: number,
+    hi2: number,
+    outPtr: number,
+  ) => number;
+  hc4_revise?: (
+    nPtr: number,
+    numNodes: number,
+    cPtr: number,
+    loPtr: number,
+    hiPtr: number,
+    targetLo: number,
+    targetHi: number,
+  ) => number;
+  tm_mulTruncate?: (
+    dim: number,
+    maxOrder: number,
+    lenA: number,
+    eAPtr: number,
+    cAPtr: number,
+    remALo: number,
+    remAHi: number,
+    lenB: number,
+    eBPtr: number,
+    cBPtr: number,
+    remBLo: number,
+    remBHi: number,
+    outEPtr: number,
+    outCPtr: number,
+    maxOutTerms: number,
+    outRPtr: number,
+  ) => number;
+  egraph_create?: (initialCap: number) => number;
+  egraph_addNode: (ptr: number, op: number, left: number, right: number) => number;
+  egraph_find: (ptr: number, id: number) => number;
+  egraph_union: (ptr: number, a: number, b: number) => number;
+  egraph_rebuild: (ptr: number) => number;
+  egraph_classCount: (ptr: number) => number;
+  simplex_create?: (rows: number, cols: number) => number;
+  simplex_destroy: (ptr: number) => void;
+  simplex_initDutertreDeMoura: (ptr: number, m: number, n: number) => void;
+  simplex_setEntry: (ptr: number, row: number, col: number, val: number) => void;
+  simplex_setBound: (ptr: number, varIdx: number, isLower: boolean, r: number, kDelta: number) => void;
+  simplex_solveDutertreDeMoura?: (ptr: number, maxIter: number) => number;
+  simplex_getAssignment: (ptr: number, j: number) => number;
+  event_createDetector?: (daePtr: number) => number;
+  event_addZcf: (ptr: number, zcfExprId: number, initialValue: number, targetDirection: number) => number;
+  event_checkZeroCrossings: (ptr: number, valPtr: number) => number;
+  event_updateZcfSigns: (ptr: number, valPtr: number) => void;
+  event_checkZenoLimit: (ptr: number, tEvent: number, maxConsecutive: number, windowTol: number) => number | boolean;
+}
+
 /**
  * Intersects two 1D strided intervals `[lo1, step1, hi1]` and `[lo2, step2, hi2]` in WASM linear memory.
  * Returns `[lo, step, hi]` or `null` if empty (or `undefined` if WASM is not yet initialized).
@@ -22,7 +82,7 @@ export function wasmSbgIntervalIntersect(
   step2: number,
   hi2: number,
 ): [number, number, number] | null | undefined {
-  const w = getDefaultWasmExports() as any;
+  const w = getDefaultWasmExports() as AnalysisKernelsWasmExports | null;
   if (!w || typeof w.sbg_intervalIntersect !== "function") return undefined;
 
   const outPtr = w.alloc(12);
@@ -49,7 +109,7 @@ export function wasmHc4Revise(
   targetLo: number,
   targetHi: number,
 ): boolean | undefined {
-  const w = getDefaultWasmExports() as any;
+  const w = getDefaultWasmExports() as AnalysisKernelsWasmExports | null;
   if (!w || typeof w.hc4_revise !== "function") return undefined;
 
   const numNodes = Math.floor(nodes.length / 4);
@@ -92,7 +152,7 @@ export function wasmTaylorModelMulTruncate(
   remB: [number, number],
   maxOutTerms = 256,
 ): { exp: Uint8Array; coef: Float64Array; rem: [number, number] } | undefined {
-  const w = getDefaultWasmExports() as any;
+  const w = getDefaultWasmExports() as AnalysisKernelsWasmExports | null;
   if (!w || typeof w.tm_mulTruncate !== "function") return undefined;
 
   const eAPtr = w.alloc(Math.max(1, expA.byteLength));
@@ -151,11 +211,11 @@ export function wasmTaylorModelMulTruncate(
  * Lightweight TS handle wrapping an in-WASM E-Graph instance.
  */
 export class WasmEGraphBridge {
-  private readonly w: any;
+  private readonly w: AnalysisKernelsWasmExports;
   private readonly ptr: number;
 
   constructor(initialCap = 1024) {
-    const w = getDefaultWasmExports() as any;
+    const w = getDefaultWasmExports() as AnalysisKernelsWasmExports | null;
     if (!w || typeof w.egraph_create !== "function") {
       throw new Error("WASM E-Graph kernel not initialized. Call initBltWasm() first.");
     }
@@ -199,7 +259,7 @@ export function wasmSimplexSolveDutertreDeMoura(
   bounds: { varIdx: number; isLower: boolean; r: number; kDelta?: number }[],
   maxIterations = 2000,
 ): { status: "SAT" | "UNSAT" | "UNKNOWN"; assignments?: Float64Array } | undefined {
-  const w = getDefaultWasmExports() as any;
+  const w = getDefaultWasmExports() as AnalysisKernelsWasmExports | null;
   if (!w || typeof w.simplex_create !== "function" || typeof w.simplex_solveDutertreDeMoura !== "function") {
     return undefined;
   }
@@ -236,11 +296,11 @@ export function wasmSimplexSolveDutertreDeMoura(
  * zero-crossing detection, Brent root localization, Zeno chattering guard, and sign updates.
  */
 export class WasmEventDetectorBridge {
-  private readonly w: any;
+  private readonly w: AnalysisKernelsWasmExports;
   public readonly ptr: number;
 
   constructor(daePtr: number) {
-    const w = getDefaultWasmExports() as any;
+    const w = getDefaultWasmExports() as AnalysisKernelsWasmExports | null;
     if (!w || typeof w.event_createDetector !== "function") {
       throw new Error("WASM EventDetector kernel not initialized. Call initBltWasm() first.");
     }

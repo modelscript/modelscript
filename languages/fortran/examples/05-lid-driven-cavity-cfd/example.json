@@ -1,0 +1,12 @@
+{
+  "id": "fortran-05-lid-driven-cavity-cfd",
+  "lang": "fortran",
+  "subFormats": ["fortran90"],
+  "difficulty": 5,
+  "title": "2D Lid-Driven Cavity Navier-Stokes Projection Solver",
+  "description": "Multi-module Fortran 90 incompressible CFD fractional-step projection solver separating Cartesian grid parameters, pressure Poisson relaxation, and wall boundary conditions.",
+  "category": "Computational Fluid Dynamics",
+  "tags": ["fortran", "cfd", "navier-stokes", "poisson", "multi-file"],
+  "activeFile": "cavity_main.f90",
+  "fileOrder": ["cavity_main.f90", "grid_mod.f90", "poisson_mod.f90", "bc_mod.f90"]
+}

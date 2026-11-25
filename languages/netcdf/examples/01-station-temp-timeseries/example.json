@@ -1,0 +1,12 @@
+{
+  "id": "netcdf-01-station-temp-timeseries",
+  "lang": "netcdf",
+  "subFormats": ["cdl", "cf-1.8"],
+  "difficulty": 1,
+  "title": "1D Weather Station Temperature Time-Series",
+  "description": "CF-1.8 compliant 1D NetCDF CDL time-series recording 24-hour diurnal air temperature and relative humidity at a synoptic weather station.",
+  "category": "Meteorology",
+  "tags": ["netcdf", "cdl", "cf-1.8", "timeseries", "temperature"],
+  "activeFile": "station_temp.cdl",
+  "isDefaultStarter": true
+}

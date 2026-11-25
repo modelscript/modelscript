@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PlusConfiguration version="2.8">
+  <DataCollection StartupDelaySec="1.0">
+    <DeviceSet Name="NeuroNavPolarisSuite" Description="Cranial Neurosurgery Optical Navigation Server">
+      <Device Id="PolarisSpectra" Type="PolarisTracker" AcquisitionRate="60" ToolReferenceFrame="Tracker">
+        <DataSources>
+          <DataSource Type="Tool" Id="Pointer" PortName="0" BufferSize="150"/>
+          <DataSource Type="Tool" Id="MayfieldRef" PortName="1" BufferSize="150"/>
+        </DataSources>
+        <OutputChannels>
+          <OutputChannel Id="NeuroNavStream"/>
+        </OutputChannels>
+      </Device>
+    </DeviceSet>
+  </DataCollection>
+  <CoordinateDefinitions>
+    <Transform From="PointerTip" To="Pointer" Matrix="1 0 0 0  0 1 0 0  0 0 1 165.0  0 0 0 1" Error="0.31"/>
+    <Transform From="Pointer" To="Tracker" Matrix="0.939693 -0.342020 0 28.4  0.342020 0.939693 0 -16.2  0 0 1 625.0  0 0 0 1" Error="0.22"/>
+    <Transform From="Tracker" To="MayfieldRef" Matrix="1 0 0 -12.0  0 1 0 18.0  0 0 1 -580.0  0 0 0 1" Error="0.19"/>
+    <Transform From="MayfieldRef" To="MriRAS" Matrix="1 0 0 4.5  0 1 0 -9.0  0 0 1 14.0  0 0 0 1" Error="0.78"/>
+  </CoordinateDefinitions>
+  <PlusOpenIGTLinkServer MaxNumberOfIgtlMessagesToSend="10" ListeningPort="18944" OutputChannelId="NeuroNavStream">
+    <DefaultClientInfo>
+      <MessageTypes>
+        <Message Type="TRANSFORM"/>
+      </MessageTypes>
+      <TransformNames>
+        <Transform Name="PointerTipToMriRAS"/>
+      </TransformNames>
+    </DefaultClientInfo>
+  </PlusOpenIGTLinkServer>
+</PlusConfiguration>

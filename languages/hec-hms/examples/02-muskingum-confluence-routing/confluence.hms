@@ -1,0 +1,18 @@
+Project: Muskingum Confluence Watershed
+     Description: Two-Subbasin Confluence with Muskingum Routing
+     Version: 4.11
+     Filepath Separator: /
+     DSS File Name: confluence.dss
+End:
+
+Basin: Confluence_Basin
+     Filename: confluence.basin
+End:
+
+Precipitation: Storm_50yr
+     Filename: confluence.met
+End:
+
+Control: Storm_48hr
+     Filename: confluence.control
+End:

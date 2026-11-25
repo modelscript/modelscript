@@ -60,7 +60,7 @@ function computeHeaderRange(text: string): Range {
 }
 
 export function registerCodeLensProvider(context: LspContext) {
-  context.connection.onRequest("textDocument/codeLens", (params): CodeLens[] => {
+  context.connection.onRequest("textDocument/codeLens", (params): CodeLens[] | Promise<CodeLens[]> => {
     const uri = params.textDocument.uri;
     const lenses: CodeLens[] = [];
 
@@ -95,40 +95,49 @@ export function registerCodeLensProvider(context: LspContext) {
     // 1. Plugin-provided CodeLens (covers Modelica, SysML v2, SCAD, FEA, CFD, STEP, OLGA, PSCAD, PSS/E, OWL2, CSV, ModelScript, etc.)
     let extraPluginLenses: CodeLens[] = [];
     if (detectedPlugin?.customHandlers?.codeLens) {
-      const pluginResult = detectedPlugin.customHandlers.codeLens(currentDoc ?? { uri, getText: () => currentText }, {
-        uri,
-        text: currentText,
-        headerRange,
-        flags: {
-          showVerification,
-          showPolyglotLinks,
-          showCadMetrics,
-          showDiagram,
-          showSimulate,
-          showFileConversions,
-          verificationMode,
-          rawVerif,
-          formalVerification: features.formalVerification,
-          scaffolding: features.scaffolding,
-          demos: features.demos,
+      const pluginResult: unknown = detectedPlugin.customHandlers.codeLens(
+        currentDoc ?? { uri, getText: () => currentText },
+        {
+          uri,
+          text: currentText,
+          headerRange,
+          flags: {
+            showVerification,
+            showPolyglotLinks,
+            showCadMetrics,
+            showDiagram,
+            showSimulate,
+            showFileConversions,
+            verificationMode,
+            rawVerif,
+            formalVerification: features.formalVerification,
+            scaffolding: features.scaffolding,
+            demos: features.demos,
+          },
+          workspaceManager: context.workspaceManager,
+          documentManager: context.documentManager,
+          validationService: context.validationService,
+          cadMetricsService: context.cadMetricsService ?? defaultCadMetricsService,
+          connection: context.connection,
         },
-        workspaceManager: context.workspaceManager,
-        documentManager: (context as any).documentManager,
-        validationService: context.validationService,
-        cadMetricsService: context.cadMetricsService ?? defaultCadMetricsService,
-        connection: context.connection,
-      });
+      );
       if (Array.isArray(pluginResult)) {
-        return pluginResult;
+        return pluginResult as CodeLens[];
       }
-      if (pluginResult && typeof (pluginResult as any).then === "function") {
-        return pluginResult as any;
+      if (pluginResult && typeof (pluginResult as PromiseLike<CodeLens[]>).then === "function") {
+        return pluginResult as Promise<CodeLens[]>;
       }
-      if (pluginResult && typeof pluginResult === "object" && Array.isArray((pluginResult as any).lenses)) {
-        if ((pluginResult as any).appendUniversal) {
-          extraPluginLenses = (pluginResult as any).lenses;
+      if (
+        pluginResult &&
+        typeof pluginResult === "object" &&
+        "lenses" in pluginResult &&
+        Array.isArray((pluginResult as { lenses: unknown }).lenses)
+      ) {
+        const resultObj = pluginResult as { lenses: CodeLens[]; appendUniversal?: boolean };
+        if (resultObj.appendUniversal) {
+          extraPluginLenses = resultObj.lenses;
         } else {
-          return (pluginResult as any).lenses;
+          return resultObj.lenses;
         }
       }
     }
@@ -147,7 +156,10 @@ export function registerCodeLensProvider(context: LspContext) {
       }
 
       const actions: Array<{ id: string; title: string; category?: string }> =
-        (detectedPlugin.languageDef as any)?.actions ?? [];
+        (
+          detectedPlugin.languageDef as
+            { actions?: Array<{ id: string; title: string; category?: string }> } | undefined
+        )?.actions ?? [];
       if (actions.length > 0) {
         let emittedSim = false;
         for (const action of actions) {
@@ -224,11 +236,13 @@ export function registerCodeLensProvider(context: LspContext) {
         context.validationService?.modelicaProofResultsByUri?.get(effectiveUri);
       const proof = proofMap?.get(data.className);
       if (proof) {
+        const definiteCount = proof.definiteBugs?.length ?? 0;
+        const potentialCount = proof.potentialBugs?.length ?? 0;
         const title =
-          proof.definiteBugs?.length > 0
-            ? `✗ Formal Defect: ${proof.definiteBugs.length} bug(s) detected`
-            : proof.potentialBugs?.length > 0
-              ? `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s)`
+          definiteCount > 0
+            ? `✗ Formal Defect: ${definiteCount} bug(s) detected`
+            : potentialCount > 0
+              ? `⚠ Formal Proof: ${potentialCount} unproven condition(s)`
               : "✓ Formally Verified (0 RTEs, 100% Proven Safe)";
         return {
           ...lens,
@@ -245,12 +259,13 @@ export function registerCodeLensProvider(context: LspContext) {
         context.validationService?.modelicaDaeVerificationResultsByUri?.get(effectiveUri);
       const daeProof = daeMap?.get(data.className);
       if (daeProof) {
-        const definite = daeProof.issues?.find((i: { severity?: string }) => i.severity === "definite");
+        const issues = daeProof.issues ?? [];
+        const definite = issues.find((i) => i.severity === "definite");
         const title =
-          daeProof.issues?.length > 0
+          issues.length > 0
             ? definite
               ? `✗ DAE Defect: ${definite.message}`
-              : `⚠ DAE Invariant: ${daeProof.issues[0].message}`
+              : `⚠ DAE Invariant: ${issues[0]?.message ?? "warning"}`
             : daeProof.verdict?.kind === "proven"
               ? "✓ DAE: no singularities (interval analysis, all variables bounded)"
               : `◌ DAE: no singularity found among bounded variables (${daeProof.unboundedVariables ?? "some"} unbounded — not proven)`;
@@ -267,7 +282,9 @@ export function registerCodeLensProvider(context: LspContext) {
       const slot = (data as { slot?: number }).slot;
       if (slot !== undefined && typeof context.workspaceManager?.findAlignedElementsBySlot === "function") {
         const aligned = context.workspaceManager.findAlignedElementsBySlot(slot);
-        const domains = aligned.map((el: any) => String(el.domain || "").toUpperCase()).filter(Boolean);
+        const domains = aligned
+          .map((el: { domain?: unknown }) => String(el.domain || "").toUpperCase())
+          .filter(Boolean);
         return {
           ...lens,
           command: {

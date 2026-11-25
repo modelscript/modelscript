@@ -1,0 +1,11 @@
+{
+  "id": "nifti-03-t1-mri-oblique-sform",
+  "lang": "nifti",
+  "subFormats": ["nii.json"],
+  "difficulty": 3,
+  "title": "T1-Weighted MRI with Oblique Affine Sform Matrix",
+  "description": "High-resolution 3T MPRAGE T1-weighted brain MRI header with a 15-degree AC-PC sagittal pitch oblique rotation encoded consistently in both qform quaternion and sform 4x4 affine matrix.",
+  "category": "Medical Imaging & Volumetric Formats",
+  "tags": ["nifti", "t1-mri", "oblique-affine", "quaternion"],
+  "activeFile": "t1_oblique.nii.json"
+}

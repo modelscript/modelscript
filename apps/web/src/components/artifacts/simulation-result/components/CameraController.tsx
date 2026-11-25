@@ -3,10 +3,11 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import React, { useEffect, useState } from "react";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { CameraPreset, SpatialPin } from "../types";
 
 export interface CameraControllerProps {
-  orbitControlsRef: any;
+  orbitControlsRef: React.RefObject<OrbitControlsImpl | null>;
   presetTrigger?: { preset: CameraPreset; timestamp: number } | null | undefined;
 }
 

@@ -2,8 +2,10 @@
 
 import { sampleTelemetryFrame } from "@modelscript/cad";
 import {
+  CANVAS_BOARD_THEMES,
   createCanonicalPolyglotDemoBoard,
   SpatialSurfaceBridge,
+  type CanvasBoardThemeId,
   type CanvasDocument,
   type CanvasPeerPresence,
 } from "@modelscript/canvas";
@@ -34,15 +36,18 @@ import type { SpatialInteractionLock } from "./spatial-interaction.js";
 import { SpatialDiagramStage } from "./SpatialDiagramStage.js";
 import { TurntableCarousel } from "./TurntableCarousel.js";
 import {
-  buildPodiumSpatialPlane,
+  buildDeskSpatialPlane,
   createInitialRotundaState,
+  DEFAULT_DESK_THEME,
+  DEFAULT_PODIUM_TILT_DEG,
+  deskScaleLabel,
   extractModelsFromCanvasDocument,
-  PLINTH_CENTER_REAL_SCALE,
-  PLINTH_CENTER_TABLETOP,
+  getRotundaPlinthPresentation,
   ROTUNDA_BOARD_CANVAS_HEIGHT,
   ROTUNDA_BOARD_CANVAS_WIDTH,
   ROTUNDA_ENVIRONMENTS,
   rotundaReducer,
+  rotundaScaleModeLabel,
   wrapIndex,
   type EngineeringRotundaProps,
   type RotundaAction,
@@ -126,10 +131,12 @@ function SpatialFallbackBoardCanvas({
   doc,
   simulationTime,
   activeHeroTileId,
+  boardTheme,
 }: {
   doc: CanvasDocument;
   simulationTime: number;
   activeHeroTileId: string | null;
+  boardTheme: CanvasBoardThemeId;
 }): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -138,8 +145,10 @@ function SpatialFallbackBoardCanvas({
     if (!canvas) return;
     canvas.width = ROTUNDA_BOARD_CANVAS_WIDTH;
     canvas.height = ROTUNDA_BOARD_CANVAS_HEIGHT;
-    paintBoardToTextureCanvas(canvas, doc, simulationTime, null, null, activeHeroTileId);
-  }, [doc, simulationTime, activeHeroTileId]);
+    paintBoardToTextureCanvas(canvas, doc, simulationTime, null, null, activeHeroTileId, undefined, {
+      theme: boardTheme,
+    });
+  }, [doc, simulationTime, activeHeroTileId, boardTheme]);
 
   return (
     <canvas
@@ -148,6 +157,49 @@ function SpatialFallbackBoardCanvas({
       style={{ width: "100%", height: "100%", display: "block", objectFit: "contain" }}
     />
   );
+}
+
+/**
+ * Reads the headset (eye) height once per XR session — after ~0.6 s of plausible tracking —
+ * and reports it so the drafting desk can be re-seated at `clamp(headY − 0.62, 0.65, 1.05)`.
+ * Guarded: ignores implausible poses (tracking not yet initialized) and gives up after ~6 s.
+ */
+function XrDeskHeightAutoCalibrator({ onCalibrate }: { onCalibrate: (headY: number) => void }): null {
+  const session = useXR((s) => s.session);
+  const doneRef = useRef(false);
+  const elapsedRef = useRef(0);
+  const stableRef = useRef(0);
+  const tmpRef = useRef(new THREE.Vector3());
+  const onCalibrateRef = useRef(onCalibrate);
+  onCalibrateRef.current = onCalibrate;
+
+  useEffect(() => {
+    doneRef.current = false;
+    elapsedRef.current = 0;
+    stableRef.current = 0;
+  }, [session]);
+
+  useFrame((state, delta) => {
+    if (!session || doneRef.current) return;
+    elapsedRef.current += delta;
+    if (elapsedRef.current > 6) {
+      doneRef.current = true;
+      return;
+    }
+    state.camera.getWorldPosition(tmpRef.current);
+    const headY = tmpRef.current.y;
+    if (Number.isFinite(headY) && headY > 0.9 && headY < 2.4) {
+      stableRef.current += delta;
+      if (stableRef.current >= 0.6) {
+        doneRef.current = true;
+        onCalibrateRef.current(headY);
+      }
+    } else {
+      stableRef.current = 0;
+    }
+  });
+
+  return null;
 }
 
 interface RotundaSceneContentsProps {
@@ -228,8 +280,9 @@ function RotundaSceneContents({
 
   const activeModel = models[wrapIndex(state.activeModelIndex, models.length)] ?? models[0];
   const activeHeroTileId = activeModel?.sourceTileId ?? null;
-  const plinthCenter: [number, number, number] =
-    state.scaleMode === "real-scale" ? PLINTH_CENTER_REAL_SCALE : PLINTH_CENTER_TABLETOP;
+  const plinthPresentation = getRotundaPlinthPresentation(state.scaleMode);
+  const plinthCenter: [number, number, number] = plinthPresentation.center;
+  const effectivePodiumTiltDeg = state.diagramEditorEnabled ? 12 : state.podiumTiltDeg;
 
   // Resolve active schematic tile for the 3D Diagram Editor (explicit ID -> first schematic tile -> starter circuit)
   const activeDiagramTile = useMemo(() => {
@@ -333,6 +386,29 @@ function RotundaSceneContents({
     onCue("snap");
   }, [dispatch, onCue]);
 
+  const handleCycleDeskScale = useCallback(() => {
+    dispatch({ type: "cycleDeskScale" });
+    onCue("click");
+  }, [dispatch, onCue]);
+
+  const handleRecalibrateDeskHeight = useCallback(
+    (headY: number) => {
+      dispatch({ type: "recalibrateDeskHeight", headY });
+      onCue("snap");
+    },
+    [dispatch, onCue],
+  );
+
+  const handleResetDeskHeight = useCallback(() => {
+    dispatch({ type: "resetDeskHeight" });
+    onCue("click");
+  }, [dispatch, onCue]);
+
+  const handleCycleDeskTheme = useCallback(() => {
+    dispatch({ type: "cycleDeskTheme" });
+    onCue("click");
+  }, [dispatch, onCue]);
+
   const isOctopus = activeModel?.kind === "octopus-rov";
   const backdrop = getEnvironmentSceneBackdrop(state.environment);
   const renderPolicy = useMemo(() => resolveRotundaRenderPolicy(isInXr), [isInXr]);
@@ -382,6 +458,9 @@ function RotundaSceneContents({
 
   return (
     <>
+      {/* One-shot desk height calibration from the headset's eye height at XR session start */}
+      <XrDeskHeightAutoCalibrator onCalibrate={handleRecalibrateDeskHeight} />
+
       {/* WebXR Standing Origin, Left-Stick Smooth Locomotion, Snap-Turn & 14m Floor Teleportation */}
       <XrLocomotionRig scaleMode={state.scaleMode} onCue={onCue} />
 
@@ -400,7 +479,7 @@ function RotundaSceneContents({
         <StudioSsaoPass enabled={true} kernelRadius={0.22} minDistance={0.0015} maxDistance={0.09} />
       )}
 
-      {/* 5 Photorealistic Procedural PBR Environments + Matched Equirectangular HDRI PMREM IBL */}
+      {/* 6 Photoreal Procedural Environments (Future Atrium hero + 5 presets) with matched IBL */}
       <RotundaEnvironment environment={state.environment} plinthCenter={plinthCenter} scaleMode={state.scaleMode} />
 
       {/* Circular Metrology Plinth + Orbital 3D Model Carousel + Section Cut + CAE Overlays */}
@@ -444,13 +523,13 @@ function RotundaSceneContents({
         dark={!backdrop.isLight}
         libraryCatalog={libraryCatalog}
         interactionLockRef={diagramInteractionLockRef}
-        onInteractionLockChange={setDiagramLocked}
+        onInteractionLockChange={isInXr ? undefined : setDiagramLocked}
         onToggleWristPalette={handleToggleWristPalette}
         onSetWristPaletteOpen={handleSetWristPaletteOpen}
         onCycleSnapMode={handleCycleSnapMode}
         onTogglePlaying={handleTogglePlaying}
         onDiagramEdit={onDiagramEdit}
-        onHudStatusChange={onHudStatusChange}
+        onHudStatusChange={isInXr ? undefined : onHudStatusChange}
         onCue={onCue}
         onExposeActions={onExposeDiagramActions}
       />
@@ -459,7 +538,14 @@ function RotundaSceneContents({
       <DraftingPodium
         document={doc}
         bridge={bridge}
-        tiltDeg={state.diagramEditorEnabled ? 12 : state.podiumTiltDeg}
+        tiltDeg={effectivePodiumTiltDeg}
+        deskScale={state.deskScale}
+        deskHeightY={state.deskHeightY}
+        boardTheme={state.deskTheme}
+        onCycleDeskScale={handleCycleDeskScale}
+        onCycleBoardTheme={handleCycleDeskTheme}
+        onRecalibrateDeskHeight={handleRecalibrateDeskHeight}
+        onResetDeskHeight={handleResetDeskHeight}
         simulationTime={effectiveSimTime}
         isPlaying={state.isPlaying}
         activeHeroTileId={activeHeroTileId}
@@ -475,8 +561,8 @@ function RotundaSceneContents({
         onTogglePlaying={handleTogglePlaying}
         onToggleTilt={handleToggleTilt}
         onResetView={handleResetView}
-        onHudStatusChange={onHudStatusChange}
-        onInteractionLockChange={setPodiumLocked}
+        onHudStatusChange={isInXr ? undefined : onHudStatusChange}
+        onInteractionLockChange={isInXr ? undefined : setPodiumLocked}
       />
 
       {/* Left & Right Curved Diegetic 3D Glass Tool Wings (Native WebXR & Desktop 3D) */}
@@ -508,8 +594,11 @@ function RotundaSceneContents({
         <MultiplayerPresence
           peers={peers}
           bridge={bridge}
-          podiumTiltDeg={state.podiumTiltDeg}
+          podiumTiltDeg={effectivePodiumTiltDeg}
           plinthCenter={plinthCenter}
+          deskScale={state.deskScale}
+          deskHeightY={state.deskHeightY}
+          plinthScale={plinthPresentation.scale}
         />
       )}
 
@@ -518,7 +607,7 @@ function RotundaSceneContents({
         <OrbitControls
           makeDefault
           enabled={!podiumLocked && !plinthDragging && !diagramLocked}
-          target={[0, 1.24, -1.65]}
+          target={state.scaleMode === "hero" ? [0, 1.4, -2.6] : [0, 1.24, -1.65]}
           minDistance={0.85}
           maxDistance={7.5}
           maxPolarAngle={Math.PI * 0.495}
@@ -582,7 +671,7 @@ const CAE_LEGEND_META: Record<Exclude<RotundaCaeOverlay, "none">, CaeLegendSpec>
  *  - 45°-Angled Drafting Podium displaying the live Miro-like `.mscanvas` infinite canvas
  *    simultaneously with glowing fiber-optic tethers and 3D CADPort-to-2D wiring.
  *  - Curved Left & Right Floating 3D Diegetic Tool Wings (100% WebXR-native).
- *  - 5 Switchable Procedural Environments (Warehouse, Office, Outdoors, Dark Lab, MR Passthrough).
+ *  - 6 Switchable Procedural Environments (Future Atrium, Warehouse, Office, Outdoors, Dark Lab, MR Passthrough).
  */
 export function EngineeringRotunda({
   document: providedDoc,
@@ -591,7 +680,8 @@ export function EngineeringRotunda({
   activeScenarioId,
   onSelectScenario,
   mode = "spatial-3d",
-  initialEnvironment = "outdoors",
+  initialEnvironment = "atrium",
+  initialDeskTheme = DEFAULT_DESK_THEME,
   simulationTime: controlledSimulationTime,
   onSimulationTimeChange,
   onExitTo2D,
@@ -788,6 +878,7 @@ export function EngineeringRotunda({
     rotundaReducer,
     {
       environment: initialEnvironment,
+      deskTheme: initialDeskTheme,
       simulationTime: controlledSimulationTime ?? 0,
       telemetryWingEnabled: initialTelemetryEnabled,
       diagramEditorEnabled: Boolean(initialDiagramEditorEnabled),
@@ -807,7 +898,8 @@ export function EngineeringRotunda({
   const activeHeroTileId = activeModel?.sourceTileId ?? null;
 
   const bridge = useMemo(() => {
-    const b = new SpatialSurfaceBridge(buildPodiumSpatialPlane(45));
+    // DraftingPodium re-registers the live (tilted/scaled) plane on mount; seed with the default desk layout
+    const b = new SpatialSurfaceBridge(buildDeskSpatialPlane(DEFAULT_PODIUM_TILT_DEG));
     b.setMode(mode);
     return b;
   }, [mode]);
@@ -825,10 +917,14 @@ export function EngineeringRotunda({
     [xrStore],
   );
 
-  // Sync external initialEnvironment prop if it changes (e.g. URL query param navigation)
+  // Sync external initialEnvironment / initialDeskTheme props if they change
   useEffect(() => {
     dispatch({ type: "setEnvironment", environment: initialEnvironment });
   }, [initialEnvironment]);
+
+  useEffect(() => {
+    dispatch({ type: "setDeskTheme", theme: initialDeskTheme });
+  }, [initialDeskTheme]);
 
   // Reset orbital carousel index cleanly whenever the host changes activeScenarioId externally
   const prevActiveScenarioIdRef = useRef<string | undefined>(activeScenarioId);
@@ -846,7 +942,7 @@ export function EngineeringRotunda({
   }, [activeScenarioId, scenarios, models.length]);
 
   const preArEnvironmentRef = useRef<RotundaEnvironmentId>(
-    initialEnvironment === "passthrough" ? "outdoors" : initialEnvironment,
+    initialEnvironment === "passthrough" ? "atrium" : initialEnvironment,
   );
   const currentEnvRef = useRef<RotundaEnvironmentId>(state.environment);
   currentEnvRef.current = state.environment;
@@ -885,7 +981,8 @@ export function EngineeringRotunda({
     [xrStore, triggerCue],
   );
 
-  // Keyboard shortcuts for desktop 3D exploration (ArrowLeft/Right carousel, 1-5 envs, Space play/pause, R reset, Esc unzoom/exit)
+  // Keyboard shortcuts for desktop 3D exploration (ArrowLeft/Right carousel, 1-5 envs, Space play/pause, R reset,
+  // D desk size, M model scale mode, T desk tilt, Esc unzoom/exit)
   useEffect(() => {
     if (typeof window === "undefined") return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -920,7 +1017,19 @@ export function EngineeringRotunda({
       } else if (e.key === "r" || e.key === "R") {
         dispatch({ type: "resetPlinthView" });
         triggerCue("snap");
-      } else if (e.key >= "1" && e.key <= "5") {
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "d" || e.key === "D")) {
+        dispatch({ type: "cycleDeskScale" });
+        triggerCue("click");
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "m" || e.key === "M")) {
+        dispatch({ type: "toggleScaleMode" });
+        triggerCue("snap");
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "t" || e.key === "T")) {
+        dispatch({ type: "togglePodiumTilt" });
+        triggerCue("click");
+      } else if (!e.ctrlKey && !e.metaKey && !e.altKey && (e.key === "b" || e.key === "B")) {
+        dispatch({ type: "cycleDeskTheme" });
+        triggerCue("click");
+      } else if (e.key >= "1" && e.key <= "6") {
         const idx = Number(e.key) - 1;
         const env = ROTUNDA_ENVIRONMENTS[idx];
         if (env) {
@@ -977,7 +1086,7 @@ export function EngineeringRotunda({
       dispatch({ type: "setFocusedTile", tileId: null });
       dispatch({ type: "setEnvironment", environment: target.recommendedEnvironment });
       dispatch({ type: "setCaeOverlay", overlay: target.recommendedCaeOverlay ?? "none" });
-      dispatch({ type: "setScaleMode", mode: target.recommendedScaleMode ?? "tabletop" });
+      dispatch({ type: "setScaleMode", mode: target.recommendedScaleMode ?? "hero" });
       dispatch({
         type: "setTelemetryWing",
         enabled: target.id === "subsea-octopus" || target.models[0]?.kind === "octopus-rov",
@@ -1033,7 +1142,12 @@ export function EngineeringRotunda({
   const hasScenarios = Boolean(scenarios && scenarios.length > 0);
   const backdrop = getEnvironmentSceneBackdrop(state.environment);
   const fallbackView = (
-    <SpatialFallbackBoardCanvas doc={doc} simulationTime={effectiveSimTime} activeHeroTileId={activeHeroTileId} />
+    <SpatialFallbackBoardCanvas
+      doc={doc}
+      simulationTime={effectiveSimTime}
+      activeHeroTileId={activeHeroTileId}
+      boardTheme={state.deskTheme}
+    />
   );
 
   return (
@@ -1042,6 +1156,7 @@ export function EngineeringRotunda({
       data-rotunda="engineering-rotunda"
       data-surface-mode={mode}
       data-rotunda-env={state.environment}
+      data-desk-theme={state.deskTheme}
       data-scale-mode={state.scaleMode}
       data-active-model={activeModel?.id ?? ""}
       data-cae-overlay={state.caeOverlay}
@@ -1068,8 +1183,8 @@ export function EngineeringRotunda({
                 antialias: true,
                 alpha: true,
                 localClippingEnabled: true,
-                toneMapping: THREE.ACESFilmicToneMapping,
-                toneMappingExposure: 1.04,
+                toneMapping: THREE.NeutralToneMapping,
+                toneMappingExposure: 1.0,
               }}
             >
               <Suspense fallback={null}>
@@ -1459,7 +1574,7 @@ export function EngineeringRotunda({
             maxWidth: "calc(100% - 24px)",
           }}
         >
-          {/* 5 Environment Presets */}
+          {/* 6 Environment Presets */}
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             {ROTUNDA_ENVIRONMENTS.map((env) => {
               const active = state.environment === env.id;
@@ -1563,14 +1678,16 @@ export function EngineeringRotunda({
             style={{
               padding: "3px 8px",
               borderRadius: 6,
-              border: state.scaleMode === "real-scale" ? "1px solid #f59e0b" : "1px solid #334155",
-              background: state.scaleMode === "real-scale" ? "rgba(245, 158, 11, 0.2)" : "transparent",
-              color: state.scaleMode === "real-scale" ? "#fcd34d" : "#cbd5e1",
+              border: state.scaleMode !== "tabletop" ? "1px solid #f59e0b" : "1px solid #334155",
+              background: state.scaleMode !== "tabletop" ? "rgba(245, 158, 11, 0.2)" : "transparent",
+              color: state.scaleMode !== "tabletop" ? "#fcd34d" : "#cbd5e1",
               fontSize: 11,
               cursor: "pointer",
             }}
+            title="Model scale: Hero → Tabletop → 1:1 (M)"
+            data-testid="rotunda-toggle-scale-mode"
           >
-            {state.scaleMode === "real-scale" ? "1:1 Scale" : "Tabletop"}
+            {rotundaScaleModeLabel(state.scaleMode)}
           </button>
           <button
             type="button"
@@ -1588,8 +1705,101 @@ export function EngineeringRotunda({
               cursor: "pointer",
             }}
           >
-            45° Desk
+            Desk
           </button>
+          <button
+            type="button"
+            data-testid="rotunda-cycle-desk-scale"
+            title="Desk size: S → M → L → XL (D)"
+            onClick={() => {
+              dispatch({ type: "cycleDeskScale" });
+              triggerCue("click");
+            }}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              border: "1px solid #334155",
+              background: "transparent",
+              color: "#cbd5e1",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            Desk {deskScaleLabel(state.deskScale)}
+          </button>
+          <button
+            type="button"
+            data-testid="rotunda-toggle-desk-tilt"
+            title="Desk tilt: 20° drafting → 45° → upright (T)"
+            onClick={() => {
+              dispatch({ type: "togglePodiumTilt" });
+              triggerCue("click");
+            }}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              border: "1px solid #334155",
+              background: "transparent",
+              color: "#cbd5e1",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            Tilt {Math.round(90 - state.podiumTiltDeg)}°
+          </button>
+          <button
+            type="button"
+            data-testid="rotunda-cycle-desk-theme"
+            title="Desk paper theme: Blueprint → Light → Dark (B)"
+            onClick={() => {
+              dispatch({ type: "cycleDeskTheme" });
+              triggerCue("click");
+            }}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              border:
+                state.deskTheme === "blueprint"
+                  ? "1px solid #38bdf8"
+                  : state.deskTheme === "light"
+                    ? "1px solid #cbd5e1"
+                    : "1px solid #334155",
+              background:
+                state.deskTheme === "blueprint"
+                  ? "rgba(13, 59, 102, 0.85)"
+                  : state.deskTheme === "light"
+                    ? "rgba(241, 245, 249, 0.16)"
+                    : "transparent",
+              color: state.deskTheme === "blueprint" ? "#e0f2fe" : state.deskTheme === "light" ? "#f8fafc" : "#cbd5e1",
+              fontSize: 11,
+              fontWeight: state.deskTheme === "blueprint" ? 600 : 500,
+              cursor: "pointer",
+            }}
+          >
+            {CANVAS_BOARD_THEMES[state.deskTheme].label}
+          </button>
+          {state.deskHeightY !== null && (
+            <button
+              type="button"
+              data-testid="rotunda-reset-desk-height"
+              title="Desk height was calibrated from your headset — click to restore default height"
+              onClick={() => {
+                dispatch({ type: "resetDeskHeight" });
+                triggerCue("click");
+              }}
+              style={{
+                padding: "3px 8px",
+                borderRadius: 6,
+                border: "1px solid #38bdf8",
+                background: "rgba(56, 189, 248, 0.16)",
+                color: "#e0f2fe",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Height {state.deskHeightY.toFixed(2)} m ✕
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -1747,7 +1957,7 @@ export function EngineeringRotunda({
           data-testid="rotunda-diagram-studio-bar"
           style={{
             position: "absolute",
-            bottom: 58,
+            bottom: 112,
             left: "50%",
             transform: "translateX(-50%)",
             display: "flex",

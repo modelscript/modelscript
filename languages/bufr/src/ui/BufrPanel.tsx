@@ -133,9 +133,9 @@ export const BufrPanel: React.FC<LanguagePanelProps> = ({
                 Export EPW
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "bufr", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "bufr", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

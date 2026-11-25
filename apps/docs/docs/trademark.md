@@ -29,7 +29,7 @@ This policy applies to all trademarks, service marks, and trade names owned by M
 ### Word Marks
 
 - **ModelScript™**
-- **Ansatz™** / **Ansatz Social™**
+- **Ansatz™** / **Ansatz Editor™** / **Ansatz Network™** / **Ansatz Studio™**
 - **msx™** (the ModelScript CLI)
 
 ### Domain Names

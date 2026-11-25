@@ -1,0 +1,11 @@
+{
+  "id": "cfd-03-rae2822-transonic-rans",
+  "lang": "cfd",
+  "subFormats": ["cfg", "su2"],
+  "difficulty": 3,
+  "title": "RAE 2822 Transonic RANS Airfoil (SST Turbulence)",
+  "description": "Transonic Reynolds-Averaged Navier-Stokes SU2 benchmark for the RAE 2822 supercritical airfoil at Mach 0.729 with Spalart-Allmaras turbulence and complete BCs.",
+  "category": "Transonic Aerodynamics",
+  "tags": ["cfd", "su2", "rans", "rae2822", "transonic", "multi-file"],
+  "activeFile": "rae2822.cfg"
+}

@@ -18,7 +18,7 @@ describe("Modelica Icon Editor Top Toolbar Integration", () => {
     });
 
     const resolved = resolveLanguageToolbarButtons(modelicaButtons, "icon", {
-      target: "morsel",
+      target: "ansatz",
       maxPrimary: 6,
     });
 
@@ -31,10 +31,10 @@ describe("Modelica Icon Editor Top Toolbar Integration", () => {
     for (const btn of resolved.primary) {
       assert.ok(btn.iconSvg && btn.iconSvg.includes("<"), `button '${btn.id}' should carry custom iconSvg`);
       assert.ok(
-        btn.command?.startsWith("morsel:addIconPrimitive:"),
-        `button '${btn.id}' should dispatch morsel:addIconPrimitive:<shapeId>`,
+        btn.command?.startsWith("ansatz:addIconPrimitive:"),
+        `button '${btn.id}' should dispatch ansatz:addIconPrimitive:<shapeId>`,
       );
-      const shapeId = btn.command.slice("morsel:addIconPrimitive:".length);
+      const shapeId = btn.command.slice("ansatz:addIconPrimitive:".length);
       assert.ok(
         MODELICA_ICON_SHAPE_TOOLS.some((t) => t.id === shapeId),
         `shape '${shapeId}' must exist in MODELICA_ICON_SHAPE_TOOLS`,
@@ -51,31 +51,31 @@ describe("Modelica Icon Editor Top Toolbar Integration", () => {
     );
   });
 
-  it("wires maxPrimary for icon view in PlaygroundNavbar and MorselViewSubHeader, and handles addIconPrimitive in Morsel", () => {
+  it("wires maxPrimary for icon view in AnsatzEditorNavbar and AnsatzViewSubHeader, and handles addIconPrimitive in Ansatz", () => {
     const navbarSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx"),
+      path.resolve(import.meta.dirname, "../src/pages/ansatz-editor/components/AnsatzEditorNavbar.tsx"),
       "utf-8",
     );
     const subHeaderSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselViewSubHeader.tsx"),
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/AnsatzViewSubHeader.tsx"),
       "utf-8",
     );
-    const morselSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx"),
+    const ansatzSrc = fs.readFileSync(
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/AnsatzEditor.tsx"),
       "utf-8",
     );
 
     assert.ok(
       navbarSrc.includes('maxPrimary={activeTabId === "icon" ? 6 : 2}'),
-      "PlaygroundNavbar should expand maxPrimary when activeTabId === 'icon'",
+      "AnsatzEditorNavbar should expand maxPrimary when activeTabId === 'icon'",
     );
     assert.ok(
       subHeaderSrc.includes('maxPrimary={activeTabId === "icon" ? 6 : 2}'),
-      "MorselViewSubHeader should expand maxPrimary when activeTabId === 'icon'",
+      "AnsatzViewSubHeader should expand maxPrimary when activeTabId === 'icon'",
     );
     assert.ok(
-      morselSrc.includes('btn.command?.startsWith("morsel:addIconPrimitive:")'),
-      "Morsel.tsx must handle morsel:addIconPrimitive:* toolbar commands",
+      ansatzSrc.includes('btn.command?.startsWith("ansatz:addIconPrimitive:")'),
+      "Ansatz.tsx must handle ansatz:addIconPrimitive:* toolbar commands",
     );
   });
 });

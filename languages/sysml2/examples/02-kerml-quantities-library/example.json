@@ -1,0 +1,11 @@
+{
+  "id": "sysml2-02-kerml-quantities-library",
+  "lang": "sysml2",
+  "subFormats": ["kerml"],
+  "difficulty": 2,
+  "title": "KerML Core Quantities & Semantic Type Library",
+  "description": "Kernel Modeling Language (KerML) foundational datatype hierarchy defining SI physical quantities, scalar units, and derived mechanical and electrical types.",
+  "category": "Core Semantics",
+  "tags": ["sysml2", "kerml", "quantities", "units", "types"],
+  "activeFile": "Quantities.kerml"
+}

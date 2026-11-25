@@ -1,0 +1,37 @@
+program "ISO_FastADR_RegUp" {
+  event "FAST_REG_BESS_A" {
+    status: "active"
+    signalType: "setpoint"
+    targetVenId: "VEN-BESS-AGGREGATOR-NORTH"
+
+    interval {
+      start: "2026-09-02T17:00:00Z"
+      durationSeconds: 300
+      payload: 250.0
+    }
+
+    interval {
+      start: "2026-09-02T17:05:00Z"
+      durationSeconds: 300
+      payload: 400.0
+    }
+
+    interval {
+      start: "2026-09-02T17:10:00Z"
+      durationSeconds: 300
+      payload: 320.0
+    }
+  }
+
+  event "FAST_REG_EV_DEPOT" {
+    status: "active"
+    signalType: "delta"
+    targetVenId: "VEN-EV-FLEET-DEPOT-WEST"
+
+    interval {
+      start: "2026-09-02T17:00:00Z"
+      durationSeconds: 900
+      payload: 180.0
+    }
+  }
+}

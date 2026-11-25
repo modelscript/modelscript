@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { readPscadPsout } from "@modelscript/pscad";
 import type { IndexedDataset } from "@modelscript/simulate/charts";
 import { CodeIcon, PulseIcon } from "@primer/octicons-react";
@@ -506,9 +506,9 @@ export const PsoutViewer: React.FC<PsoutViewerProps> = ({ viewConfig, isFullScre
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
               onClick={() => {
-                const hash = compressMorselPayload({
+                const hash = compressAnsatzPayload({
                   v: 1,
-                  lang: "pscad" as any,
+                  lang: "pscad",
                   code: rawText || `# ${title}\n`,
                   title,
                 });

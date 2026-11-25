@@ -1,0 +1,11 @@
+{
+  "id": "datcom-02-cessna-172-wing-body-tail",
+  "lang": "datcom",
+  "subFormats": ["digital-datcom"],
+  "difficulty": 2,
+  "title": "Cessna 172 Wing-Body-Tail Configuration",
+  "description": "Complete general-aviation trainer configuration combining fuselage body stations, NACA 2412 high wing, horizontal stabilizer, and vertical fin.",
+  "category": "Aerodynamics & Stability",
+  "tags": ["datcom", "general-aviation", "wing-body-tail", "stability"],
+  "activeFile": "cessna172.dcm"
+}

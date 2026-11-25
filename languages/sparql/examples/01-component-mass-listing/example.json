@@ -1,0 +1,12 @@
+{
+  "id": "sparql-01-component-mass-listing",
+  "lang": "sparql",
+  "subFormats": ["rq", "ttl"],
+  "difficulty": 1,
+  "title": "List Engineering Vehicle Components & Masses",
+  "description": "SPARQL 1.1 SELECT query retrieving all mechanical and electrical vehicle components with their mass in kilograms sorted descending against a companion Turtle RDF dataset.",
+  "category": "Knowledge Graphs & MBSE",
+  "tags": ["sparql", "rdf", "turtle", "bom", "multi-file"],
+  "activeFile": "query.rq",
+  "isDefaultStarter": true
+}

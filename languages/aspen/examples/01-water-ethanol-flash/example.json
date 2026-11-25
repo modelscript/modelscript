@@ -1,0 +1,12 @@
+{
+  "id": "aspen-01-water-ethanol-flash",
+  "lang": "aspen",
+  "subFormats": ["in"],
+  "difficulty": 1,
+  "title": "Adiabatic Water-Ethanol Flash Drum",
+  "description": "Single-stage vapor-liquid flash separation of an ethanol-water feed stream using the NRTL activity coefficient model and a FLASH2 vessel.",
+  "category": "Chemical Process Simulation",
+  "tags": ["aspen", "flash2", "vle", "nrtl"],
+  "activeFile": "ethanol_flash.in",
+  "isDefaultStarter": true
+}

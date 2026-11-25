@@ -1,0 +1,12 @@
+{
+  "id": "c-05-bms-soc-ekf-firmware",
+  "lang": "c",
+  "subFormats": ["c99"],
+  "difficulty": 5,
+  "title": "Embedded BMS State-of-Charge EKF and Safety Firmware",
+  "description": "Multi-file lithium-ion Battery Management System (BMS) firmware integrating an Extended Kalman Filter (EKF) SoC estimator with over-voltage and thermal safety limits.",
+  "category": "Automotive & Battery Systems",
+  "tags": ["c", "bms", "ekf", "battery", "multi-file"],
+  "activeFile": "main.c",
+  "fileOrder": ["main.c", "bms_ekf.c", "bms_ekf.h", "safety_limits.h"]
+}

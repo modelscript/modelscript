@@ -1,0 +1,11 @@
+{
+  "id": "igtl-05-neurosurgery-navigation-session",
+  "lang": "igtl",
+  "subFormats": ["igtl", "plus.xml", "nii.json"],
+  "difficulty": 5,
+  "title": "Image-Guided Neurosurgery Navigation Session Bundle",
+  "description": "End-to-end cranial neurosurgery navigation workspace combining live OpenIGTLink transform telemetry (.igtl), PLUS optical tracker server config (.plus.xml), and preoperative T1w MRI reference header (.nii.json).",
+  "category": "Image-Guided Surgery & Navigation",
+  "tags": ["igtl", "neurosurgery", "plus-toolkit", "nifti-mri", "multi-file"],
+  "activeFile": "nav_stream.igtl"
+}

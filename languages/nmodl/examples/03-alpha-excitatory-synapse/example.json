@@ -1,0 +1,11 @@
+{
+  "id": "nmodl-03-alpha-excitatory-synapse",
+  "lang": "nmodl",
+  "subFormats": ["nmodl"],
+  "difficulty": 3,
+  "title": "Dual-Exponential Excitatory AMPA Synapse",
+  "description": "Bi-exponential excitatory glutamatergic synaptic conductance with coupled rise and decay gating states modeling postsynaptic AMPA receptor currents.",
+  "category": "Computational Neuroscience",
+  "tags": ["nmodl", "synapse", "ampa", "excitatory"],
+  "activeFile": "alphasyn.mod"
+}

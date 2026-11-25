@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="IEEE2800_GFM_Inverter" version="5.0.0" type="normal">
+  <param name="time_step" value="10.0"/>
+  <param name="time_duration" value="1.5"/>
+  <param name="start_type" value="0"/>
+  <param name="f_base" value="60.0"/>
+  <hierarchy>
+    <call name="Main" link="10001"/>
+  </hierarchy>
+  <definitions>
+    <definition name="Main" type="module">
+      <schematic>
+        <User classid="UserCmp" defn="master:source_3" id="GFM_VSC" x="80" y="180" orient="0">
+          <param name="Name" value="GFM_VSC_Bridge"/>
+          <param name="V" value="0.69"/>
+          <param name="MVA" value="100.0"/>
+          <param name="f" value="60.0"/>
+          <param name="DroopP" value="0.04"/>
+          <param name="DroopQ" value="0.05"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:inductor" id="L_INV" x="160" y="180" orient="0">
+          <param name="Name" value="LCL_ConverterInductor"/>
+          <param name="L" value="0.00018"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:capacitor" id="C_FILT" x="210" y="250" orient="0">
+          <param name="Name" value="LCL_ShuntCapacitor"/>
+          <param name="C" value="0.0022"/>
+          <port name="in" pos="[0, -20]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:inductor" id="L_GRID" x="260" y="180" orient="0">
+          <param name="Name" value="LCL_GridInductor"/>
+          <param name="L" value="0.00011"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <Bus name="LV_Bus_690V" id="B_LV" x="310" y="180" length="40" vbase="0.69"/>
+
+        <User classid="UserCmp" defn="master:xfmr-3p2w" id="T_PAD" x="400" y="180" orient="0">
+          <param name="Name" value="PadMount_0p69_34p5kV"/>
+          <param name="MVA" value="105.0"/>
+          <param name="V1" value="0.69"/>
+          <param name="V2" value="34.5"/>
+          <param name="X" value="0.06"/>
+          <port name="P" pos="[-30, 0]"/>
+          <port name="S" pos="[30, 0]"/>
+        </User>
+
+        <Bus name="Collector_34p5kV" id="B_MV" x="470" y="180" length="40" vbase="34.5"/>
+
+        <User classid="UserCmp" defn="master:xfmr-3p2w" id="T_MPT" x="560" y="180" orient="0">
+          <param name="Name" value="MainPowerXfmr_34p5_230kV"/>
+          <param name="MVA" value="110.0"/>
+          <param name="V1" value="34.5"/>
+          <param name="V2" value="230.0"/>
+          <param name="X" value="0.085"/>
+          <port name="P" pos="[-30, 0]"/>
+          <port name="S" pos="[30, 0]"/>
+        </User>
+
+        <Bus name="POI_230kV" id="B_POI" x="630" y="180" length="50" vbase="230.0"/>
+
+        <User classid="UserCmp" defn="master:source_3" id="WEAK_GRID" x="740" y="180" orient="0">
+          <param name="Name" value="WeakGrid_SCR2p0"/>
+          <param name="V" value="230.0"/>
+          <param name="MVA" value="200.0"/>
+          <param name="f" value="60.0"/>
+          <port name="in" pos="[-20, 0]"/>
+        </User>
+
+        <Wire>
+          <vertex x="100" y="180"/>
+          <vertex x="140" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="180" y="180"/>
+          <vertex x="240" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="210" y="180"/>
+          <vertex x="210" y="230"/>
+        </Wire>
+        <Wire>
+          <vertex x="280" y="180"/>
+          <vertex x="310" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="350" y="180"/>
+          <vertex x="370" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="430" y="180"/>
+          <vertex x="470" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="510" y="180"/>
+          <vertex x="530" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="590" y="180"/>
+          <vertex x="630" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="680" y="180"/>
+          <vertex x="720" y="180"/>
+        </Wire>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

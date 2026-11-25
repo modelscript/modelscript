@@ -47,11 +47,11 @@
     "src-gen/**"
   ],
   "scripts": {
+    "ansatz": "npx tsx ../../scripts/tools/language-ansatz.ts .",
     "build": "node ../../scripts/build/build-language-parser.js && tsc",
     "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "clean": "rimraf dist",
     "lint": "eslint src tests --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
     "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },
@@ -64,7 +64,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "alpha",
+    "tier": "beta",
     "category": "language"
   }
 }

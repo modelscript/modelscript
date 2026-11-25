@@ -1,0 +1,85 @@
+[
+  {
+    "id": "verilog-01-mux4-priority-encoder",
+    "lang": "verilog",
+    "subFormats": ["v"],
+    "difficulty": 1,
+    "title": "4-to-1 Multiplexer and Priority Encoder",
+    "description": "Synthesizable combinational 4-to-1 bus multiplexer paired with a 4-input active-high priority encoder using IEEE 1364 Verilog always @(*) case logic.",
+    "category": "Combinational Logic",
+    "tags": ["verilog", "mux", "encoder", "combinational"],
+    "activeFile": "mux4.v",
+    "fileNames": ["mux4.v"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "// IEEE 1364 Verilog 4-to-1 Multiplexer and 4-Bit Priority Encoder\nmodule mux4_priority (\n  input  [7:0] d0,\n  input  [7:0] d1,\n  input  [7:0] d2,\n  input  [7:0] d3,\n  input  [3:0] req,\n  output reg [7:0] y_out,\n  output reg [1:0] sel_code,\n  output wire valid\n);\n  assign valid = req[3] | req[2] | req[1] | req[0];\n\n  always @(*) begin\n    if (req[3])\n      sel_code = 2'b11;\n    else if (req[2])\n      sel_code = 2'b10;\n    else if (req[1])\n      sel_code = 2'b01;\n    else\n      sel_code = 2'b00;\n  end\n\n  always @(*) begin\n    case (sel_code)\n      2'b00: y_out = d0;\n      2'b01: y_out = d1;\n      2'b10: y_out = d2;\n      2'b11: y_out = d3;\n      default: y_out = 8'h00;\n    endcase\n  end\nendmodule\n"
+  },
+  {
+    "id": "verilog-02-sync-fifo",
+    "lang": "verilog",
+    "subFormats": ["v"],
+    "difficulty": 2,
+    "title": "Synchronous FIFO Ring Buffer",
+    "description": "Four-entry 8-bit synchronous FIFO circular buffer with read/write pointers, occupancy counter, and full/empty status flags in synthesizable Verilog RTL.",
+    "category": "Memory & Buffering",
+    "tags": ["verilog", "fifo", "ring-buffer", "sequential"],
+    "activeFile": "fifo.v",
+    "fileNames": ["fifo.v"],
+    "fileCount": 1,
+    "code": "// 4x8-Bit Synchronous FIFO Ring Buffer\nmodule sync_fifo (\n  input        clk,\n  input        rst,\n  input        wr_en,\n  input        rd_en,\n  input  [7:0] din,\n  output reg [7:0] dout,\n  output wire  full,\n  output wire  empty\n);\n  reg [7:0] slot0;\n  reg [7:0] slot1;\n  reg [7:0] slot2;\n  reg [7:0] slot3;\n  reg [1:0] wr_ptr;\n  reg [1:0] rd_ptr;\n  reg [2:0] count;\n\n  assign full  = (count == 3'd4);\n  assign empty = (count == 3'd0);\n\n  always @(posedge clk) begin\n    if (rst) begin\n      wr_ptr <= 2'd0;\n      rd_ptr <= 2'd0;\n      count  <= 3'd0;\n      dout   <= 8'h00;\n      slot0  <= 8'h00;\n      slot1  <= 8'h00;\n      slot2  <= 8'h00;\n      slot3  <= 8'h00;\n    end else begin\n      if (wr_en && !full) begin\n        case (wr_ptr)\n          2'd0: slot0 <= din;\n          2'd1: slot1 <= din;\n          2'd2: slot2 <= din;\n          2'd3: slot3 <= din;\n          default: slot0 <= din;\n        endcase\n        wr_ptr <= wr_ptr + 2'd1;\n      end\n\n      if (rd_en && !empty) begin\n        case (rd_ptr)\n          2'd0: dout <= slot0;\n          2'd1: dout <= slot1;\n          2'd2: dout <= slot2;\n          2'd3: dout <= slot3;\n          default: dout <= slot0;\n        endcase\n        rd_ptr <= rd_ptr + 2'd1;\n      end\n\n      if (wr_en && !full && !(rd_en && !empty))\n        count <= count + 3'd1;\n      else if (rd_en && !empty && !(wr_en && !full))\n        count <= count - 3'd1;\n    end\n  end\nendmodule\n"
+  },
+  {
+    "id": "verilog-03-spi-master",
+    "lang": "verilog",
+    "subFormats": ["v"],
+    "difficulty": 3,
+    "title": "SPI Master Serial Controller FSM",
+    "description": "Mode-0 Serial Peripheral Interface (SPI) master controller finite state machine generating SCLK, chip-select CS_N, and full-duplex MOSI/MISO 8-bit shift transfers.",
+    "category": "Serial Communications",
+    "tags": ["verilog", "spi", "fsm", "serial"],
+    "activeFile": "spi_master.v",
+    "fileNames": ["spi_master.v"],
+    "fileCount": 1,
+    "code": "// Mode-0 8-Bit SPI Master Controller FSM\nmodule spi_master (\n  input        clk,\n  input        rst,\n  input        start,\n  input  [7:0] tx_data,\n  input        miso,\n  output reg   sclk,\n  output reg   mosi,\n  output reg   cs_n,\n  output reg [7:0] rx_data,\n  output reg   done\n);\n  localparam S_IDLE  = 2'b00;\n  localparam S_LOAD  = 2'b01;\n  localparam S_SHIFT = 2'b10;\n  localparam S_DONE  = 2'b11;\n\n  reg [1:0] state;\n  reg [7:0] tx_shift;\n  reg [7:0] rx_shift;\n  reg [2:0] bit_cnt;\n\n  always @(posedge clk) begin\n    if (rst) begin\n      state    <= S_IDLE;\n      sclk     <= 1'b0;\n      mosi     <= 1'b0;\n      cs_n     <= 1'b1;\n      tx_shift <= 8'h00;\n      rx_shift <= 8'h00;\n      rx_data  <= 8'h00;\n      bit_cnt  <= 3'd0;\n      done     <= 1'b0;\n    end else begin\n      done <= 1'b0;\n      case (state)\n        S_IDLE: begin\n          cs_n <= 1'b1;\n          sclk <= 1'b0;\n          if (start) begin\n            tx_shift <= tx_data;\n            bit_cnt  <= 3'd7;\n            cs_n     <= 1'b0;\n            state    <= S_LOAD;\n          end\n        end\n        S_LOAD: begin\n          mosi  <= tx_shift[7];\n          sclk  <= 1'b0;\n          state <= S_SHIFT;\n        end\n        S_SHIFT: begin\n          sclk     <= 1'b1;\n          rx_shift <= {rx_shift[6:0], miso};\n          tx_shift <= {tx_shift[6:0], 1'b0};\n          if (bit_cnt == 3'd0) begin\n            state <= S_DONE;\n          end else begin\n            bit_cnt <= bit_cnt - 3'd1;\n            state   <= S_LOAD;\n          end\n        end\n        S_DONE: begin\n          sclk    <= 1'b0;\n          cs_n    <= 1'b1;\n          rx_data <= rx_shift;\n          done    <= 1'b1;\n          state   <= S_IDLE;\n        end\n        default: state <= S_IDLE;\n      endcase\n    end\n  end\nendmodule\n"
+  },
+  {
+    "id": "verilog-04-pwm-motor-driver",
+    "lang": "verilog",
+    "subFormats": ["v", "vh"],
+    "difficulty": 4,
+    "title": "Parameterized PWM Motor Driver with Testbench",
+    "description": "Multi-file complementary H-bridge PWM motor controller with dead-time insertion, shared Verilog header definitions (pwm_defs.vh), and verification testbench (tb_pwm.v).",
+    "category": "Power Electronics & Motor Control",
+    "tags": ["verilog", "pwm", "motor-control", "testbench", "multi-file"],
+    "activeFile": "pwm.v",
+    "fileNames": ["pwm.v", "pwm_defs.vh", "tb_pwm.v"],
+    "fileCount": 3,
+    "code": "// Parameterized Complementary PWM Motor Driver with Dead-Time Control\nmodule pwm_driver #(\n  parameter PERIOD = 8'd200,\n  parameter DEADTIME = 8'd4\n) (\n  input        clk,\n  input        rst,\n  input        enable,\n  input  [7:0] duty,\n  output reg   pwm_hi,\n  output reg   pwm_lo\n);\n  reg [7:0] counter;\n\n  always @(posedge clk) begin\n    if (rst) begin\n      counter <= 8'd0;\n      pwm_hi  <= 1'b0;\n      pwm_lo  <= 1'b0;\n    end else if (!enable) begin\n      counter <= 8'd0;\n      pwm_hi  <= 1'b0;\n      pwm_lo  <= 1'b0;\n    end else begin\n      if (counter >= PERIOD)\n        counter <= 8'd0;\n      else\n        counter <= counter + 8'd1;\n\n      if (counter < duty) begin\n        pwm_hi <= 1'b1;\n        pwm_lo <= 1'b0;\n      end else if (counter >= duty + DEADTIME) begin\n        pwm_hi <= 1'b0;\n        pwm_lo <= 1'b1;\n      end else begin\n        pwm_hi <= 1'b0;\n        pwm_lo <= 1'b0;\n      end\n    end\n  end\nendmodule\n",
+    "files": {
+      "pwm.v": "// Parameterized Complementary PWM Motor Driver with Dead-Time Control\nmodule pwm_driver #(\n  parameter PERIOD = 8'd200,\n  parameter DEADTIME = 8'd4\n) (\n  input        clk,\n  input        rst,\n  input        enable,\n  input  [7:0] duty,\n  output reg   pwm_hi,\n  output reg   pwm_lo\n);\n  reg [7:0] counter;\n\n  always @(posedge clk) begin\n    if (rst) begin\n      counter <= 8'd0;\n      pwm_hi  <= 1'b0;\n      pwm_lo  <= 1'b0;\n    end else if (!enable) begin\n      counter <= 8'd0;\n      pwm_hi  <= 1'b0;\n      pwm_lo  <= 1'b0;\n    end else begin\n      if (counter >= PERIOD)\n        counter <= 8'd0;\n      else\n        counter <= counter + 8'd1;\n\n      if (counter < duty) begin\n        pwm_hi <= 1'b1;\n        pwm_lo <= 1'b0;\n      end else if (counter >= duty + DEADTIME) begin\n        pwm_hi <= 1'b0;\n        pwm_lo <= 1'b1;\n      end else begin\n        pwm_hi <= 1'b0;\n        pwm_lo <= 1'b0;\n      end\n    end\n  end\nendmodule\n",
+      "pwm_defs.vh": "// Shared PWM Motor Driver Configuration Constants\n`define PWM_PERIOD_DEFAULT   8'd200\n`define PWM_DEADTIME_DEFAULT 8'd4\n`define PWM_DUTY_HALF        8'd100\n",
+      "tb_pwm.v": "// Testbench for Parameterized PWM Motor Driver\nmodule tb_pwm;\n  reg       clk;\n  reg       rst;\n  reg       enable;\n  reg [7:0] duty;\n  wire      pwm_hi;\n  wire      pwm_lo;\n\n  pwm_driver u_dut (\n    .clk(clk),\n    .rst(rst),\n    .enable(enable),\n    .duty(duty),\n    .pwm_hi(pwm_hi),\n    .pwm_lo(pwm_lo)\n  );\n\n  initial begin\n    clk    = 1'b0;\n    rst    = 1'b1;\n    enable = 1'b0;\n    duty   = 8'd100;\n  end\nendmodule\n"
+    }
+  },
+  {
+    "id": "verilog-05-risc16-core",
+    "lang": "verilog",
+    "subFormats": ["v", "vh"],
+    "difficulty": 5,
+    "title": "Single-Cycle 16-Bit RISC Core",
+    "description": "Multi-file single-cycle 16-bit RISC processor core integrating instruction decode and PC control (cpu_top.v), 16-bit ALU (alu.v), dual-port register file (regfile.v), ISA header (isa.vh), and testbench (tb_cpu.v).",
+    "category": "Computer Architecture",
+    "tags": ["verilog", "risc", "cpu", "alu", "multi-file"],
+    "activeFile": "cpu_top.v",
+    "fileNames": ["cpu_top.v", "alu.v", "isa.vh", "regfile.v", "tb_cpu.v"],
+    "fileCount": 5,
+    "code": "// Single-Cycle 16-Bit RISC Core Top-Level Module\nmodule cpu_top (\n  input         clk,\n  input         rst,\n  input  [15:0] instr,\n  output reg [15:0] pc,\n  output wire [15:0] alu_result,\n  output wire   zero_flag\n);\n  wire [2:0]  opcode;\n  wire [1:0]  rd;\n  wire [1:0]  rs1;\n  wire [1:0]  rs2;\n  wire        reg_we;\n  wire [15:0] rdata1;\n  wire [15:0] rdata2;\n\n  assign opcode = instr[15:13];\n  assign rd     = instr[12:11];\n  assign rs1    = instr[10:9];\n  assign rs2    = instr[8:7];\n  assign reg_we = (opcode != 3'b111);\n\n  regfile16 u_rf (\n    .clk(clk),\n    .rst(rst),\n    .we(reg_we),\n    .rs1(rs1),\n    .rs2(rs2),\n    .rd(rd),\n    .wdata(alu_result),\n    .rdata1(rdata1),\n    .rdata2(rdata2)\n  );\n\n  alu16 u_alu (\n    .a(rdata1),\n    .b(rdata2),\n    .op(opcode),\n    .y(alu_result),\n    .zero(zero_flag)\n  );\n\n  always @(posedge clk) begin\n    if (rst)\n      pc <= 16'h0000;\n    else\n      pc <= pc + 16'h0002;\n  end\nendmodule\n",
+    "files": {
+      "cpu_top.v": "// Single-Cycle 16-Bit RISC Core Top-Level Module\nmodule cpu_top (\n  input         clk,\n  input         rst,\n  input  [15:0] instr,\n  output reg [15:0] pc,\n  output wire [15:0] alu_result,\n  output wire   zero_flag\n);\n  wire [2:0]  opcode;\n  wire [1:0]  rd;\n  wire [1:0]  rs1;\n  wire [1:0]  rs2;\n  wire        reg_we;\n  wire [15:0] rdata1;\n  wire [15:0] rdata2;\n\n  assign opcode = instr[15:13];\n  assign rd     = instr[12:11];\n  assign rs1    = instr[10:9];\n  assign rs2    = instr[8:7];\n  assign reg_we = (opcode != 3'b111);\n\n  regfile16 u_rf (\n    .clk(clk),\n    .rst(rst),\n    .we(reg_we),\n    .rs1(rs1),\n    .rs2(rs2),\n    .rd(rd),\n    .wdata(alu_result),\n    .rdata1(rdata1),\n    .rdata2(rdata2)\n  );\n\n  alu16 u_alu (\n    .a(rdata1),\n    .b(rdata2),\n    .op(opcode),\n    .y(alu_result),\n    .zero(zero_flag)\n  );\n\n  always @(posedge clk) begin\n    if (rst)\n      pc <= 16'h0000;\n    else\n      pc <= pc + 16'h0002;\n  end\nendmodule\n",
+      "alu.v": "// 16-Bit Combinational Arithmetic Logic Unit\nmodule alu16 (\n  input  [15:0] a,\n  input  [15:0] b,\n  input  [2:0]  op,\n  output reg [15:0] y,\n  output wire   zero\n);\n  assign zero = (y == 16'h0000);\n\n  always @(*) begin\n    case (op)\n      3'b000: y = a + b;\n      3'b001: y = a - b;\n      3'b010: y = a & b;\n      3'b011: y = a | b;\n      3'b100: y = a ^ b;\n      default: y = a;\n    endcase\n  end\nendmodule\n",
+      "isa.vh": "// 16-Bit RISC Core Instruction Set Architecture Opcode Definitions\n`define OP_ADD 3'b000\n`define OP_SUB 3'b001\n`define OP_AND 3'b010\n`define OP_OR  3'b011\n`define OP_XOR 3'b100\n`define OP_NOP 3'b111\n",
+      "regfile.v": "// 4x16-Bit Dual-Port Register File\nmodule regfile16 (\n  input         clk,\n  input         rst,\n  input         we,\n  input  [1:0]  rs1,\n  input  [1:0]  rs2,\n  input  [1:0]  rd,\n  input  [15:0] wdata,\n  output reg [15:0] rdata1,\n  output reg [15:0] rdata2\n);\n  reg [15:0] r0;\n  reg [15:0] r1;\n  reg [15:0] r2;\n  reg [15:0] r3;\n\n  always @(posedge clk) begin\n    if (rst) begin\n      r0 <= 16'h0000;\n      r1 <= 16'h0001;\n      r2 <= 16'h0002;\n      r3 <= 16'h0003;\n    end else if (we) begin\n      case (rd)\n        2'd0: r0 <= wdata;\n        2'd1: r1 <= wdata;\n        2'd2: r2 <= wdata;\n        2'd3: r3 <= wdata;\n        default: r0 <= wdata;\n      endcase\n    end\n  end\n\n  always @(*) begin\n    case (rs1)\n      2'd0: rdata1 = r0;\n      2'd1: rdata1 = r1;\n      2'd2: rdata1 = r2;\n      2'd3: rdata1 = r3;\n      default: rdata1 = 16'h0000;\n    endcase\n    case (rs2)\n      2'd0: rdata2 = r0;\n      2'd1: rdata2 = r1;\n      2'd2: rdata2 = r2;\n      2'd3: rdata2 = r3;\n      default: rdata2 = 16'h0000;\n    endcase\n  end\nendmodule\n",
+      "tb_cpu.v": "// Testbench for Single-Cycle 16-Bit RISC Core\nmodule tb_cpu;\n  reg         clk;\n  reg         rst;\n  reg  [15:0] instr;\n  wire [15:0] pc;\n  wire [15:0] alu_result;\n  wire        zero_flag;\n\n  cpu_top u_cpu (\n    .clk(clk),\n    .rst(rst),\n    .instr(instr),\n    .pc(pc),\n    .alu_result(alu_result),\n    .zero_flag(zero_flag)\n  );\n\n  initial begin\n    clk   = 1'b0;\n    rst   = 1'b1;\n    instr = 16'h1A80;\n  end\nendmodule\n"
+    }
+  }
+]

@@ -118,12 +118,12 @@ export const AmlPanel: React.FC<LanguagePanelProps> = ({
                 Export SVG
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
               <PanelButton
                 variant="primary"
-                onClick={() => host.openInMorsel?.(code, dialect || "automationml", title)}
+                onClick={() => host.openInAnsatzEditor?.(code, dialect || "automationml", title)}
               >
-                Open in Morsel
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

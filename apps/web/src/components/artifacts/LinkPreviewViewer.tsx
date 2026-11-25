@@ -72,7 +72,7 @@ interface LinkPreviewConfig {
 }
 
 interface LinkPreviewViewerProps {
-  viewConfig: LinkPreviewConfig | Record<string, any> | null | undefined;
+  viewConfig: LinkPreviewConfig | Record<string, unknown> | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 
@@ -88,7 +88,7 @@ const LinkPreviewViewer: React.FC<LinkPreviewViewerProps> = ({ viewConfig }) => 
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, []);
 

@@ -43,10 +43,10 @@ describe("Studio Landing Page UI/UX & Git Target Resolution", () => {
     );
   });
 
-  it("omits the redundant Ansatz Morsel tile to keep Studio focused on multi-file workspaces", () => {
+  it("omits the redundant Ansatz Editor tile to keep Studio focused on multi-file workspaces", () => {
     assert.ok(
-      !content.includes('data-testid="studio-morsel-tile"') && !content.includes('data-testid="studio-sketch-tile"'),
-      "IdeWorkspacePage must not duplicate Morsel as a workspace tile",
+      !content.includes('data-testid="studio-ansatz-tile"') && !content.includes('data-testid="studio-sketch-tile"'),
+      "IdeWorkspacePage must not duplicate Ansatz as a workspace tile",
     );
   });
 

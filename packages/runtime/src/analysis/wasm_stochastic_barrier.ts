@@ -149,7 +149,12 @@ export class StochasticBarrierSynthesizer {
 
     // Evaluate drift dissipation matrix Q = -(A^T P + P A) in WASM linear memory
     const Q: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as {
+      memory: WebAssembly.Memory;
+      alloc?: (size: number) => number;
+      free?: (ptr: number) => void;
+      sos_lyapunovDrift?: (aPtr: number, pPtr: number, n: number, qPtr: number) => void;
+    } | null;
     if (
       w &&
       typeof w.sos_lyapunovDrift === "function" &&

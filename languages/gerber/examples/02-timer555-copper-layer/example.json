@@ -1,0 +1,11 @@
+{
+  "id": "gerber-02-timer555-copper-layer",
+  "lang": "gerber",
+  "subFormats": ["rs-274x"],
+  "difficulty": 2,
+  "title": "555 Timer Oscillator Copper Layer",
+  "description": "RS-274X top copper routing for an astable NE555 DIP-8 timer oscillator with timing resistor pads, decoupling capacitor pads, and ground pour.",
+  "category": "PCB Fabrication & CAM",
+  "tags": ["gerber", "rs-274x", "555-timer", "dip8"],
+  "activeFile": "timer555.gbr"
+}

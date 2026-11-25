@@ -1,0 +1,40 @@
+MODEL: AircraftEcsBleedAir
+TITLE: "Aircraft Cabin ECS Bleed-Air Temperature Control Loop"
+
+COMPONENTS:
+  UG01 TYPE=GP/UG TITLE="Cabin Temp Setpoint (C)" X=80 Y=200
+    PORTS: OUT=output
+    XP: T_SET=22.0
+    FORTRAN:
+      OUT = 22.0
+    ENDFORTRAN
+
+  SJ01 TYPE=GP/SJ TITLE="Temperature Error" X=230 Y=200
+    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0
+
+  LA01 TYPE=GP/LA TITLE="Trim Valve PI Compensator" X=380 Y=200
+    XP: TAU1=2.5, TAU2=0.4, GAIN=0.8
+    S0: S1=0.0
+
+  LM01 TYPE=GP/LM TITLE="Trim Air Valve Stroke" X=540 Y=200
+    XP: UL=1.0, LL=0.0
+
+  TF01 TYPE=GP/TF TITLE="Air-Cycle Pack Heat Exchanger" X=700 Y=200
+    XP: NUM=[35.0], DEN=[8.0, 1.0]
+    S0: S1=20.0
+
+  TD01 TYPE=GP/TD TITLE="Distribution Duct Transport Lag" X=860 Y=200
+    XP: DELAY=1.5
+
+  TF02 TYPE=GP/TF TITLE="Cabin Thermal Volume" X=1020 Y=200
+    XP: NUM=[1.0], DEN=[45.0, 1.0]
+    S0: S1=20.0
+
+CONNECTIONS:
+  UG01.OUT -> SJ01.IN1
+  SJ01.OUT -> LA01.IN
+  LA01.OUT -> LM01.IN
+  LM01.OUT -> TF01.IN
+  TF01.OUT -> TD01.IN
+  TD01.OUT -> TF02.IN
+  TF02.OUT -> SJ01.IN2

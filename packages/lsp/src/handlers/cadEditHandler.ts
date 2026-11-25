@@ -39,6 +39,22 @@ export interface ApplyCadEditResult {
   error?: string | undefined;
 }
 
+interface CadEditPayload {
+  sourceMetadata?: ApplyCadEditSourceMetadata | undefined;
+  mode?: "translate" | "rotate" | "scale" | undefined;
+  newPosition?: [number, number, number] | undefined;
+  newRotation?: [number, number, number] | undefined;
+  newScale?: [number, number, number] | undefined;
+  dimensionIndex?: number | string | undefined;
+  newValue?: number | string | undefined;
+  primitiveType?: string | undefined;
+  portName?: string | undefined;
+  portType?: string | undefined;
+  normal?: [number, number, number] | undefined;
+  componentName?: string | undefined;
+  worldPos?: [number, number, number] | undefined;
+}
+
 /**
  * Applies a 3D CAD direct-manipulation edit (gizmo transform, parametric dimension drag,
  * face/port tag, or assembly joint) back into the active source document using CST-backed patchers.
@@ -59,8 +75,8 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
   const isScad = langId === "scad" || lowerUri.endsWith(".scad");
   const isModelica = langId === "modelica" || langId === "modelscript" || lowerUri.endsWith(".mo");
 
-  const payload: any = params.payload;
-  const sourceMetadata = payload.sourceMetadata as ApplyCadEditSourceMetadata | undefined;
+  const payload = params.payload as CadEditPayload;
+  const sourceMetadata = payload.sourceMetadata;
 
   // ── 1. OpenSCAD (.scad) CST-backed writeback via ScadPatcher ──
   if (isScad) {
@@ -74,6 +90,7 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
       }
 
       try {
+        const scadRoot = tree.rootNode as Parameters<typeof ScadPatcher.patchVariable>[1];
         if (params.kind === "gizmo") {
           const mode: "translate" | "rotate" | "scale" = payload.mode ?? "translate";
           const newPosition: [number, number, number] = payload.newPosition ?? [0, 0, 0];
@@ -94,7 +111,7 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
                 const baseDim = dims[axis];
                 if (paramName && baseDim !== undefined && Math.abs(scaleFactors[axis]! - 1) > 1e-3) {
                   const newDimVal = Number((baseDim * scaleFactors[axis]!).toFixed(4));
-                  patchRes = ScadPatcher.patchVariable(source, tree.rootNode, paramName, newDimVal);
+                  patchRes = ScadPatcher.patchVariable(source, scadRoot, paramName, newDimVal);
                   if (patchRes) break;
                 }
               }
@@ -108,7 +125,7 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
               ];
               patchRes = ScadPatcher.patchOrInsertTransform(
                 source,
-                tree.rootNode,
+                scadRoot,
                 "scale",
                 targetScale,
                 sourceMetadata as Parameters<typeof ScadPatcher.patchOrInsertTransform>[4],
@@ -117,7 +134,7 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
           } else if (mode === "rotate") {
             patchRes = ScadPatcher.patchOrInsertTransform(
               source,
-              tree.rootNode,
+              scadRoot,
               "rotate",
               newRotation ?? [0, 0, 0],
               sourceMetadata as Parameters<typeof ScadPatcher.patchOrInsertTransform>[4],
@@ -131,17 +148,17 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
             ) {
               patchRes = ScadPatcher.patchOrInsertTransform(
                 source,
-                tree.rootNode,
+                scadRoot,
                 "translate",
                 newPosition,
                 sourceMetadata as Parameters<typeof ScadPatcher.patchOrInsertTransform>[4],
               );
             } else if (sourceMetadata?.parameterName) {
-              patchRes = ScadPatcher.patchVariable(source, tree.rootNode, sourceMetadata.parameterName, newPosition[0]);
+              patchRes = ScadPatcher.patchVariable(source, scadRoot, sourceMetadata.parameterName, newPosition[0]);
             } else {
               patchRes = ScadPatcher.patchOrInsertTransform(
                 source,
-                tree.rootNode,
+                scadRoot,
                 "translate",
                 newPosition,
                 sourceMetadata as Parameters<typeof ScadPatcher.patchOrInsertTransform>[4],
@@ -181,7 +198,7 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
 
           const patchRes = ScadPatcher.patchPrimitiveDimension(
             source,
-            tree.rootNode,
+            scadRoot,
             dimensionIndex,
             newValue,
             targetRange,
@@ -235,7 +252,7 @@ export async function handleApplyCadEdit(context: LspContext, params: ApplyCadEd
           return { applied: false };
         }
       } finally {
-        tree.delete?.();
+        (tree as { delete?: () => void }).delete?.();
       }
     } catch (err: unknown) {
       return { applied: false, error: err instanceof Error ? err.message : String(err) };

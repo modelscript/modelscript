@@ -1,0 +1,6 @@
+stop_id,stop_name,stop_lat,stop_lon
+BRT_WEST,Westside Terminal,40.7580,-73.9985
+BRT_MID,Midtown Plaza,40.7555,-73.9870
+BRT_CENTRAL,Central Square,40.7528,-73.9772
+BRT_RIVER,East Riverfront,40.7501,-73.9680
+BRT_EAST,Eastside Depot,40.7480,-73.9590

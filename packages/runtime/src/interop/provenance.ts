@@ -15,7 +15,7 @@ export interface ProvEntity {
   wasDerivedFrom?: string[] | undefined;
   wasGeneratedBy?: string | undefined;
   wasAttributedTo?: string | undefined;
-  attributes?: Record<string, any> | undefined;
+  attributes?: Record<string, unknown> | undefined;
 }
 
 export interface ProvActivity {
@@ -26,7 +26,7 @@ export interface ProvActivity {
   endedAtTime?: string | undefined;
   used: string[];
   wasAssociatedWith?: string | undefined;
-  parameters?: Record<string, any> | undefined;
+  parameters?: Record<string, unknown> | undefined;
 }
 
 export interface ProvAgent {
@@ -91,7 +91,7 @@ export class ProvenanceGraph {
     agentId: string,
     usedEntityIds: string[],
     generatedEntityIds: string[],
-    params: Record<string, any> = {},
+    params: Record<string, unknown> = {},
   ): void {
     const now = new Date().toISOString();
     this.activities.set(activityId, {

@@ -1,0 +1,11 @@
+{
+  "id": "ibis-03-ddr4-dq-bidirectional-io",
+  "lang": "ibis",
+  "subFormats": ["ibs"],
+  "difficulty": 3,
+  "title": "DDR4 1.2V DQ Bidirectional I/O Buffer with ODT",
+  "description": "1.2V POD12 DDR4 memory data (DQ) and strobe (DQS) bidirectional I/O buffer model featuring 34 ohm output drive and 48 ohm on-die termination.",
+  "category": "Memory Interfaces",
+  "tags": ["ibis", "ddr4", "pod12", "odt", "bidirectional"],
+  "activeFile": "ddr4_dq.ibs"
+}

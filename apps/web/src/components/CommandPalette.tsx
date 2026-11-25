@@ -40,7 +40,7 @@ import { useInstanceBranding } from "../InstanceBrandingContext";
 import { getSearchCompletions } from "../api";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { useTheme } from "../theme";
-import { MorselIcon } from "./icons";
+import { AnsatzIcon } from "./icons";
 
 interface CommandItem {
   id: string;
@@ -378,11 +378,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
         },
       },
       {
-        id: "nav-morsel",
+        id: "nav-ansatz",
         category: "Navigation",
         title: "Ansatz",
         subtitle: "Draft, simulate, and visualize models in the browser",
-        icon: <MorselIcon size={16} />,
+        icon: <AnsatzIcon size={16} />,
         action: () => {
           navigate("/editor");
           onClose();
@@ -619,9 +619,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
 
     const isEngineeringRoute =
       location.pathname.startsWith("/editor") ||
-      location.pathname.startsWith("/playground") ||
+      location.pathname.startsWith("/editor") ||
       location.pathname.startsWith("/sketch") ||
-      location.pathname.startsWith("/morsel") ||
+      location.pathname.startsWith("/ansatz") ||
       location.pathname.startsWith("/render-artifact");
 
     const activeToolbarCtx = getActiveToolbarContext();
@@ -629,7 +629,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
       ? resolveLanguageToolbarButtons(
           getEditorLanguageUi().toolbarButtons[activeToolbarCtx.languageId],
           activeToolbarCtx.view,
-          { target: "morsel" },
+          { target: "ansatz" },
         ).all.map((btn) => {
           const IconComp = resolveToolbarIcon(btn.icon);
           return {
@@ -657,7 +657,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             icon: <PlayIcon size={16} />,
             action: () => {
               onClose();
-              window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action: "simulate" } }));
+              window.dispatchEvent(new CustomEvent("modelscript:ansatz-command", { detail: { action: "simulate" } }));
             },
           },
           {
@@ -669,7 +669,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             action: () => {
               onClose();
               window.dispatchEvent(
-                new CustomEvent("modelscript:morsel-command", { detail: { action: "view:diagram" } }),
+                new CustomEvent("modelscript:ansatz-command", { detail: { action: "view:diagram" } }),
               );
             },
           },
@@ -681,7 +681,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             icon: <CpuIcon size={16} />,
             action: () => {
               onClose();
-              window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action: "view:3d" } }));
+              window.dispatchEvent(new CustomEvent("modelscript:ansatz-command", { detail: { action: "view:3d" } }));
             },
           },
           {
@@ -693,7 +693,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             action: () => {
               onClose();
               window.dispatchEvent(
-                new CustomEvent("modelscript:morsel-command", { detail: { action: "view:simulation" } }),
+                new CustomEvent("modelscript:ansatz-command", { detail: { action: "view:simulation" } }),
               );
             },
           },
@@ -706,7 +706,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             action: () => {
               onClose();
               window.dispatchEvent(
-                new CustomEvent("modelscript:morsel-command", { detail: { action: "view:inspector" } }),
+                new CustomEvent("modelscript:ansatz-command", { detail: { action: "view:inspector" } }),
               );
             },
           },
@@ -718,7 +718,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
             icon: <CodeIcon size={16} />,
             action: () => {
               onClose();
-              window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action: "view:split" } }));
+              window.dispatchEvent(new CustomEvent("modelscript:ansatz-command", { detail: { action: "view:split" } }));
             },
           },
           {
@@ -1007,7 +1007,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose,
                           ? item.icon
                           : typeof item.icon === "function" ||
                               (typeof item.icon === "object" && item.icon !== null && "$$typeof" in item.icon)
-                            ? React.createElement(item.icon as any, { size: 16 })
+                            ? React.createElement(item.icon as React.ComponentType<{ size?: number | string }>, {
+                                size: 16,
+                              })
                             : item.icon}
                       </div>
                       <div className="info">

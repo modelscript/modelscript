@@ -713,12 +713,12 @@ describe("Admin Console & Moderation UI Components Suite", () => {
       ),
     );
     assert.ok(hostHtml.includes("We’re upgrading Ansatz infrastructure"));
-    assert.ok(hostHtml.includes("Open Offline WASM Playground"));
+    assert.ok(hostHtml.includes("Open Offline WASM Ansatz"));
     assert.ok(hostHtml.includes("Subsystem Telemetry Status"));
     assert.ok(hostHtml.includes("Client-Side WASM Compiler &amp; Local DAE Solver"));
 
     const staticMaintHtml = fs.readFileSync(new URL("../public/maintenance.html", import.meta.url), "utf-8");
-    assert.ok(staticMaintHtml.includes("Launch Offline WASM Playground"));
+    assert.ok(staticMaintHtml.includes("Launch Offline WASM Ansatz"));
     assert.ok(staticMaintHtml.includes("/api/v1/instance/banner"));
   });
 

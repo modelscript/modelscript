@@ -1,0 +1,11 @@
+{
+  "id": "simpack-02-helical-isolation-mount",
+  "lang": "simpack",
+  "subFormats": ["spck"],
+  "difficulty": 2,
+  "title": "Helical Spring-Damper Isolation Mount",
+  "description": "Industrial compressor skid supported on four tri-axial helical spring-damper isolation mounts with realistic 3D principal inertias and stiffness-damping elements.",
+  "category": "Vibration Isolation",
+  "tags": ["isolation", "spring-damper", "vibration", "6-dof"],
+  "activeFile": "isolation_mount.spck"
+}

@@ -15,11 +15,13 @@ import {
 } from "../../../api/account";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
+import { getApiErrorMessage } from "../../../util/error";
+import type { TabType } from "../../SettingsPage";
 import { DetailSubtitle, DetailTitle, FormLabel, Header, SaveButton, SecondaryButton } from "../settingsStyles";
 
 export interface NotificationFiltersTabProps {
   subView?: "notifications" | "notificationFilters" | undefined;
-  onNavigate?: ((tab: any) => void) | undefined;
+  onNavigate?: ((tab: TabType) => void) | undefined;
 }
 
 export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ subView = "notifications" }) => {
@@ -73,11 +75,8 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
           };
         });
       }
-    } catch (err: any) {
-      const msg =
-        err?.response?.data?.error ||
-        err?.message ||
-        "Unable to load your saved notification preferences from the server.";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Unable to load your saved notification preferences from the server.");
       setLoadError(msg);
     } finally {
       setLoading(false);
@@ -143,8 +142,8 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
       }
       toast.success("Browser Web Push endpoint registered.");
       return true;
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to register browser push subscription.";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to register browser push subscription.");
       setNotificationError(msg);
       toast.error(msg);
       return false;
@@ -168,7 +167,11 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
       }
       setNotificationPrefs((p) => ({
         ...p,
-        channels: { ...p.channels, browserPush: true } as NonNullable<NotificationPreferences["channels"]>,
+        channels: {
+          email: p.channels?.email ?? true,
+          inApp: p.channels?.inApp ?? true,
+          browserPush: true,
+        },
       }));
       if (pushSubscriptions.length === 0) {
         await handleRegisterBrowserPush();
@@ -176,7 +179,11 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
     } else {
       setNotificationPrefs((p) => ({
         ...p,
-        channels: { ...p.channels, browserPush: false } as NonNullable<NotificationPreferences["channels"]>,
+        channels: {
+          email: p.channels?.email ?? true,
+          inApp: p.channels?.inApp ?? true,
+          browserPush: false,
+        },
       }));
     }
   };
@@ -187,8 +194,8 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
       await deletePushSubscription(id);
       setPushSubscriptions((prev) => prev.filter((item) => item.id !== id));
       toast.info("Removed browser push subscription.");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to remove push subscription.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to remove push subscription."));
     } finally {
       setDeletingSubId(null);
     }
@@ -350,7 +357,11 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
                   const val = e.target.checked;
                   setNotificationPrefs((p) => ({
                     ...p,
-                    channels: { ...p.channels, inApp: val } as any,
+                    channels: {
+                      email: p.channels?.email ?? true,
+                      browserPush: p.channels?.browserPush ?? false,
+                      inApp: val,
+                    },
                     deliveryChannels: {
                       inApp: val,
                       emailNotifications: Boolean(p.channels?.email ?? true),
@@ -390,7 +401,11 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
                   const val = e.target.checked;
                   setNotificationPrefs((p) => ({
                     ...p,
-                    channels: { ...p.channels, email: val } as any,
+                    channels: {
+                      email: val,
+                      browserPush: p.channels?.browserPush ?? false,
+                      inApp: p.channels?.inApp ?? true,
+                    },
                     deliveryChannels: {
                       inApp: Boolean(p.channels?.inApp ?? true),
                       emailNotifications: val,
@@ -565,20 +580,22 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
               gap: "12px",
             }}
           >
-            {[
-              {
-                key: "mentions",
-                label: "Mentions",
-                desc: "Notify when someone @mentions you in a post or reply",
-              },
-              {
-                key: "replies",
-                label: "Replies",
-                desc: "Notify when someone replies to your authored models or posts",
-              },
-              { key: "follows", label: "Followers", desc: "Notify when a new engineer follows your profile" },
-              { key: "reposts", label: "Reposts", desc: "Notify when someone reposts or quotes your model" },
-            ].map((evt) => (
+            {(
+              [
+                {
+                  key: "mentions",
+                  label: "Mentions",
+                  desc: "Notify when someone @mentions you in a post or reply",
+                },
+                {
+                  key: "replies",
+                  label: "Replies",
+                  desc: "Notify when someone replies to your authored models or posts",
+                },
+                { key: "follows", label: "Followers", desc: "Notify when a new engineer follows your profile" },
+                { key: "reposts", label: "Reposts", desc: "Notify when someone reposts or quotes your model" },
+              ] as const
+            ).map((evt) => (
               <Box key={evt.key} display="flex" justifyContent="space-between" alignItems="center">
                 <Box>
                   <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>{evt.label}</span>
@@ -587,19 +604,22 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
                 <input
                   type="checkbox"
                   role="switch"
-                  aria-checked={Boolean((notificationPrefs.events?.social as any)?.[evt.key])}
+                  aria-checked={Boolean(notificationPrefs.events?.social?.[evt.key])}
                   aria-label={evt.label}
                   disabled={controlsDisabled}
-                  checked={Boolean((notificationPrefs.events?.social as any)?.[evt.key])}
+                  checked={Boolean(notificationPrefs.events?.social?.[evt.key])}
                   onChange={(e) => {
                     const val = e.target.checked;
-                    setNotificationPrefs((p) => ({
-                      ...p,
-                      events: {
-                        ...p.events,
-                        social: { ...p.events?.social, [evt.key]: val } as any,
-                      } as NotificationPreferences["events"],
-                    }));
+                    setNotificationPrefs((p) => {
+                      const prevEvents = p.events ?? DEFAULT_NOTIFICATION_PREFERENCES.events!;
+                      return {
+                        ...p,
+                        events: {
+                          ...prevEvents,
+                          social: { ...prevEvents.social, [evt.key]: val },
+                        },
+                      };
+                    });
                   }}
                   style={{ width: "18px", height: "18px", cursor: controlsDisabled ? "not-allowed" : "pointer" }}
                 />
@@ -623,73 +643,87 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
               gap: "12px",
             }}
           >
-            {[
-              {
-                key: "packageUpdates",
-                category: "engineering",
-                label: "Package Releases",
-                desc: "Notify when subscribed @modelscript packages publish new versions",
-              },
-              {
-                key: "starredRepoCommits",
-                category: "engineering",
-                label: "Repository Activity",
-                desc: "Notify on new git commits and releases in starred repositories",
-              },
-              {
-                key: "federatedMentions",
-                category: "engineering",
-                label: "Fediverse Mentions",
-                desc: "Notify when remote ActivityPub actors mention your handle",
-              },
-              {
-                key: "jobCompleted",
-                category: "computeHpc",
-                label: "HPC Job Finished",
-                desc: "Alert when cloud SLURM / Local solver simulations finish execution",
-              },
-              {
-                key: "jobFailed",
-                category: "computeHpc",
-                label: "Solver Failure / Divergence",
-                desc: "Immediate alert if a differential-algebraic solver step fails",
-              },
-              {
-                key: "quotaThresholdAlert",
-                category: "computeHpc",
-                label: "Low Balance Warning",
-                desc: "Alert when compute wallet balance falls below 20 credits",
-              },
-            ].map((evt) => (
-              <Box key={evt.key} display="flex" justifyContent="space-between" alignItems="center">
-                <Box>
-                  <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>{evt.label}</span>
-                  <DetailSubtitle>{evt.desc}</DetailSubtitle>
+            {(
+              [
+                {
+                  key: "packageUpdates",
+                  category: "engineering",
+                  label: "Package Releases",
+                  desc: "Notify when subscribed @modelscript packages publish new versions",
+                },
+                {
+                  key: "starredRepoCommits",
+                  category: "engineering",
+                  label: "Repository Activity",
+                  desc: "Notify on new git commits and releases in starred repositories",
+                },
+                {
+                  key: "federatedMentions",
+                  category: "engineering",
+                  label: "Fediverse Mentions",
+                  desc: "Notify when remote ActivityPub actors mention your handle",
+                },
+                {
+                  key: "jobCompleted",
+                  category: "computeHpc",
+                  label: "HPC Job Finished",
+                  desc: "Alert when cloud SLURM / Local solver simulations finish execution",
+                },
+                {
+                  key: "jobFailed",
+                  category: "computeHpc",
+                  label: "Solver Failure / Divergence",
+                  desc: "Immediate alert if a differential-algebraic solver step fails",
+                },
+                {
+                  key: "quotaThresholdAlert",
+                  category: "computeHpc",
+                  label: "Low Balance Warning",
+                  desc: "Alert when compute wallet balance falls below 20 credits",
+                },
+              ] as const
+            ).map((evt) => {
+              const isChecked =
+                evt.category === "engineering"
+                  ? Boolean(notificationPrefs.events?.engineering?.[evt.key])
+                  : Boolean(notificationPrefs.events?.computeHpc?.[evt.key]);
+              return (
+                <Box key={evt.key} display="flex" justifyContent="space-between" alignItems="center">
+                  <Box>
+                    <span style={{ fontSize: "14px", fontWeight: "600", display: "block" }}>{evt.label}</span>
+                    <DetailSubtitle>{evt.desc}</DetailSubtitle>
+                  </Box>
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    aria-checked={isChecked}
+                    aria-label={evt.label}
+                    disabled={controlsDisabled}
+                    checked={isChecked}
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setNotificationPrefs((p) => {
+                        const prevEvents = p.events ?? DEFAULT_NOTIFICATION_PREFERENCES.events!;
+                        return {
+                          ...p,
+                          events:
+                            evt.category === "engineering"
+                              ? {
+                                  ...prevEvents,
+                                  engineering: { ...prevEvents.engineering, [evt.key]: val },
+                                }
+                              : {
+                                  ...prevEvents,
+                                  computeHpc: { ...prevEvents.computeHpc, [evt.key]: val },
+                                },
+                        };
+                      });
+                    }}
+                    style={{ width: "18px", height: "18px", cursor: controlsDisabled ? "not-allowed" : "pointer" }}
+                  />
                 </Box>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-checked={Boolean(((notificationPrefs.events as any)?.[evt.category] as any)?.[evt.key])}
-                  aria-label={evt.label}
-                  disabled={controlsDisabled}
-                  checked={Boolean(((notificationPrefs.events as any)?.[evt.category] as any)?.[evt.key])}
-                  onChange={(e) => {
-                    const val = e.target.checked;
-                    setNotificationPrefs((p) => ({
-                      ...p,
-                      events: {
-                        ...p.events,
-                        [evt.category]: {
-                          ...((p.events as any)?.[evt.category] || {}),
-                          [evt.key]: val,
-                        },
-                      } as any,
-                    }));
-                  }}
-                  style={{ width: "18px", height: "18px", cursor: controlsDisabled ? "not-allowed" : "pointer" }}
-                />
-              </Box>
-            ))}
+              );
+            })}
           </Box>
         </Box>
 
@@ -701,7 +735,7 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
             disabled={controlsDisabled}
             value={notificationPrefs.emailDigestFrequency || "daily"}
             onChange={(e) => {
-              const val = e.target.value as any;
+              const val = e.target.value as NonNullable<NotificationPreferences["emailDigestFrequency"]>;
               setNotificationPrefs((p) => ({ ...p, emailDigestFrequency: val }));
             }}
             style={{
@@ -733,8 +767,8 @@ export const NotificationFiltersTab: React.FC<NotificationFiltersTabProps> = ({ 
                 await updateNotificationSettings(notificationPrefs);
                 setNotificationSuccess("Notification preferences saved successfully!");
                 toast.success("Notification preferences saved successfully.");
-              } catch (err: any) {
-                const msg = err?.response?.data?.error || err?.message || "Failed to save notification preferences.";
+              } catch (err: unknown) {
+                const msg = getApiErrorMessage(err, "Failed to save notification preferences.");
                 setNotificationError(msg);
                 toast.error(msg, "Save Failed");
               } finally {

@@ -1,0 +1,14 @@
+! IEEE 13-Bus Modular Distribution Feeder (Multi-File)
+Clear
+
+New Circuit.IEEE13Mod basekv=115.0 pu=1.03 phases=3 bus1=SourceBus
+
+New Transformer.SubXfmr phases=3 windings=2 buses=[SourceBus, Bus650] kvs=[115, 4.16] kvas=[5000, 5000] %loadloss=1.0 xhl=8.0
+
+Redirect sub/LineCodes.dss
+Redirect sub/Lines.dss
+Redirect sub/Loads.dss
+
+Set VoltageBases = [115, 4.16]
+CalcVoltageBases
+Solve

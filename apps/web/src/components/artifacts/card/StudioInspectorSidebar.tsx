@@ -75,9 +75,9 @@ const InspectorContainer = styled(Box)`
 
 export interface StudioInspectorSidebarProps {
   isOpen: boolean;
-  artifact: any;
+  artifact: import("./types").ArtifactCardRecord;
   artifactId: number;
-  viewConfig: any;
+  viewConfig: import("./types").ArtifactViewConfig;
   onClose?: (() => void) | undefined;
 }
 

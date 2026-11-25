@@ -31,7 +31,7 @@ export interface TradeStudyCandidate {
   parameters: Record<string, number | string>;
   objectives: Record<string, number>;
   branchId?: number | undefined;
-  metadata?: Record<string, any> | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface ParetoPoint extends TradeStudyCandidate {

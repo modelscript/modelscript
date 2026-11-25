@@ -4,7 +4,7 @@ import { CheckIcon, SearchIcon, SyncIcon } from "@primer/octicons-react";
 import { Button, Dialog, TextInput } from "@primer/react";
 import React, { useMemo, useState } from "react";
 import { DEFAULT_FRONTEND_FLAGS, getLanguageFlagKey, useFeatureFlags } from "../FeatureFlagContext";
-import { ALL_PLAYGROUND_LANGUAGES } from "../pages/playground/constants";
+import { ALL_ANSATZ_EDITOR_LANGUAGES } from "../pages/ansatz-editor/constants";
 
 interface DevFlagsModalProps {
   isOpen: boolean;
@@ -18,14 +18,14 @@ interface FlagMetadata {
 }
 
 const LANGUAGE_FLAG_METADATA: Record<string, FlagMetadata> = Object.fromEntries(
-  ALL_PLAYGROUND_LANGUAGES.map((lang) => {
+  ALL_ANSATZ_EDITOR_LANGUAGES.map((lang) => {
     const key = getLanguageFlagKey(lang.id);
     return [
       key,
       {
         title: `Language: ${lang.label} (${lang.ext})`,
         category: "Languages",
-        description: `Enable or hide ${lang.label} (${lang.ext}) across playground, composer, IDE, and study template dialect pickers.`,
+        description: `Enable or hide ${lang.label} (${lang.ext}) across ansatz, composer, IDE, and study template dialect pickers.`,
       } satisfies FlagMetadata,
     ];
   }),
@@ -77,7 +77,7 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Simulation",
     description: "In-browser WASM simulation using SUNDIALS CVODE, RK4, and DOPRI5 integrators.",
   },
-  morsel_playground: {
+  ansatz_editor: {
     title: "Ansatz",
     category: "Simulation",
     description: "Interactive block-based physical modeling and equation editor.",
@@ -216,7 +216,7 @@ const FLAG_METADATA: Record<string, FlagMetadata> = {
     category: "Community & Federation",
     description: "Alias for composer_ai_polish — enable AI text polishing in the composer.",
   },
-  morsel_ai: {
+  ansatz_ai: {
     title: "Ansatz AI Assistant",
     category: "Advanced",
     description:

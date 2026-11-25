@@ -62,11 +62,11 @@
     "assets/**"
   ],
   "scripts": {
+    "ansatz": "npx tsx ../../scripts/tools/language-ansatz.ts .",
     "build": "node ../../scripts/build/build-language-parser.js && tsc",
     "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "clean": "rimraf dist src-gen as-gen *.wasm",
     "lint": "eslint src tests --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
     "test": "node ../../scripts/ci/test-runner.js",
     "typecheck": "tsc --noEmit"
   },

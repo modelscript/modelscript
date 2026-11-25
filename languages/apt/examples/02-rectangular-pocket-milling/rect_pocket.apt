@@ -1,0 +1,49 @@
+$$ 3-Axis Rectangular Pocket Milling in 6061-T6 Aluminum
+PARTNO RECT_POCKET_102
+MACHIN / MILL, 2
+UNITS / INCHES
+INTOL / 0.001
+OUTTOL / 0.001
+CUTTER / 0.5
+SPINDL / 3200, CLW
+FEDRAT / 18.0
+COOLNT / ON
+
+$$ Pocket boundary corners and depth plane
+SETPT = POINT / -1.0, -1.0, 2.0
+P1 = POINT / 0.5, 0.5, -0.25
+P2 = POINT / 4.5, 0.5, -0.25
+P3 = POINT / 4.5, 3.0, -0.25
+P4 = POINT / 0.5, 3.0, -0.25
+PC1 = POINT / 1.5, 1.25, -0.25
+PC2 = POINT / 3.5, 1.25, -0.25
+PC3 = POINT / 3.5, 2.25, -0.25
+PC4 = POINT / 1.5, 2.25, -0.25
+
+L1 = LINE / P1, P2
+L2 = LINE / P2, P3
+L3 = LINE / P3, P4
+L4 = LINE / P4, P1
+PLB = PLANE / 0, 0, 1, -0.25
+
+$$ Center clearing pass
+FROM / SETPT
+RAPID
+GOTO / (POINT / 1.5, 1.25, 0.2)
+GOTO / PC1
+GOTO / PC2
+GOTO / PC3
+GOTO / PC4
+GOTO / PC1
+
+$$ Perimeter wall finish contour
+GO / TO, L1, TO, PLB, TO, L4
+GORGT / L1, TO, L2
+GOLFT / L2, TO, L3
+GOLFT / L3, TO, L4
+GOLFT / L4, TO, L1
+RAPID
+GOTO / SETPT
+COOLNT / OFF
+SPINDL / OFF
+FINI

@@ -1,0 +1,24 @@
+Supercritical CO2 Geological Sequestration in Deep Saline Aquifer
+ROCKS
+SALIN    2600.0      0.24 1.5E-13 1.5E-13 5.0E-14       2.4     920.0
+SHALE    2550.0      0.06 1.0E-18 1.0E-18 5.0E-19       1.8     900.0
+ELEME
+S1  1SALIN 5.0E+04
+S1  2SALIN 5.0E+04
+S1  3SALIN 5.0E+04
+C1  1SHALE 5.0E+04
+C1  2SHALE 5.0E+04
+CONNE
+S1  1S1  2 50.0 50.0 1.0E+03       0.0
+S1  2S1  3 50.0 50.0 1.0E+03       0.0
+S1  1C1  1 15.0 15.0 2.5E+03       1.0
+S1  2C1  2 15.0 15.0 2.5E+03       1.0
+GENER
+S1  1CO2INCOM2       35.0    3.2E+05
+INCON
+S1  1        1.8E+07        65.0
+S1  2        1.8E+07        65.0
+S1  3        1.8E+07        65.0
+C1  1        1.75E+07       62.0
+C1  2        1.75E+07       62.0
+ENDCY

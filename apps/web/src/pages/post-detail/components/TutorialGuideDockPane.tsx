@@ -41,15 +41,33 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
   const navigate = useNavigate();
   const [copiedLink, setCopiedLink] = useState(false);
 
-  const postAny = post as any;
-  const primaryArtifactId = postAny.artifact_view_id ?? post.artifact_id ?? notebookData.artifactIds?.[0];
+  const postExt = post as PostItem & {
+    artifact_views?: Record<
+      string | number,
+      {
+        view_type?: string | undefined;
+        artifact_type?: string | undefined;
+        view_config?: Record<string, unknown> | string | undefined;
+        [key: string]: unknown;
+      }
+    >;
+    artifact_view?: {
+      view_type?: string | undefined;
+      artifact_type?: string | undefined;
+      view_config?: Record<string, unknown> | string | undefined;
+      [key: string]: unknown;
+    };
+    artifact_type?: string | undefined;
+    artifact_config?: Record<string, unknown> | string | undefined;
+  };
+  const primaryArtifactId = postExt.artifact_view_id ?? post.artifact_id ?? notebookData.artifactIds?.[0];
   const primaryArtifactView =
-    (primaryArtifactId ? postAny.artifact_views?.[primaryArtifactId] : undefined) || postAny.artifact_view;
+    (primaryArtifactId ? postExt.artifact_views?.[primaryArtifactId] : undefined) || postExt.artifact_view;
   const isMultiFileArticle = Boolean(
     primaryArtifactView &&
     isMultiFileArtifact({
       ...primaryArtifactView,
-      view_type: primaryArtifactView.view_type || primaryArtifactView.artifact_type || postAny.artifact_type,
+      view_type: primaryArtifactView.view_type || primaryArtifactView.artifact_type || postExt.artifact_type,
     }),
   );
 
@@ -105,14 +123,14 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
     notebookData.companionRepo,
   ]);
 
-  const handleOpenPlayground = () => {
+  const handleOpenAnsatzEditor = () => {
     const firstFenceLang = codeFenceMatches[0]?.[1]?.trim();
     const codeBlocks = codeFenceMatches.map((m) => m[2]?.trim()).filter(Boolean);
     const combinedSource = codeBlocks.join("\n\n");
     const targetUrl = buildEditorUrlForArtifact({
       artifactId: primaryArtifactId,
-      viewType: primaryArtifactView?.view_type || primaryArtifactView?.artifact_type || postAny.artifact_type,
-      viewConfig: primaryArtifactView?.view_config || postAny.artifact_config,
+      viewType: primaryArtifactView?.view_type || primaryArtifactView?.artifact_type || postExt.artifact_type,
+      viewConfig: primaryArtifactView?.view_config || postExt.artifact_config,
       code: combinedSource || (!primaryArtifactId ? post.content || "" : undefined),
       title: notebookData.title || `Article-${post.id}`,
       dialect: notebookData.dialect || firstFenceLang || undefined,
@@ -139,7 +157,7 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const replyCount = Number((post as any).reply_count || 0);
+  const replyCount = Number(post.reply_count || 0);
 
   return (
     <div
@@ -485,7 +503,7 @@ export const TutorialGuideDockPane: React.FC<TutorialGuideDockPaneProps> = ({
           <button
             type="button"
             className="ms-btn ms-btn-primary ms-btn-sm"
-            onClick={handleOpenPlayground}
+            onClick={handleOpenAnsatzEditor}
             style={{
               width: "100%",
               justifyContent: "center",

@@ -1,0 +1,161 @@
+{
+  "network-name": "Metro-DWDM-3Node-Ring",
+  "nodes": [
+    {
+      "node-id": "ROADM-ALPHA",
+      "name": "Alpha Core Hub",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        },
+        {
+          "degree-number": 2,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": true
+        }
+      ],
+      "latitude": 40.7128,
+      "longitude": -74.006
+    },
+    {
+      "node-id": "ROADM-BRAVO",
+      "name": "Bravo Metro Hub",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        },
+        {
+          "degree-number": 2,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": true
+        }
+      ],
+      "latitude": 40.82,
+      "longitude": -73.92
+    },
+    {
+      "node-id": "ROADM-CHARLIE",
+      "name": "Charlie Edge Hub",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        },
+        {
+          "degree-number": 2,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": false
+        }
+      ],
+      "latitude": 40.68,
+      "longitude": -73.85
+    }
+  ],
+  "links": [
+    {
+      "link-id": "SPAN-AB",
+      "source-node": "ROADM-ALPHA",
+      "dest-node": "ROADM-BRAVO",
+      "length-km": 42,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.21,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-AB-1",
+          "type": "edfa",
+          "gain-db": 12,
+          "noise-figure-db": 5,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-RING-NORTH"]
+    },
+    {
+      "link-id": "SPAN-BC",
+      "source-node": "ROADM-BRAVO",
+      "dest-node": "ROADM-CHARLIE",
+      "length-km": 38,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.2,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-BC-1",
+          "type": "edfa",
+          "gain-db": 11,
+          "noise-figure-db": 5,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-RING-EAST"]
+    },
+    {
+      "link-id": "SPAN-CA",
+      "source-node": "ROADM-CHARLIE",
+      "dest-node": "ROADM-ALPHA",
+      "length-km": 45,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.21,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-CA-1",
+          "type": "edfa",
+          "gain-db": 13,
+          "noise-figure-db": 5,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-RING-SOUTH"]
+    }
+  ],
+  "channels": [
+    {
+      "service-name": "SVC-400G-ALPHA-CHARLIE",
+      "source-node": "ROADM-ALPHA",
+      "dest-node": "ROADM-CHARLIE",
+      "frequency-thz": 193.4,
+      "baud-rate": 64,
+      "modulation": "PM-16QAM",
+      "launch-power-dbm": 1,
+      "required-osnr-db": 16.5,
+      "path": ["SPAN-AB", "SPAN-BC"]
+    }
+  ]
+}

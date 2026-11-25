@@ -1,0 +1,41 @@
+MODEL: GasTurbineFcu
+TITLE: "Gas Turbine FADEC N2 Spool Speed Fuel Control Unit"
+
+COMPONENTS:
+  UG01 TYPE=GP/UG TITLE="Throttle N2 Reference (%)" X=80 Y=200
+    PORTS: OUT=output
+    XP: N2_REF=92.0
+    FORTRAN:
+      OUT = 92.0
+    ENDFORTRAN
+
+  SJ01 TYPE=GP/SJ TITLE="N2 Speed Error" X=230 Y=200
+    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0
+
+  LA01 TYPE=GP/LA TITLE="FADEC Lead-Lag Governor" X=390 Y=200
+    XP: TAU1=0.65, TAU2=0.12, GAIN=0.045
+    S0: S1=0.0
+
+  LM01 TYPE=GP/LM TITLE="Accel/Decel Fuel Flow Limiter" X=550 Y=200
+    XP: UL=1.45, LL=0.12
+
+  TF01 TYPE=GP/TF TITLE="Fuel Metering Valve & Combustor" X=720 Y=200
+    XP: NUM=[1.0], DEN=[0.08, 1.0]
+    S0: S1=0.25
+
+  TF02 TYPE=GP/TF TITLE="High-Pressure Spool Rotor Dynamics" X=900 Y=200
+    XP: NUM=[85.0], DEN=[1.8, 1.0]
+    S0: S1=62.0
+
+  TF03 TYPE=GP/TF TITLE="Tachometer Speed Sensor" X=550 Y=360
+    XP: NUM=[1.0], DEN=[0.02, 1.0]
+    S0: S1=62.0
+
+CONNECTIONS:
+  UG01.OUT -> SJ01.IN1
+  SJ01.OUT -> LA01.IN
+  LA01.OUT -> LM01.IN
+  LM01.OUT -> TF01.IN
+  TF01.OUT -> TF02.IN
+  TF02.OUT -> TF03.IN
+  TF03.OUT -> SJ01.IN2

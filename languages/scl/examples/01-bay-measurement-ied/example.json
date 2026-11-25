@@ -1,0 +1,12 @@
+{
+  "id": "scl-01-bay-measurement-ied",
+  "lang": "scl",
+  "subFormats": ["icd"],
+  "difficulty": 1,
+  "title": "Single Bay Measurement IED Capability Description (.icd)",
+  "description": "IEC 61850-6 IED Capability Description (.icd) for a feeder power quality meter exposing mandatory LLN0, LPHD, and MMXU measurement logical nodes.",
+  "category": "IEC 61850 IED Modeling",
+  "tags": ["scl", "iec61850", "icd", "mmxu"],
+  "activeFile": "meter.icd",
+  "isDefaultStarter": true
+}

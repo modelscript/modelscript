@@ -17,6 +17,7 @@ import { ArchiveQueue, defaultArchiveQueue } from "../services/archive-queue.js"
 import type { FederationWorker } from "../services/federation-worker.js";
 import { gatherUserDataBundle, generateUserArchiveZip } from "../services/user-archive.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
+import { publicErrorMessage } from "../utils/http-error.js";
 import { normalizeSolutionBundleUrl } from "./solutions.js";
 
 function stripTrailingSlashes(str: string): string {
@@ -134,7 +135,7 @@ export function usersRouter(
       const status = database.getUserOnboardingStatus(req.user!.id);
       res.json(status);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch onboarding status" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to fetch onboarding status") });
     }
   };
   router.get("/me/onboarding", requireAuth, handleGetOnboarding);
@@ -151,7 +152,7 @@ export function usersRouter(
       const updated = database.getUserOnboardingStatus(req.user!.id);
       res.json({ success: true, status: updated });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to complete onboarding" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to complete onboarding") });
     }
   };
   router.post("/me/onboarding/complete", requireAuth, handleCompleteOnboarding);
@@ -174,7 +175,7 @@ export function usersRouter(
         referrals,
       });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user invites" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to fetch user invites") });
     }
   };
   router.get("/me/invites", requireAuth, handleGetInvites);
@@ -295,7 +296,9 @@ export function usersRouter(
         if (resolved && resolved.user) {
           profile = database.getFullProfileByUsername(resolved.user.username);
         }
-      } catch {}
+      } catch {
+        // Remote ActivityPub actor lookup is best-effort; fall through to 404
+      }
     }
 
     if (!profile) {
@@ -447,13 +450,17 @@ export function usersRouter(
         if (fedInfo.profile_fields) {
           parsedFields = JSON.parse(fedInfo.profile_fields);
         }
-      } catch {}
+      } catch {
+        // Ignore malformed profile_fields JSON
+      }
       let parsedAliases: string[] = [];
       try {
         if (fedInfo.also_known_as) {
           parsedAliases = JSON.parse(fedInfo.also_known_as);
         }
-      } catch {}
+      } catch {
+        // Ignore malformed also_known_as JSON
+      }
       const updatePersonActivity = {
         "@context": [
           "https://www.w3.org/ns/activitystreams",
@@ -522,13 +529,17 @@ export function usersRouter(
         const parsed = JSON.parse(fedInfo.profile_fields);
         if (Array.isArray(parsed)) profileFields = parsed;
       }
-    } catch {}
+    } catch {
+      // Ignore malformed profile_fields JSON
+    }
     try {
       if (fedInfo.also_known_as) {
         const parsed = JSON.parse(fedInfo.also_known_as);
         if (Array.isArray(parsed)) alsoKnownAs = parsed.map(String);
       }
-    } catch {}
+    } catch {
+      // Ignore malformed also_known_as JSON
+    }
 
     const currentUser = database.getUserById(userId);
     const resolvedActorUrl = resolveUserActorUrl(
@@ -969,7 +980,9 @@ export function usersRouter(
 
     try {
       archiveQueue.purgeUserArchives(userId);
-    } catch {}
+    } catch {
+      // Archive purge is best-effort during account deletion
+    }
 
     if (actorUrl && worker && process.env["NODE_ENV"] !== "test") {
       try {
@@ -993,7 +1006,9 @@ export function usersRouter(
           }
         }
         void worker.processQueue();
-      } catch {}
+      } catch {
+        // Federated Delete activity broadcast is best-effort
+      }
     }
 
     res.json({ success: true, message: "Account successfully deleted pursuant to GDPR Article 17 Right to Erasure." });
@@ -1757,7 +1772,7 @@ export function usersRouter(
           });
       res.json({ repos });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user repositories" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to fetch user repositories") });
     }
   });
 
@@ -1773,7 +1788,7 @@ export function usersRouter(
       }));
       res.json({ solutions });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch user solutions" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to fetch user solutions") });
     }
   });
 

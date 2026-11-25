@@ -1,0 +1,5 @@
+closure_id,tray,in_cable,in_strand,in_color,out_cable,out_strand,out_color,splice_type,measured_loss_db
+FDH_NORTH,1,MUNI-FDR-N-144,1,Blue/Blue,LAT-SCHOOL-24,1,Blue/Blue,fusion,0.04
+FDH_NORTH,1,MUNI-FDR-N-144,2,Blue/Orange,LAT-SCHOOL-24,2,Blue/Orange,fusion,0.05
+FDH_SOUTH,1,MUNI-FDR-S-144,1,Blue/Blue,LAT-HOSP-48,1,Blue/Blue,fusion,0.03
+FDH_SOUTH,1,MUNI-FDR-S-144,2,Blue/Orange,LAT-HOSP-48,2,Blue/Orange,fusion,0.04

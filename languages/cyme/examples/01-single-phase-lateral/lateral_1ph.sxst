@@ -1,0 +1,29 @@
+<CymeStudy>
+  <NetworkID>Lateral_12_47kV_A</NetworkID>
+  <Frequency>60</Frequency>
+  <Node><NodeID>SUB_HEAD</NodeID><NominalKV>12.47</NominalKV></Node>
+  <Node><NodeID>TAP_A1</NodeID><NominalKV>12.47</NominalKV></Node>
+  <Node><NodeID>END_A2</NodeID><NominalKV>12.47</NominalKV></Node>
+  <Source><SourceID>SRC_MAIN</SourceID><NodeID>SUB_HEAD</NodeID><NominalKV>12.47</NominalKV><OperatingKV>12.60</OperatingKV></Source>
+  <Section>
+    <SectionID>SEC_HEAD_TAP</SectionID>
+    <FromNodeID>SUB_HEAD</FromNodeID>
+    <ToNodeID>TAP_A1</ToNodeID>
+    <Phase>A</Phase>
+    <Length>320</Length>
+    <DeviceType>OverheadLine</DeviceType>
+    <R1>0.38</R1>
+    <X1>0.62</X1>
+  </Section>
+  <Section>
+    <SectionID>SEC_TAP_END</SectionID>
+    <FromNodeID>TAP_A1</FromNodeID>
+    <ToNodeID>END_A2</ToNodeID>
+    <Phase>A</Phase>
+    <Length>280</Length>
+    <DeviceType>OverheadLine</DeviceType>
+    <R1>0.42</R1>
+    <X1>0.65</X1>
+  </Section>
+  <SpotLoad><LoadID>RES_LOAD_1</LoadID><NodeID>END_A2</NodeID><Phase>A</Phase><KW>145</KW><KVAR>35</KVAR></SpotLoad>
+</CymeStudy>

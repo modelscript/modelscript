@@ -1,0 +1,11 @@
+{
+  "id": "lsdyna-03-taylor-bar-impact",
+  "lang": "lsdyna",
+  "subFormats": ["k"],
+  "difficulty": 3,
+  "title": "Taylor Bar Elasto-Plastic Axial Impact",
+  "description": "Classic OFHC copper Taylor cylinder impact benchmark modeled with MAT_PIECEWISE_LINEAR_PLASTICITY, initial axial velocity, and rigid anvil SPC boundary constraints.",
+  "category": "Explicit FEA & Impact",
+  "tags": ["lsdyna", "plasticity", "taylor-bar", "high-strain-rate"],
+  "activeFile": "taylor_bar.k"
+}

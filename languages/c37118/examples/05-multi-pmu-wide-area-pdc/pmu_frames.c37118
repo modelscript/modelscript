@@ -1,0 +1,8 @@
+pmu Corridor_South_PMU idcode=502 fnom=60 rate=30
+phasor V1_SOUTH_500 V format=polar scale=1.0 mag=497500 ang=-22.8
+phasor I1_SOUTH I format=polar scale=1.0 mag=1340 ang=-15.4
+analog SOUTH_MW units=MW scale=1.0 init=1132.0
+digital GPS_LOCK_SOUTH
+frame 2026-11-17T23:00:00.000Z 60.002 0.001
+frame 2026-11-17T23:00:00.033Z 60.001 -0.002
+frame 2026-11-17T23:00:00.067Z 60.000 -0.001

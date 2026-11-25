@@ -1,0 +1,29 @@
+; Pritsker Combined Discrete-Continuous Tanker Unloading Terminal
+GEN, PRITSKER, TANKER_TERMINAL, 1/1/1979, 1;
+LIMITS, 4, 3, 150;
+CONTINUOUS, 2, 1, 0.01, 0.1, 0.1;
+INTLC, SS(1)=100.0, SS(2)=500.0, XX(1)=0.0, XX(2)=1.0;
+INITIALIZE, 0.0, 30.0;
+
+; Continuous crude-oil unloading and refinery consumption ODEs
+DD(1) = 300.0 * XX(1) - 150.0 * XX(2);
+DD(2) = 150.0 * XX(2) - 120.0;
+SS(3) = SS(1) + SS(2);
+
+NETWORK;
+  RESOURCE/BERTH(1), 1;
+  GATE/PORT, OPEN, 2;
+  CREATE, EXPON(4.0), 0.0, 1, 20, 1;
+  ARR   AWAIT(1), BERTH/1, , 1;
+        ASSIGN, XX(1)=1.0, 1;
+        ACTIVITY/1, 1.5, 1.0, DONE;
+  DONE  FREE, BERTH/1, 1;
+        CLOSE, PORT, 1;
+        OPEN, PORT, 1;
+        COLCT, INT(1), TANKER_TURNAROUND, 1;
+        TERMINATE, 20;
+  DET1  DETECT, SS(1), XP, 350.0, 0.01, 1;
+        ASSIGN, XX(1)=0.0, 1;
+        TERMINATE;
+ENDNETWORK;
+FIN;

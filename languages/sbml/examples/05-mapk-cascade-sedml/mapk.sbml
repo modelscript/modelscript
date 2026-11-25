@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="MAPKCascade" name="Three-Tier MAPK Phosphorylation Cascade">
+    <listOfCompartments>
+      <compartment id="cytoplasm" name="Cytoplasm" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="MKKK" name="Inactive MAPKKK" compartment="cytoplasm" initialConcentration="90.0" constant="false"/>
+      <species id="MKKK_P" name="Active MAPKKK-P" compartment="cytoplasm" initialConcentration="10.0" constant="false"/>
+      <species id="MKK" name="Inactive MAPKK" compartment="cytoplasm" initialConcentration="280.0" constant="false"/>
+      <species id="MKK_PP" name="Active MAPKK-PP" compartment="cytoplasm" initialConcentration="20.0" constant="false"/>
+      <species id="MAPK" name="Inactive MAPK" compartment="cytoplasm" initialConcentration="280.0" constant="false"/>
+      <species id="MAPK_PP" name="Active MAPK-PP" compartment="cytoplasm" initialConcentration="20.0" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="V1" value="2.5" constant="true"/>
+      <parameter id="Ki" value="9.0" constant="true"/>
+      <parameter id="K1" value="10.0" constant="true"/>
+      <parameter id="V2" value="0.25" constant="true"/>
+      <parameter id="K2" value="8.0" constant="true"/>
+      <parameter id="k3" value="0.025" constant="true"/>
+      <parameter id="K3" value="15.0" constant="true"/>
+      <parameter id="V4" value="0.75" constant="true"/>
+      <parameter id="K4" value="15.0" constant="true"/>
+      <parameter id="k5" value="0.025" constant="true"/>
+      <parameter id="K5" value="15.0" constant="true"/>
+      <parameter id="V6" value="0.5" constant="true"/>
+      <parameter id="K6" value="15.0" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="J_MKKK_act" name="MAPKKK Activation with Feedback" reversible="false">
+        <listOfReactants><speciesReference species="MKKK" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="MKKK_P" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="MAPK_PP"/></listOfModifiers>
+        <kineticLaw><formula>(V1 * MKKK) / ((1 + MAPK_PP / Ki) * (K1 + MKKK))</formula></kineticLaw>
+      </reaction>
+      <reaction id="J_MKKK_deact" name="MAPKKK Deactivation" reversible="false">
+        <listOfReactants><speciesReference species="MKKK_P" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="MKKK" stoichiometry="1"/></listOfProducts>
+        <kineticLaw><formula>(V2 * MKKK_P) / (K2 + MKKK_P)</formula></kineticLaw>
+      </reaction>
+      <reaction id="J_MKK_act" name="MAPKK Phosphorylation" reversible="false">
+        <listOfReactants><speciesReference species="MKK" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="MKK_PP" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="MKKK_P"/></listOfModifiers>
+        <kineticLaw><formula>(k3 * MKKK_P * MKK) / (K3 + MKK)</formula></kineticLaw>
+      </reaction>
+      <reaction id="J_MKK_deact" name="MAPKK Dephosphorylation" reversible="false">
+        <listOfReactants><speciesReference species="MKK_PP" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="MKK" stoichiometry="1"/></listOfProducts>
+        <kineticLaw><formula>(V4 * MKK_PP) / (K4 + MKK_PP)</formula></kineticLaw>
+      </reaction>
+      <reaction id="J_MAPK_act" name="MAPK Phosphorylation" reversible="false">
+        <listOfReactants><speciesReference species="MAPK" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="MAPK_PP" stoichiometry="1"/></listOfProducts>
+        <listOfModifiers><modifierSpeciesReference species="MKK_PP"/></listOfModifiers>
+        <kineticLaw><formula>(k5 * MKK_PP * MAPK) / (K5 + MAPK)</formula></kineticLaw>
+      </reaction>
+      <reaction id="J_MAPK_deact" name="MAPK Dephosphorylation" reversible="false">
+        <listOfReactants><speciesReference species="MAPK_PP" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="MAPK" stoichiometry="1"/></listOfProducts>
+        <kineticLaw><formula>(V6 * MAPK_PP) / (K6 + MAPK_PP)</formula></kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

@@ -13,25 +13,25 @@ import {
 } from "@modelscript/cad";
 import type { CadComponent } from "../cad-viewer";
 import type {
-  CompileStepFromSourcesMorselParams,
-  CompileStepFromSourcesMorselResult,
-  StepMeshMorselResult,
+  CompileStepFromSourcesAnsatzParams,
+  CompileStepFromSourcesAnsatzResult,
+  StepMeshAnsatzResult,
 } from "./lsp-bridge";
 
-export interface MorselSpoolRule {
+export interface AnsatzSpoolRule {
   readonly match: string;
   readonly axisIndex: 0 | 1 | 2;
   readonly degPerSec: number;
   readonly varName: string;
 }
 
-export function deriveMorselUri(pathOrName: string | undefined, fallbackUri: string): string {
+export function deriveAnsatzUri(pathOrName: string | undefined, fallbackUri: string): string {
   if (!pathOrName) return fallbackUri;
   const clean = normalizePosixPath(pathOrName).replace(/^\/+/, "");
   return clean ? `file:///${clean}` : fallbackUri;
 }
 
-export function buildMorselEffectiveFileMap(
+export function buildAnsatzEffectiveFileMap(
   projectFiles: Readonly<Record<string, string>> | undefined,
   activeFileName: string | undefined,
   documentUri: string,
@@ -61,7 +61,7 @@ export function buildMorselEffectiveFileMap(
 }
 
 export function stepMeshesToCadComponents(
-  meshes: readonly StepMeshMorselResult[],
+  meshes: readonly StepMeshAnsatzResult[],
   uriPrefix = "step://compiled",
 ): CadComponent[] {
   const out: CadComponent[] = [];
@@ -94,12 +94,12 @@ export function stepMeshesToCadComponents(
  * Resolves `@spool(...)` directives (both Option-A `part`/`spool`/`axis=[x,y,z]` and legacy
  * `match`/`axis`/`rpm`/`degPerSec`) scaled by optional paired Modelica `n1_rpm`/`n2_rpm` telemetry.
  */
-export function resolveSpoolRulesForMorsel(
+export function resolveSpoolRulesForAnsatz(
   scadCode: string,
   structuredSpools?: readonly SpoolKinematicsSpec[],
   telemetry?: ModelicaTelemetryParams,
-): MorselSpoolRule[] {
-  const rules: MorselSpoolRule[] = [];
+): AnsatzSpoolRule[] {
+  const rules: AnsatzSpoolRule[] = [];
   let idx = 0;
 
   const parsedStructured =
@@ -129,7 +129,7 @@ export function resolveSpoolRulesForMorsel(
     });
   }
 
-  // Legacy Morsel syntax: // @spool(match="rotor", axis="x", rpm=1800)
+  // Legacy Ansatz syntax: // @spool(match="rotor", axis="x", rpm=1800)
   const legacyRegex = /\/\/\s*@spool\s*\(([^)]*)\)/gi;
   let m: RegExpExecArray | null;
   while ((m = legacyRegex.exec(scadCode)) !== null) {
@@ -162,13 +162,13 @@ export function resolveSpoolRulesForMorsel(
   return rules;
 }
 
-export interface CachedMorselStepCompilation {
+export interface CachedAnsatzStepCompilation {
   readonly sig: string;
-  readonly result: CompileStepFromSourcesMorselResult;
+  readonly result: CompileStepFromSourcesAnsatzResult;
   readonly components: CadComponent[];
 }
 
-export interface MorselOptionAOutcome {
+export interface AnsatzOptionAOutcome {
   readonly pairing: ResolvedStepPairing | null;
   readonly components: CadComponent[];
   readonly gdtOverlay: GdtOverlayPayload | null;
@@ -177,32 +177,32 @@ export interface MorselOptionAOutcome {
   readonly stepPath?: string | undefined;
   readonly stepText?: string | undefined;
   readonly updatedStepArtifact: boolean;
-  readonly cachedCompilation?: CachedMorselStepCompilation | undefined;
+  readonly cachedCompilation?: CachedAnsatzStepCompilation | undefined;
 }
 
-export interface MorselOptionARunParams {
+export interface AnsatzOptionARunParams {
   readonly files: Readonly<Record<string, string>>;
   readonly activePath: string;
   readonly dialect: string;
   readonly documentUri: string;
   readonly isStepText: boolean;
-  readonly cachedCompilation?: CachedMorselStepCompilation | null | undefined;
+  readonly cachedCompilation?: CachedAnsatzStepCompilation | null | undefined;
   readonly compileStepFromSources: (
-    params: CompileStepFromSourcesMorselParams,
-  ) => Promise<CompileStepFromSourcesMorselResult>;
-  readonly getStepMeshes: (uri: string, documentText?: string) => Promise<StepMeshMorselResult[]>;
+    params: CompileStepFromSourcesAnsatzParams,
+  ) => Promise<CompileStepFromSourcesAnsatzResult>;
+  readonly getStepMeshes: (uri: string, documentText?: string) => Promise<StepMeshAnsatzResult[]>;
 }
 
 /**
- * Executes the Option-A multi-file STEP compilation & B-Rep meshing workflow for Morsel:
+ * Executes the Option-A multi-file STEP compilation & B-Rep meshing workflow for Ansatz:
  * - If active file is `.step`, extracts embedded provenance + QIF overlay + AP242 meshes.
  * - If paired `.scad` (+ optional `.qif`, `.mo`) exists, compiles AP242 `.step` via LSP,
  *   tessellates via `getStepMeshes`, attaches `@spool` + Modelica telemetry, and returns the
  *   generated `.step` text so the host workspace updates `projectFiles`.
  */
-export async function compileMorselOptionAAssembly(
-  params: MorselOptionARunParams,
-): Promise<MorselOptionAOutcome | null> {
+export async function compileAnsatzOptionAAssembly(
+  params: AnsatzOptionARunParams,
+): Promise<AnsatzOptionAOutcome | null> {
   const {
     files,
     activePath,
@@ -223,7 +223,7 @@ export async function compileMorselOptionAAssembly(
     const rawOverlay = extractStepGdtOverlay(stepText, qifText);
     const gdtOverlay = rawOverlay.callouts.length > 0 || rawOverlay.datums.length > 0 ? rawOverlay : null;
     const spools = (pairing?.spools?.length ? pairing.spools : meta?.spools) ?? [];
-    const meshes = await getStepMeshes(deriveMorselUri(activePath, documentUri), stepText);
+    const meshes = await getStepMeshes(deriveAnsatzUri(activePath, documentUri), stepText);
     const components = stepMeshesToCadComponents(meshes, "step://viewer");
     return {
       pairing,
@@ -253,14 +253,14 @@ export async function compileMorselOptionAAssembly(
   const modelicaPath = pairing.modelicaPath;
   const assemblyName = pairing.assemblyName;
 
-  const scadUri = deriveMorselUri(scadPath, documentUri);
-  const qifUri = qifPath ? deriveMorselUri(qifPath, documentUri) : undefined;
-  const stepUri = deriveMorselUri(stepPath, documentUri);
-  const modelicaUri = modelicaPath ? deriveMorselUri(modelicaPath, documentUri) : undefined;
+  const scadUri = deriveAnsatzUri(scadPath, documentUri);
+  const qifUri = qifPath ? deriveAnsatzUri(qifPath, documentUri) : undefined;
+  const stepUri = deriveAnsatzUri(stepPath, documentUri);
+  const modelicaUri = modelicaPath ? deriveAnsatzUri(modelicaPath, documentUri) : undefined;
 
   const sig = `${scadText}\0${qifText ?? ""}\0${stepPath ?? ""}\0${modelicaPath ?? ""}\0${assemblyName}`;
 
-  let compiled: CompileStepFromSourcesMorselResult;
+  let compiled: CompileStepFromSourcesAnsatzResult;
   let components: CadComponent[];
   let updatedStepArtifact = false;
 

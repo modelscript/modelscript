@@ -1,0 +1,11 @@
+{
+  "id": "cfd-05-supersonic-rocket-nozzle",
+  "lang": "cfd",
+  "subFormats": ["cfg", "su2"],
+  "difficulty": 5,
+  "title": "Converging-Diverging Supersonic Rocket Nozzle Flow",
+  "description": "Compressible de Laval converging-diverging rocket nozzle SU2 configuration and companion 2D nozzle mesh resolving choked throat and Mach 2.4 supersonic expansion.",
+  "category": "Compressible Propulsion CFD",
+  "tags": ["cfd", "su2", "supersonic", "rocket-nozzle", "multi-file"],
+  "activeFile": "nozzle.cfg"
+}

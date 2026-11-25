@@ -1,0 +1,28 @@
+#usda 1.0
+(
+    defaultPrim = "WarehouseAisle"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+    subLayers = [
+        @./materials.usda@
+    ]
+)
+
+def Xform "WarehouseAisle"
+{
+    def Xform "Rack_A1" (
+        prepend references = @./rack_asset.usda@
+    )
+    {
+        double3 xformOp:translate = (0.0, 0.0, 0.0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def Xform "Rack_A2" (
+        prepend references = @./rack_asset.usda@
+    )
+    {
+        double3 xformOp:translate = (2.6, 0.0, 0.0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

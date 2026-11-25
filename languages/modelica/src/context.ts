@@ -11,7 +11,8 @@
  * internationalization translations.
  */
 
-import type { FileSystem, Parser, Tree } from "@modelscript/dsl/utils";
+import type { TaxonomyIndex } from "@modelscript/dsl";
+import type { FileSystem, Parser, SyntaxNode, Tree } from "@modelscript/dsl/utils";
 import {
   computeEditRanges,
   isIdentChar,
@@ -19,11 +20,20 @@ import {
   MODELSCRIPT_CAS_PACKAGE,
   printArenaDAE,
   UnifiedWorkspace,
+  type CSTTree,
   type DAEBuilder,
   type EditRange,
   type HomotopyMode,
+  type LanguageDefinitionLike,
+  type QueryCacheStore,
+  type QueryDB,
   type QueryEngine,
+  type SymbolEntry,
+  type SymbolId,
+  type SymbolIndex,
+  type WorkspaceCstNode,
   type WorkspaceIndex,
+  type WorkspaceParser,
 } from "@modelscript/runtime";
 import { MODELSCRIPT_GEOMETRY_PACKAGE } from "./extensions/geometry.js";
 import { ModelicaPoParser, ModelicaTranslation } from "./extensions/po.js";
@@ -83,8 +93,67 @@ export interface ModelicaCompilerOptions {
 
 export type { HomotopyMode };
 
-/** Legacy dynamic handle representing a resolved class or component element in `Context`. */
-export type ModelicaElement = any;
+/**
+ * Hydrated descriptor representing a resolved Modelica class or symbol element in `Context`.
+ */
+export interface ModelicaClassHandle {
+  id: SymbolId;
+  db: QueryDB;
+  entry: SymbolEntry;
+  name: string;
+  kind: string;
+  classKind: string;
+  compositeName: string;
+  description: string | null;
+  isClassInstance: boolean;
+  resolveSimpleName?:
+    ((name: string, includeProtected?: boolean, includeImports?: boolean) => ModelicaElement | null) | undefined;
+}
+
+/** Dynamic handle representing a resolved class or library element in `Context`. */
+export type ModelicaElement = ModelicaClassHandle | ModelicaLibrary;
+
+interface WasmParserFacade {
+  resetParser?: (() => void) | undefined;
+  exports?:
+    | {
+        resetParser?: (() => void) | undefined;
+        lsp_setConfigEnableMultiFile?: ((enable: boolean) => void) | undefined;
+        configEnableMultiFile?: { value: number } | undefined;
+      }
+    | undefined;
+}
+
+interface ExtendedWasmParser {
+  reset?: (() => void) | undefined;
+  languageBinding?: WasmParserFacade | undefined;
+  getLanguage?: (() => WasmParserFacade | undefined) | undefined;
+}
+
+interface ExtendedWasmTree extends Tree {
+  sourceCode?: string | undefined;
+  _rangeNodeCache?: Map<number, SyntaxNode | null> | undefined;
+}
+
+interface DaeBodyCacheEntry {
+  builder: DAEBuilder & { _mutatedBySim?: boolean | undefined };
+  revision: number;
+  depRevisions: Map<string, number>;
+}
+
+interface ExtendedWorkspaceIndex {
+  documents?: Map<string, { tree?: unknown }> | undefined;
+  getFileStructuralRevision?: ((resUri: string) => number) | undefined;
+  getDirtyDelta?: ((resUri: string) => number | undefined) | undefined;
+}
+
+function readSymbolMetaString(metadata: unknown, key: string): string | undefined {
+  if (metadata && typeof metadata === "object") {
+    const val = (metadata as Record<string, unknown>)[key];
+    if (typeof val === "string") return val;
+  }
+  return undefined;
+}
 
 /**
  * Represents a loaded Modelica package/library directory or single-file `.mo` library
@@ -162,7 +231,9 @@ export interface ContextOptions {
  */
 export class Context {
   /** Hydrated top-level class descriptors registered in this context. */
-  #classes: any[] = [];
+  #classes: ModelicaClassHandle[] = [];
+  /** Bounded LRU cache of flattened body-phase DAE snapshots for incremental patching. */
+  _daeBodyCache?: Map<string, DaeBodyCacheEntry> | undefined;
   /** Virtual or physical file system adapter used to read source files and libraries. */
   #fs: FileSystem;
   /** List of Modelica libraries registered via {@link addLibrary}. */
@@ -212,17 +283,18 @@ export class Context {
   pruneCaches(): void {
     this.#fileTexts.clear();
     for (const tree of this.#trees.values()) {
-      const rangeCache = (tree as unknown as { _rangeNodeCache?: Map<number, unknown> })._rangeNodeCache;
+      const rangeCache = (tree as ExtendedWasmTree)._rangeNodeCache;
       if (rangeCache) {
         rangeCache.clear();
       }
     }
     this.#trees.clear();
-    for (const parser of (Context as any)._parsers.values()) {
-      if (typeof (parser as any)?.reset === "function") {
-        (parser as any).reset();
+    for (const parser of Context._parsers.values()) {
+      const extParser = parser as unknown as ExtendedWasmParser;
+      if (typeof extParser?.reset === "function") {
+        extParser.reset();
       } else {
-        const facade = (parser as any)?.languageBinding ?? (parser as any)?.getLanguage?.();
+        const facade = extParser?.languageBinding ?? extParser?.getLanguage?.();
         if (typeof facade?.resetParser === "function") {
           facade.resetParser();
         } else if (typeof facade?.exports?.resetParser === "function") {
@@ -318,8 +390,8 @@ export class Context {
   }
 
   /** Ontological / class-hierarchy taxonomy attached to the active query engine, if any. */
-  get taxonomy(): any {
-    return (this.#queryEngine as any)?.taxonomy;
+  get taxonomy(): TaxonomyIndex | undefined {
+    return this.#queryEngine?.taxonomy;
   }
 
   /**
@@ -328,7 +400,7 @@ export class Context {
    */
   isSubtype(childName: string, parentName: string): boolean {
     if (childName === parentName) return true;
-    const tax = (this.#queryEngine as any)?.taxonomy;
+    const tax = this.#queryEngine?.taxonomy;
     if (tax?.has?.(childName) && tax?.has?.(parentName)) {
       if (tax.isSubtype(childName, parentName)) return true;
     }
@@ -348,17 +420,17 @@ export class Context {
    * Injects a pre-built unified `SymbolIndex` (e.g., deserialized from cache),
    * wires up on-demand CST node/text recovery, and hydrates top-level class descriptors.
    */
-  setSymbolIndex(index: any): void {
+  setSymbolIndex(index: SymbolIndex): void {
     injectPredefinedTypes(index);
     const missingResources = new Set<string>();
-    const contextTree = {
-      getText: (startOffset: number, endOffset: number, entry?: any) => {
+    const contextTree: CSTTree = {
+      getText: (startOffset: number, endOffset: number, entry?: SymbolEntry) => {
         if (!entry || !entry.resourceId || (startOffset === 0 && endOffset === 0)) return null;
         let text = this.#fileTexts.get(entry.resourceId);
         if (text === undefined) {
           const existingTree = this.#trees.get(entry.resourceId);
           if (existingTree) {
-            const src = (existingTree as any).sourceCode as string | undefined;
+            const src = (existingTree as ExtendedWasmTree).sourceCode;
             if (src !== undefined) {
               text = src;
               this.#cacheFileText(entry.resourceId, text);
@@ -380,7 +452,7 @@ export class Context {
         }
         return text.substring(startOffset, endOffset);
       },
-      getNode: (startOffset: number, endOffset: number, entry?: any) => {
+      getNode: (startOffset: number, endOffset: number, entry?: SymbolEntry) => {
         if (entry && entry.id < 0) return null;
         if (startOffset === 0 && endOffset === 0) return null;
         let tree = entry?.resourceId ? this.#trees.get(entry.resourceId) : undefined;
@@ -409,10 +481,11 @@ export class Context {
           }
         }
         if (!tree) return null;
-        let rangeCache = (tree as any)._rangeNodeCache as Map<number, any> | undefined;
+        const extTree = tree as ExtendedWasmTree;
+        let rangeCache = extTree._rangeNodeCache;
         if (!rangeCache) {
-          rangeCache = new Map<number, any>();
-          (tree as any)._rangeNodeCache = rangeCache;
+          rangeCache = new Map<number, SyntaxNode | null>();
+          extTree._rangeNodeCache = rangeCache;
         } else if (rangeCache.size > 200) {
           rangeCache.clear();
         }
@@ -422,9 +495,7 @@ export class Context {
         if (cachedNode !== undefined) return cachedNode;
         let node = tree.rootNode.descendantForIndex(startOffset, endIdx);
         if (node && node.endIndex > endIdx && startOffset < endIdx) {
-          const srcText =
-            (entry?.resourceId ? this.#fileTexts.get(entry.resourceId) : undefined) ??
-            ((tree as any).sourceCode as string | undefined);
+          const srcText = (entry?.resourceId ? this.#fileTexts.get(entry.resourceId) : undefined) ?? extTree.sourceCode;
           if (srcText) {
             let adjStart = startOffset;
             while (adjStart < endIdx) {
@@ -478,9 +549,12 @@ export class Context {
             entry,
             name: entry.name ?? "",
             kind: entry.kind ?? "Class",
-            classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+            classKind:
+              readSymbolMetaString(entry.metadata, "classKind") ??
+              readSymbolMetaString(entry.metadata, "classPrefixes") ??
+              "class",
             compositeName: entry.name ?? "",
-            description: (entry.metadata as any)?.description ?? null,
+            description: readSymbolMetaString(entry.metadata, "description") ?? null,
             isClassInstance: true,
           });
         }
@@ -512,7 +586,7 @@ export class Context {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
     if (!tree) return null;
-    const src = (tree as any).sourceCode as string | undefined;
+    const src = (tree as ExtendedWasmTree).sourceCode;
     if (src) return src.substring(startOffset, endOffset);
     const offset = tree.rootNode.startIndex;
     return tree.rootNode.text.substring(startOffset - offset, endOffset - offset);
@@ -521,7 +595,7 @@ export class Context {
   /**
    * Recovers the smallest CST node spanning `[startOffset, endOffset)` in `resourceId`.
    */
-  getTreeNode(resourceId: string | undefined, startOffset: number, endOffset: number): any | null {
+  getTreeNode(resourceId: string | undefined, startOffset: number, endOffset: number): SyntaxNode | null {
     if (!resourceId) return null;
     const tree = this.#trees.get(resourceId);
     if (!tree) return null;
@@ -539,20 +613,20 @@ export class Context {
    * @param maxMemos - Optional max number of memos to keep in memory
    * @param options - Compiler context options (e.g. loadStdlib)
    */
-  constructor(fs: FileSystem, cacheStore?: any, maxMemos?: number, options?: ContextOptions) {
+  constructor(fs: FileSystem, cacheStore?: QueryCacheStore, maxMemos?: number, options?: ContextOptions) {
     const workspaceIndex = createModelicaWorkspaceIndex();
 
     // Provide a CSTTree that looks up trees by resourceId cached in Context,
     // with on-demand parsing fallback if the tree has not been loaded yet.
     const missingResources = new Set<string>();
-    const contextTree = {
-      getText: (startOffset: number, endOffset: number, entry?: any) => {
+    const contextTree: CSTTree = {
+      getText: (startOffset: number, endOffset: number, entry?: SymbolEntry) => {
         if (!entry || !entry.resourceId || (startOffset === 0 && endOffset === 0)) return null;
         let text = this.#fileTexts.get(entry.resourceId);
         if (text === undefined) {
           const existingTree = this.#trees.get(entry.resourceId);
           if (existingTree) {
-            const src = (existingTree as any).sourceCode as string | undefined;
+            const src = (existingTree as ExtendedWasmTree).sourceCode;
             if (src !== undefined) {
               text = src;
               this.#cacheFileText(entry.resourceId, text);
@@ -574,7 +648,7 @@ export class Context {
         }
         return text.substring(startOffset, endOffset);
       },
-      getNode: (startOffset: number, endOffset: number, entry?: any) => {
+      getNode: (startOffset: number, endOffset: number, entry?: SymbolEntry) => {
         if (!entry || !entry.resourceId || entry.id < 0 || (startOffset === 0 && endOffset === 0)) return null;
         let tree = this.#trees.get(entry.resourceId);
         if (!tree && entry?.resourceId) {
@@ -593,10 +667,11 @@ export class Context {
           }
         }
         if (!tree) return null;
-        let rangeCache = (tree as any)._rangeNodeCache as Map<number, any> | undefined;
+        const extTree = tree as ExtendedWasmTree;
+        let rangeCache = extTree._rangeNodeCache;
         if (!rangeCache) {
-          rangeCache = new Map<number, any>();
-          (tree as any)._rangeNodeCache = rangeCache;
+          rangeCache = new Map<number, SyntaxNode | null>();
+          extTree._rangeNodeCache = rangeCache;
         } else if (rangeCache.size > 200) {
           rangeCache.clear();
         }
@@ -606,9 +681,7 @@ export class Context {
         if (cachedNode !== undefined) return cachedNode;
         let node = tree.rootNode.descendantForIndex(startOffset, endIdx);
         if (node && node.endIndex > endIdx && startOffset < endIdx) {
-          const srcText =
-            (entry?.resourceId ? this.#fileTexts.get(entry.resourceId) : undefined) ??
-            ((tree as any).sourceCode as string | undefined);
+          const srcText = (entry?.resourceId ? this.#fileTexts.get(entry.resourceId) : undefined) ?? extTree.sourceCode;
           if (srcText) {
             let adjStart = startOffset;
             while (adjStart < endIdx) {
@@ -685,7 +758,7 @@ export class Context {
   /**
    * Iterates over all top-level classes and libraries loaded in this context.
    */
-  get elements(): IterableIterator<any> {
+  get elements(): IterableIterator<ModelicaElement> {
     const classes = this.#classes;
     const libraries = this.#libraries;
     return (function* () {
@@ -700,9 +773,9 @@ export class Context {
   /**
    * Looks up a top-level class or library by its unqualified `name`.
    */
-  getNamedElement(name: string): any | null {
+  getNamedElement(name: string): ModelicaElement | null {
     for (const element of this.elements) {
-      if ("name" in element && (element as { name?: string | undefined }).name === name) {
+      if ("name" in element && element.name === name) {
         return element;
       }
     }
@@ -713,7 +786,7 @@ export class Context {
    * Resolve a dot-separated name to a named element within the loaded classes.
    * This replaces the `Scope.query()` method that was previously inherited.
    */
-  query(name: string): any | null {
+  query(name: string): ModelicaElement | null {
     return this.resolveName(name.split("."));
   }
 
@@ -721,19 +794,19 @@ export class Context {
    * Resolve a name (as an array of parts) through the loaded class hierarchy.
    * This replaces the `Scope.resolveName()` method that was previously inherited.
    */
-  resolveName(parts: string[] | null | undefined): any | null {
+  resolveName(parts: string[] | null | undefined): ModelicaElement | null {
     if (!parts || parts.length === 0) return null;
     const first = parts[0];
     if (!first) return null;
-    let element = this.getNamedElement(first);
+    let element: ModelicaElement | null = this.getNamedElement(first);
     if (!element) return null;
     const db = this.#queryEngine.toQueryDB();
     for (let i = 1; i < parts.length; i++) {
       const nameStr = parts[i];
       if (!nameStr) return null;
-      if (typeof (element as any).resolveSimpleName === "function") {
-        element = (element as any).resolveSimpleName(nameStr, false, true) as any;
-      } else if (element.id !== undefined) {
+      if ("resolveSimpleName" in element && typeof element.resolveSimpleName === "function") {
+        element = element.resolveSimpleName(nameStr, false, true);
+      } else if ("id" in element && element.id !== undefined) {
         const children = db.childrenOf(element.id);
         const child = children.find((c) => c.name === nameStr);
         if (child) {
@@ -743,9 +816,12 @@ export class Context {
             entry: child,
             name: child.name ?? "",
             kind: child.kind ?? "Class",
-            classKind: (child.metadata as any)?.classKind ?? (child.metadata as any)?.classPrefixes ?? "class",
+            classKind:
+              readSymbolMetaString(child.metadata, "classKind") ??
+              readSymbolMetaString(child.metadata, "classPrefixes") ??
+              "class",
             compositeName: `${element.compositeName}.${child.name}`,
-            description: (child.metadata as any)?.description ?? null,
+            description: readSymbolMetaString(child.metadata, "description") ?? null,
             isClassInstance: true,
           };
         } else {
@@ -888,7 +964,7 @@ export class Context {
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".mo", text);
-              return tree.rootNode as any;
+              return tree.rootNode as unknown as WorkspaceCstNode;
             },
             parentFQN,
           );
@@ -899,7 +975,7 @@ export class Context {
             () => {
               const text = this.#fs.read(dir);
               const tree = this.parse(".csv", text);
-              return tree.rootNode as any;
+              return tree.rootNode as unknown as WorkspaceCstNode;
             },
             parentFQN,
           );
@@ -971,8 +1047,8 @@ export class Context {
 
     // Temporarily switch parser to single-file mode during bulk library indexing
     // to prevent unbounded linear WASM memory growth across thousands of files.
-    const parser = (Context as any)._parsers.get(".mo");
-    const facade = (parser as any)?.languageBinding ?? (parser as any)?.getLanguage?.();
+    const parser = Context._parsers.get(".mo") as unknown as ExtendedWasmParser | undefined;
+    const facade = parser?.languageBinding ?? parser?.getLanguage?.();
     const prevMultiFile = facade?.exports?.configEnableMultiFile?.value;
     if (facade?.exports?.lsp_setConfigEnableMultiFile) {
       facade.exports.lsp_setConfigEnableMultiFile(false);
@@ -981,11 +1057,11 @@ export class Context {
       facade.exports.configEnableMultiFile.value = 0;
     }
 
-    let unified: any;
+    let unified: SymbolIndex;
     try {
       unified = await this.#workspaceIndex.getIndexAsync();
     } finally {
-      const docs = (this.#workspaceIndex as any).documents as Map<string, any> | undefined;
+      const docs = (this.#workspaceIndex as unknown as ExtendedWorkspaceIndex).documents;
       if (docs) {
         for (const [uri, doc] of docs.entries()) {
           if (doc && doc.tree && !this.#trees.has(uri)) {
@@ -1024,9 +1100,12 @@ export class Context {
             entry,
             name: entry.name ?? "",
             kind: entry.kind ?? "Class",
-            classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+            classKind:
+              readSymbolMetaString(entry.metadata, "classKind") ??
+              readSymbolMetaString(entry.metadata, "classPrefixes") ??
+              "class",
             compositeName: entry.name ?? "",
-            description: (entry.metadata as any)?.description ?? null,
+            description: readSymbolMetaString(entry.metadata, "description") ?? null,
             isClassInstance: true,
           });
         }
@@ -1045,8 +1124,8 @@ export class Context {
    * Call this once after batching multiple `addLibrary({ skipIndex: true })` calls.
    */
   async finalizeLibraries(): Promise<void> {
-    const parser = (Context as any)._parsers.get(".mo");
-    const facade = (parser as any)?.languageBinding ?? (parser as any)?.getLanguage?.();
+    const parser = Context._parsers.get(".mo") as unknown as ExtendedWasmParser | undefined;
+    const facade = parser?.languageBinding ?? parser?.getLanguage?.();
     if (facade?.exports?.lsp_setConfigEnableMultiFile) {
       facade.exports.lsp_setConfigEnableMultiFile(false);
     }
@@ -1054,11 +1133,11 @@ export class Context {
       facade.exports.configEnableMultiFile.value = 0;
     }
 
-    let unified: any;
+    let unified: SymbolIndex;
     try {
       unified = await this.#workspaceIndex.getIndexAsync();
     } finally {
-      const docs = (this.#workspaceIndex as any).documents as Map<string, any> | undefined;
+      const docs = (this.#workspaceIndex as unknown as ExtendedWorkspaceIndex).documents;
       if (docs) {
         for (const [uri, doc] of docs.entries()) {
           if (doc && doc.tree && !this.#trees.has(uri)) {
@@ -1088,9 +1167,12 @@ export class Context {
             entry,
             name: entry.name ?? "",
             kind: entry.kind ?? "Class",
-            classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+            classKind:
+              readSymbolMetaString(entry.metadata, "classKind") ??
+              readSymbolMetaString(entry.metadata, "classPrefixes") ??
+              "class",
             compositeName: entry.name ?? "",
-            description: (entry.metadata as any)?.description ?? null,
+            description: readSymbolMetaString(entry.metadata, "description") ?? null,
             isClassInstance: true,
           });
         }
@@ -1101,7 +1183,7 @@ export class Context {
   /**
    * Returns the array of top-level classes loaded via `load()`.
    */
-  get classes(): readonly any[] {
+  get classes(): readonly ModelicaClassHandle[] {
     return this.#classes;
   }
 
@@ -1126,20 +1208,24 @@ export class Context {
    * @param name - The fully qualified name of the Modelica class to flatten.
    * @returns An `DAEBuilder` containing the flattened DAE, or null if the class is not found.
    */
-  flattenArena(name: string, classId?: any, uri?: string, options?: FlattenOptions): DAEBuilder | null {
+  flattenArena(name: string, classId?: SymbolId, uri?: string, options?: FlattenOptions): DAEBuilder | null {
+    const hasCstError = (node: unknown): boolean => {
+      const n = node as { hasError?: (() => boolean) | undefined } | null | undefined;
+      return typeof n?.hasError === "function" && n.hasError();
+    };
     if (uri) {
       const tree = this.#trees.get(uri);
-      if (tree && typeof (tree.rootNode as any)?.hasError === "function" && (tree.rootNode as any).hasError()) {
+      if (tree && hasCstError(tree.rootNode)) {
         return null;
       }
     }
 
-    let symbolIds: any[] | undefined = undefined;
+    let symbolIds: SymbolId[] | undefined = undefined;
 
     if (classId !== undefined) {
       symbolIds = [classId];
     } else {
-      const isClassLikeSymbolId = (id: any): boolean => {
+      const isClassLikeSymbolId = (id: SymbolId): boolean => {
         const entry = this.#queryEngine.index.symbols.get(id);
         return (
           entry !== undefined &&
@@ -1156,7 +1242,7 @@ export class Context {
         const classCandidates = candidates.filter(isClassLikeSymbolId);
         if (classCandidates.length > 0) {
           if (uri) {
-            const matching = classCandidates.filter((id: any) => {
+            const matching = classCandidates.filter((id: SymbolId) => {
               const entry = this.#queryEngine.index.symbols.get(id);
               return entry && entry.resourceId === uri;
             });
@@ -1182,7 +1268,7 @@ export class Context {
             }
           }
           if (uri && currentIds) {
-            const matching = currentIds.filter((id: any) => {
+            const matching = currentIds.filter((id: SymbolId) => {
               const entry = this.#queryEngine.index.symbols.get(id);
               return entry && entry.resourceId === uri;
             });
@@ -1193,7 +1279,7 @@ export class Context {
 
           for (let i = 1; i < parts.length && currentIds && currentIds.length > 0; i++) {
             const part = parts[i];
-            const nextIds: any[] = [];
+            const nextIds: SymbolId[] = [];
             for (const parentId of currentIds) {
               const children = this.#queryEngine.index.childrenOf.get(parentId);
               if (children) {
@@ -1237,9 +1323,9 @@ export class Context {
     const resourceUri = uri ?? entry?.resourceId;
     if (resourceUri) {
       const tree = this.#trees.get(resourceUri);
-      if (tree && typeof (tree.rootNode as any)?.hasError === "function" && (tree.rootNode as any).hasError()) {
+      if (tree && hasCstError(tree.rootNode)) {
         const cstNode = this.#queryEngine.toQueryDB().cstNode(firstId);
-        if (!cstNode || (typeof (cstNode as any)?.hasError === "function" && (cstNode as any).hasError())) {
+        if (!cstNode || hasCstError(cstNode)) {
           return null;
         }
       }
@@ -1248,13 +1334,12 @@ export class Context {
     const arrayModeKey = options?.arrayMode ? `:${options.arrayMode}` : "";
     const omcKey = options?.omcCompatibility ? ":omc" : "";
     const cacheKey = `${resourceUri ?? ""}:${name}${backendKey}${arrayModeKey}${omcKey}`;
-    const cached = (this as any)._daeBodyCache?.get(cacheKey);
+    const cached = this._daeBodyCache?.get(cacheKey);
+    const extWsIndex = this.#workspaceIndex as unknown as ExtendedWorkspaceIndex;
 
     const getFileRev = (resUri?: string) => {
       if (!resUri) return this.#workspaceIndex.structuralRevision;
-      return (
-        (this.#workspaceIndex as any).getFileStructuralRevision?.(resUri) ?? this.#workspaceIndex.structuralRevision
-      );
+      return extWsIndex.getFileStructuralRevision?.(resUri) ?? this.#workspaceIndex.structuralRevision;
     };
 
     const currentFileRevision = getFileRev(resourceUri);
@@ -1264,7 +1349,7 @@ export class Context {
 
       if (dirty && dirty.length > 0) {
         const delta = resourceUri
-          ? (this.#fileDeltas.get(resourceUri) ?? (this.#workspaceIndex as any).getDirtyDelta?.(resourceUri))
+          ? (this.#fileDeltas.get(resourceUri) ?? extWsIndex.getDirtyDelta?.(resourceUri))
           : undefined;
         const patched = flattener.patch(firstId, cached.builder, dirty, delta);
         if (patched) {
@@ -1286,7 +1371,7 @@ export class Context {
             }
           }
         }
-        if (isClean && !(cached.builder as any)._mutatedBySim) {
+        if (isClean && !cached.builder._mutatedBySim) {
           return cached.builder;
         }
       }
@@ -1322,8 +1407,8 @@ export class Context {
     }
 
     // Save snapshot of the body phase (bounded LRU of 4 entries to avoid retaining all arenas in batch mode)
-    if (!(this as any)._daeBodyCache) (this as any)._daeBodyCache = new Map();
-    const bodyCache = (this as any)._daeBodyCache as Map<string, any>;
+    if (!this._daeBodyCache) this._daeBodyCache = new Map<string, DaeBodyCacheEntry>();
+    const bodyCache = this._daeBodyCache;
     if (!bodyCache.has(cacheKey) && bodyCache.size >= 4) {
       const oldestKey = bodyCache.keys().next().value;
       if (oldestKey !== undefined) bodyCache.delete(oldestKey);
@@ -1377,9 +1462,9 @@ export class Context {
    * @throws Error if no parser is registered for the given extension.
    */
   getParser(extname: string): Parser {
-    const parser = (Context as any)._parsers.get(extname) ?? UnifiedWorkspace.getGlobalParser(extname);
+    const parser = Context._parsers.get(extname) ?? UnifiedWorkspace.getGlobalParser(extname);
     if (!parser) throw new Error(`no parser registered for extension '${extname}'`);
-    return parser;
+    return parser as unknown as Parser;
   }
 
   /**
@@ -1425,7 +1510,13 @@ export class Context {
     const tree = this.parse(".mo", input, oldTree, editBounds);
     this.#cacheTree(uri, tree);
 
-    this.#workspaceIndex.indexDocument(uri, () => tree.rootNode as any, undefined, editRanges, false);
+    this.#workspaceIndex.indexDocument(
+      uri,
+      () => tree.rootNode as unknown as WorkspaceCstNode,
+      undefined,
+      editRanges,
+      false,
+    );
     const unified = this.#workspaceIndex.getIndex({ eager: true });
     injectPredefinedTypes(unified);
     const changedInfo = this.#workspaceIndex.takeGlobalChangedIds();
@@ -1435,7 +1526,7 @@ export class Context {
     const db = this.#queryEngine.toQueryDB();
     const rootCandidates = [
       ...(this.#queryEngine.index.childrenOf.get(0) ?? []),
-      ...(this.#queryEngine.index.childrenOf.get(null as any) ?? []),
+      ...(this.#queryEngine.index.childrenOf.get(null) ?? []),
     ];
     const candidateIds = rootCandidates.length > 0 ? rootCandidates : this.#queryEngine.index.symbols.keys();
     for (const id of candidateIds) {
@@ -1452,9 +1543,12 @@ export class Context {
           entry,
           name: entry.name ?? "",
           kind: entry.kind ?? "Class",
-          classKind: (entry.metadata as any)?.classKind ?? (entry.metadata as any)?.classPrefixes ?? "class",
+          classKind:
+            readSymbolMetaString(entry.metadata, "classKind") ??
+            readSymbolMetaString(entry.metadata, "classPrefixes") ??
+            "class",
           compositeName: entry.name ?? "",
-          description: (entry.metadata as any)?.description ?? null,
+          description: readSymbolMetaString(entry.metadata, "description") ?? null,
           isClassInstance: true,
         });
       }
@@ -1468,14 +1562,14 @@ export class Context {
    *
    * @param classInstance - The root class instance to attach.
    */
-  addClass(classInstance: any): void {
+  addClass(classInstance: ModelicaClassHandle): void {
     this.#classes.push(classInstance);
   }
 
   #syncForeignSymbolsToIndex(): void {
     if (!this.#foreignWorkspace) return;
     const foreignIdx = this.#foreignWorkspace.getIndex({ eager: true });
-    const byUri = new Map<string, any[]>();
+    const byUri = new Map<string, SymbolEntry[]>();
     for (const entry of foreignIdx.symbols.values()) {
       // Never mirror Modelica's own symbols back from UnifiedWorkspace over #workspaceIndex
       if (entry.language && entry.language.toLowerCase() === "modelica") continue;
@@ -1506,11 +1600,11 @@ export class Context {
             name: entry.name ?? "",
             kind: entry.kind,
             classKind:
-              (entry.metadata as any)?.classKind ??
-              (entry.metadata as any)?.classPrefixes ??
+              readSymbolMetaString(entry.metadata, "classKind") ??
+              readSymbolMetaString(entry.metadata, "classPrefixes") ??
               (entry.kind === "Package" ? "package" : "class"),
             compositeName: entry.name ?? "",
-            description: (entry.metadata as any)?.description ?? null,
+            description: readSymbolMetaString(entry.metadata, "description") ?? null,
             isClassInstance: true,
           });
         }
@@ -1544,7 +1638,7 @@ export class Context {
     if (!this.#foreignWorkspace) {
       this.#foreignWorkspace = new UnifiedWorkspace();
     }
-    this.#foreignWorkspace.registerLanguageDef(languageId, langDef);
+    this.#foreignWorkspace.registerLanguageDef(languageId, langDef as LanguageDefinitionLike | null | undefined);
     this.#syncForeignSymbolsToIndex();
   }
 
@@ -1575,8 +1669,17 @@ export class Context {
     oldTree?: Tree,
     editBounds?: { editStart: number; editOldEnd: number; editNewEnd: number; uri?: string | undefined },
   ): Tree {
-    const parser = this.getParser(extname);
-    return (parser as any).parse(
+    const parser = this.getParser(extname) as Parser & {
+      parse(
+        input: string,
+        oldTree?: Tree,
+        editStart?: number,
+        editOldEnd?: number,
+        editNewEnd?: number,
+        uri?: string,
+      ): Tree;
+    };
+    return parser.parse(
       input,
       oldTree,
       editBounds?.editStart ?? 0,
@@ -1593,8 +1696,8 @@ export class Context {
    * @param parser - The tree-sitter Parser instance to register.
    */
   static registerParser(extname: string, parser: Parser) {
-    UnifiedWorkspace.registerGlobalParser(extname, parser);
-    (Context as any)._parsers.set(extname, parser);
+    UnifiedWorkspace.registerGlobalParser(extname, parser as unknown as WorkspaceParser);
+    Context._parsers.set(extname, parser);
   }
 
   /**

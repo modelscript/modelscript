@@ -5,7 +5,11 @@ import { Connection, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { CadMetricsService } from "./services/cad-metrics-service.js";
 import { DiagramService } from "./services/diagram-service.js";
-import { DocumentManager } from "./services/document-manager.js";
+import {
+  DocumentManager,
+  type SharedCompilerContext,
+  type SharedCompilerFileSystem,
+} from "./services/document-manager.js";
 import { ParserService } from "./services/parser-service.js";
 import { ValidationService } from "./services/validation-service.js";
 import { WorkspaceManager } from "./services/workspace-manager.js";
@@ -23,6 +27,12 @@ export function getSharedLspPolyglotEngine(): PolyglotEngine {
   }
   return _sharedLspPolyglotEngine;
 }
+
+/** Structural filesystem interface exposed on the shared compiler context. */
+export type SharedCompilerFsLike = SharedCompilerFileSystem;
+
+/** Structural interface for the shared Modelica/polyglot compiler context. */
+export type SharedCompilerContextLike = SharedCompilerContext;
 
 /**
  * Shared server-wide dependency injection context passed to LSP request handlers and providers.
@@ -57,7 +67,7 @@ export interface LspContext {
     /** In-flight asynchronous validation promises keyed by document URI. */
     activeValidationPromises: Map<string, Promise<void>>;
     /** Shared Modelica compiler context instance when initialized. */
-    sharedContext: any | null;
+    sharedContext: SharedCompilerContextLike | null;
     /** Cache of resolved class/symbol definitions keyed by fully qualified name (FQN). */
     fqnCache: Map<string, unknown>;
     /** Secondary index mapping FQN prefixes or segments to cached symbol entries. */

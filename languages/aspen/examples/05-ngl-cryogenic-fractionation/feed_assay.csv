@@ -1,0 +1,7 @@
+component,formula,mole_fraction,normal_boiling_point_C,critical_temp_K,critical_pres_bar
+METHANE,CH4,0.780, -161.5,190.6,46.0
+ETHANE,C2H6,0.110,-88.6,305.3,48.7
+PROPANE,C3H8,0.060,-42.1,369.8,42.5
+BUTANE,C4H10,0.030,-0.5,425.1,37.8
+PENTANE,C5H12,0.010,36.1,469.7,33.7
+NITROGEN,N2,0.010,-195.8,126.2,33.9

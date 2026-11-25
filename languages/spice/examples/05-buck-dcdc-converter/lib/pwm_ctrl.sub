@@ -1,0 +1,6 @@
+* Gate Driver Buffer Subcircuit
+.SUBCKT GATE_DRIVER in out gnd
+Rin in gnd 100k
+Edrv n1 gnd in gnd 1.0
+Rdrv n1 out 4.7
+.ENDS GATE_DRIVER

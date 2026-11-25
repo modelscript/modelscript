@@ -1,0 +1,12 @@
+{
+  "id": "endf6-01-h1-elastic-scattering",
+  "lang": "endf6",
+  "subFormats": ["endf-6"],
+  "difficulty": 1,
+  "title": "Hydrogen-1 Elastic Neutron Scattering Cross Section (MF=3, MT=2)",
+  "description": "Strict 80-column ENDF-6 nuclear data tape for H-1 (MAT=125) tabulating elastic scattering cross sections from 1e-5 eV thermal to 20 MeV fast neutrons.",
+  "category": "Nuclear Data",
+  "tags": ["endf6", "hydrogen", "elastic", "cross-section", "mf3"],
+  "activeFile": "h1_elastic.endf",
+  "isDefaultStarter": true
+}

@@ -6,6 +6,7 @@ import { oidcReleaseAttestationsMigration } from "./0003_oidc_release_attestatio
 import { tokenIpCidrRestrictionsMigration } from "./0004_token_ip_cidr_restrictions.js";
 import { lowercaseUserIndexesMigration } from "./0005_lowercase_user_indexes.js";
 import { sysml2ProjectOwnersMigration } from "./0006_sysml2_project_owners.js";
+import { referenceCollectionsMigration } from "./0007_reference_collections.js";
 import type { Migration } from "./types.js";
 
 export * from "./runner.js";
@@ -18,4 +19,5 @@ export const allMigrations: Migration[] = [
   tokenIpCidrRestrictionsMigration,
   lowercaseUserIndexesMigration,
   sysml2ProjectOwnersMigration,
+  referenceCollectionsMigration,
 ];

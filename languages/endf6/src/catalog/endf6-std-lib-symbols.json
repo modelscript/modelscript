@@ -1,0 +1,564 @@
+[
+  {
+    "name": "MT1",
+    "kind": "Interface",
+    "namePath": "ENDF6.MT.MT1",
+    "exports": [
+      "MF",
+      "MT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MT=1 (Total)",
+      "category": "Reaction",
+      "domain": "nuclear",
+      "description": "Neutron total cross-section (sum of all partial reaction cross-sections).",
+      "provenance": "Cleanroom ENDF-102 ENDF-6 Format Manual",
+      "aliases": [
+        "MT=1",
+        "MF3_MT1",
+        "total"
+      ],
+      "parameters": [
+        {
+          "key": "MF",
+          "type": "real",
+          "defaultValue": 3,
+          "description": "ENDF-6 file number"
+        },
+        {
+          "key": "MT",
+          "type": "real",
+          "defaultValue": 1,
+          "description": "ENDF-6 reaction/section number"
+        }
+      ],
+      "wasmKernel": "endf6Interp"
+    }
+  },
+  {
+    "name": "MT2",
+    "kind": "Interface",
+    "namePath": "ENDF6.MT.MT2",
+    "exports": [
+      "MF",
+      "MT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MT=2 (Elastic)",
+      "category": "Reaction",
+      "domain": "nuclear",
+      "description": "Neutron elastic scattering cross-section (n, n).",
+      "provenance": "Cleanroom ENDF-102 ENDF-6 Format Manual",
+      "aliases": [
+        "MT=2",
+        "MF3_MT2",
+        "elastic"
+      ],
+      "parameters": [
+        {
+          "key": "MF",
+          "type": "real",
+          "defaultValue": 3,
+          "description": "ENDF-6 file number"
+        },
+        {
+          "key": "MT",
+          "type": "real",
+          "defaultValue": 2,
+          "description": "ENDF-6 reaction/section number"
+        }
+      ],
+      "wasmKernel": "endf6Interp"
+    }
+  },
+  {
+    "name": "MT18",
+    "kind": "Interface",
+    "namePath": "ENDF6.MT.MT18",
+    "exports": [
+      "MF",
+      "MT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MT=18 (Fission)",
+      "category": "Reaction",
+      "domain": "nuclear",
+      "description": "Neutron-induced total fission cross-section (n, f).",
+      "provenance": "Cleanroom ENDF-102 ENDF-6 Format Manual",
+      "aliases": [
+        "MT=18",
+        "MF3_MT18",
+        "fission"
+      ],
+      "parameters": [
+        {
+          "key": "MF",
+          "type": "real",
+          "defaultValue": 3,
+          "description": "ENDF-6 file number"
+        },
+        {
+          "key": "MT",
+          "type": "real",
+          "defaultValue": 18,
+          "description": "ENDF-6 reaction/section number"
+        }
+      ],
+      "wasmKernel": "endf6Interp"
+    }
+  },
+  {
+    "name": "MT102",
+    "kind": "Interface",
+    "namePath": "ENDF6.MT.MT102",
+    "exports": [
+      "MF",
+      "MT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MT=102 (Radiative Capture)",
+      "category": "Reaction",
+      "domain": "nuclear",
+      "description": "Radiative neutron capture cross-section (n, gamma).",
+      "provenance": "Cleanroom ENDF-102 ENDF-6 Format Manual",
+      "aliases": [
+        "MT=102",
+        "MF3_MT102",
+        "radiative capture"
+      ],
+      "parameters": [
+        {
+          "key": "MF",
+          "type": "real",
+          "defaultValue": 3,
+          "description": "ENDF-6 file number"
+        },
+        {
+          "key": "MT",
+          "type": "real",
+          "defaultValue": 102,
+          "description": "ENDF-6 reaction/section number"
+        }
+      ],
+      "wasmKernel": "endf6Interp"
+    }
+  },
+  {
+    "name": "MT451",
+    "kind": "Interface",
+    "namePath": "ENDF6.MT.MT451",
+    "exports": [
+      "MF",
+      "MT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MT=451 (Descriptive Data)",
+      "category": "Reaction",
+      "domain": "nuclear",
+      "description": "General information, descriptive text, and section directory (MF=1, MT=451).",
+      "provenance": "Cleanroom ENDF-102 ENDF-6 Format Manual",
+      "aliases": [
+        "MT=451",
+        "MF1_MT451",
+        "descriptive data"
+      ],
+      "parameters": [
+        {
+          "key": "MF",
+          "type": "real",
+          "defaultValue": 1,
+          "description": "ENDF-6 file number"
+        },
+        {
+          "key": "MT",
+          "type": "real",
+          "defaultValue": 451,
+          "description": "ENDF-6 reaction/section number"
+        }
+      ],
+      "wasmKernel": "endf6Interp"
+    }
+  },
+  {
+    "name": "MT457",
+    "kind": "Interface",
+    "namePath": "ENDF6.MT.MT457",
+    "exports": [
+      "MF",
+      "MT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MT=457 (Radioactive Decay)",
+      "category": "Reaction",
+      "domain": "nuclear",
+      "description": "Radioactive nuclide half-life, decay energies, and decay modes (MF=8, MT=457).",
+      "provenance": "Cleanroom ENDF-102 ENDF-6 Format Manual",
+      "aliases": [
+        "MT=457",
+        "MF8_MT457",
+        "radioactive decay"
+      ],
+      "parameters": [
+        {
+          "key": "MF",
+          "type": "real",
+          "defaultValue": 8,
+          "description": "ENDF-6 file number"
+        },
+        {
+          "key": "MT",
+          "type": "real",
+          "defaultValue": 457,
+          "description": "ENDF-6 reaction/section number"
+        }
+      ],
+      "wasmKernel": "endf6Interp"
+    }
+  },
+  {
+    "name": "H-1",
+    "kind": "Class",
+    "namePath": "ENDF6.Nuclides.H_1",
+    "exports": [
+      "MAT",
+      "ZA",
+      "AWR",
+      "sigma_s_th",
+      "sigma_c_th",
+      "sigma_f_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "H-1 (MAT=125)",
+      "category": "Nuclide",
+      "domain": "nuclear",
+      "description": "Hydrogen-1 (ZA=1001, AWR=0.999167) evaluated neutron cross-section reference.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 MAT=125 textbook nuclear data",
+      "aliases": [
+        "hydrogen-1",
+        "MAT125",
+        "ZA1001"
+      ],
+      "parameters": [
+        {
+          "key": "MAT",
+          "type": "real",
+          "defaultValue": 125,
+          "description": "ENDF-6 material identifier"
+        },
+        {
+          "key": "ZA",
+          "type": "real",
+          "defaultValue": 1001,
+          "description": "Nuclide 1000*Z + A"
+        },
+        {
+          "key": "AWR",
+          "type": "real",
+          "defaultValue": 0.999167,
+          "description": "Atomic weight ratio"
+        },
+        {
+          "key": "sigma_s_th",
+          "type": "real",
+          "defaultValue": 20.491,
+          "unit": "b",
+          "description": "Thermal elastic cross-section"
+        },
+        {
+          "key": "sigma_c_th",
+          "type": "real",
+          "defaultValue": 0.3326,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigma_f_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "endf6ThermalSigmaCapture"
+    }
+  },
+  {
+    "name": "B-10",
+    "kind": "Class",
+    "namePath": "ENDF6.Nuclides.B_10",
+    "exports": [
+      "MAT",
+      "ZA",
+      "AWR",
+      "sigma_s_th",
+      "sigma_c_th",
+      "sigma_f_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "B-10 (MAT=525)",
+      "category": "Nuclide",
+      "domain": "nuclear",
+      "description": "Boron-10 (ZA=5010, AWR=9.92692) evaluated neutron cross-section reference.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 MAT=525 textbook 1/v absorber standard",
+      "aliases": [
+        "boron-10",
+        "MAT525",
+        "ZA5010"
+      ],
+      "parameters": [
+        {
+          "key": "MAT",
+          "type": "real",
+          "defaultValue": 525,
+          "description": "ENDF-6 material identifier"
+        },
+        {
+          "key": "ZA",
+          "type": "real",
+          "defaultValue": 5010,
+          "description": "Nuclide 1000*Z + A"
+        },
+        {
+          "key": "AWR",
+          "type": "real",
+          "defaultValue": 9.92692,
+          "description": "Atomic weight ratio"
+        },
+        {
+          "key": "sigma_s_th",
+          "type": "real",
+          "defaultValue": 2.15,
+          "unit": "b",
+          "description": "Thermal elastic cross-section"
+        },
+        {
+          "key": "sigma_c_th",
+          "type": "real",
+          "defaultValue": 3837,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigma_f_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "endf6ThermalSigmaCapture"
+    }
+  },
+  {
+    "name": "U-235",
+    "kind": "Class",
+    "namePath": "ENDF6.Nuclides.U_235",
+    "exports": [
+      "MAT",
+      "ZA",
+      "AWR",
+      "sigma_s_th",
+      "sigma_c_th",
+      "sigma_f_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U-235 (MAT=9228)",
+      "category": "Nuclide",
+      "domain": "nuclear",
+      "description": "Uranium-235 (ZA=92235, AWR=233.025) evaluated neutron cross-section reference.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 MAT=9228 textbook fissile data",
+      "aliases": [
+        "uranium-235",
+        "MAT9228",
+        "ZA92235"
+      ],
+      "parameters": [
+        {
+          "key": "MAT",
+          "type": "real",
+          "defaultValue": 9228,
+          "description": "ENDF-6 material identifier"
+        },
+        {
+          "key": "ZA",
+          "type": "real",
+          "defaultValue": 92235,
+          "description": "Nuclide 1000*Z + A"
+        },
+        {
+          "key": "AWR",
+          "type": "real",
+          "defaultValue": 233.025,
+          "description": "Atomic weight ratio"
+        },
+        {
+          "key": "sigma_s_th",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "b",
+          "description": "Thermal elastic cross-section"
+        },
+        {
+          "key": "sigma_c_th",
+          "type": "real",
+          "defaultValue": 98.7,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigma_f_th",
+          "type": "real",
+          "defaultValue": 585.1,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "endf6ThermalSigmaCapture"
+    }
+  },
+  {
+    "name": "U-238",
+    "kind": "Class",
+    "namePath": "ENDF6.Nuclides.U_238",
+    "exports": [
+      "MAT",
+      "ZA",
+      "AWR",
+      "sigma_s_th",
+      "sigma_c_th",
+      "sigma_f_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "U-238 (MAT=9237)",
+      "category": "Nuclide",
+      "domain": "nuclear",
+      "description": "Uranium-238 (ZA=92238, AWR=236.006) evaluated neutron cross-section reference.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 MAT=9237 textbook fertile resonance data",
+      "aliases": [
+        "uranium-238",
+        "MAT9237",
+        "ZA92238"
+      ],
+      "parameters": [
+        {
+          "key": "MAT",
+          "type": "real",
+          "defaultValue": 9237,
+          "description": "ENDF-6 material identifier"
+        },
+        {
+          "key": "ZA",
+          "type": "real",
+          "defaultValue": 92238,
+          "description": "Nuclide 1000*Z + A"
+        },
+        {
+          "key": "AWR",
+          "type": "real",
+          "defaultValue": 236.006,
+          "description": "Atomic weight ratio"
+        },
+        {
+          "key": "sigma_s_th",
+          "type": "real",
+          "defaultValue": 9.36,
+          "unit": "b",
+          "description": "Thermal elastic cross-section"
+        },
+        {
+          "key": "sigma_c_th",
+          "type": "real",
+          "defaultValue": 2.683,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigma_f_th",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "endf6ThermalSigmaCapture"
+    }
+  },
+  {
+    "name": "Pu-239",
+    "kind": "Class",
+    "namePath": "ENDF6.Nuclides.Pu_239",
+    "exports": [
+      "MAT",
+      "ZA",
+      "AWR",
+      "sigma_s_th",
+      "sigma_c_th",
+      "sigma_f_th"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pu-239 (MAT=9437)",
+      "category": "Nuclide",
+      "domain": "nuclear",
+      "description": "Plutonium-239 (ZA=94239, AWR=236.999) evaluated neutron cross-section reference.",
+      "provenance": "Cleanroom ENDF/B-VIII.0 MAT=9437 textbook plutonium data",
+      "aliases": [
+        "plutonium-239",
+        "MAT9437",
+        "ZA94239"
+      ],
+      "parameters": [
+        {
+          "key": "MAT",
+          "type": "real",
+          "defaultValue": 9437,
+          "description": "ENDF-6 material identifier"
+        },
+        {
+          "key": "ZA",
+          "type": "real",
+          "defaultValue": 94239,
+          "description": "Nuclide 1000*Z + A"
+        },
+        {
+          "key": "AWR",
+          "type": "real",
+          "defaultValue": 236.999,
+          "description": "Atomic weight ratio"
+        },
+        {
+          "key": "sigma_s_th",
+          "type": "real",
+          "defaultValue": 7.9,
+          "unit": "b",
+          "description": "Thermal elastic cross-section"
+        },
+        {
+          "key": "sigma_c_th",
+          "type": "real",
+          "defaultValue": 270.3,
+          "unit": "b",
+          "description": "Thermal capture cross-section"
+        },
+        {
+          "key": "sigma_f_th",
+          "type": "real",
+          "defaultValue": 747.4,
+          "unit": "b",
+          "description": "Thermal fission cross-section"
+        }
+      ],
+      "wasmKernel": "endf6ThermalSigmaCapture"
+    }
+  }
+]

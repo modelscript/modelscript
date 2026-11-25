@@ -213,7 +213,7 @@ export function ensureMonacoThemesDefined(monaco: Monaco | typeof import("monaco
   if (!monaco) return;
 
   try {
-    registerAllModelscriptLanguages(monaco as any);
+    registerAllModelscriptLanguages(monaco as unknown as Parameters<typeof registerAllModelscriptLanguages>[0]);
   } catch {
     // Ignore language registration errors in test environments
   }

@@ -1,0 +1,11 @@
+{
+  "id": "irig106-05-flight-test-calibrated-bundle",
+  "lang": "irig106",
+  "subFormats": ["tmats-ch9"],
+  "difficulty": 5,
+  "title": "Flight-Test Instrumentation TMATS & Calibrated PCM Dataset",
+  "description": "Multi-file IRIG-106 flight-test archive pairing a full G/T/M/P/D/C TMATS setup with a companion calibrated PCM time-series CSV recorded during a supersonic climb maneuver.",
+  "category": "Flight Test Telemetry",
+  "tags": ["irig106", "tmats", "pcm", "calibration", "multi-file"],
+  "activeFile": "flight_test.tmats"
+}

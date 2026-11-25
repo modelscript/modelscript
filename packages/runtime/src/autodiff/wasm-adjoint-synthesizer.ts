@@ -420,7 +420,7 @@ function synthesizeAdjointFunction(
       }
 
       if (op === OP_LOCAL_GET) {
-        const remapped = remapOrigLocal(inst.imm);
+        const remapped = remapOrigLocal(inst.imm as number);
         const lType = getRemappedLocalType(remapped);
         stack.push({
           id: nextExprId++,
@@ -535,7 +535,7 @@ function synthesizeAdjointFunction(
         pos++;
       } else if (op === OP_LOCAL_SET || op === OP_LOCAL_TEE) {
         const val = stack.pop()!;
-        const remapped = remapOrigLocal(inst.imm);
+        const remapped = remapOrigLocal(inst.imm as number);
         const isF64 = getRemappedLocalType(remapped) === TYPE_F64;
         stmts.push({
           kind: "assign_local",

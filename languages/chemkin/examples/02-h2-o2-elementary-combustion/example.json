@@ -1,0 +1,11 @@
+{
+  "id": "chemkin-02-h2-o2-elementary-combustion",
+  "lang": "chemkin",
+  "subFormats": ["inp", "dat"],
+  "difficulty": 2,
+  "title": "Hydrogen-Oxygen Elementary Chain-Branching Mechanism",
+  "description": "Nine-species elementary H2/O2/N2 combustion mechanism featuring chain initiation, chain branching (H + O2 <=> O + OH), HO2/H2O2 radical chemistry, and complete NASA-7 thermodynamic data.",
+  "category": "Combustion & Chemical Kinetics",
+  "tags": ["chemkin", "hydrogen", "elementary-kinetics", "multi-file"],
+  "activeFile": "chem.inp"
+}

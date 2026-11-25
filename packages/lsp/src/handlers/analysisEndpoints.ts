@@ -52,6 +52,23 @@ interface CosimLspContextInternals {
 const lspRequire = createRequire(import.meta.url);
 let cosimMoParserInstance: CstParserLike | null = null;
 
+function callFlattenArenaFromInstance(classInstance: unknown, ctx: unknown): DAEBuilder {
+  const fn = (
+    globalThis as unknown as {
+      flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder;
+    }
+  ).flattenArenaFromInstance;
+  if (typeof fn !== "function") {
+    throw new Error("flattenArenaFromInstance is not initialized.");
+  }
+  return fn(classInstance, ctx);
+}
+
+function callInjectPredefinedTypes(index: unknown): void {
+  const fn = (globalThis as unknown as { injectPredefinedTypes?: (idx: unknown) => void }).injectPredefinedTypes;
+  fn?.(index);
+}
+
 function parseCosimModelicaTree(context: LspContext, uri: string, text: string): CstTreeLike | null {
   const ctxInternal = context as unknown as CosimLspContextInternals;
   const existing = ctxInternal.documentManager?.documentTrees?.get?.(uri)?.tree;
@@ -215,7 +232,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           return { success: false, error: `No Modelica context found for URI '${params.uri}'` };
         }
 
-        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(classInstance, docContext);
         const exp = arena.experiment;
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 1;
@@ -243,7 +260,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
               inputRanges.set(name, { min: minVal, max: maxVal });
             } else {
               // Fallback: use nominal binding +/- 20%
-              const bindingExprId = arena.getVarBindingExprId(i);
+              const bindingExprId = arena.getVarBindingExpr(i);
               if (bindingExprId !== undefined) {
                 const startVal = evaluateArenaExprToNum(arena, bindingExprId);
                 if (startVal !== null) {
@@ -317,7 +334,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         );
 
         // 4. Generate WASM C source from the trained ROM
-        const modelId = (classInstance.name || "Surrogate").replaceAll(".", "_");
+        const modelId = (classInstance?.name || "Surrogate").replaceAll(".", "_");
         const wasmResult = generateRomWasmSource(surrogateResult.trainedROM, modelId);
 
         return {
@@ -403,7 +420,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
       const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
       if (!context.state.dependenciesReady && (moIdx?.pendingFileCount ?? 0) > 0) {
         const fullIndex = context.workspaceManager.unifiedWorkspace.getIndex();
-        injectPredefinedTypes(fullIndex);
+        callInjectPredefinedTypes(fullIndex);
         const langId = params.uri.endsWith(".sysml") ? "sysml2" : "modelica";
         const engine = context.workspaceManager.getQueryEngine(langId);
         if (engine) engine.updateIndex(fullIndex);
@@ -422,7 +439,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         throw new Error(`No Modelica context found for URI '${params.uri}'`);
       }
 
-      const arena = flattenArenaFromInstance(classInstance, docContext);
+      const arena = callFlattenArenaFromInstance(classInstance, docContext);
       const exp = arena.experiment;
 
       // In Optimica, the controls are usually identified by looking at variables with free=true.
@@ -525,7 +542,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         options?: UnifiedVerificationOptions | undefined;
         format?: "terminal" | "json" | "ctrf" | "junit" | "sarif" | "html" | "dhf" | undefined;
       },
-      token?: any,
+      token?: { isCancellationRequested?: boolean } | undefined,
     ): Promise<UnifiedVerificationReport> => {
       context.connection.console.info(`[verifyAll] Requested unified verification for URI: ${params.uri}`);
       const docVersionsAtStart = new Map<string, number>();
@@ -544,7 +561,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
         try {
           const doc = context.documents.get(params.uri);
           if (doc) sourceText = doc.getText();
-        } catch {}
+        } catch {
+          // Document may not be open in editor buffer; fall back to disk read below.
+        }
         if (!sourceText) {
           const fs = await import("node:fs");
           const { fileURLToPath } = await import("node:url");
@@ -562,12 +581,16 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (qeWithToDb && typeof qeWithToDb.toQueryDB === "function") {
           try {
             queryDB = qeWithToDb.toQueryDB();
-          } catch {}
+          } catch {
+            // QueryEngine DB conversion unavailable; fall back to unified workspace index below.
+          }
         }
         if (!queryDB && context.workspaceManager?.unifiedWorkspace) {
           try {
             queryDB = context.workspaceManager.unifiedWorkspace.getIndex();
-          } catch {}
+          } catch {
+            // Unified workspace index unavailable; verification continues without queryDB.
+          }
         }
 
         // 2. Resolve DAE arena if target is specified or available
@@ -577,7 +600,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
           if (flattenRes && "arena" in flattenRes && flattenRes.arena) {
             arena = flattenRes.arena;
           }
-        } catch {}
+        } catch {
+          // Primary flatten failed; try sharedContext.flattenArena fallback below.
+        }
 
         if (!arena && context.parserService?.sharedContext) {
           try {
@@ -588,7 +613,9 @@ export function registerAnalysisEndpoints(context: LspContext) {
             if (typeof sc.flattenArena === "function") {
               arena = sc.flattenArena(modelName, undefined, params.uri);
             }
-          } catch {}
+          } catch {
+            // Fallback arena flattening unavailable; verification continues without DAE arena.
+          }
         }
 
         // 3. Perform simulation if needed for trajectory verification or B2B
@@ -1013,16 +1040,22 @@ export function registerAnalysisEndpoints(context: LspContext) {
           if (flattenRes && "arena" in flattenRes && flattenRes.arena) {
             arena = flattenRes.arena;
           }
-        } catch {}
+        } catch {
+          // Primary flatten failed; try sharedContext.flattenArena fallback below.
+        }
 
         if (!arena && context.parserService?.sharedContext) {
           try {
-            const sc = context.parserService.sharedContext as any;
+            const sc = context.parserService.sharedContext as {
+              flattenArena?: (modelName: string, options?: unknown, uri?: string) => DAEBuilder | null;
+            };
             const modelName = params.target || extractModelNameFromUri(params.uri);
             if (typeof sc.flattenArena === "function") {
               arena = sc.flattenArena(modelName, undefined, params.uri);
             }
-          } catch {}
+          } catch {
+            // Fallback arena flattening failed; missing arena error is thrown below.
+          }
         }
 
         if (!arena) {
@@ -1042,11 +1075,14 @@ export function registerAnalysisEndpoints(context: LspContext) {
 
         const b2bResult = await B2BEquivalenceVerifier.verify(arena, milResult, {
           tolerance: params.tolerance ?? 1e-4,
-          compiler: (params.compiler ?? "gcc") as any,
-          ...(params.fixedStepDt !== undefined ? { fixedStepDt: params.fixedStepDt } : {}),
-        } as any);
+          compiler: params.compiler ?? "gcc",
+          ...(params.fixedStepDt !== undefined ? { dt: params.fixedStepDt } : {}),
+        });
 
-        const violations: any[] = [];
+        type StageViolation = NonNullable<
+          NonNullable<UnifiedVerificationReport["stages"][string]>["violations"]
+        >[number];
+        const violations: StageViolation[] = [];
         if (!b2bResult.passed) {
           for (const disc of b2bResult.discrepancies.slice(0, 10)) {
             violations.push({
@@ -1055,7 +1091,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
               severity: "error",
               message: `MiL-vs-SiL discrepancy on signal '${disc.variable}' at t=${disc.time.toFixed(4)}s: |MiL(${disc.milValue.toExponential(3)}) - SiL(${disc.silValue.toExponential(3)})| = ${disc.absError.toExponential(3)} > tol (${disc.tolerance.toExponential(3)})`,
               location: { uri: params.uri },
-              witness: disc,
+              witness: disc as unknown as Record<string, unknown>,
             });
           }
         }
@@ -1071,11 +1107,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
           details: b2bResult,
         };
 
+        const arenaModelName = (arena as { modelName?: string }).modelName;
         let formattedOutput: string | undefined = undefined;
         if (params.format === "dhf") {
           const report: UnifiedVerificationReport = {
             timestamp: new Date().toISOString(),
-            target: (arena as any).modelName || params.target || "model",
+            target: arenaModelName || params.target || "model",
             summary: {
               totalStages: 1,
               passedStages: b2bResult.passed ? 1 : 0,
@@ -1096,7 +1133,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         return {
           success: b2bResult.passed,
           stage,
-          modelName: (arena as any).modelName || params.target,
+          modelName: arenaModelName || params.target,
           tolerance: params.tolerance ?? 1e-4,
           maxDiscrepancy: b2bResult.maxError,
           worstVariable: b2bResult.maxErrorVariable,
@@ -1104,11 +1141,12 @@ export function registerAnalysisEndpoints(context: LspContext) {
           milTimeSpan: [startTime, stopTime],
           formattedOutput,
         };
-      } catch (err: any) {
-        context.connection.console.error(`[verifyB2B] Error: ${err.message || err}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        context.connection.console.error(`[verifyB2B] Error: ${msg}`);
         return {
           success: false,
-          error: err.message || String(err),
+          error: msg,
         };
       }
     },
@@ -1179,7 +1217,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(classInstance, docContext);
 
         // Build measurements map from either COMTRADE (.cff) or CSV data
         const measurements = new Map<string, { t: number[]; y: number[] }>();
@@ -1388,7 +1426,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(classInstance, docContext);
         const exp = arena.experiment;
         const startTime = params.startTime ?? exp.startTime ?? 0;
         const stopTime = params.stopTime ?? exp.stopTime ?? 10;
@@ -1506,7 +1544,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (found) target = found;
       }
 
-      if (!target.instantiated) {
+      if (target && !target["instantiated"] && typeof target.instantiate === "function") {
         try {
           target.instantiate();
         } catch {
@@ -1518,7 +1556,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
 
         // Run BLT transformation
         const { blocks } = performBltTransformationArena(arena);
@@ -1556,7 +1594,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           }));
 
         return {
-          className: target.name || "Model",
+          className: target?.name || "Model",
           variables: varNames,
           equations: eqTexts,
           algebraicLoops,
@@ -1600,7 +1638,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (found) classInstance = found;
       }
 
-      if (!classInstance.instantiated) {
+      if (classInstance && !classInstance["instantiated"] && typeof classInstance.instantiate === "function") {
         try {
           classInstance.instantiate();
         } catch {
@@ -1614,7 +1652,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
           throw new Error(`No Modelica context found for URI '${params.uri}'`);
         }
 
-        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(classInstance, docContext);
         const parameters: string[] = [];
         const parameterValues: Record<string, number> = {};
         const variables: string[] = [];
@@ -1624,11 +1662,11 @@ export function registerAnalysisEndpoints(context: LspContext) {
           const varName = arena.getVarName(i);
           const variability = arena.getVarVariability(i);
           if (variability === Variability.Parameter) {
-            const val = evaluateArenaExprToNum(arena, arena.getVarBindingExprId(i));
+            const val = evaluateArenaExprToNum(arena, arena.getVarBindingExpr(i));
             if (val !== null) {
               parameters.push(varName);
               parameterValues[varName] = val;
-            } else if (arena.getVarBindingExprId(i) === undefined) {
+            } else if (arena.getVarBindingExpr(i) === undefined) {
               parameters.push(varName); // unassigned parameter
               parameterValues[varName] = arena.getVarStartValue(i);
             }
@@ -1656,7 +1694,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (found) target = found;
       }
 
-      if (!target.instantiated) {
+      if (target && !target["instantiated"] && typeof target.instantiate === "function") {
         try {
           target.instantiate();
         } catch {
@@ -1668,7 +1706,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
 
         const bounds: IntervalBound[] = [];
         for (let i = 0; i < arena.varCount; i++) {
@@ -1691,7 +1729,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         }
 
         return {
-          className: target.name || "Model",
+          className: target?.name || "Model",
           bounds,
           totalVariables: arena.varCount,
           boundedCount: bounds.filter((b) => b.isComputed).length,
@@ -1726,7 +1764,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
 
         // Build a simple optimization problem from the DAE
         const controls: string[] = [];
@@ -1761,7 +1799,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         }
 
         return {
-          className: target.name || "Model",
+          className: target?.name || "Model",
           status: result.success ? "optimal" : "infeasible",
           objectiveValue: result.cost,
           parameters,
@@ -1771,7 +1809,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
       } catch (e) {
         console.error("[runOptimization] Error:", e);
         return {
-          className: target.name || "Model",
+          className: target?.name || "Model",
           status: "error",
           objectiveValue: null,
           parameters: [],
@@ -1817,7 +1855,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
 
         return { parameters: getArenaParameterInfo(arena) };
       } catch (e) {
@@ -1901,7 +1939,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return errorResult("No Modelica context found.");
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
 
         const simulator = new ArenaSimulator(arena);
 
@@ -2070,7 +2108,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
 
         // Extract initial parameter values
         const fittedParameters: { name: string; initial: number; fitted: number }[] = [];
@@ -2172,7 +2210,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         }
 
         return {
-          className: target.name || "Model",
+          className: target?.name || "Model",
           status: isFinite(bestCost) ? "converged" : "failed",
           fittedParameters,
           residualNorm: bestCost,
@@ -2182,7 +2220,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
       } catch (e) {
         console.error("[systemIdentification] Error:", e);
         return {
-          className: target.name || "Model",
+          className: target?.name || "Model",
           status: "error",
           fittedParameters: [],
           residualNorm: Infinity,
@@ -2209,7 +2247,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         if (found) target = found;
       }
 
-      if (!target.instantiated) {
+      if (target && !target["instantiated"] && typeof target.instantiate === "function") {
         try {
           target.instantiate();
         } catch {
@@ -2221,7 +2259,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         const docContext = context.workspaceManager.documentContexts.get(params.uri);
         if (!docContext) return null;
 
-        const arena = flattenArenaFromInstance(target, docContext);
+        const arena = callFlattenArenaFromInstance(target, docContext);
 
         const eqIdx = params.equationIndex ?? 0;
         if (eqIdx >= arena.eqCount) return null;
@@ -2247,7 +2285,7 @@ export function registerAnalysisEndpoints(context: LspContext) {
         }
 
         return {
-          className: target.name || "Model",
+          className: target?.name || "Model",
           equation: original,
           steps,
           simplified,

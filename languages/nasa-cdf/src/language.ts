@@ -45,7 +45,7 @@ export const nasaCdfLanguage = language({
         shortTitle: "NASA CDF",
         selector: ["*.skt", "*.cdf"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/NasaCdfPanel.tsx",
         artifactViewTypes: ["nasa-cdf", "cdf", "skt"],
       },

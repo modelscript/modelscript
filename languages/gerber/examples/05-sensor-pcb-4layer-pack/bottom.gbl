@@ -1,0 +1,14 @@
+G04 4-Layer Mixed-Signal Sensor PCB — L4 Bottom Signal Copper*
+%TF.FileFunction,Copper,L4,Bot*%
+%FSLAX34Y34*%
+%MOMM*%
+%ADD10C,0.250*%
+%ADD11C,1.600X0.800*%
+%LPD*%
+G01*
+D10*
+X220000Y120000D02*
+X320000Y120000D01*
+D11*
+X320000Y120000D03*
+M02*

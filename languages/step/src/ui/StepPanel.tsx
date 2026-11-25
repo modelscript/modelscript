@@ -62,9 +62,9 @@ export const StepPanel: React.FC<LanguagePanelProps> = ({
         subtitle="ISO 10303-21 STEP CAD"
         badge={computed.error ? { label: "Parse Error", tone: "danger" } : { label: "STEP", tone: "info" }}
         actions={
-          mode === "artifact" && host.openInMorsel && code ? (
-            <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "step", title)}>
-              Open in Morsel
+          mode === "artifact" && host.openInAnsatzEditor && code ? (
+            <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "step", title)}>
+              Open in Ansatz Editor
             </PanelButton>
           ) : undefined
         }

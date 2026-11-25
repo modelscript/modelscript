@@ -326,7 +326,7 @@ export function materializeLibrarySymbols(
 
 /**
  * Process-wide registry of pre-indexed `package.json#modelscript` libraries and standard packs.
- * Browser-safe: `registerLibraryBundle` accepts in-memory JSON/WASM payloads for Morsel.
+ * Browser-safe: `registerLibraryBundle` accepts in-memory JSON/WASM payloads for Ansatz.
  */
 export class LibraryPackageRegistry {
   private readonly packages = new Map<string, LoadedLibraryPackage>();

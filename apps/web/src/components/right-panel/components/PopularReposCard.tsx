@@ -3,12 +3,13 @@
 import { Text } from "@primer/react";
 import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import type { SocialRepoRecord } from "../../../api/social";
 import { RepoAvatarBadge } from "../../../pages/RepositoryListPage";
 import Box from "../../Box";
 import { Card, CardHeader, CardTitle, PanelList, ShowMoreLink, TrendingItem } from "../styles";
 
 export interface PopularReposCardProps {
-  popularRepos: any[];
+  popularRepos: SocialRepoRecord[];
 }
 
 export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos }) => {
@@ -26,12 +27,14 @@ export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos
       <PanelList>
         {popularRepos.map((repo) => {
           const provider = repo.provider || "github";
-          const targetUrl = `/repos/${provider}/${repo.namespace}/${repo.project}`;
+          const namespace = repo.namespace ?? "";
+          const project = repo.project || repo.name;
+          const targetUrl = `/repos/${provider}/${namespace}/${project}`;
           const isActive = location.pathname === targetUrl || location.pathname.startsWith(`${targetUrl}/`);
 
           return (
             <TrendingItem
-              key={repo.id || `${provider}:${repo.namespace}/${repo.project}`}
+              key={repo.id || `${provider}:${namespace}/${project}`}
               $active={isActive}
               onClick={() => navigate(targetUrl)}
             >
@@ -50,11 +53,11 @@ export const PopularReposCard: React.FC<PopularReposCardProps> = ({ popularRepos
                 }}
               >
                 <RepoAvatarBadge
-                  url={repo.avatar_url}
-                  name={repo.project}
-                  namespace={repo.namespace}
+                  url={repo.avatar_url ?? undefined}
+                  name={project}
+                  namespace={namespace}
                   provider={provider}
-                  description={repo.description}
+                  description={repo.description ?? null}
                   size={34}
                 />
                 <Box flex={1} minWidth={0} display="flex" flexDirection="column">

@@ -1,0 +1,12 @@
+{
+  "id": "nmtran-02-oral-first-order-advan2",
+  "lang": "nmtran",
+  "subFormats": ["nmtran"],
+  "difficulty": 2,
+  "title": "One-Compartment Oral First-Order Absorption (Theophylline)",
+  "description": "Classic one-compartment oral absorption population PK model (ADVAN2 TRANS2) for theophylline with first-order absorption rate KA, clearance CL, and volume V.",
+  "category": "Pharmacometrics",
+  "tags": ["nmtran", "oral-pk", "advan2", "theophylline", "multi-file"],
+  "activeFile": "oral_advan2.ctl",
+  "fileOrder": ["oral_advan2.ctl", "theophylline.csv"]
+}

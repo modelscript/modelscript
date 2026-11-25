@@ -1,0 +1,7 @@
+! Adams/Solver Command File (.acf)
+! 6-DOF Manipulator Pick-and-Place Trajectory Inverse Dynamics
+FILE/MODEL=robot6dof.adm
+INTEGRATOR/GSTIFF, SI2, ERROR=1.0E-5, HMAX=0.005
+SIMULATE/KINEMATIC, END=4.0, DTOUT=0.01
+SIMULATE/DYNAMIC, END=4.0, DTOUT=0.01
+STOP

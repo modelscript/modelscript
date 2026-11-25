@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  version="1.0"
+                  name="BessInverterParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="p_rated_kw"><ssv:Real value="2000.0" /></ssv:Parameter>
+    <ssv:Parameter name="droop_pf"><ssv:Real value="0.04" /></ssv:Parameter>
+    <ssv:Parameter name="droop_qv"><ssv:Real value="0.05" /></ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>

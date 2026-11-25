@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>BbwComponents</SHORT-NAME>
+      <ELEMENTS>
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>PedalSensorSwc</SHORT-NAME>
+          <PORTS>
+            <P-PORT-PROTOTYPE>
+              <SHORT-NAME>PedalForceOut</SHORT-NAME>
+              <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/BbwInterfaces/PedalForceIf</PROVIDED-INTERFACE-TREF>
+            </P-PORT-PROTOTYPE>
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>PedalSensor_IB</SHORT-NAME>
+              <RUNNABLES>
+                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>RE_AcquirePedal</SHORT-NAME>
+                  <EXECUTION-TIME-WCET>0.0010</EXECUTION-TIME-WCET>
+                </RUNNABLE-ENTITY>
+              </RUNNABLES>
+              <EVENTS>
+                <TIMING-EVENT>
+                  <SHORT-NAME>TE_Pedal_5ms</SHORT-NAME>
+                  <START-ON-EVENT-REF>RE_AcquirePedal</START-ON-EVENT-REF>
+                  <PERIOD>0.005</PERIOD>
+                </TIMING-EVENT>
+              </EVENTS>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

@@ -1,0 +1,12 @@
+struct QuadParams {
+  massKg: f64;
+  gravity: f64;
+  thrustCoeff: f64;
+  dragCoeff: f64;
+  maxRotorRpm: f64;
+}
+
+struct AltitudeGains {
+  kp: f64;
+  kd: f64;
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="BatteryPack" guid="{44444444-4444-4444-4444-444444444401}">
+  <CoSimulation modelIdentifier="BatteryPack" />
+  <ModelVariables>
+    <ScalarVariable name="i_dc" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="v_dc" valueReference="1" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="soc" valueReference="2" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

@@ -2,7 +2,7 @@
 
 /**
  * ASME Y14.5 / ISO 1101 / QIF 3.0 3D GD&T Feature Control Frame & Datum schema
- * and STEP AP242 PMI extractor shared by Docs, Morsel, and Ansatz 3D viewers.
+ * and STEP AP242 PMI extractor shared by Docs, Ansatz, and Ansatz 3D viewers.
  */
 
 export type GdtCharacteristicType =

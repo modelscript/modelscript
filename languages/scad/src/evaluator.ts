@@ -1551,23 +1551,30 @@ export class ScadEvaluator {
     // Fast path: walk WASM linear-memory CST directly without allocating intermediate wrapper nodes
     if (node && typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
       const mem32: Uint32Array = node.tree.mem32;
+      const maxBytePtr = mem32.length * 4;
+      if (node.ptr + 12 > maxBytePtr) return list;
       const syntaxNames: string[] = node.tree.facade.syntaxNames;
       const enc = node.tree.facade.getInputEncoding ? node.tree.facade.getInputEncoding() : (node.tree._encoding ?? 1);
       const div = enc === 1 || enc === 2 ? 2 : enc === 3 || enc === 4 ? 4 : 1;
 
       const ptrStack: number[] = [];
       const offsetStack: number[] = [];
-      let curPtr = mem32[(node.ptr + 12) >>> 2]!;
+      const visited = new Set<number>([node.ptr]);
+      const rootIsLeaf = ((mem32[node.ptr >>> 2]! >>> 16) & 8192) !== 0;
+      let curPtr = rootIsLeaf ? 0 : mem32[(node.ptr + 12) >>> 2]!;
       let curOff = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
 
       while (true) {
-        if (curPtr !== 0) {
+        if (curPtr !== 0 && curPtr + 12 <= maxBytePtr && !visited.has(curPtr)) {
+          visited.add(curPtr);
           const tf = mem32[curPtr >>> 2]!;
           const tid = tf & 0xffff;
           const tName = syntaxNames[tid] || "";
           const flags = tf >>> 16;
-          const len = mem32[(curPtr + 4) >>> 2]!;
-          const pad = mem32[(curPtr + 8) >>> 2]!;
+          const isLeaf = (flags & 8192) !== 0;
+          const w1 = mem32[(curPtr + 4) >>> 2]!;
+          const len = isLeaf ? w1 & 0xfff : w1;
+          const pad = isLeaf ? (w1 >>> 12) & 0xfff : mem32[(curPtr + 8) >>> 2]!;
           const isInv = (flags & 4) !== 0;
 
           if (!isInv && tName === "IDENTIFIER" && node.tree.sourceCode) {
@@ -1576,12 +1583,12 @@ export class ScadEvaluator {
             list.push(node.tree.sourceCode.substring(s, e).trim());
           }
 
-          const nextPtr = mem32[(curPtr + 16) >>> 2]!;
+          const nextPtr = isLeaf ? mem32[(curPtr + 8) >>> 2]! : mem32[(curPtr + 16) >>> 2]!;
           const nextOff = curOff + pad + len;
-          const grandChildPtr = mem32[(curPtr + 12) >>> 2]!;
+          const grandChildPtr = isLeaf ? 0 : mem32[(curPtr + 12) >>> 2]!;
 
-          if (grandChildPtr !== 0) {
-            if (nextPtr !== 0) {
+          if (grandChildPtr !== 0 && grandChildPtr + 12 <= maxBytePtr && !visited.has(grandChildPtr)) {
+            if (nextPtr !== 0 && nextPtr + 12 <= maxBytePtr && !visited.has(nextPtr)) {
               ptrStack.push(nextPtr);
               offsetStack.push(nextOff);
             }
@@ -2643,6 +2650,8 @@ export class ScadEvaluator {
       !(node as unknown as { _cachedChildren?: unknown })._cachedChildren
     ) {
       const mem32: Uint32Array = node.tree.mem32;
+      const maxBytePtr = mem32.length * 4;
+      if (node.ptr + 12 > maxBytePtr) return null;
       const syntaxNames: string[] = node.tree.facade.syntaxNames;
       type ScadCstNodeConstructor = new (
         tree: ScadCstTree,
@@ -2658,28 +2667,33 @@ export class ScadEvaluator {
 
       const ptrStack: number[] = [];
       const offsetStack: number[] = [];
-      let curPtr = mem32[(node.ptr + 12) >>> 2]!;
+      const visited = new Set<number>([node.ptr]);
+      const rootIsLeaf = ((mem32[node.ptr >>> 2]! >>> 16) & 8192) !== 0;
+      let curPtr = rootIsLeaf ? 0 : mem32[(node.ptr + 12) >>> 2]!;
       let curOff = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
 
       while (true) {
-        if (curPtr !== 0) {
+        if (curPtr !== 0 && curPtr + 12 <= maxBytePtr && !visited.has(curPtr)) {
+          visited.add(curPtr);
           const tf = mem32[curPtr >>> 2]!;
           const tid = tf & 0xffff;
           const tName = syntaxNames[tid] || "";
           const flags = tf >>> 16;
-          const len = mem32[(curPtr + 4) >>> 2]!;
-          const pad = mem32[(curPtr + 8) >>> 2]!;
+          const isLeaf = (flags & 8192) !== 0;
+          const w1 = mem32[(curPtr + 4) >>> 2]!;
+          const len = isLeaf ? w1 & 0xfff : w1;
+          const pad = isLeaf ? (w1 >>> 12) & 0xfff : mem32[(curPtr + 8) >>> 2]!;
           const isInv = (flags & 4) !== 0;
 
-          const nextPtr = mem32[(curPtr + 16) >>> 2]!;
+          const nextPtr = isLeaf ? mem32[(curPtr + 8) >>> 2]! : mem32[(curPtr + 16) >>> 2]!;
           const nextOff = curOff + pad + len;
 
           if (tName.startsWith("_") || isInv) {
-            if (nextPtr !== 0) {
+            if (nextPtr !== 0 && nextPtr + 12 <= maxBytePtr && !visited.has(nextPtr)) {
               ptrStack.push(nextPtr);
               offsetStack.push(nextOff);
             }
-            curPtr = mem32[(curPtr + 12) >>> 2]!;
+            curPtr = isLeaf ? 0 : mem32[(curPtr + 12) >>> 2]!;
             curOff = curOff + pad;
             continue;
           } else if (tName === targetType) {

@@ -1,0 +1,78 @@
+!------------------------------------------------------------------
+! MSC Adams Dataset: 6-DOF Articulated Industrial Manipulator
+! Spatial mobility: 6 moving bodies (36 DOF), 6 REVOLUTE joints (30) => M = 6 DOF
+!------------------------------------------------------------------
+ADAMS/
+!
+!----------------------------------- PARTS ------------------------
+PART/1, GROUND
+!
+! Link 1: Base Waist Turret
+PART/2, MASS = 18.0, CM = 201, IP = 0.32, 0.32, 0.28
+!
+! Link 2: Upper Arm (Shoulder-to-Elbow, 0.65 m)
+PART/3, MASS = 12.5, CM = 301, IP = 0.45, 0.48, 0.12
+!
+! Link 3: Elbow Housing
+PART/4, MASS = 7.2, CM = 401, IP = 0.11, 0.12, 0.08
+!
+! Link 4: Forearm Roll Tube (0.55 m)
+PART/5, MASS = 5.4, CM = 501, IP = 0.16, 0.16, 0.05
+!
+! Link 5: Wrist Pitch Clevis
+PART/6, MASS = 2.8, CM = 601, IP = 0.03, 0.035, 0.025
+!
+! Link 6: Tool Flange + Payload
+PART/7, MASS = 4.0, CM = 701, IP = 0.04, 0.04, 0.03
+!
+!---------------------------------- MARKERS -----------------------
+! Joint 1: Base Waist (0, 0, 0.25)
+MARKER/101, PART = 1, QP = 0.0, 0.0, 0.25, REULER = 0.0, 0.0, 0.0
+MARKER/202, PART = 2, QP = 0.0, 0.0, 0.25, REULER = 0.0, 0.0, 0.0
+MARKER/201, PART = 2, QP = 0.0, 0.0, 0.35, REULER = 0.0, 0.0, 0.0
+!
+! Joint 2: Shoulder Pitch (0, 0, 0.45)
+MARKER/203, PART = 2, QP = 0.0, 0.0, 0.45, REULER = 0.0, 0.0, 0.0
+MARKER/302, PART = 3, QP = 0.0, 0.0, 0.45, REULER = 0.0, 0.0, 0.0
+MARKER/301, PART = 3, QP = 0.0, 0.0, 0.775, REULER = 0.0, 0.0, 0.0
+!
+! Joint 3: Elbow Pitch (0, 0, 1.10)
+MARKER/303, PART = 3, QP = 0.0, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/402, PART = 4, QP = 0.0, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/401, PART = 4, QP = 0.10, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+!
+! Joint 4: Forearm Roll (0.20, 0, 1.10)
+MARKER/403, PART = 4, QP = 0.20, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/502, PART = 5, QP = 0.20, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/501, PART = 5, QP = 0.475, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+!
+! Joint 5: Wrist Pitch (0.75, 0, 1.10)
+MARKER/503, PART = 5, QP = 0.75, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/602, PART = 6, QP = 0.75, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/601, PART = 6, QP = 0.82, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+!
+! Joint 6: Tool Roll Flange (0.90, 0, 1.10)
+MARKER/603, PART = 6, QP = 0.90, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/702, PART = 7, QP = 0.90, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+MARKER/701, PART = 7, QP = 0.98, 0.0, 1.10, REULER = 0.0, 0.0, 0.0
+!
+!----------------------------------- JOINTS -----------------------
+JOINT/1, REVOLUTE, I = 101, J = 202
+JOINT/2, REVOLUTE, I = 203, J = 302
+JOINT/3, REVOLUTE, I = 303, J = 402
+JOINT/4, REVOLUTE, I = 403, J = 502
+JOINT/5, REVOLUTE, I = 503, J = 602
+JOINT/6, REVOLUTE, I = 603, J = 702
+!
+!---------------------------------- MOTIONS -----------------------
+MOTION/1, JOINT = 1, ROTATIONAL, FUNCTION = 45D * SIN(0.8 * TIME)
+MOTION/2, JOINT = 2, ROTATIONAL, FUNCTION = 25D * SIN(1.0 * TIME)
+MOTION/3, JOINT = 3, ROTATIONAL, FUNCTION = -30D * SIN(1.0 * TIME)
+MOTION/4, JOINT = 4, ROTATIONAL, FUNCTION = 60D * SIN(1.5 * TIME)
+MOTION/5, JOINT = 5, ROTATIONAL, FUNCTION = 20D * SIN(1.2 * TIME)
+MOTION/6, JOINT = 6, ROTATIONAL, FUNCTION = 90D * TIME
+!
+!--------------------------- SIMULATION CONTROL -------------------
+ACCGRAV/KGRAV = -9.80665
+SIMULATE/DYNAMIC, END = 4.0, DTOUT = 0.01
+END

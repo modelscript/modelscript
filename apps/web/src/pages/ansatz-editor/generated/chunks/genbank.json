@@ -1,0 +1,78 @@
+[
+  {
+    "id": "genbank-01-synthetic-gfp-fasta",
+    "lang": "genbank",
+    "subFormats": ["fasta"],
+    "difficulty": 1,
+    "title": "Synthetic Fluorescent Reporter Genes in FASTA",
+    "description": "Multi-record FASTA nucleotide file containing validated in-frame synthetic GFP and RFP coding sequences with clean start and stop codons.",
+    "category": "Bioinformatics & Genomics",
+    "tags": ["genbank", "fasta", "gfp", "dna-sequence"],
+    "activeFile": "gfp_frag.fasta",
+    "fileNames": ["gfp_frag.fasta"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": ">gfp_frag Synthetic mini-GFP reporter coding sequence (81 bp)\nATGTCTAAAGGTGAAGAACTGTTCACCGGTGTTGTTCCGATCCTGGTTGAACTGGATGGTGATGTTAATGGTCACAAATAA\n>rfp_frag Synthetic mini-RFP reporter coding sequence (81 bp)\nATGGCTTCCTCCGAAGACGTTATCAAAGAGTTCATGCGTTTCAAAGTTCGTATGGAAGGTTCCGTTAACGGTCACGAATAA\n"
+  },
+  {
+    "id": "genbank-02-prokaryotic-expression-cassette",
+    "lang": "genbank",
+    "subFormats": ["genbank"],
+    "difficulty": 2,
+    "title": "Validated Prokaryotic Expression Cassette",
+    "description": "Annotated linear GenBank expression cassette containing a bacterial promoter, ribosome binding site, verified GFP open reading frame, and terminator.",
+    "category": "Bioinformatics & Genomics",
+    "tags": ["genbank", "expression-cassette", "orf", "e-coli"],
+    "activeFile": "expression_cassette.gb",
+    "fileNames": ["expression_cassette.gb"],
+    "fileCount": 1,
+    "code": "LOCUS       pExpr_GFP                135 bp    ds-DNA  linear   SYN 24-NOV-2026\nDEFINITION  Prokaryotic constitutive GFP expression cassette.\nACCESSION   pExpr_GFP\nVERSION     pExpr_GFP.1\nKEYWORDS    synthetic biology; expression cassette; GFP.\nSOURCE      synthetic DNA construct\n  ORGANISM  Escherichia coli\nFEATURES             Location/Qualifiers\n     promoter        7..20\n                     /label=\"pJ23100\"\n     RBS             21..30\n                     /label=\"B0034\"\n     CDS             31..111\n                     /gene=\"gfp_mini\"\n                     /product=\"Mini green fluorescent protein\"\n                     /codon_start=1\n                     /translation=\"MSKGEELFTGVVPILVELDGDVNGHK\"\n     terminator      112..135\n                     /label=\"B0015\"\nORIGIN\n        1 gaattcttga caaagaggaa aagaggagaa atgtctaaag gtgaagaact gttcaccggt\n       61 gttgttccga tcctggttga actggatggt gatgttaatg gtcacaaata aggatccaag\n      121 cttttttttt ctaga\n//\n"
+  },
+  {
+    "id": "genbank-03-puc19-cloning-plasmid",
+    "lang": "genbank",
+    "subFormats": ["genbank"],
+    "difficulty": 3,
+    "title": "pUC19-Style Cloning Plasmid (ori, ampR, lacZ)",
+    "description": "Circular E. coli cloning vector carrying a pMB1 origin of replication, ampicillin resistance CDS, lac promoter, and lacZ-alpha blue-white screening reporter.",
+    "category": "Molecular Cloning",
+    "tags": ["genbank", "plasmid", "puc19", "cloning"],
+    "activeFile": "puc19_mini.gb",
+    "fileNames": ["puc19_mini.gb"],
+    "fileCount": 1,
+    "code": "LOCUS       pUC19_Mini               243 bp    ds-DNA  circular SYN 24-NOV-2026\nDEFINITION  pUC19-style high-copy cloning plasmid with pMB1 ori, ampR, and lacZ alpha.\nACCESSION   pUC19_Mini\nVERSION     pUC19_Mini.1\nKEYWORDS    plasmid; cloning vector; pUC19; beta-lactamase.\nSOURCE      synthetic DNA construct\n  ORGANISM  Escherichia coli\nFEATURES             Location/Qualifiers\n     rep_origin      1..30\n                     /label=\"pMB1_ori\"\n     CDS             31..123\n                     /gene=\"ampR\"\n                     /product=\"Beta-lactamase resistance marker\"\n                     /codon_start=1\n                     /translation=\"MSIQHFRVALIPFFAAFCLPVFAHPETLVK\"\n     promoter        124..135\n                     /label=\"lac_promoter\"\n     CDS             136..231\n                     /gene=\"lacZ_alpha\"\n                     /product=\"Beta-galactosidase alpha peptide\"\n                     /codon_start=1\n                     /translation=\"MTMITPSLHACRSTLEDPRVPSSNSLAVVLQ\"\n     terminator      232..243\n                     /label=\"rrnB_T1\"\nORIGIN\n        1 gcatgcctgc aggtcgactc tagaggatcc atgagtattc aacatttccg tgtcgccctt\n       61 attccctttt ttgcggcatt ttgccttcct gtttttgctc acccagaaac gctggtgaaa\n      121 taagaattct tgacaatgac catgattacg ccaagcttgc atgcctgcag gtcgactcta\n      181 gaggatcccc gggtaccgag ctcgaattca ctggccgtcg ttttacaata aaagcttttt\n      241 ttt\n//\n"
+  },
+  {
+    "id": "genbank-04-crispr-cas9-guide-donor",
+    "lang": "genbank",
+    "subFormats": ["genbank"],
+    "difficulty": 4,
+    "title": "CRISPR-Cas9 Guide RNA and HDR Donor Construct",
+    "description": "Genome-editing GenBank construct combining a human U6-driven SpCas9 sgRNA scaffold with flanked 5-prime/3-prime homology arms and corrected beta-globin CDS.",
+    "category": "Genome Engineering",
+    "tags": ["genbank", "crispr", "cas9", "hdr-donor"],
+    "activeFile": "crispr_donor.gb",
+    "fileNames": ["crispr_donor.gb"],
+    "fileCount": 1,
+    "code": "LOCUS       pCRISPR_HDR              254 bp    ds-DNA  linear   SYN 24-NOV-2026\nDEFINITION  CRISPR-Cas9 U6-sgRNA expression and HDR donor template construct.\nACCESSION   pCRISPR_HDR\nVERSION     pCRISPR_HDR.1\nKEYWORDS    CRISPR; Cas9; sgRNA; homology-directed repair.\nSOURCE      synthetic DNA construct\n  ORGANISM  Homo sapiens\nFEATURES             Location/Qualifiers\n     promoter        1..30\n                     /label=\"U6_promoter\"\n     misc_RNA        31..110\n                     /label=\"SpCas9_sgRNA_scaffold\"\n     misc_feature    111..140\n                     /label=\"5prime_homology_arm\"\n     CDS             141..224\n                     /gene=\"HBB_corrected\"\n                     /product=\"Corrected beta-globin N-terminal exon\"\n                     /codon_start=1\n                     /translation=\"MVHLTPEEKSAVTALWGKVNVDEVGGE\"\n     misc_feature    225..254\n                     /label=\"3prime_homology_arm\"\nORIGIN\n        1 gagggcctat ttcccatgat tccttcatat gttttagagc tagaaatagc aagttaaaat\n       61 aaggctagtc cgttatcaac ttgaaaaagt ggcaccgagt cggtgctttt ccggaattcc\n      121 atgcatgcat gcatgcatgc atggtgcacc tgactcctga ggagaagtct gccgttactg\n      181 ccctgtgggg caaggtgaac gtggatgaag ttggtggtga ataaggatcc aagcttgcat\n      241 gcatgcatgc atgc\n//\n"
+  },
+  {
+    "id": "genbank-05-golden-gate-assembly",
+    "lang": "genbank",
+    "subFormats": ["genbank", "fasta"],
+    "difficulty": 5,
+    "title": "Multi-Plasmid Golden Gate Assembly Bundle",
+    "description": "Modular MoClo Golden Gate assembly workspace pairing a BsaI kanR acceptor plasmid backbone with a Level-0 promoter GenBank insert and FASTA GFP CDS.",
+    "category": "Synthetic Biology & Cloning",
+    "tags": ["genbank", "fasta", "golden-gate", "moclo", "multi-file"],
+    "activeFile": "backbone.gb",
+    "fileNames": ["backbone.gb", "promoter_insert.gb", "cds_insert.fasta"],
+    "fileCount": 3,
+    "code": "LOCUS       pGG_Backbone             130 bp    ds-DNA  circular SYN 24-NOV-2026\nDEFINITION  Level-1 Golden Gate acceptor backbone with BsaI overhangs and kanR.\nACCESSION   pGG_Backbone\nVERSION     pGG_Backbone.1\nKEYWORDS    Golden Gate; MoClo; BsaI; plasmid backbone.\nSOURCE      synthetic DNA construct\n  ORGANISM  Escherichia coli\nFEATURES             Location/Qualifiers\n     rep_origin      1..30\n                     /label=\"ColE1_ori\"\n     CDS             31..108\n                     /gene=\"kanR\"\n                     /product=\"Kanamycin resistance fragment\"\n                     /codon_start=1\n                     /translation=\"MSHIQRETSRPRLNSNMDADLYGYK\"\n     misc_feature    109..130\n                     /label=\"BsaI_cloning_site\"\nORIGIN\n        1 ggtctcaaat ggcatgcctg caggtcgact atgagccata ttcaacggga aacgtcgagg\n       61 ccgcgattaa attccaacat ggatgctgat ttatatgggt ataaataagc ttgagaccgg\n      121 atccaagctt\n//\n",
+    "files": {
+      "backbone.gb": "LOCUS       pGG_Backbone             130 bp    ds-DNA  circular SYN 24-NOV-2026\nDEFINITION  Level-1 Golden Gate acceptor backbone with BsaI overhangs and kanR.\nACCESSION   pGG_Backbone\nVERSION     pGG_Backbone.1\nKEYWORDS    Golden Gate; MoClo; BsaI; plasmid backbone.\nSOURCE      synthetic DNA construct\n  ORGANISM  Escherichia coli\nFEATURES             Location/Qualifiers\n     rep_origin      1..30\n                     /label=\"ColE1_ori\"\n     CDS             31..108\n                     /gene=\"kanR\"\n                     /product=\"Kanamycin resistance fragment\"\n                     /codon_start=1\n                     /translation=\"MSHIQRETSRPRLNSNMDADLYGYK\"\n     misc_feature    109..130\n                     /label=\"BsaI_cloning_site\"\nORIGIN\n        1 ggtctcaaat ggcatgcctg caggtcgact atgagccata ttcaacggga aacgtcgagg\n       61 ccgcgattaa attccaacat ggatgctgat ttatatgggt ataaataagc ttgagaccgg\n      121 atccaagctt\n//\n",
+      "promoter_insert.gb": "LOCUS       pGG_Promoter              57 bp    ds-DNA  linear   SYN 24-NOV-2026\nDEFINITION  Golden Gate Level-0 constitutive promoter insert with BsaI sites.\nACCESSION   pGG_Promoter\nVERSION     pGG_Promoter.1\nKEYWORDS    Golden Gate; promoter; MoClo.\nSOURCE      synthetic DNA construct\n  ORGANISM  Escherichia coli\nFEATURES             Location/Qualifiers\n     promoter        12..46\n                     /label=\"J23100_core\"\nORIGIN\n        1 ggtctcagga gttgacagct agctcagtcc taggtataat gctagcaatg tgagacc\n//\n",
+      "cds_insert.fasta": ">cds_gfp_gg Golden Gate Level-0 GFP coding insert\nATGTCTAAAGGTGAAGAACTGTTCACCGGTGTTGTTCCGATCCTGGTTGAACTGGATGGTGATGTTAATGGTCACAAATAA\n"
+    }
+  }
+]

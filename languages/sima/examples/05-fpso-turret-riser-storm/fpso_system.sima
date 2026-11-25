@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sima:Model name="FPSO_Turret_LazyWaveRiser_100YrStorm">
+  <environment waterDepth="500.0" density="1025.0" friction="0.6"/>
+  <wave hs="14.2" tp="16.0" gamma="3.3" direction="15.0"/>
+  <wind speed="36.0" direction="15.0"/>
+  <vessel id="fpso_hull" name="DeepwaterFPSO" mass="185000000" displacement="189000" gmt="6.5" gml="240.0" cgx="0" cgy="0" cgz="-8.5" rxx="18.0" ryy="78.0" rzz="80.0">
+    <fairlead id="turret_1" x="95.0" y="6.0" z="-18.0"/>
+    <fairlead id="turret_2" x="95.0" y="-6.0" z="-18.0"/>
+    <fairlead id="turret_3" x="89.0" y="6.0" z="-18.0"/>
+    <fairlead id="turret_4" x="89.0" y="-6.0" z="-18.0"/>
+    <fairlead id="riser_hangoff" x="92.0" y="0.0" z="-18.0"/>
+  </vessel>
+  <mooringLine id="moor_nw" name="TurretChain_NW" type="catenary" fairleadId="turret_1" anchorX="980.0" anchorY="880.0" anchorZ="-500.0">
+    <segment id="seg_nw" length="1520.0" diameter="0.155" dryMass="490.0" subWeight="4180.0" ea="1.8e9" ei="1.2e5" mbl="2.65e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+  <mooringLine id="moor_ne" name="TurretChain_NE" type="catenary" fairleadId="turret_2" anchorX="980.0" anchorY="-880.0" anchorZ="-500.0">
+    <segment id="seg_ne" length="1520.0" diameter="0.155" dryMass="490.0" subWeight="4180.0" ea="1.8e9" ei="1.2e5" mbl="2.65e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+  <mooringLine id="moor_sw" name="TurretChain_SW" type="catenary" fairleadId="turret_3" anchorX="-860.0" anchorY="880.0" anchorZ="-500.0">
+    <segment id="seg_sw" length="1520.0" diameter="0.155" dryMass="490.0" subWeight="4180.0" ea="1.8e9" ei="1.2e5" mbl="2.65e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+  <mooringLine id="moor_se" name="TurretChain_SE" type="catenary" fairleadId="turret_4" anchorX="-860.0" anchorY="-880.0" anchorZ="-500.0">
+    <segment id="seg_se" length="1520.0" diameter="0.155" dryMass="490.0" subWeight="4180.0" ea="1.8e9" ei="1.2e5" mbl="2.65e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+  <mooringLine id="prod_riser" name="LazyWaveProductionRiser" type="catenary" fairleadId="riser_hangoff" anchorX="420.0" anchorY="0.0" anchorZ="-500.0">
+    <segment id="seg_riser" length="820.0" diameter="0.32" dryMass="165.0" subWeight="850.0" ea="4.2e8" ei="4.5e5" mbl="6.5e6" cd="1.0" cm="2.0"/>
+  </mooringLine>
+</sima:Model>

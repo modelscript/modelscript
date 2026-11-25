@@ -1,0 +1,12 @@
+{
+  "id": "gtsuite-01-helmholtz-resonator-pipe",
+  "lang": "gtsuite",
+  "subFormats": ["gtm"],
+  "difficulty": 1,
+  "title": "Acoustic Helmholtz Resonator Pipe",
+  "description": "1D acoustic wave-action intake duct coupled to a Helmholtz side-branch resonator cavity with CFL-stable finite-volume cell discretization between ambient inlet and outlet boundaries.",
+  "category": "1D Gas Dynamics",
+  "tags": ["helmholtz", "acoustics", "1d-cfd", "cfl-stable"],
+  "activeFile": "helmholtz.gtm",
+  "isDefaultStarter": true
+}

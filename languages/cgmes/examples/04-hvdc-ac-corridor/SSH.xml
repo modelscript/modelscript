@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:cim="http://iec.ch/TC57/2013/CIM-schema-cim16#"
+         xmlns:md="http://iec.ch/TC57/61970-552/ModelDescription/1#">
+  <cim:SynchronousMachine rdf:about="#_gen_west">
+    <cim:RotatingMachine.p>-950.0</cim:RotatingMachine.p>
+    <cim:RotatingMachine.q>-120.0</cim:RotatingMachine.q>
+  </cim:SynchronousMachine>
+  <cim:EnergyConsumer rdf:about="#_load_east">
+    <cim:EnergyConsumer.p>920.0</cim:EnergyConsumer.p>
+    <cim:EnergyConsumer.q>210.0</cim:EnergyConsumer.q>
+  </cim:EnergyConsumer>
+</rdf:RDF>

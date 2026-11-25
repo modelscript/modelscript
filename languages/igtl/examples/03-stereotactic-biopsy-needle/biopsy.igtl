@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenIGTLinkStream version="3.0">
+  <IgtlMessage Type="STATUS" DeviceName="BiopsyRobotCtrl" StatusCode="1" SubCode="0" Error="0.0" Timestamp="1732480200.000"/>
+  <IgtlMessage Type="TRANSFORM" DeviceName="NeedleTipToNeedle" Matrix="1 0 0 0.0  0 1 0 0.0  0 0 1 180.0  0 0 0 1" Error="0.28" Timestamp="1732480200.010"/>
+  <IgtlMessage Type="TRANSFORM" DeviceName="NeedleToRobotBase" Matrix="0.965926 0 0.258819 35.0  0 1 0 -12.0  -0.258819 0 0.965926 110.0  0 0 0 1" Error="0.34" Timestamp="1732480200.020"/>
+  <IgtlMessage Type="TRANSFORM" DeviceName="RobotBaseToPatientMRI" Matrix="1 0 0 -14.2  0 1 0 28.6  0 0 1 -92.4  0 0 0 1" Error="0.72" Timestamp="1732480200.030"/>
+  <FiducialRegistration FLE="0.45" FRE="0.58" TRE="0.76" Target="18.0 -14.5 22.0">
+    <Fiducial Position="-62.0 -48.0 10.0"/>
+    <Fiducial Position="64.0 -45.0 12.0"/>
+    <Fiducial Position="58.0 52.0 18.0"/>
+    <Fiducial Position="-60.0 50.0 15.0"/>
+  </FiducialRegistration>
+</OpenIGTLinkStream>

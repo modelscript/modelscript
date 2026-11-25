@@ -1,0 +1,82 @@
+[
+  {
+    "id": "tough-01-porous-column-diffusion",
+    "lang": "tough",
+    "subFormats": ["tgh"],
+    "difficulty": 1,
+    "title": "1D Single-Phase Porous Column Pressure Diffusion",
+    "description": "Four-element 1D sandstone porous column simulating single-phase Darcy pressure diffusion driven by a constant-rate boundary fluid injection source.",
+    "category": "Subsurface Flow & Transport",
+    "tags": ["tough", "darcy-flow", "pressure-diffusion", "porous-media"],
+    "activeFile": "column_1d.tgh",
+    "fileNames": ["column_1d.tgh"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "1D Single-Phase Sandstone Porous Column Pressure Diffusion\nROCKS\nSAND1    2600.0      0.20 1.0E-13 1.0E-13 5.0E-14       2.2     920.0\nELEME\nA1  1SAND1 2.5E+03\nA1  2SAND1 2.5E+03\nA1  3SAND1 2.5E+03\nA1  4SAND1 2.5E+03\nCONNE\nA1  1A1  2 25.0 25.0 5.0E+01       0.0\nA1  2A1  3 25.0 25.0 5.0E+01       0.0\nA1  3A1  4 25.0 25.0 5.0E+01       0.0\nGENER\nA1  1INJ01MASS       2.5    2.0E+05\nINCON\nA1  1        1.0E+07        45.0\nA1  2        1.0E+07        45.0\nA1  3        1.0E+07        45.0\nA1  4        1.0E+07        45.0\nENDCY\n"
+  },
+  {
+    "id": "tough-02-geothermal-boiling-column",
+    "lang": "tough",
+    "subFormats": ["tgh"],
+    "difficulty": 2,
+    "title": "1D Two-Phase Geothermal Boiling Column",
+    "description": "Vertical fractured basalt geothermal column under hydrostatic pressure and basal heat recharge transitioning from compressed liquid to two-phase boiling steam near the top.",
+    "category": "Geothermal Reservoir Engineering",
+    "tags": ["tough", "geothermal", "eos1", "two-phase-boiling"],
+    "activeFile": "boiling_column.tgh",
+    "fileNames": ["boiling_column.tgh"],
+    "fileCount": 1,
+    "code": "1D Vertical Two-Phase Geothermal Boiling Column (EOS1)\nROCKS\nBASLT    2700.0      0.12 5.0E-14 5.0E-14 2.0E-14       2.6    1020.0\nCAPRK    2650.0      0.05 1.0E-16 1.0E-16 5.0E-17       2.0     980.0\nELEME\nZ1  1CAPRK 1.0E+04\nZ1  2BASLT 1.0E+04\nZ1  3BASLT 1.0E+04\nZ1  4BASLT 1.0E+04\nCONNE\nZ1  1Z1  2 50.0 50.0 1.0E+02      -1.0\nZ1  2Z1  3 50.0 50.0 1.0E+02      -1.0\nZ1  3Z1  4 50.0 50.0 1.0E+02      -1.0\nGENER\nZ1  4HEAT1HEAT    2.5E+05       0.0\nZ1  2PROD1MASS      -12.0    1.2E+06\nINCON\nZ1  1        3.5E+06       215.0\nZ1  2        4.3E+06       245.0\nZ1  3        5.1E+06       265.0\nZ1  4        5.9E+06       280.0\nENDCY\n"
+  },
+  {
+    "id": "tough-03-radial-injection-theis",
+    "lang": "tough",
+    "subFormats": ["tgh"],
+    "difficulty": 3,
+    "title": "Radial Injection Well Pressure Buildup",
+    "description": "Logarithmically spaced concentric cylindrical radial mesh modeling single-well pressure buildup in a confined aquifer for analytical Theis line-source verification.",
+    "category": "Subsurface Flow & Transport",
+    "tags": ["tough", "radial-mesh", "theis", "well-testing"],
+    "activeFile": "radial_theis.tgh",
+    "fileNames": ["radial_theis.tgh"],
+    "fileCount": 1,
+    "code": "Radial Injection Well Pressure Buildup (Theis Analytical Parity)\nROCKS\nAQUIF    2620.0      0.22 8.0E-14 8.0E-14 4.0E-14       2.3     950.0\nELEME\nR1  1AQUIF 1.2E+03\nR1  2AQUIF 4.8E+03\nR1  3AQUIF 1.9E+04\nR1  4AQUIF 7.5E+04\nR1  5AQUIF 3.0E+05\nCONNE\nR1  1R1  2  5.0 10.0 1.2E+02       0.0\nR1  2R1  3 10.0 20.0 2.5E+02       0.0\nR1  3R1  4 20.0 40.0 5.0E+02       0.0\nR1  4R1  5 40.0 80.0 1.0E+03       0.0\nGENER\nR1  1WELL1MASS       15.0    2.5E+05\nINCON\nR1  1        1.5E+07        60.0\nR1  2        1.5E+07        60.0\nR1  3        1.5E+07        60.0\nR1  4        1.5E+07        60.0\nR1  5        1.5E+07        60.0\nENDCY\n"
+  },
+  {
+    "id": "tough-04-co2-geological-sequestration",
+    "lang": "tough",
+    "subFormats": ["tgh", "mesh"],
+    "difficulty": 4,
+    "title": "Supercritical CO2 Geological Sequestration",
+    "description": "Deep saline sandstone aquifer overlaid by low-permeability shale caprock for supercritical CO2 plume migration and pressure buildup, shipped with a companion TOUGH MESH file.",
+    "category": "Carbon Capture & Storage",
+    "tags": ["tough", "co2-sequestration", "caprock", "multi-file", "mesh"],
+    "activeFile": "co2_storage.tgh",
+    "fileNames": ["co2_storage.tgh", "MESH"],
+    "fileCount": 2,
+    "code": "Supercritical CO2 Geological Sequestration in Deep Saline Aquifer\nROCKS\nSALIN    2600.0      0.24 1.5E-13 1.5E-13 5.0E-14       2.4     920.0\nSHALE    2550.0      0.06 1.0E-18 1.0E-18 5.0E-19       1.8     900.0\nELEME\nS1  1SALIN 5.0E+04\nS1  2SALIN 5.0E+04\nS1  3SALIN 5.0E+04\nC1  1SHALE 5.0E+04\nC1  2SHALE 5.0E+04\nCONNE\nS1  1S1  2 50.0 50.0 1.0E+03       0.0\nS1  2S1  3 50.0 50.0 1.0E+03       0.0\nS1  1C1  1 15.0 15.0 2.5E+03       1.0\nS1  2C1  2 15.0 15.0 2.5E+03       1.0\nGENER\nS1  1CO2INCOM2       35.0    3.2E+05\nINCON\nS1  1        1.8E+07        65.0\nS1  2        1.8E+07        65.0\nS1  3        1.8E+07        65.0\nC1  1        1.75E+07       62.0\nC1  2        1.75E+07       62.0\nENDCY\n",
+    "files": {
+      "co2_storage.tgh": "Supercritical CO2 Geological Sequestration in Deep Saline Aquifer\nROCKS\nSALIN    2600.0      0.24 1.5E-13 1.5E-13 5.0E-14       2.4     920.0\nSHALE    2550.0      0.06 1.0E-18 1.0E-18 5.0E-19       1.8     900.0\nELEME\nS1  1SALIN 5.0E+04\nS1  2SALIN 5.0E+04\nS1  3SALIN 5.0E+04\nC1  1SHALE 5.0E+04\nC1  2SHALE 5.0E+04\nCONNE\nS1  1S1  2 50.0 50.0 1.0E+03       0.0\nS1  2S1  3 50.0 50.0 1.0E+03       0.0\nS1  1C1  1 15.0 15.0 2.5E+03       1.0\nS1  2C1  2 15.0 15.0 2.5E+03       1.0\nGENER\nS1  1CO2INCOM2       35.0    3.2E+05\nINCON\nS1  1        1.8E+07        65.0\nS1  2        1.8E+07        65.0\nS1  3        1.8E+07        65.0\nC1  1        1.75E+07       62.0\nC1  2        1.75E+07       62.0\nENDCY\n",
+      "MESH": "ELEME\nS1  1SALIN 5.0E+04\nS1  2SALIN 5.0E+04\nS1  3SALIN 5.0E+04\nC1  1SHALE 5.0E+04\nC1  2SHALE 5.0E+04\n\nCONNE\nS1  1S1  2 50.0 50.0 1.0E+03       0.0\nS1  2S1  3 50.0 50.0 1.0E+03       0.0\nS1  1C1  1 15.0 15.0 2.5E+03       1.0\nS1  2C1  2 15.0 15.0 2.5E+03       1.0\n"
+    }
+  },
+  {
+    "id": "tough-05-enhanced-geothermal-doublet",
+    "lang": "tough",
+    "subFormats": ["tgh", "mesh", "incon"],
+    "difficulty": 5,
+    "title": "2D Enhanced Geothermal Reservoir Doublet",
+    "description": "Stimulated granite Enhanced Geothermal System (EGS) injector-producer doublet modeling cold water reinjection, thermal breakthrough, and companion MESH and INCON restart files.",
+    "category": "Geothermal Reservoir Engineering",
+    "tags": ["tough", "egs", "geothermal-doublet", "multi-file", "incon"],
+    "activeFile": "geothermal.tgh",
+    "fileNames": ["geothermal.tgh", "INCON", "MESH"],
+    "fileCount": 3,
+    "code": "2D Enhanced Geothermal Reservoir Injector-Producer Doublet\nROCKS\nGRANI    2680.0      0.04 2.0E-15 2.0E-15 1.0E-15       3.0     850.0\nFRACZ    2650.0      0.15 2.5E-13 2.5E-13 8.0E-14       2.7     880.0\nELEME\nG1  1FRACZ 4.0E+04\nG1  2FRACZ 4.0E+04\nG1  3FRACZ 4.0E+04\nG2  1GRANI 4.0E+04\nG2  2GRANI 4.0E+04\nG2  3GRANI 4.0E+04\nCONNE\nG1  1G1  2 75.0 75.0 8.0E+02       0.0\nG1  2G1  3 75.0 75.0 8.0E+02       0.0\nG2  1G2  2 75.0 75.0 8.0E+02       0.0\nG2  2G2  3 75.0 75.0 8.0E+02       0.0\nG1  1G2  1 40.0 40.0 1.2E+03       0.0\nG1  2G2  2 40.0 40.0 1.2E+03       0.0\nG1  3G2  3 40.0 40.0 1.2E+03       0.0\nGENER\nG1  1INJ_W MASS       45.0    2.9E+05\nG1  3PRD_W MASS      -45.0    9.8E+05\nINCON\nG1  1        2.4E+07       210.0\nG1  2        2.4E+07       215.0\nG1  3        2.4E+07       220.0\nG2  1        2.4E+07       212.0\nG2  2        2.4E+07       218.0\nG2  3        2.4E+07       222.0\nENDCY\n",
+    "files": {
+      "geothermal.tgh": "2D Enhanced Geothermal Reservoir Injector-Producer Doublet\nROCKS\nGRANI    2680.0      0.04 2.0E-15 2.0E-15 1.0E-15       3.0     850.0\nFRACZ    2650.0      0.15 2.5E-13 2.5E-13 8.0E-14       2.7     880.0\nELEME\nG1  1FRACZ 4.0E+04\nG1  2FRACZ 4.0E+04\nG1  3FRACZ 4.0E+04\nG2  1GRANI 4.0E+04\nG2  2GRANI 4.0E+04\nG2  3GRANI 4.0E+04\nCONNE\nG1  1G1  2 75.0 75.0 8.0E+02       0.0\nG1  2G1  3 75.0 75.0 8.0E+02       0.0\nG2  1G2  2 75.0 75.0 8.0E+02       0.0\nG2  2G2  3 75.0 75.0 8.0E+02       0.0\nG1  1G2  1 40.0 40.0 1.2E+03       0.0\nG1  2G2  2 40.0 40.0 1.2E+03       0.0\nG1  3G2  3 40.0 40.0 1.2E+03       0.0\nGENER\nG1  1INJ_W MASS       45.0    2.9E+05\nG1  3PRD_W MASS      -45.0    9.8E+05\nINCON\nG1  1        2.4E+07       210.0\nG1  2        2.4E+07       215.0\nG1  3        2.4E+07       220.0\nG2  1        2.4E+07       212.0\nG2  2        2.4E+07       218.0\nG2  3        2.4E+07       222.0\nENDCY\n",
+      "INCON": "INCON\nG1  1        2.4E+07       210.0\nG1  2        2.4E+07       215.0\nG1  3        2.4E+07       220.0\nG2  1        2.4E+07       212.0\nG2  2        2.4E+07       218.0\nG2  3        2.4E+07       222.0\n",
+      "MESH": "ELEME\nG1  1FRACZ 4.0E+04\nG1  2FRACZ 4.0E+04\nG1  3FRACZ 4.0E+04\nG2  1GRANI 4.0E+04\nG2  2GRANI 4.0E+04\nG2  3GRANI 4.0E+04\n\nCONNE\nG1  1G1  2 75.0 75.0 8.0E+02       0.0\nG1  2G1  3 75.0 75.0 8.0E+02       0.0\nG2  1G2  2 75.0 75.0 8.0E+02       0.0\nG2  2G2  3 75.0 75.0 8.0E+02       0.0\nG1  1G2  1 40.0 40.0 1.2E+03       0.0\nG1  2G2  2 40.0 40.0 1.2E+03       0.0\nG1  3G2  3 40.0 40.0 1.2E+03       0.0\n"
+    }
+  }
+]

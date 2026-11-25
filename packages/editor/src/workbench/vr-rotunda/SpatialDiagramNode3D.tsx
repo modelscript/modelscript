@@ -19,6 +19,7 @@ import {
   type ExtrudedIconBundle,
   type ExtrudedWaferStyle,
 } from "./svg-extruder.js";
+import { pulseEventHaptic } from "./xr-handle.js";
 
 /**
  * Stereo-safe crisp high-DPI CanvasTexture nameplate mounted cleanly below each
@@ -303,6 +304,7 @@ export function SpatialDiagramNode3D({
             onPointerOver={(e) => {
               e.stopPropagation();
               setHoveredBody(true);
+              pulseEventHaptic(e, 0.06, 5);
               onHoverNodeChange?.(nodeId);
             }}
             onPointerOut={(e) => {
@@ -347,6 +349,7 @@ export function SpatialDiagramNode3D({
             onPointerOver={(e) => {
               e.stopPropagation();
               setHoveredBody(true);
+              pulseEventHaptic(e, 0.06, 5);
               onHoverNodeChange?.(nodeId);
             }}
             onPointerOut={(e) => {
@@ -389,6 +392,7 @@ export function SpatialDiagramNode3D({
             onPointerOver={(e) => {
               e.stopPropagation();
               setHoveredBody(true);
+              pulseEventHaptic(e, 0.06, 5);
               onHoverNodeChange?.(nodeId);
             }}
             onPointerOut={(e) => {
@@ -459,11 +463,12 @@ export function SpatialDiagramNode3D({
               position={port.localPosition}
               scale={socketScale}
             >
-              {/* Generous Invisible Spherical Grab Target (2.5 cm radius) for Effortless VR Pinching */}
+              {/* Generous Invisible Spherical Grab Target (3.2 cm radius) for Effortless VR Wiring */}
               <mesh
                 onPointerOver={(e) => {
                   e.stopPropagation();
                   setHoveredPortId(port.portId);
+                  pulseEventHaptic(e, 0.12, 8);
                   onHoverPortChange?.(port);
                 }}
                 onPointerOut={(e) => {
@@ -476,7 +481,7 @@ export function SpatialDiagramNode3D({
                   onStartPortWireDrag?.(port, e);
                 }}
               >
-                <sphereGeometry args={[0.025, 12, 10]} />
+                <sphereGeometry args={[0.032, 12, 10]} />
                 <meshBasicMaterial transparent opacity={0} depthWrite={false} />
               </mesh>
 
@@ -527,14 +532,14 @@ export function SpatialDiagramNode3D({
                 />
               </mesh>
 
-              {/* Magnetic Approach & Capture Field Halo Ring */}
-              {(approach > 0.02 || isSnapped || isRejected) && (
+              {/* Hover / Magnetic Approach & Capture Field Halo Ring */}
+              {(approach > 0.02 || isSnapped || isRejected || isPortHovered) && (
                 <mesh position={[0, 0, 0.006]}>
-                  <ringGeometry args={[isSnapped ? 0.015 : 0.017, isSnapped ? 0.024 : 0.022, 28]} />
+                  <ringGeometry args={[isSnapped ? 0.015 : 0.017, isSnapped ? 0.024 : 0.023, 28]} />
                   <meshBasicMaterial
                     color={isSnapped ? "#10b981" : isRejected ? "#f59e0b" : "#22d3ee"}
                     transparent
-                    opacity={isSnapped ? 0.95 : isRejected ? 0.88 : 0.3 + approach * 0.6}
+                    opacity={isSnapped ? 0.95 : isRejected ? 0.88 : isPortHovered ? 0.82 : 0.3 + approach * 0.6}
                     toneMapped={false}
                     depthWrite={false}
                     side={THREE.DoubleSide}

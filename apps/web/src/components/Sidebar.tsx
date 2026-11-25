@@ -34,7 +34,7 @@ import { useTheme } from "../theme";
 import { safeCssImageUrl } from "../util/url";
 import AnsatzMark from "./AnsatzLogo";
 import Box from "./Box";
-import { MorselIcon } from "./icons";
+import { AnsatzIcon } from "./icons";
 import { scrollToTop } from "./ScrollToTop";
 
 const SidebarContainer = styled.header`
@@ -104,7 +104,7 @@ const SidebarContainer = styled.header`
     }
   }
 
-  .post-split-morsel-icon {
+  .post-split-ansatz-icon {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -851,7 +851,7 @@ const SplitPostButtonAction = styled.button`
   }
 `;
 
-const SplitMorselButtonLink = styled(Link)`
+const SplitAnsatzButtonLink = styled(Link)`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -967,7 +967,7 @@ const SplitPostButtonDivider = styled.div`
   display: none;
 `;
 
-const GuestMorselButtonLink = styled(Link)`
+const GuestAnsatzButtonLink = styled(Link)`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1022,7 +1022,7 @@ const GuestMorselButtonLink = styled(Link)`
 
 interface SidebarLinkItem {
   to: string;
-  icon: any;
+  icon: React.ComponentType<{ size?: number | string }>;
   label: string;
   reloadDocument?: boolean | undefined;
   isExternalSurface?: boolean | undefined;
@@ -1030,14 +1030,14 @@ interface SidebarLinkItem {
 
 interface SidebarProps {
   onPostClick?: (() => void) | undefined;
-  onMorselClick?: (() => void) | undefined;
+  onAnsatzClick?: (() => void) | undefined;
   onSketchClick?: (() => void) | undefined;
 }
 
 const THEME_THUMB_TRAVEL_PX = 26;
 const THEME_DRAG_THRESHOLD_PX = 6;
 
-const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchClick }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onAnsatzClick, onSketchClick }) => {
   const { user, isAdmin, logout, unreadCount, setUnreadCount, adminPendingCount } = useAuth();
   const { theme, toggleTheme, setTheme } = useTheme();
   const ThemeIcon = theme === "dark" ? SunIcon : MoonIcon;
@@ -1159,10 +1159,10 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
     return "ansatz.social";
   }, []);
 
-  const handleMorselClick = (e: React.MouseEvent) => {
-    if (onMorselClick) {
+  const handleAnsatzClick = (e: React.MouseEvent) => {
+    if (onAnsatzClick) {
       e.preventDefault();
-      onMorselClick();
+      onAnsatzClick();
       return;
     }
     if (onSketchClick) {
@@ -1173,8 +1173,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
     if (
       location.pathname === "/editor" ||
       location.pathname.startsWith("/editor/") ||
-      location.pathname === "/morsel" ||
-      location.pathname.startsWith("/morsel/") ||
+      location.pathname === "/ansatz" ||
+      location.pathname.startsWith("/ansatz/") ||
       location.pathname === "/sketch" ||
       location.pathname.startsWith("/sketch/")
     ) {
@@ -1376,17 +1376,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
                 <span className="post-text">Post</span>
               </SplitPostButtonAction>
               <SplitPostButtonDivider aria-hidden="true" className="post-split-divider" />
-              <SplitMorselButtonLink
+              <SplitAnsatzButtonLink
                 to="/editor"
-                onClick={handleMorselClick}
-                className="post-split-btn post-split-btn-morsel"
+                onClick={handleAnsatzClick}
+                className="post-split-btn post-split-btn-ansatz"
                 aria-label="Ansatz"
                 title="Ansatz"
-                data-testid="sidebar-morsel-button"
+                data-testid="sidebar-ansatz-button"
               >
-                <MorselIcon size={16} color="currentColor" className="post-split-icon post-split-morsel-icon" />
+                <AnsatzIcon size={16} color="currentColor" className="post-split-icon post-split-ansatz-icon" />
                 <span className="post-text">Ansatz</span>
-              </SplitMorselButtonLink>
+              </SplitAnsatzButtonLink>
               <SplitStudioButtonLink
                 to="/studio"
                 className="post-split-btn post-split-btn-studio"
@@ -1402,17 +1402,17 @@ const Sidebar: React.FC<SidebarProps> = ({ onPostClick, onMorselClick, onSketchC
         ) : (
           <Box mt={2} width="100%" px={1} className="post-btn-container">
             <SplitPostButtonContainer className="post-split-btn-group">
-              <GuestMorselButtonLink
+              <GuestAnsatzButtonLink
                 to="/editor"
-                onClick={handleMorselClick}
-                className="post-split-btn post-split-btn-morsel"
+                onClick={handleAnsatzClick}
+                className="post-split-btn post-split-btn-ansatz"
                 aria-label="Ansatz"
                 title="Ansatz"
-                data-testid="sidebar-guest-morsel-button"
+                data-testid="sidebar-guest-ansatz-button"
               >
-                <MorselIcon size={16} color="currentColor" className="post-split-icon" />
+                <AnsatzIcon size={16} color="currentColor" className="post-split-icon" />
                 <span className="post-text">Ansatz</span>
-              </GuestMorselButtonLink>
+              </GuestAnsatzButtonLink>
               <SplitStudioButtonLink
                 to="/studio"
                 className="post-split-btn post-split-btn-studio"

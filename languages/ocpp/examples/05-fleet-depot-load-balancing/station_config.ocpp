@@ -1,0 +1,47 @@
+station "Metro_Bus_Depot_East" {
+  model: "HVC-450-Depot"
+  vendor: "ABB"
+  gridLimitKW: 450.0
+
+  evse 1 {
+    connector 1 {
+      type: "CCS2"
+      maxPowerKW: 150.0
+      currentSession: {
+        transactionId: "TX-BUS-501"
+        evBatteryCapacityKWh: 420.0
+        currentSoC: 0.22
+        targetSoC: 0.92
+        departureMinutes: 240
+      }
+    }
+  }
+
+  evse 2 {
+    connector 1 {
+      type: "CCS2"
+      maxPowerKW: 150.0
+      currentSession: {
+        transactionId: "TX-BUS-502"
+        evBatteryCapacityKWh: 420.0
+        currentSoC: 0.30
+        targetSoC: 0.90
+        departureMinutes: 210
+      }
+    }
+  }
+
+  evse 3 {
+    connector 1 {
+      type: "CCS2"
+      maxPowerKW: 150.0
+      currentSession: {
+        transactionId: "TX-BUS-503"
+        evBatteryCapacityKWh: 350.0
+        currentSoC: 0.18
+        targetSoC: 0.85
+        departureMinutes: 180
+      }
+    }
+  }
+}

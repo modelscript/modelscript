@@ -1,0 +1,62 @@
+(edif shift_register_4bit
+  (edifVersion 2 0 0)
+  (edifLevel 0)
+  (keywordMap (keywordLevel 0))
+  (status
+    (written
+      (timeStamp 2026 11 24 16 0 0)
+      (author "Ansatz EDA")
+      (program "edif-gen" (version "2.0.0"))
+      (comment "4-Bit D-Flip-Flop Serial-In Parallel-Out Shift Register")))
+  (external STDCELLS
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell DFFRX1
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port CLK (direction INPUT))
+          (port RST (direction INPUT))
+          (port D (direction INPUT))
+          (port Q (direction OUTPUT))))))
+  (library WORK
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell SHIFT_REG4
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port CLK (direction INPUT))
+          (port RST (direction INPUT))
+          (port SIN (direction INPUT))
+          (port Q0 (direction OUTPUT))
+          (port Q1 (direction OUTPUT))
+          (port Q2 (direction OUTPUT))
+          (port Q3 (direction OUTPUT)))
+        (contents
+          (instance FF0 (viewRef netlist (cellRef DFFRX1 (libraryRef STDCELLS))))
+          (instance FF1 (viewRef netlist (cellRef DFFRX1 (libraryRef STDCELLS))))
+          (instance FF2 (viewRef netlist (cellRef DFFRX1 (libraryRef STDCELLS))))
+          (instance FF3 (viewRef netlist (cellRef DFFRX1 (libraryRef STDCELLS))))
+          (net N_CLK
+            (joined
+              (portRef CLK)
+              (portRef CLK (instanceRef FF0))
+              (portRef CLK (instanceRef FF1))
+              (portRef CLK (instanceRef FF2))
+              (portRef CLK (instanceRef FF3))))
+          (net N_RST
+            (joined
+              (portRef RST)
+              (portRef RST (instanceRef FF0))
+              (portRef RST (instanceRef FF1))
+              (portRef RST (instanceRef FF2))
+              (portRef RST (instanceRef FF3))))
+          (net N_SIN (joined (portRef SIN) (portRef D (instanceRef FF0))))
+          (net N_Q0 (joined (portRef Q (instanceRef FF0)) (portRef D (instanceRef FF1)) (portRef Q0)))
+          (net N_Q1 (joined (portRef Q (instanceRef FF1)) (portRef D (instanceRef FF2)) (portRef Q1)))
+          (net N_Q2 (joined (portRef Q (instanceRef FF2)) (portRef D (instanceRef FF3)) (portRef Q2)))
+          (net N_Q3 (joined (portRef Q (instanceRef FF3)) (portRef Q3)))))))
+  (design ShiftReg4Design (cellRef SHIFT_REG4 (libraryRef WORK))))

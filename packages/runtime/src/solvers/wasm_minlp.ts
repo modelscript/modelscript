@@ -375,7 +375,20 @@ function simpleEvalMinlp(exprId: number, env: Map<string, number>, arena: DAEBui
 function solveLUMinlp(A: number[][], b: number[], n: number): number[] {
   if (n <= 0) return [];
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as {
+    memory: WebAssembly.Memory;
+    alloc?: (size: number) => number;
+    free?: (ptr: number) => void;
+    luFactorFlatInPlace?: (matPtr: number, pivPtr: number, scalePtr: number, n: number) => void;
+    luSolveFlatInPlace?: (
+      matPtr: number,
+      pivPtr: number,
+      scalePtr: number,
+      rhsPtr: number,
+      solPtr: number,
+      n: number,
+    ) => void;
+  } | null;
   if (
     w &&
     typeof w.luFactorFlatInPlace === "function" &&

@@ -1,0 +1,11 @@
+{
+  "id": "dynamo-03-bass-diffusion",
+  "lang": "dynamo",
+  "subFormats": ["dyn"],
+  "difficulty": 3,
+  "title": "Bass New-Product Diffusion Market Adoption",
+  "description": "Two-stock Bass market diffusion model coupling advertising-driven innovation with word-of-mouth social imitation across a fixed addressable market.",
+  "category": "Market Dynamics",
+  "tags": ["dynamo", "bass-diffusion", "adoption", "marketing"],
+  "activeFile": "bass_diffusion.dyn"
+}

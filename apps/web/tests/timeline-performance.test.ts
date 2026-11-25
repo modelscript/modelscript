@@ -107,14 +107,14 @@ describe("Timeline Performance, Artifact Lifecycle & Memory Efficiency", () => {
       );
     });
 
-    it("ensures ModelicaDiagramViewer guards against auto-mounting Morsel without user interaction", () => {
+    it("ensures ModelicaDiagramViewer guards against auto-mounting Ansatz without user interaction", () => {
       const src = fs.readFileSync(
         path.resolve(import.meta.dirname, "../src/components/artifacts/ModelicaDiagramViewer.tsx"),
         "utf-8",
       );
       assert.ok(
         src.includes("const [interactive, setInteractive] = useState(isFullScreen);"),
-        "ModelicaDiagramViewer must initialize interactive to isFullScreen to prevent auto-mounting Morsel IDE in feed",
+        "ModelicaDiagramViewer must initialize interactive to isFullScreen to prevent auto-mounting Ansatz Editor in feed",
       );
       assert.ok(
         src.includes("buildClientCodeFallbackSvg"),

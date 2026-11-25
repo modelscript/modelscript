@@ -1,0 +1,11 @@
+{
+  "id": "acsl-02-spring-mass-oscillator",
+  "lang": "acsl",
+  "subFormats": ["csl"],
+  "difficulty": 2,
+  "title": "Damped Spring-Mass Oscillator with Energy Procedural",
+  "description": "Second-order linear mechanical oscillator with viscous damping and an ACSL PROCEDURAL block computing kinetic, potential, and total mechanical energy.",
+  "category": "Mechanical Dynamics",
+  "tags": ["acsl", "oscillator", "procedural", "mechanics"],
+  "activeFile": "spring_mass.csl"
+}

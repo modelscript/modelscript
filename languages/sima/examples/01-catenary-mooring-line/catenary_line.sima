@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sima:Model name="SingleCatenaryMooring">
+  <environment waterDepth="150.0" density="1025.0" friction="0.5"/>
+  <wave hs="2.5" tp="8.0" gamma="3.3" direction="0.0"/>
+  <wind speed="8.0" direction="0.0"/>
+  <vessel id="buoy_1" name="CalmBuoy" mass="450000" displacement="460" gmt="2.8" gml="2.8" cgx="0" cgy="0" cgz="-2.5" rxx="6.5" ryy="6.5" rzz="5.0">
+    <fairlead id="fl_1" x="4.0" y="0.0" z="-4.0"/>
+  </vessel>
+  <mooringLine id="line_1" name="R4ChainLine" type="catenary" fairleadId="fl_1" anchorX="450.0" anchorY="0.0" anchorZ="-150.0">
+    <segment id="seg_chain" length="520.0" diameter="0.11" dryMass="245.0" subWeight="2100.0" ea="9.5e8" ei="1.0e4" mbl="1.25e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+</sima:Model>

@@ -1,0 +1,12 @@
+{
+  "id": "bngl-05-scaffold-mapk-signaling",
+  "lang": "bngl",
+  "subFormats": ["bngl"],
+  "difficulty": 5,
+  "title": "Multi-Site Scaffold MAPK Signaling with Dose-Response Data",
+  "description": "Rule-based scaffold-mediated MAPK signaling assembly (KSR scaffold binding Raf, MEK, and ERK) demonstrating prozone combinatorial inhibition paired with dose-response assay data.",
+  "category": "Cell Signaling",
+  "tags": ["bngl", "scaffold", "mapk", "combinatorial-complexity", "multi-file"],
+  "activeFile": "scaffold_mapk.bngl",
+  "fileOrder": ["scaffold_mapk.bngl", "dose_data.csv"]
+}

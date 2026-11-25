@@ -1,0 +1,11 @@
+{
+  "id": "iges-04-lofted-duct-nurbs-surface",
+  "lang": "iges",
+  "subFormats": ["iges-5.3", "nurbs-surface"],
+  "difficulty": 4,
+  "title": "Lofted Transition Duct NURBS Surface (Entity 128)",
+  "description": "Aerodynamic transition duct surface defined as a Rational B-Spline Surface (Entity Type 128) bounded by four 3D inlet, outlet, and side wireframe edges.",
+  "category": "Surface Modeling",
+  "tags": ["iges", "nurbs", "entity-128", "duct-surface"],
+  "activeFile": "duct_surface.igs"
+}

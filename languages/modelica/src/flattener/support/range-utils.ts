@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { Cst } from "../../../src-gen/bindings.js";
+import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
+import type { FlattenerCstNode } from "../types.js";
 
 export interface DiagnosticRange {
   startOffset: number;
@@ -9,17 +10,17 @@ export interface DiagnosticRange {
   endPosition?: { row: number; column: number } | undefined;
 }
 
-export function getComponentClause(node: any): any {
-  let curr = node;
+export function getComponentClause<T extends FlattenerCstNode>(node: T | null | undefined): T | null {
+  let curr: FlattenerCstNode | null | undefined = node;
   while (curr && curr.type !== "component_clause" && curr.parent) {
     curr = curr.parent;
   }
-  return curr && curr.type === "component_clause" ? curr : null;
+  return curr && curr.type === "component_clause" ? (curr as T) : null;
 }
 
-export function getElementDiagRange(target: any): DiagnosticRange | undefined {
+export function getElementDiagRange(target: FlattenerCstNode | null | undefined): DiagnosticRange | undefined {
   if (!target) return undefined;
-  let node = target;
+  let node: FlattenerCstNode = target;
   if (node.type === "component_declaration") {
     const clause = getComponentClause(node);
     if (clause) node = clause;
@@ -57,17 +58,18 @@ export function getElementDiagRange(target: any): DiagnosticRange | undefined {
   };
 }
 
-export function getClassDiagRange(target: any): DiagnosticRange | undefined {
+export function getClassDiagRange(target: FlattenerCstNode | null | undefined): DiagnosticRange | undefined {
   if (!target) return undefined;
   let startOffset = target.startIndex ?? target.startOffset ?? 0;
   let startPosition = target.startPosition;
-  const pfxNode =
-    Cst.ClassDefinition.classPrefixes(target) ?? target.children?.find((c: any) => c.type === "class_prefixes");
+  const pfxNode: FlattenerCstNode | null | undefined =
+    Cst.ClassDefinition.classPrefixes(target as SyntaxNode) ??
+    target.children?.find((c) => c.type === "class_prefixes");
   if (pfxNode?.children) {
     for (const child of pfxNode.children) {
       if (child.type !== "comment" && child.type !== "description") {
         startPosition = child.startPosition ?? startPosition;
-        startOffset = child.startIndex ?? (child as any).startOffset ?? startOffset;
+        startOffset = child.startIndex ?? child.startOffset ?? startOffset;
         break;
       }
     }

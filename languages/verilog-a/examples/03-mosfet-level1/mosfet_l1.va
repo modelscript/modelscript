@@ -1,0 +1,35 @@
+`include "disciplines.vams"
+
+module mosfet_l1(d, g, s, b);
+  inout d, g, s, b;
+  electrical d, g, s, b;
+
+  parameter real W = 10.0e-6 from (0:inf);
+  parameter real L = 1.0e-6 from (0:inf);
+  parameter real Vto = 0.7;
+  parameter real Kp = 120.0e-6 from (0:inf);
+  parameter real Lambda = 0.02 from [0:inf);
+  parameter real Cgs = 5.0e-15 from [0:inf);
+  parameter real Cgd = 2.0e-15 from [0:inf);
+
+  real Vgs, Vds, Vov, Ids, beta;
+
+  analog begin
+    Vgs = V(g, s);
+    Vds = V(d, s);
+    Vov = Vgs - Vto;
+    beta = Kp * (W / L);
+
+    if (Vov <= 0.0) begin
+      Ids = 0.0;
+    end else if (Vds < Vov) begin
+      Ids = beta * (Vov * Vds - 0.5 * Vds * Vds) * (1.0 + Lambda * Vds);
+    end else begin
+      Ids = 0.5 * beta * Vov * Vov * (1.0 + Lambda * Vds);
+    end
+
+    I(d, s) <+ Ids;
+    I(g, s) <+ ddt(Cgs * Vgs);
+    I(g, d) <+ ddt(Cgd * V(g, d));
+  end
+endmodule

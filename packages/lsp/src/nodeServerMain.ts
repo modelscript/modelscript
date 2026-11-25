@@ -10,7 +10,7 @@ import {
   injectPredefinedTypes,
 } from "@modelscript/modelica/factory";
 import { createOWL2QueryEngine, createOWL2WorkspaceIndex } from "@modelscript/owl2/factory";
-import { DAEBuilder, initBltWasm } from "@modelscript/runtime";
+import { DAEBuilder, initBltWasm, type WorkspaceCstTree, type WorkspaceParser } from "@modelscript/runtime";
 import * as sysml2DiagramOps from "@modelscript/sysml2/diagram";
 import {
   buildSysML2DiagramData,
@@ -23,6 +23,7 @@ import path from "node:path";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import {
   CodeActionKind,
+  type Connection,
   createConnection,
   InitializeParams,
   InitializeResult,
@@ -32,7 +33,12 @@ import {
   TextDocuments,
   TextDocumentSyncKind,
 } from "vscode-languageserver/node.js";
-import { getSharedLspPolyglotEngine, LspContext } from "./lsp-context.js";
+import {
+  getSharedLspPolyglotEngine,
+  LspContext,
+  type ModelScriptLspSettings,
+  type SharedCompilerContextLike,
+} from "./lsp-context.js";
 import { legend } from "./providers/semanticTokensProvider.js";
 import { registerBuiltinLanguagePlugins } from "./registry/builtin-plugins.js";
 import { globalLanguageRegistry } from "./registry/LanguageRegistry.js";
@@ -48,6 +54,18 @@ import { parseTreeWithXmlGuard } from "./utils/ast-utils.js";
 import { LspWorkDoneProgressReporter } from "./utils/progress-reporter.js";
 import { BrowserFileSystem } from "./vfs/browser-file-system.js";
 
+interface FlattenableClassInstanceLike {
+  id: number;
+  name?: string | undefined;
+  compositeName?: string | undefined;
+}
+
+interface UserLanguageCatalogEntry {
+  wasmPath?: string | undefined;
+  extensions?: string[] | undefined;
+  name?: string | undefined;
+}
+
 /**
  * Starts a headless Language Server Protocol server over Node.js standard I/O, IPC, or custom streams.
  *
@@ -59,9 +77,9 @@ import { BrowserFileSystem } from "./vfs/browser-file-system.js";
  * @param output - Optional writable stream for custom JSON-RPC transport.
  * @returns Server handle bundling the connection, document store, and core services.
  */
-export function startNodeServer(input?: any, output?: any) {
+export function startNodeServer(input?: NodeJS.ReadableStream, output?: NodeJS.WritableStream) {
   // Select transport mode based on explicit streams or CLI flags (--stdio, --node-ipc, --socket)
-  let connection: any;
+  let connection: Connection;
   if (input && output) {
     connection = createConnection(ProposedFeatures.all, input, output);
   } else if (process.argv.some((arg) => arg === "--stdio" || arg === "--node-ipc" || arg.startsWith("--socket="))) {
@@ -75,9 +93,11 @@ export function startNodeServer(input?: any, output?: any) {
   const documents = new TextDocuments(TextDocument);
 
   // Instantiate core LSP services
-  const documentManager = new DocumentManager(documents, () => parserService.getSharedCstTreeWrapper());
+  const documentManager: DocumentManager = new DocumentManager(documents, () =>
+    parserService.getSharedCstTreeWrapper(),
+  );
   const workspaceManager = new WorkspaceManager(documentManager);
-  const parserService = new ParserService(connection, documentManager, workspaceManager, documents);
+  const parserService: ParserService = new ParserService(connection, documentManager, workspaceManager, documents);
   const validationService = new ValidationService(connection, documentManager, workspaceManager, parserService);
   const hierarchyService = new HierarchyService(connection, documentManager, workspaceManager);
   const diagramService = new DiagramService(
@@ -100,7 +120,7 @@ export function startNodeServer(input?: any, output?: any) {
    * @param _context - Optional legacy context parameter (unused in arena-native mode).
    * @returns Populated `DAEBuilder` arena containing flattened variables and equations.
    */
-  function flattenArenaFromInstance(classInstance: any, _context?: any): DAEBuilder {
+  function flattenArenaFromInstance(classInstance: FlattenableClassInstanceLike, _context?: unknown): DAEBuilder {
     const className = classInstance.compositeName || classInstance.name;
     if (!className) throw new Error("Class instance has no name");
 
@@ -108,28 +128,31 @@ export function startNodeServer(input?: any, output?: any) {
     const flattener = new ArenaQueryFlattener(workspaceManager.globalModelicaQueryEngine.toQueryDB());
     const arena = flattener.flatten(classInstance.id);
     if (!arena) throw new Error(`Failed to flatten class '${className}'`);
-    return arena as any;
+    return arena as unknown as DAEBuilder;
   }
 
+  const globals = globalThis as unknown as Record<string, unknown>;
   globalThis.flattenArenaFromInstance = flattenArenaFromInstance;
   globalThis.clearIconCache = clearIconCache;
-  (globalThis as any).create_modelica_workspace_index = createModelicaWorkspaceIndex;
-  (globalThis as any).create_sysml2_workspace_index = createSysML2WorkspaceIndex;
-  (globalThis as any).create_owl2_workspace_index = createOWL2WorkspaceIndex;
-  (globalThis as any).create_modelica_query_engine = createModelicaQueryEngine;
-  (globalThis as any).create_sysml2_query_engine = createSysML2QueryEngine;
-  (globalThis as any).create_owl2_query_engine = createOWL2QueryEngine;
-  (globalThis as any).createModelicaWorkspaceIndex = createModelicaWorkspaceIndex;
-  (globalThis as any).createSysML2WorkspaceIndex = createSysML2WorkspaceIndex;
-  (globalThis as any).createOWL2WorkspaceIndex = createOWL2WorkspaceIndex;
-  (globalThis as any).createModelicaQueryEngine = createModelicaQueryEngine;
-  (globalThis as any).createSysML2QueryEngine = createSysML2QueryEngine;
-  (globalThis as any).createOWL2QueryEngine = createOWL2QueryEngine;
-  (globalThis as any).injectPredefinedTypes = injectPredefinedTypes;
-  (globalThis as any).AnnotationEvaluator = AnnotationEvaluator;
-  (globalThis as any).modelicaDiagramOps = modelicaDiagramOps;
-  (globalThis as any).sysml2DiagramOps = { ...sysml2DiagramOps, buildSysML2DiagramData };
-  (globalThis as any).deriveSimplification = deriveSimplification;
+  Object.assign(globals, {
+    create_modelica_workspace_index: createModelicaWorkspaceIndex,
+    create_sysml2_workspace_index: createSysML2WorkspaceIndex,
+    create_owl2_workspace_index: createOWL2WorkspaceIndex,
+    create_modelica_query_engine: createModelicaQueryEngine,
+    create_sysml2_query_engine: createSysML2QueryEngine,
+    create_owl2_query_engine: createOWL2QueryEngine,
+    createModelicaWorkspaceIndex,
+    createSysML2WorkspaceIndex,
+    createOWL2WorkspaceIndex,
+    createModelicaQueryEngine,
+    createSysML2QueryEngine,
+    createOWL2QueryEngine,
+    injectPredefinedTypes,
+    AnnotationEvaluator,
+    modelicaDiagramOps,
+    sysml2DiagramOps: { ...sysml2DiagramOps, buildSysML2DiagramData },
+    deriveSimplification,
+  });
 
   // Expose constants for extracted handlers
   /** Ordered list of Modelica restricted class keywords used to classify symbol declarations. */
@@ -182,7 +205,7 @@ export function startNodeServer(input?: any, output?: any) {
   globalThis.SYSML2_TREE_KINDS = SYSML2_TREE_KINDS;
 
   /** Global diagram payload cache keyed by URI and version hash. */
-  const diagramCache = new Map<string, { version: number | string; data: any }>();
+  const diagramCache = new Map<string, { version: number | string; data: unknown }>();
   globalThis.diagramCache = diagramCache;
 
   /**
@@ -197,7 +220,7 @@ export function startNodeServer(input?: any, output?: any) {
   }
   globalThis.simpleHash = simpleHash;
 
-  const cosimSimulators = new Map<string, any>();
+  const cosimSimulators = new Map<string, unknown>();
   const breakpointsMap = new Map<string, { line: number; column?: number | undefined }[]>();
   let debuggerResumeCallback: (() => void) | undefined;
   let currentDebugEnv: Map<string, number> | undefined;
@@ -217,7 +240,7 @@ export function startNodeServer(input?: any, output?: any) {
 
   globalThis.documents = documents;
   globalThis.connection = connection;
-  globalThis.validateTextDocument = async (doc: any) => {
+  globalThis.validateTextDocument = async (doc: TextDocument) => {
     await validationService.validateTextDocument(doc);
     const promise = validationService.activeValidationPromises.get(doc.uri);
     if (promise) await promise;
@@ -261,7 +284,9 @@ export function startNodeServer(input?: any, output?: any) {
       } catch {
         try {
           wasmPath = require.resolve(`${item.pkg}/dist/parser.wasm`);
-        } catch {}
+        } catch {
+          // Optional built-in language parser package not built or installed.
+        }
       }
       if (wasmPath) {
         createWasmParser(wasmPath)
@@ -271,12 +296,12 @@ export function startNodeServer(input?: any, output?: any) {
             const exts = plugin?.extensions ?? [`.${item.id}`];
             if (workspaceManager?.unifiedWorkspace && parser) {
               for (const ext of exts) {
-                workspaceManager.unifiedWorkspace.registerParser(ext, parser);
+                workspaceManager.unifiedWorkspace.registerParser(ext, parser as unknown as WorkspaceParser);
                 workspaceManager.unifiedWorkspace.registerLanguageExtension(ext, item.id);
               }
             }
             if (item.id === "modelica") {
-              (globalThis as any).modelicaParser = parser;
+              globals["modelicaParser"] = parser;
             }
             // Re-validate any open documents now that this parser is registered
             for (const doc of documents.all()) {
@@ -287,7 +312,9 @@ export function startNodeServer(input?: any, output?: any) {
             connection.console.warn(`[NodeServer] Could not load ${item.name} WASM parser: ${err.message}`);
           });
       }
-    } catch {}
+    } catch {
+      // Optional built-in parser package unavailable; continue loading remaining parsers.
+    }
   }
 
   /**
@@ -312,10 +339,12 @@ export function startNodeServer(input?: any, output?: any) {
     if (!fs.existsSync(regPath)) return;
 
     try {
-      const catalog = JSON.parse(fs.readFileSync(regPath, "utf-8"));
+      const catalog = JSON.parse(fs.readFileSync(regPath, "utf-8")) as {
+        languages?: Record<string, UserLanguageCatalogEntry> | undefined;
+      };
       const languages = catalog.languages || {};
 
-      for (const [rawId, entry] of Object.entries<any>(languages)) {
+      for (const [rawId, entry] of Object.entries(languages)) {
         const id = rawId.toLowerCase();
         if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) {
           connection.console.warn(`[NodeServer] Ignoring invalid custom language identifier: '${rawId}'`);
@@ -341,7 +370,7 @@ export function startNodeServer(input?: any, output?: any) {
             const exts = entry.extensions || [`.${id}`];
             if (workspaceManager?.unifiedWorkspace && parser) {
               for (const ext of exts) {
-                workspaceManager.unifiedWorkspace.registerParser(ext, parser);
+                workspaceManager.unifiedWorkspace.registerParser(ext, parser as unknown as WorkspaceParser);
                 workspaceManager.unifiedWorkspace.registerLanguageExtension(ext, id);
               }
             }
@@ -354,13 +383,15 @@ export function startNodeServer(input?: any, output?: any) {
               disposables: [],
             });
             connection.console.info(`[NodeServer] Loaded custom language '${id}' from ${wasmPath}`);
-          } catch (err: any) {
-            connection.console.warn(`[NodeServer] Failed to load custom language '${id}': ${err.message}`);
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            connection.console.warn(`[NodeServer] Failed to load custom language '${id}': ${msg}`);
           }
         }
       }
-    } catch (err: any) {
-      connection.console.warn(`[NodeServer] Failed to read user languages registry: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      connection.console.warn(`[NodeServer] Failed to read user languages registry: ${msg}`);
     }
   }
 
@@ -379,7 +410,9 @@ export function startNodeServer(input?: any, output?: any) {
           });
         }
       });
-    } catch {}
+    } catch {
+      // Optional directory watcher may fail on unsupported filesystems; continue without live reload.
+    }
   }
 
   // 1. Connection lifecycle handlers
@@ -391,7 +424,9 @@ export function startNodeServer(input?: any, output?: any) {
       } catch {
         try {
           wasmPath = require.resolve("@modelscript/runtime/build/release.wasm");
-        } catch {}
+        } catch {
+          // Fallback to default initBltWasm() loader path below.
+        }
       }
       if (wasmPath) {
         await initBltWasm(wasmPath);
@@ -399,8 +434,9 @@ export function startNodeServer(input?: any, output?: any) {
         await initBltWasm();
       }
       connection.console.info("[blt] BLT wasm initialized successfully");
-    } catch (bltErr: any) {
-      connection.console.warn(`[blt] initBltWasm warning/deferred: ${bltErr?.message || bltErr}`);
+    } catch (bltErr: unknown) {
+      const msg = bltErr instanceof Error ? bltErr.message : String(bltErr);
+      connection.console.warn(`[blt] initBltWasm warning/deferred: ${msg}`);
     }
 
     const capabilities: ServerCapabilities = {
@@ -467,8 +503,9 @@ export function startNodeServer(input?: any, output?: any) {
   documents.onDidOpen(async (e) => {
     try {
       await validationService.validateTextDocument(e.document);
-    } catch (err: any) {
-      connection.console.warn(`[onDidOpen] Validation error for ${e.document.uri}: ${err?.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      connection.console.warn(`[onDidOpen] Validation error for ${e.document.uri}: ${msg}`);
     }
   });
 
@@ -488,8 +525,9 @@ export function startNodeServer(input?: any, output?: any) {
         await validationService.runVerificationForUri(uri, progressReporter);
       }
       await validationService.runLiveDigitalThreadValidation(uri);
-    } catch (err: any) {
-      connection.console.warn(`[onDidSave] Verification error for ${e.document.uri}: ${err?.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      connection.console.warn(`[onDidSave] Verification error for ${e.document.uri}: ${msg}`);
     }
   });
 
@@ -597,7 +635,7 @@ export function startNodeServer(input?: any, output?: any) {
       try {
         const text = change.document.getText();
         const oldCached = documentManager.documentTrees.get(uri);
-        const tree: any = parseTreeWithXmlGuard({
+        const tree = parseTreeWithXmlGuard({
           uri,
           text,
           plugin,
@@ -610,13 +648,14 @@ export function startNodeServer(input?: any, output?: any) {
           if (oldCached?.tree && oldCached.tree !== tree) {
             oldCached.tree.delete?.();
           }
-          const classCache = oldCached && oldCached.text === text ? oldCached.classCache : new Map();
+          const classCache = oldCached && oldCached.text === text ? oldCached.classCache : new Map<string, unknown>();
           documentManager.documentTrees.set(uri, { text, tree, classCache });
-          workspaceManager.unifiedWorkspace.setDocumentTree(uri, tree);
+          const wsTree = tree as unknown as WorkspaceCstTree;
+          workspaceManager.unifiedWorkspace.setDocumentTree(uri, wsTree);
           const uDoc = workspaceManager.unifiedWorkspace.getDocument(uri);
           if (uDoc) {
             uDoc.text = text;
-            uDoc.tree = tree;
+            uDoc.tree = wsTree;
           }
           const { syntaxDiags, wasmLintDiags } = validationService.collectSyntaxErrors(
             tree.rootNode,
@@ -670,8 +709,9 @@ export function startNodeServer(input?: any, output?: any) {
             );
           }
         }
-      } catch (e: any) {
-        connection.console.warn(`[instant-parse] Error for ${uri}: ${e.message}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        connection.console.warn(`[instant-parse] Error for ${uri}: ${msg}`);
       }
     }
 
@@ -705,7 +745,9 @@ export function startNodeServer(input?: any, output?: any) {
         if (inflight) {
           try {
             await Promise.race([inflight, new Promise((r) => setTimeout(r, 1000))]);
-          } catch {}
+          } catch {
+            // Previous validation failure is already handled; proceed to re-validate current revision.
+          }
         }
         // Re-check staleness: if another edit arrived while we waited, bail out.
         if ((validationService.documentRevisions.get(uri) ?? 0) !== currentRevision) {
@@ -792,11 +834,13 @@ export function startNodeServer(input?: any, output?: any) {
     state: {
       activeValidationPromises: validationService.activeValidationPromises,
       get sharedContext() {
-        return parserService.sharedContext ?? (globalThis as any).sharedContext;
+        return (parserService.sharedContext ??
+          (globals["sharedContext"] as SharedCompilerContextLike | null | undefined) ??
+          null) as SharedCompilerContextLike | null;
       },
-      set sharedContext(v) {
+      set sharedContext(v: SharedCompilerContextLike | null) {
         parserService.sharedContext = v;
-        (globalThis as any).sharedContext = v;
+        globals["sharedContext"] = v;
       },
       fqnCache: new Map(),
       fqnCacheIndex: new Map(),
@@ -811,8 +855,12 @@ export function startNodeServer(input?: any, output?: any) {
   registerAllLspProviders(lspContext);
   registerAllLspEndpoints(lspContext);
 
-  connection.onDidChangeConfiguration((change: any) => {
-    const raw = change?.settings?.modelscript ?? change?.settings;
+  connection.onDidChangeConfiguration((change) => {
+    const settingsObj =
+      change?.settings && typeof change.settings === "object"
+        ? (change.settings as { modelscript?: ModelScriptLspSettings } & ModelScriptLspSettings)
+        : undefined;
+    const raw = settingsObj?.modelscript ?? settingsObj;
     if (raw && typeof raw === "object") {
       lspContext.settings = {
         ...lspContext.settings,

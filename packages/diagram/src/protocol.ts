@@ -750,27 +750,27 @@ export interface DiagramBackendHost {
   /** Read in-memory document text for a URI if currently open. */
   getDocumentText?: ((uri: string) => string | undefined) | undefined;
   /** Optional unified workspace symbol index for cross-file lookups. */
-  getUnifiedIndex?: (() => any) | undefined;
+  getUnifiedIndex?: (() => unknown) | undefined;
   /** Optional legacy dispatch bag (for backwards-compatible call sites). */
   generic?:
     | (Partial<DiagramBackend> & {
-        deps?: { getDocumentText?: (uri: string) => string | undefined; getUnifiedIndex?: () => any };
+        deps?: { getDocumentText?: (uri: string) => string | undefined; getUnifiedIndex?: () => unknown };
       })
     | undefined;
   modelica?:
     | (Partial<DiagramBackend> & {
-        deps?: { getDocumentText?: (uri: string) => string | undefined; getUnifiedIndex?: () => any };
+        deps?: { getDocumentText?: (uri: string) => string | undefined; getUnifiedIndex?: () => unknown };
       })
     | undefined;
   /** Optional cross-language drop helpers supplied by the polyglot LSP host. */
   crossLanguageDrop?:
     | {
-        createDropBatchState?: () => any;
-        mergeCoincidentInsertEdits?: (edits: DiagramTextEdit[]) => DiagramTextEdit[];
-        computeSpiceComponentDropEdits?: (...args: any[]) => DiagramTextEdit[];
-        computeSimulinkComponentDropEdits?: (...args: any[]) => DiagramTextEdit[];
-        computePscadComponentDropEdits?: (...args: any[]) => DiagramTextEdit[];
-        resolveCrossLanguageComponentDrop?: (...args: any[]) => any;
+        createDropBatchState?(): unknown;
+        mergeCoincidentInsertEdits?(edits: DiagramTextEdit[]): DiagramTextEdit[];
+        computeSpiceComponentDropEdits?(...args: unknown[]): DiagramTextEdit[];
+        computeSimulinkComponentDropEdits?(...args: unknown[]): DiagramTextEdit[];
+        computePscadComponentDropEdits?(...args: unknown[]): DiagramTextEdit[];
+        resolveCrossLanguageComponentDrop?(...args: unknown[]): unknown;
       }
     | undefined;
 }

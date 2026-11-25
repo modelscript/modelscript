@@ -37,7 +37,9 @@ export function registerCompletionProvider(
           try {
             const comps = plugin.facade.getCompletions(offset, text);
             if (comps && comps.length > 0) return comps;
-          } catch {}
+          } catch {
+            // Facade completion failed; fall back to Monarch keyword completions below.
+          }
         }
         if (plugin.monarch?.keywords) {
           return plugin.monarch.keywords.map((kw: string) => ({

@@ -1,0 +1,11 @@
+{
+  "id": "matpower-04-congested-corridor-opf",
+  "lang": "matpower",
+  "subFormats": ["m"],
+  "difficulty": 4,
+  "title": "Congested 6-Bus LMP Transmission Corridor OPF",
+  "description": "Six-bus 230 kV transmission corridor with binding thermal ratings demonstrating locational marginal price (LMP) separation between cheap hydro and peaking gas.",
+  "category": "Electricity Markets & LMP",
+  "tags": ["matpower", "congestion", "lmp", "opf"],
+  "activeFile": "case6_lmp.m"
+}

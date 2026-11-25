@@ -1,0 +1,11 @@
+{
+  "id": "nifti-04-fmri-bold-4d",
+  "lang": "nifti",
+  "subFormats": ["nii.json"],
+  "difficulty": 4,
+  "title": "4D fMRI BOLD Time-Series Acquisition Header",
+  "description": "Four-dimensional EPI resting-state fMRI BOLD acquisition header (64x64x36 spatial matrix, 240 timepoints, TR = 2.0 s) with matched right-handed RAS scanner coordinates.",
+  "category": "Medical Imaging & Volumetric Formats",
+  "tags": ["nifti", "fmri", "4d-timeseries", "bold-epi"],
+  "activeFile": "fmri_bold_4d.nii.json"
+}

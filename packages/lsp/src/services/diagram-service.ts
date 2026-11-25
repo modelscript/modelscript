@@ -310,23 +310,115 @@ export function enrichDiagramWithEmbeddedPortals(
   }
 }
 
+interface DiagramElementLayoutLike {
+  x: number;
+  y: number;
+  width?: number | undefined;
+  height?: number | undefined;
+}
+
+interface DiagramLayoutLike {
+  elements?: Record<string, DiagramElementLayoutLike> | undefined;
+  connections?: Record<string, { vertices?: unknown } | Array<{ x: number; y: number }>> | undefined;
+}
+
+interface DiagramNodeLike {
+  id: string;
+  x?: number | undefined;
+  y?: number | undefined;
+  width?: number | undefined;
+  height?: number | undefined;
+  autoLayout?: boolean | undefined;
+}
+
+interface DiagramEdgeLike {
+  id: string;
+  source?: { cell?: string | undefined } | undefined;
+  target?: { cell?: string | undefined } | undefined;
+  vertices?: unknown;
+}
+
+export interface DiagramDataLike {
+  nodes?: DiagramNodeLike[] | undefined;
+  edges?: DiagramEdgeLike[] | undefined;
+  cells?: unknown[] | undefined;
+  coordinateSystem?: unknown;
+  diagramBackground?: unknown;
+  isLoading?: boolean | undefined;
+}
+
+interface ModelicaDiagramOpsLike {
+  buildDiagramData?(classInstance: unknown, diagramType?: string): Promise<unknown> | unknown;
+}
+
+interface SysML2DiagramOpsLike {
+  parseLayout?(text: string): DiagramLayoutLike | null | undefined;
+  serializeLayout?(layout: unknown): string;
+  createEmptyLayout?(): DiagramLayoutLike;
+  layoutUriFromSysmlUri?(uri: string): string;
+  findElementLayout?(layout: unknown, name: string, symbolId?: string): DiagramElementLayoutLike | undefined;
+  buildSysML2DiagramData?(unified: unknown, uri: string, arg3?: unknown, diagramType?: string): unknown;
+  updateElementPositions?(...args: unknown[]): unknown;
+  updateConnectionVertices?(...args: unknown[]): unknown;
+  removeElements?(...args: unknown[]): unknown;
+  renameElement?(...args: unknown[]): unknown;
+  computeSysML2ConnectionInsert?(...args: unknown[]): unknown[];
+  computeSysML2ConnectionDelete?(...args: unknown[]): unknown[];
+  computeSysML2ElementInsert?(...args: unknown[]): unknown[];
+  computeSysML2ElementDelete?(...args: unknown[]): unknown[];
+  generateUniqueName?(...args: unknown[]): string;
+  computeSysML2NameEdit?(...args: unknown[]): unknown[];
+  computeSysML2DescriptionEdit?(...args: unknown[]): unknown[];
+  computeSysML2ParameterEdit?(...args: unknown[]): unknown[];
+}
+
+interface DiagramValidationServiceLike {
+  lastIndexedText?: Map<string, string>;
+  dependenciesReady?: boolean;
+  syncDocumentForDiagram?: (uri: string, explicitText?: string) => Promise<boolean>;
+  flushValidation?: (uri: string) => Promise<void>;
+}
+
+interface DiagramParserServiceLike {
+  ensureLanguageParserLoaded?: (langOrUri: string) => Promise<unknown>;
+  isParserReady?: (langId: string) => boolean;
+  getParser?: (langId: string) => unknown;
+}
+
+interface DiagramGlobalHooks {
+  modelicaDiagramOps?: ModelicaDiagramOpsLike;
+  sysml2DiagramOps?: SysML2DiagramOpsLike;
+  diagramCache?: Map<string, { version: string; data: DiagramDataLike | null }>;
+  clearDiagramCache?: () => void;
+  lastIndexedText?: Map<string, string>;
+  dependenciesReady?: boolean;
+  validateTextDocument?: (doc: unknown) => Promise<void>;
+  sysml2ParserReady?: boolean;
+  sysml2Parser?: unknown;
+  TableauReasoner?: new () => {
+    loadOntology: (axioms: unknown[]) => void;
+    classify: () => void;
+    getTaxonomy: () => Array<{ iri: string; directSuperClasses?: string[] }>;
+  };
+}
+
 export interface DiagramServiceOptions {
-  modelicaDiagramOps?: any;
-  sysml2DiagramOps?: any;
+  modelicaDiagramOps?: ModelicaDiagramOpsLike;
+  sysml2DiagramOps?: SysML2DiagramOpsLike;
 }
 
 /**
  * Retrieves the registered Modelica diagram operations module.
  */
-function getModelicaDiagramOps(service?: DiagramService): any {
-  return service?.modelicaDiagramOps ?? (globalThis as any).modelicaDiagramOps ?? {};
+function getModelicaDiagramOps(service?: DiagramService): ModelicaDiagramOpsLike {
+  return service?.modelicaDiagramOps ?? (globalThis as unknown as DiagramGlobalHooks).modelicaDiagramOps ?? {};
 }
 
 /**
  * Retrieves the registered SysML v2 diagram operations module.
  */
-function getSysML2DiagramOps(service?: DiagramService): any {
-  return service?.sysml2DiagramOps ?? (globalThis as any).sysml2DiagramOps ?? {};
+function getSysML2DiagramOps(service?: DiagramService): SysML2DiagramOpsLike {
+  return service?.sysml2DiagramOps ?? (globalThis as unknown as DiagramGlobalHooks).sysml2DiagramOps ?? {};
 }
 
 /**
@@ -349,28 +441,28 @@ function simpleHash(str: string): number {
  */
 export class DiagramService {
   /** In-memory cache of SysML v2 `.layout` sidecar data keyed by document URI. */
-  private sysml2Layouts = new Map<string, any>();
+  private sysml2Layouts = new Map<string, DiagramLayoutLike>();
   /** In-memory cache of OWL2 `.layout` sidecar data keyed by document URI. */
-  private owl2Layouts = new Map<string, any>();
+  private owl2Layouts = new Map<string, DiagramLayoutLike>();
   /** Lazily initialized multi-language diagram protocol dispatcher. */
-  private diagramDispatch: any;
+  private diagramDispatch: ReturnType<typeof createDiagramDispatch> | undefined;
   /** Versioned cache of computed diagram payloads keyed by URI, class name, and diagram type. */
-  private diagramCache = new Map<string, { version: string; data: any }>();
+  private diagramCache = new Map<string, { version: string; data: DiagramDataLike | null }>();
   /** Optional reference to the validation service for checking indexing and dependency readiness. */
-  public validationService?: any;
+  public validationService?: DiagramValidationServiceLike | undefined;
   /** Optional reference to the parser service for retrieving active WASM parsers. */
-  public parserService?: any;
+  public parserService?: DiagramParserServiceLike | undefined;
   /** Injected Modelica diagram operations module. */
-  public modelicaDiagramOps?: any;
+  public modelicaDiagramOps?: ModelicaDiagramOpsLike | undefined;
   /** Injected SysML v2 diagram operations module. */
-  public sysml2DiagramOps?: any;
+  public sysml2DiagramOps?: SysML2DiagramOpsLike | undefined;
 
   /**
    * Clears both the local and global diagram payload caches.
    */
   clearCache(): void {
     this.diagramCache.clear();
-    (globalThis as any).diagramCache?.clear();
+    (globalThis as unknown as DiagramGlobalHooks).diagramCache?.clear();
   }
 
   /**
@@ -387,15 +479,15 @@ export class DiagramService {
     private connection: Connection,
     private documentManager: DocumentManager,
     private workspaceManager: WorkspaceManager,
-    validationService?: any,
-    parserService?: any,
+    validationService?: DiagramValidationServiceLike,
+    parserService?: DiagramParserServiceLike,
     options?: DiagramServiceOptions,
   ) {
     this.validationService = validationService;
     this.parserService = parserService;
     this.modelicaDiagramOps = options?.modelicaDiagramOps;
     this.sysml2DiagramOps = options?.sysml2DiagramOps;
-    (globalThis as any).clearDiagramCache = () => this.clearCache();
+    (globalThis as unknown as DiagramGlobalHooks).clearDiagramCache = () => this.clearCache();
   }
 
   /**
@@ -411,7 +503,7 @@ export class DiagramService {
     diagramType?: string | undefined;
     sidecarContent?: string | undefined;
     documentText?: string | undefined;
-  }): Promise<any> {
+  }): Promise<DiagramDataLike | null> {
     // Do NOT flush validation here — it blocks the event loop and starves the
     // text editor of diagnostic updates. Instead, build the diagram from the
     // most recently indexed AST (at worst ~300ms stale).
@@ -452,8 +544,8 @@ export class DiagramService {
               ]
             : [{ id: rootName, label: rootName, uri: params.uri }];
           const pscadResult = {
-            nodes,
-            edges,
+            nodes: nodes as unknown as DiagramNodeLike[],
+            edges: edges as unknown as DiagramEdgeLike[],
             coordinateSystem: null,
             cells: rawDiagram.cells,
             breadcrumbs,
@@ -467,8 +559,9 @@ export class DiagramService {
           this.diagramCache.set(pscadCacheKey, { version: pscadVersion, data: pscadResult });
           return pscadResult;
         }
-      } catch (err: any) {
-        this.connection.console.error(`[diagram] Failed to build PSCAD diagram for ${params.uri}: ${err.message}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.connection.console.error(`[diagram] Failed to build PSCAD diagram for ${params.uri}: ${msg}`);
       }
       return null;
     }
@@ -478,9 +571,9 @@ export class DiagramService {
       if (params.sidecarContent) {
         try {
           const sysmlOps = getSysML2DiagramOps(this);
-          const parsed = sysmlOps.parseLayout
-            ? sysmlOps.parseLayout(params.sidecarContent)
-            : JSON.parse(params.sidecarContent);
+          const parsed = (
+            sysmlOps.parseLayout ? sysmlOps.parseLayout(params.sidecarContent) : JSON.parse(params.sidecarContent)
+          ) as DiagramLayoutLike | undefined;
           if (parsed) {
             this.sysml2Layouts.set(params.uri, parsed);
             this.owl2Layouts.set(params.uri, parsed);
@@ -489,8 +582,8 @@ export class DiagramService {
           // ignore parse errors
         }
       }
-      await this.parserService?.ensureLanguageParserLoaded(params.uri);
-      return this.getDiagramDispatch().getData(params);
+      await this.parserService?.ensureLanguageParserLoaded?.(params.uri);
+      return (await this.getDiagramDispatch().getData(params)) as DiagramDataLike | null;
     }
 
     // Modelica — check cache first.
@@ -504,8 +597,8 @@ export class DiagramService {
       const doc = this.documentManager.documents.get(params.uri) ?? this.documentManager.documents.get(effectiveUri);
       const textToCheck = params.documentText ?? doc?.getText();
       const lastIndexed =
-        this.validationService.lastIndexedText.get(params.uri) ??
-        this.validationService.lastIndexedText.get(effectiveUri);
+        this.validationService.lastIndexedText?.get(params.uri) ??
+        this.validationService.lastIndexedText?.get(effectiveUri);
       const isTextStale = textToCheck !== undefined && (lastIndexed === undefined || textToCheck !== lastIndexed);
       const hasInstances =
         (this.workspaceManager.documentInstances.get(params.uri)?.length ?? 0) > 0 ||
@@ -517,7 +610,7 @@ export class DiagramService {
           if (effectiveUri !== params.uri) {
             await this.validationService.syncDocumentForDiagram(effectiveUri, params.documentText);
           }
-        } else {
+        } else if (typeof this.validationService.flushValidation === "function") {
           await this.validationService.flushValidation(params.uri);
           if (effectiveUri !== params.uri) {
             await this.validationService.flushValidation(effectiveUri);
@@ -526,9 +619,9 @@ export class DiagramService {
       }
     }
 
-    const lastIndexedMap = this.validationService?.lastIndexedText ?? (globalThis as any).lastIndexedText;
-    const dependenciesReady =
-      this.validationService?.dependenciesReady ?? (globalThis as any).dependenciesReady ?? true;
+    const gHooks = globalThis as unknown as DiagramGlobalHooks;
+    const lastIndexedMap = this.validationService?.lastIndexedText ?? gHooks.lastIndexedText;
+    const dependenciesReady = this.validationService?.dependenciesReady ?? gHooks.dependenciesReady ?? true;
     const indexedText = params.documentText !== undefined ? params.documentText : lastIndexedMap?.get(effectiveUri);
     const version =
       indexedText != null
@@ -537,7 +630,7 @@ export class DiagramService {
           ? "deps-ready"
           : "deps-loading";
     const cacheKey = `${params.uri}|${params.className ?? ""}|${params.diagramType ?? "All"}`;
-    const cached = this.diagramCache.get(cacheKey) ?? (globalThis as any).diagramCache?.get(cacheKey);
+    const cached = this.diagramCache.get(cacheKey) ?? gHooks.diagramCache?.get(cacheKey);
     if (cached && cached.version === version) {
       const text = indexedText ?? "";
       let likelyHasComponents = false;
@@ -561,7 +654,7 @@ export class DiagramService {
         return cached.data;
       }
       this.diagramCache.delete(cacheKey);
-      (globalThis as any).diagramCache?.delete(cacheKey);
+      gHooks.diagramCache?.delete(cacheKey);
     }
 
     if (!dependenciesReady) {
@@ -599,13 +692,19 @@ export class DiagramService {
     try {
       const tBuild0 = performance.now();
       const ops = getModelicaDiagramOps(this);
-      const result = ops.buildDiagramData ? await ops.buildDiagramData(classInstance, params.diagramType) : null;
+      const result = (
+        ops.buildDiagramData ? await ops.buildDiagramData(classInstance, params.diagramType) : null
+      ) as DiagramDataLike | null;
       const tBuild = performance.now() - tBuild0;
       if (result) {
-        (result as any).isLoading = !dependenciesReady;
+        result.isLoading = !dependenciesReady;
         const sourceForPortals = indexedText ?? this.documentManager.documents.get(effectiveUri)?.getText();
         const cachedPortalTree = this.documentManager?.documentTrees?.get(effectiveUri)?.tree;
-        enrichDiagramWithEmbeddedPortals(result, sourceForPortals, cachedPortalTree);
+        enrichDiagramWithEmbeddedPortals(
+          result as unknown as Parameters<typeof enrichDiagramWithEmbeddedPortals>[0],
+          sourceForPortals,
+          cachedPortalTree,
+        );
       }
       this.connection.console.info(
         `[diagram-perf] ${classInstance.name}: resolve=${tResolve.toFixed(0)}ms build=${tBuild.toFixed(0)}ms nodes=${result?.nodes?.length ?? 0} edges=${result?.edges?.length ?? 0}`,
@@ -618,8 +717,10 @@ export class DiagramService {
       }
 
       return result;
-    } catch (e: any) {
-      this.connection.console.error(`[diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const stack = e instanceof Error ? (e.stack ?? "") : "";
+      this.connection.console.error(`[diagram] Error building diagram data: ${msg}\n${stack}`);
       return null;
     }
   }
@@ -628,7 +729,7 @@ export class DiagramService {
    * Returns (lazily initializing if necessary) the multi-language diagram protocol dispatcher
    * configured with Modelica, SysML v2, OWL2, and generic DSL diagram backends.
    */
-  getDiagramDispatch() {
+  getDiagramDispatch(): ReturnType<typeof createDiagramDispatch> {
     if (!this.diagramDispatch) {
       const modelicaBackend = new ModelicaDiagramBackend({
         getDocumentInstances: (uri) => {
@@ -639,10 +740,15 @@ export class DiagramService {
               insts = [resolved];
             }
           }
-          return insts;
+          return insts as unknown as ReturnType<
+            ConstructorParameters<typeof ModelicaDiagramBackend>[0]["getDocumentInstances"]
+          >;
         },
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
-        resolveClassInstance: (uri: string, name?: string) => this.workspaceManager.resolveClassInstance(uri, name),
+        resolveClassInstance: (uri: string, name?: string) =>
+          this.workspaceManager.resolveClassInstance(uri, name) as unknown as ReturnType<
+            ConstructorParameters<typeof ModelicaDiagramBackend>[0]["resolveClassInstance"]
+          >,
         getUnifiedIndex: () => {
           try {
             return this.workspaceManager.unifiedWorkspace?.getIndex?.({ eager: false }) ?? null;
@@ -679,7 +785,7 @@ export class DiagramService {
             await this.validationService.flushValidation(uri);
             return;
           }
-          const f = (globalThis as any).validateTextDocument;
+          const f = (globalThis as unknown as DiagramGlobalHooks).validateTextDocument;
           if (f) {
             const doc = this.documentManager.documents.get(uri);
             if (doc) await f(doc);
@@ -689,7 +795,13 @@ export class DiagramService {
 
       const sysmlOps = getSysML2DiagramOps(this);
       const sysml2Backend = new SysML2DiagramBackend({
-        resolveCrossLanguageDrop: resolveCrossLanguageComponentDrop,
+        resolveCrossLanguageDrop: (unifiedIndex, className, targetLang, docText) =>
+          resolveCrossLanguageComponentDrop(
+            unifiedIndex as Parameters<typeof resolveCrossLanguageComponentDrop>[0],
+            className,
+            targetLang,
+            docText,
+          ),
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         getLayout: (uri) => {
           let layout = this.sysml2Layouts.get(uri);
@@ -703,7 +815,7 @@ export class DiagramService {
               for (const layoutPath of candidates) {
                 if (fs.existsSync(layoutPath)) {
                   const content = fs.readFileSync(layoutPath, "utf-8");
-                  layout = sysmlOps.parseLayout ? sysmlOps.parseLayout(content) : undefined;
+                  layout = sysmlOps.parseLayout ? (sysmlOps.parseLayout(content) ?? undefined) : undefined;
                   if (layout) {
                     this.sysml2Layouts.set(uri, layout);
                     break;
@@ -714,10 +826,10 @@ export class DiagramService {
               // ignore
             }
           }
-          return layout;
+          return layout as ReturnType<NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["getLayout"]>>;
         },
         setLayout: (uri, layout) => {
-          this.sysml2Layouts.set(uri, layout);
+          this.sysml2Layouts.set(uri, layout as unknown as DiagramLayoutLike);
           if (typeof uri === "string" && uri.startsWith("file://") && layout) {
             try {
               const layoutPath = fileURLToPath(`${uri}.layout`);
@@ -730,14 +842,31 @@ export class DiagramService {
           }
         },
         createEmptyLayout: () =>
-          sysmlOps.createEmptyLayout ? sysmlOps.createEmptyLayout() : { elements: {}, connections: {} },
-        updateElementPositions: (...args: any[]) => sysmlOps.updateElementPositions?.(...args),
-        updateConnectionVertices: (...args: any[]) => sysmlOps.updateConnectionVertices?.(...args),
-        removeElements: (...args: any[]) => sysmlOps.removeElements?.(...args),
-        renameElement: (...args: any[]) => sysmlOps.renameElement?.(...args),
+          (sysmlOps.createEmptyLayout ? sysmlOps.createEmptyLayout() : { elements: {}, connections: {} }) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["createEmptyLayout"]>
+          >,
+        updateElementPositions: (...args: unknown[]) =>
+          sysmlOps.updateElementPositions?.(...args) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["updateElementPositions"]>
+          >,
+        updateConnectionVertices: (...args: unknown[]) =>
+          sysmlOps.updateConnectionVertices?.(...args) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["updateConnectionVertices"]>
+          >,
+        removeElements: (...args: unknown[]) =>
+          sysmlOps.removeElements?.(...args) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["removeElements"]>
+          >,
+        renameElement: (...args: unknown[]) =>
+          sysmlOps.renameElement?.(...args) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["renameElement"]>
+          >,
         serializeLayout: (layout) =>
           sysmlOps.serializeLayout ? sysmlOps.serializeLayout(layout) : JSON.stringify(layout, null, 2) + "\n",
-        parseLayout: (text) => (sysmlOps.parseLayout ? sysmlOps.parseLayout(text) : JSON.parse(text)),
+        parseLayout: (text) =>
+          (sysmlOps.parseLayout ? sysmlOps.parseLayout(text) : JSON.parse(text)) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["parseLayout"]>
+          >,
         getSidecarUri: (uri) =>
           sysmlOps.layoutUriFromSysmlUri ? sysmlOps.layoutUriFromSysmlUri(uri) : `${uri}.layout`,
         buildDiagramData: (params) => {
@@ -759,9 +888,11 @@ export class DiagramService {
             ] as const;
             const matchedType = validTypes.find((t) => t.toLowerCase() === diagramTypeRaw.toLowerCase());
             const diagramType = matchedType ?? "All";
-            const data = sysmlOps.buildSysML2DiagramData
-              ? sysmlOps.buildSysML2DiagramData(unified, params.uri, undefined, diagramType)
-              : null;
+            const data = (
+              sysmlOps.buildSysML2DiagramData
+                ? sysmlOps.buildSysML2DiagramData(unified, params.uri, undefined, diagramType)
+                : null
+            ) as DiagramDataLike | null;
 
             // Merge stored layout positions
             const layout = this.sysml2Layouts.get(params.uri);
@@ -779,8 +910,8 @@ export class DiagramService {
                       ? layout.elements[name]
                       : undefined;
                   if (el) {
-                    node.x = el.x;
-                    node.y = el.y;
+                    if (el.x !== undefined) node.x = el.x;
+                    if (el.y !== undefined) node.y = el.y;
                     if (el.width) node.width = el.width;
                     if (el.height) node.height = el.height;
                     node.autoLayout = false;
@@ -791,38 +922,68 @@ export class DiagramService {
                 for (const edge of data.edges) {
                   const conn =
                     layout.connections[edge.id] || layout.connections[`${edge.source?.cell}→${edge.target?.cell}`];
-                  if (conn?.vertices) {
+                  if (conn && !Array.isArray(conn) && conn.vertices) {
                     edge.vertices = conn.vertices;
                   }
                 }
               }
             }
-            return data;
-          } catch (e: any) {
-            this.connection.console.error(
-              `[sysml2-diagram] Error building diagram data: ${e?.message ?? e}\n${e?.stack ?? ""}`,
-            );
+            return data as ReturnType<
+              NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["buildDiagramData"]>
+            >;
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            const stack = e instanceof Error ? (e.stack ?? "") : "";
+            this.connection.console.error(`[sysml2-diagram] Error building diagram data: ${msg}\n${stack}`);
             return null;
           }
         },
         getSysML2Parser: () => {
-          if (this.parserService?.isParserReady("sysml2")) {
-            return this.parserService.getParser("sysml2");
+          if (this.parserService?.isParserReady?.("sysml2")) {
+            return this.parserService.getParser?.("sysml2") as ReturnType<
+              NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["getSysML2Parser"]>
+            >;
           }
           const p = globalLanguageRegistry.getPluginById("sysml2")?.parser;
-          if (p) return p;
-          return (globalThis as any).sysml2ParserReady && (globalThis as any).sysml2Parser
-            ? (globalThis as any).sysml2Parser
-            : null;
+          if (p) {
+            return p as ReturnType<
+              NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["getSysML2Parser"]>
+            >;
+          }
+          const gHooks = globalThis as unknown as DiagramGlobalHooks;
+          return (gHooks.sysml2ParserReady && gHooks.sysml2Parser ? gHooks.sysml2Parser : null) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["getSysML2Parser"]>
+          >;
         },
-        computeConnectionInsert: (...args: any[]) => sysmlOps.computeSysML2ConnectionInsert?.(...args) ?? [],
-        computeConnectionDelete: (...args: any[]) => sysmlOps.computeSysML2ConnectionDelete?.(...args) ?? [],
-        computeElementInsert: (...args: any[]) => sysmlOps.computeSysML2ElementInsert?.(...args) ?? [],
-        computeElementDelete: (...args: any[]) => sysmlOps.computeSysML2ElementDelete?.(...args) ?? [],
-        generateUniqueName: (...args: any[]) => sysmlOps.generateUniqueName?.(...args) ?? "element",
-        computeNameEdit: (...args: any[]) => sysmlOps.computeSysML2NameEdit?.(...args) ?? [],
-        computeDescriptionEdit: (...args: any[]) => sysmlOps.computeSysML2DescriptionEdit?.(...args) ?? [],
-        computeParameterEdit: (...args: any[]) => sysmlOps.computeSysML2ParameterEdit?.(...args) ?? [],
+        computeConnectionInsert: (...args: unknown[]) =>
+          (sysmlOps.computeSysML2ConnectionInsert?.(...args) ?? []) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["computeConnectionInsert"]>
+          >,
+        computeConnectionDelete: (...args: unknown[]) =>
+          (sysmlOps.computeSysML2ConnectionDelete?.(...args) ?? []) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["computeConnectionDelete"]>
+          >,
+        computeElementInsert: (...args: unknown[]) =>
+          (sysmlOps.computeSysML2ElementInsert?.(...args) ?? []) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["computeElementInsert"]>
+          >,
+        computeElementDelete: (...args: unknown[]) =>
+          (sysmlOps.computeSysML2ElementDelete?.(...args) ?? []) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["computeElementDelete"]>
+          >,
+        generateUniqueName: (...args: unknown[]) => sysmlOps.generateUniqueName?.(...args) ?? "element",
+        computeNameEdit: (...args: unknown[]) =>
+          (sysmlOps.computeSysML2NameEdit?.(...args) ?? []) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["computeNameEdit"]>
+          >,
+        computeDescriptionEdit: (...args: unknown[]) =>
+          (sysmlOps.computeSysML2DescriptionEdit?.(...args) ?? []) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["computeDescriptionEdit"]>
+          >,
+        computeParameterEdit: (...args: unknown[]) =>
+          (sysmlOps.computeSysML2ParameterEdit?.(...args) ?? []) as ReturnType<
+            NonNullable<ConstructorParameters<typeof SysML2DiagramBackend>[0]["computeParameterEdit"]>
+          >,
         getSymbolData: (uri, componentName) => {
           try {
             const unified = this.workspaceManager.unifiedWorkspace.getIndex();
@@ -840,11 +1001,12 @@ export class DiagramService {
                 for (const childId of childIds) {
                   const child = unified.symbols.get(childId);
                   if (child && child.name) {
+                    const meta = child.metadata as Record<string, unknown> | undefined;
                     children.push({
                       name: child.name,
                       ruleName: child.ruleName,
-                      value: (child.metadata as any)?.defaultValue ?? undefined,
-                      description: (child.metadata as any)?.description ?? undefined,
+                      value: typeof meta?.["defaultValue"] === "string" ? meta["defaultValue"] : undefined,
+                      description: typeof meta?.["description"] === "string" ? meta["description"] : undefined,
                     });
                   }
                 }
@@ -906,6 +1068,11 @@ export class DiagramService {
         },
       });
 
+      const wsExt = this.workspaceManager as unknown as {
+        scopeResolver?: unknown;
+        getLanguageForUri?: (uri: string) => { diagram?: unknown } | undefined;
+      };
+
       const genericBackend = new GenericDSLDiagramBackend({
         getDocumentText: (uri) => this.documentManager.documents.get(uri)?.getText(),
         getSymbolIndex: () => {
@@ -917,18 +1084,29 @@ export class DiagramService {
         },
         getScopeResolver: () => {
           try {
-            return (this.workspaceManager as any).scopeResolver;
+            return wsExt.scopeResolver as ReturnType<
+              NonNullable<ConstructorParameters<typeof GenericDSLDiagramBackend>[0]["getScopeResolver"]>
+            >;
           } catch {
             return undefined;
           }
         },
-        getParser: (langId) => this.parserService?.getParser(langId),
+        getParser: (langId) =>
+          this.parserService?.getParser?.(langId) as ReturnType<
+            NonNullable<ConstructorParameters<typeof GenericDSLDiagramBackend>[0]["getParser"]>
+          >,
         getDiagramConfig: (uri) => {
           try {
             const plugin = globalLanguageRegistry.getPluginForUri(uri);
-            if (plugin?.languageDef?.diagram) return plugin.languageDef.diagram;
-            const lang = (this.workspaceManager as any).getLanguageForUri?.(uri);
-            return lang?.diagram;
+            if (plugin?.languageDef?.diagram) {
+              return plugin.languageDef.diagram as ReturnType<
+                NonNullable<ConstructorParameters<typeof GenericDSLDiagramBackend>[0]["getDiagramConfig"]>
+              >;
+            }
+            const lang = wsExt.getLanguageForUri?.(uri);
+            return lang?.diagram as ReturnType<
+              NonNullable<ConstructorParameters<typeof GenericDSLDiagramBackend>[0]["getDiagramConfig"]>
+            >;
           } catch {
             return undefined;
           }
@@ -949,7 +1127,7 @@ export class DiagramService {
         getInferredSubClassOf: (_uri, axioms) => {
           if (!axioms || axioms.length === 0) return [];
           try {
-            const ReasonerCtor = (globalThis as any).TableauReasoner;
+            const ReasonerCtor = (globalThis as unknown as DiagramGlobalHooks).TableauReasoner;
             if (typeof ReasonerCtor !== "function") return [];
             const reasoner = new ReasonerCtor();
             reasoner.loadOntology(axioms);
@@ -1012,9 +1190,10 @@ export class DiagramService {
           return updated;
         },
         updateConnectionVertices: (layout, updates) => {
-          const updated = { ...layout, connections: { ...(layout?.connections ?? {}) } };
+          const prevConns = (layout as DiagramLayoutLike | undefined)?.connections ?? {};
+          const updated: DiagramLayoutLike = { ...layout, connections: { ...prevConns } };
           for (const u of updates) {
-            updated.connections[u.id] = u.vertices;
+            updated.connections![u.id] = u.vertices;
           }
           return updated;
         },

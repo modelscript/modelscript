@@ -301,11 +301,11 @@ test("PHREEQC UnifiedWorkspace & LSP: indexes symbols, hover, diagnostics, and a
   assert.equal(daeInfo.variableCount, daeInfo.equationCount);
 });
 
-test("PHREEQC WASM GLR Parser & LSP: parses Morsel defaultCode without error and reports syntax errors", async () => {
+test("PHREEQC WASM GLR Parser & LSP: parses Ansatz defaultCode without error and reports syntax errors", async () => {
   const { getPhreeqcWasmParser } = await import("../src/parser/wasm-loader.js");
   const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
 
-  const morselDefaultCode = `TITLE Calcite Dissolution & Acid Mine Drainage Neutralization
+  const ansatzDefaultCode = `TITLE Calcite Dissolution & Acid Mine Drainage Neutralization
 SOLUTION 1 Acidic Drainage Feed
   temp      25.0
   pH        3.8
@@ -318,11 +318,11 @@ EQUILIBRIUM_PHASES 1
 END
 `;
 
-  const tree = getPhreeqcWasmParser().parse(morselDefaultCode);
+  const tree = getPhreeqcWasmParser().parse(ansatzDefaultCode);
   assert.ok(tree?.rootNode);
   assert.equal(tree.rootNode.hasError, false);
   assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
-  assert.equal(validatePhreeqc(morselDefaultCode).filter((d) => d.code === "M9550").length, 0);
+  assert.equal(validatePhreeqc(ansatzDefaultCode).filter((d) => d.code === "M9550").length, 0);
 
   const brokenDeck = `SOLUTION 1
   S(6      12.0

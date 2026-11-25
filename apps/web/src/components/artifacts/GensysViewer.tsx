@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { renderKinematicDiagramSvg, type KinematicBodyLike, type KinematicJointLike } from "@modelscript/diagram";
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { CheckCircleIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
@@ -189,7 +189,7 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
 
   useEffect(() => {
     if (!isLoading && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [isLoading]);
 
@@ -289,10 +289,10 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
     return { nodes3D: nodes, links3D: links };
   }, [bodies, couplings]);
 
-  const handleOpenPlayground = () => {
-    const hash = compressMorselPayload({
+  const handleOpenAnsatzEditor = () => {
+    const hash = compressAnsatzPayload({
       v: 1,
-      lang: "gensys" as any,
+      lang: "gensys",
       code: rawDeck || `## ${modelName}\n`,
       title: modelName,
     });
@@ -336,7 +336,7 @@ const GensysViewer: React.FC<GensysViewerProps> = ({ viewConfig, isFullScreen = 
               size="small"
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
-              onClick={handleOpenPlayground}
+              onClick={handleOpenAnsatzEditor}
               title="Open in Ansatz"
             >
               Open in Ansatz

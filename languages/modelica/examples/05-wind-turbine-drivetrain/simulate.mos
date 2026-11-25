@@ -1,0 +1,4 @@
+// Simulation script for 5 MW Wind Turbine Drivetrain Package
+loadFile("package.mo");
+simulate(WindDrivetrain.WindTurbine, startTime=0.0, stopTime=30.0, numberOfIntervals=600, tolerance=1e-6);
+plot({omega_rotor, generator.omega_gen, generator.P_elec});

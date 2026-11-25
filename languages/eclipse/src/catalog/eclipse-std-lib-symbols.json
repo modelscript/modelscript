@@ -1,0 +1,1291 @@
+[
+  {
+    "name": "pvto",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:pvto",
+    "exports": [
+      "api",
+      "gammaG",
+      "pb",
+      "co",
+      "muDead"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Live Oil PVT (PVTO / Standing)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Black-oil live oil PVT correlation computing dissolved gas-oil ratio Rs(P), oil FVF Bo(P), and live-oil viscosity mu_o(P) for saturated and undersaturated regimes.",
+      "provenance": "Standing (1947) Drilling & Production Practice, API; Beggs & Robinson (1975) JPT; OPM Flow Reference Manual (PVTO)",
+      "aliases": [
+        "PVTO",
+        "PVTO_LIVE_OIL",
+        "STANDING_PVTO"
+      ],
+      "parameters": [
+        {
+          "key": "api",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "degAPI",
+          "description": "Stock-tank oil API gravity"
+        },
+        {
+          "key": "gammaG",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "1",
+          "description": "Solution gas specific gravity (air = 1)"
+        },
+        {
+          "key": "pb",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "psia",
+          "description": "Bubble-point pressure"
+        },
+        {
+          "key": "co",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "1/psi",
+          "description": "Undersaturated isothermal oil compressibility"
+        },
+        {
+          "key": "muDead",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "cP",
+          "description": "Reference dead-oil viscosity at reservoir temperature"
+        }
+      ],
+      "wasmKernel": "pvto",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "pvdo",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:pvdo",
+    "exports": [
+      "pRef",
+      "boRef",
+      "co",
+      "muRef",
+      "cmu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dead Oil PVT (PVDO)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Dead-oil (zero dissolved gas) formation volume factor Bo(P) and Barus pressure-dependent viscosity mu_o(P).",
+      "provenance": "OPM Flow Reference Manual (PVDO); Aziz & Settari (1979) Petroleum Reservoir Simulation",
+      "aliases": [
+        "PVDO",
+        "PVDO_DEAD_OIL"
+      ],
+      "parameters": [
+        {
+          "key": "pRef",
+          "type": "real",
+          "defaultValue": 14.7,
+          "unit": "psia",
+          "description": "Reference pressure"
+        },
+        {
+          "key": "boRef",
+          "type": "real",
+          "defaultValue": 1.05,
+          "unit": "rb/stb",
+          "description": "Reference oil formation volume factor"
+        },
+        {
+          "key": "co",
+          "type": "real",
+          "defaultValue": 0.000012,
+          "unit": "1/psi",
+          "description": "Isothermal oil compressibility"
+        },
+        {
+          "key": "muRef",
+          "type": "real",
+          "defaultValue": 1.8,
+          "unit": "cP",
+          "description": "Reference oil viscosity"
+        },
+        {
+          "key": "cmu",
+          "type": "real",
+          "defaultValue": 0.00001,
+          "unit": "1/psi",
+          "description": "Oil viscosibility coefficient"
+        }
+      ],
+      "wasmKernel": "pvdo",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "pvtg",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:pvtg",
+    "exports": [
+      "gammaG",
+      "pDew",
+      "rvMax",
+      "tRes"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wet Gas PVT (PVTG)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Wet gas with vaporized oil-gas ratio Rv(P), real-gas Z-factor, formation volume factor Bg(P), and Lee-Gonzalez-Eakin viscosity.",
+      "provenance": "OPM Flow Reference Manual (PVTG); Lee, Gonzalez & Eakin (1966) JPT; Standing & Katz (1942)",
+      "aliases": [
+        "PVTG",
+        "PVTG_WET_GAS"
+      ],
+      "parameters": [
+        {
+          "key": "gammaG",
+          "type": "real",
+          "defaultValue": 0.72,
+          "unit": "1",
+          "description": "Gas specific gravity (air = 1)"
+        },
+        {
+          "key": "pDew",
+          "type": "real",
+          "defaultValue": 3200,
+          "unit": "psia",
+          "description": "Dew-point pressure"
+        },
+        {
+          "key": "rvMax",
+          "type": "real",
+          "defaultValue": 0.00005,
+          "unit": "stb/scf",
+          "description": "Maximum vaporized oil-gas ratio at dew point"
+        },
+        {
+          "key": "tRes",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "degF",
+          "description": "Reference reservoir temperature"
+        }
+      ],
+      "wasmKernel": "pvtg",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "pvdg",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:pvdg",
+    "exports": [
+      "gammaG",
+      "pPc",
+      "tPc",
+      "muRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dry Gas PVT (PVDG)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Dry gas real-gas compressibility Z(P,T) via Papay correlation, formation volume factor Bg(P), and gas viscosity.",
+      "provenance": "Papay (1968); Standing & Katz (1942) Trans. AIME; OPM Flow Reference Manual (PVDG)",
+      "aliases": [
+        "PVDG",
+        "PVDG_DRY_GAS"
+      ],
+      "parameters": [
+        {
+          "key": "gammaG",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "1",
+          "description": "Dry gas specific gravity (air = 1)"
+        },
+        {
+          "key": "pPc",
+          "type": "real",
+          "defaultValue": 670,
+          "unit": "psia",
+          "description": "Pseudo-critical pressure"
+        },
+        {
+          "key": "tPc",
+          "type": "real",
+          "defaultValue": 375,
+          "unit": "degR",
+          "description": "Pseudo-critical temperature"
+        },
+        {
+          "key": "muRef",
+          "type": "real",
+          "defaultValue": 0.018,
+          "unit": "cP",
+          "description": "Reference gas viscosity at low pressure"
+        }
+      ],
+      "wasmKernel": "pvdg",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "pvtw",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:pvtw",
+    "exports": [
+      "pRef",
+      "bwRef",
+      "cw",
+      "muwRef",
+      "cmu"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Water PVT (PVTW)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Exponential formation volume factor Bw(P) and viscosibility mu_w(P) for reservoir brine.",
+      "provenance": "OPM Flow Reference Manual (PVTW); McCain (1990) Properties of Petroleum Fluids",
+      "aliases": [
+        "PVTW",
+        "PVTW_WATER"
+      ],
+      "parameters": [
+        {
+          "key": "pRef",
+          "type": "real",
+          "defaultValue": 3000,
+          "unit": "psia",
+          "description": "Reference pressure"
+        },
+        {
+          "key": "bwRef",
+          "type": "real",
+          "defaultValue": 1.02,
+          "unit": "rb/stb",
+          "description": "Water formation volume factor at reference pressure"
+        },
+        {
+          "key": "cw",
+          "type": "real",
+          "defaultValue": 0.000003,
+          "unit": "1/psi",
+          "description": "Water compressibility"
+        },
+        {
+          "key": "muwRef",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "cP",
+          "description": "Water viscosity at reference pressure"
+        },
+        {
+          "key": "cmu",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1/psi",
+          "description": "Water viscosibility"
+        }
+      ],
+      "wasmKernel": "pvtw",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "eos_pr",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:eos_pr",
+    "exports": [
+      "pc",
+      "tc",
+      "omega",
+      "mw"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Peng-Robinson Cubic EOS (PR)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Peng-Robinson (1976) compositional cubic equation of state solving for compressibility factor Z and molar volume.",
+      "provenance": "Peng & Robinson (1976) Ind. Eng. Chem. Fundam. 15(1):59-64; OPM Flow Compositional Manual",
+      "aliases": [
+        "EOS_PR_COMP",
+        "PR",
+        "PENG_ROBINSON"
+      ],
+      "parameters": [
+        {
+          "key": "pc",
+          "type": "real",
+          "defaultValue": 667.8,
+          "unit": "psia",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "tc",
+          "type": "real",
+          "defaultValue": 343,
+          "unit": "degR",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.0115,
+          "unit": "1",
+          "description": "Acentric factor"
+        },
+        {
+          "key": "mw",
+          "type": "real",
+          "defaultValue": 16.04,
+          "unit": "lb/lbmol",
+          "description": "Molecular weight"
+        }
+      ],
+      "wasmKernel": "eos_pr",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "eos_srk",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:eos_srk",
+    "exports": [
+      "pc",
+      "tc",
+      "omega",
+      "mw"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Soave-Redlich-Kwong EOS (SRK)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Soave-Redlich-Kwong (1972) cubic equation of state solving for vapor/liquid Z-factor and fugacity departure.",
+      "provenance": "Soave (1972) Chem. Eng. Sci. 27(6):1197-1203; OPM Flow Compositional Manual",
+      "aliases": [
+        "EOS_SRK_COMP",
+        "SRK",
+        "SOAVE_REDLICH_KWONG"
+      ],
+      "parameters": [
+        {
+          "key": "pc",
+          "type": "real",
+          "defaultValue": 667.8,
+          "unit": "psia",
+          "description": "Critical pressure"
+        },
+        {
+          "key": "tc",
+          "type": "real",
+          "defaultValue": 343,
+          "unit": "degR",
+          "description": "Critical temperature"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.0115,
+          "unit": "1",
+          "description": "Acentric factor"
+        },
+        {
+          "key": "mw",
+          "type": "real",
+          "defaultValue": 16.04,
+          "unit": "lb/lbmol",
+          "description": "Molecular weight"
+        }
+      ],
+      "wasmKernel": "eos_srk",
+      "archetypeId": 16
+    }
+  },
+  {
+    "name": "rock",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:rock",
+    "exports": [
+      "pRef",
+      "cr",
+      "poroRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rock Pore Compressibility (ROCK)",
+      "category": "PVT & EOS",
+      "domain": "subsurface",
+      "description": "Exponential pore-volume multiplier phi(P)/phi_ref = exp(c_r * (P - P_ref)) for geomechanical compaction.",
+      "provenance": "OPM Flow Reference Manual (ROCK); Hall (1953) Trans. AIME",
+      "aliases": [
+        "ROCK",
+        "ROCK_COMPRESS"
+      ],
+      "parameters": [
+        {
+          "key": "pRef",
+          "type": "real",
+          "defaultValue": 3000,
+          "unit": "psia",
+          "description": "Reference rock pressure"
+        },
+        {
+          "key": "cr",
+          "type": "real",
+          "defaultValue": 0.000004,
+          "unit": "1/psi",
+          "description": "Rock pore-volume compressibility"
+        },
+        {
+          "key": "poroRef",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Reference porosity"
+        }
+      ],
+      "wasmKernel": "rock",
+      "archetypeId": 17
+    }
+  },
+  {
+    "name": "swof",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:swof",
+    "exports": [
+      "swc",
+      "sor",
+      "krwMax",
+      "kroMax",
+      "nw",
+      "no",
+      "pcMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Oil-Water Corey SCAL (SWOF)",
+      "category": "Relative Permeability & SCAL",
+      "domain": "subsurface",
+      "description": "Corey (1954) power-law oil-water relative permeability krw(Sw), krow(Sw) and imbibition/drainage capillary pressure Pcow(Sw).",
+      "provenance": "Corey (1954) Producers Monthly 19(1):38-41; OPM Flow Reference Manual (SWOF)",
+      "aliases": [
+        "SWOF",
+        "SWOF_COREY",
+        "COREY_OW"
+      ],
+      "parameters": [
+        {
+          "key": "swc",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Connate water saturation"
+        },
+        {
+          "key": "sor",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Residual oil saturation to water"
+        },
+        {
+          "key": "krwMax",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Endpoint water relative permeability"
+        },
+        {
+          "key": "kroMax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Endpoint oil relative permeability"
+        },
+        {
+          "key": "nw",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Water Corey exponent"
+        },
+        {
+          "key": "no",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Oil Corey exponent"
+        },
+        {
+          "key": "pcMax",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "psi",
+          "description": "Maximum oil-water capillary pressure at Swc"
+        }
+      ],
+      "wasmKernel": "swof",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "sgof",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:sgof",
+    "exports": [
+      "sgc",
+      "sorg",
+      "swc",
+      "krgMax",
+      "kroMax",
+      "ng",
+      "nog",
+      "pcMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gas-Oil Corey SCAL (SGOF)",
+      "category": "Relative Permeability & SCAL",
+      "domain": "subsurface",
+      "description": "Corey (1954) power-law gas-oil relative permeability krg(Sg), krog(Sg) and gas-oil capillary pressure Pcog(Sg).",
+      "provenance": "Corey (1954) Producers Monthly 19(1):38-41; OPM Flow Reference Manual (SGOF)",
+      "aliases": [
+        "SGOF",
+        "SGOF_COREY",
+        "COREY_GO"
+      ],
+      "parameters": [
+        {
+          "key": "sgc",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "Critical gas saturation"
+        },
+        {
+          "key": "sorg",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "Residual oil saturation to gas"
+        },
+        {
+          "key": "swc",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Connate water saturation"
+        },
+        {
+          "key": "krgMax",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "1",
+          "description": "Endpoint gas relative permeability"
+        },
+        {
+          "key": "kroMax",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Endpoint oil relative permeability"
+        },
+        {
+          "key": "ng",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Gas Corey exponent"
+        },
+        {
+          "key": "nog",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "1",
+          "description": "Oil-in-gas Corey exponent"
+        },
+        {
+          "key": "pcMax",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "psi",
+          "description": "Maximum gas-oil capillary pressure"
+        }
+      ],
+      "wasmKernel": "sgof",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "stone1",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:stone1",
+    "exports": [
+      "swc",
+      "sorw",
+      "sgc",
+      "sorg",
+      "krocw",
+      "now",
+      "nog"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Stone I 3-Phase RelPerm (STONE1)",
+      "category": "Relative Permeability & SCAL",
+      "domain": "subsurface",
+      "description": "Stone I (1970) probability-based three-phase oil relative permeability combining two-phase SWOF and SGOF curves.",
+      "provenance": "Stone (1970) JPT 22(2):214-218; Aziz & Settari (1979); OPM Flow Reference Manual (STONE1)",
+      "aliases": [
+        "STONE1",
+        "STONE1_3PHASE"
+      ],
+      "parameters": [
+        {
+          "key": "swc",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Connate water saturation"
+        },
+        {
+          "key": "sorw",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Residual oil saturation to water"
+        },
+        {
+          "key": "sgc",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "Critical gas saturation"
+        },
+        {
+          "key": "sorg",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "Residual oil saturation to gas"
+        },
+        {
+          "key": "krocw",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Oil relperm at connate water"
+        },
+        {
+          "key": "now",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Oil-water Corey exponent"
+        },
+        {
+          "key": "nog",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Oil-gas Corey exponent"
+        }
+      ],
+      "wasmKernel": "stone1",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "stone2",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:stone2",
+    "exports": [
+      "swc",
+      "sor",
+      "sgc",
+      "krwMax",
+      "krgMax",
+      "krocw",
+      "nw",
+      "ng",
+      "now",
+      "nog"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Stone II 3-Phase RelPerm (STONE2)",
+      "category": "Relative Permeability & SCAL",
+      "domain": "subsurface",
+      "description": "Stone II (1973) three-phase oil relative permeability kro = krocw * [(krow/krocw + krw)*(krog/krocw + krg) - (krw + krg)].",
+      "provenance": "Stone (1973) J. Can. Pet. Tech. 12(4):53-61; OPM Flow Reference Manual (STONE2)",
+      "aliases": [
+        "STONE2",
+        "STONE2_3PHASE"
+      ],
+      "parameters": [
+        {
+          "key": "swc",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Connate water saturation"
+        },
+        {
+          "key": "sor",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Residual oil saturation"
+        },
+        {
+          "key": "sgc",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1",
+          "description": "Critical gas saturation"
+        },
+        {
+          "key": "krwMax",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Endpoint water relperm"
+        },
+        {
+          "key": "krgMax",
+          "type": "real",
+          "defaultValue": 0.9,
+          "unit": "1",
+          "description": "Endpoint gas relperm"
+        },
+        {
+          "key": "krocw",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Oil relperm at connate water"
+        },
+        {
+          "key": "nw",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Water Corey exponent"
+        },
+        {
+          "key": "ng",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Gas Corey exponent"
+        },
+        {
+          "key": "now",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Oil-water Corey exponent"
+        },
+        {
+          "key": "nog",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Oil-gas Corey exponent"
+        }
+      ],
+      "wasmKernel": "stone2",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "pc_jfunc",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:pc_jfunc",
+    "exports": [
+      "sigma",
+      "cosTheta",
+      "poro",
+      "perm",
+      "swc",
+      "jScale",
+      "jExp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Leverett J-Function (JFUNC)",
+      "category": "Relative Permeability & SCAL",
+      "domain": "subsurface",
+      "description": "Leverett (1941) dimensionless J-function capillary pressure scaling Pc = sigma * cos(theta) * sqrt(phi/k) * J(Sw).",
+      "provenance": "Leverett (1941) Trans. AIME 142:152-169; OPM Flow Reference Manual (JFUNC)",
+      "aliases": [
+        "JFUNC",
+        "PC_LEVERETT_J",
+        "LEVERETT_J"
+      ],
+      "parameters": [
+        {
+          "key": "sigma",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "dyn/cm",
+          "description": "Interfacial tension"
+        },
+        {
+          "key": "cosTheta",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Cosine of wetting contact angle"
+        },
+        {
+          "key": "poro",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Rock porosity"
+        },
+        {
+          "key": "perm",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "mD",
+          "description": "Absolute rock permeability"
+        },
+        {
+          "key": "swc",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Connate water saturation"
+        },
+        {
+          "key": "jScale",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Dimensionless J-curve scale factor"
+        },
+        {
+          "key": "jExp",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Dimensionless J-curve exponent"
+        }
+      ],
+      "wasmKernel": "pc_jfunc",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "welspecs_prod",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:welspecs_prod",
+    "exports": [
+      "targetRate",
+      "bhpMin",
+      "wellIndex"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Production Well Control (WCONPROD)",
+      "category": "Wells & Aquifers",
+      "domain": "subsurface",
+      "description": "Production well rate/BHP constraint evaluator computing feasible drawdown rate subject to minimum BHP limit.",
+      "provenance": "OPM Flow Reference Manual (WELSPECS / WCONPROD); Peaceman (1978)",
+      "aliases": [
+        "WELSPECS_PROD",
+        "WCONPROD",
+        "PRODUCER"
+      ],
+      "parameters": [
+        {
+          "key": "targetRate",
+          "type": "real",
+          "defaultValue": 2000,
+          "unit": "stb/d",
+          "description": "Target surface production rate"
+        },
+        {
+          "key": "bhpMin",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "psia",
+          "description": "Minimum bottom-hole pressure constraint"
+        },
+        {
+          "key": "wellIndex",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "stb/(d*psi)",
+          "description": "Effective well productivity index"
+        }
+      ],
+      "wasmKernel": "welspecs_prod",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "welspecs_inj",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:welspecs_inj",
+    "exports": [
+      "targetRate",
+      "bhpMax",
+      "wellIndex"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Injection Well Control (WCONINJE)",
+      "category": "Wells & Aquifers",
+      "domain": "subsurface",
+      "description": "Injection well rate/BHP constraint evaluator computing feasible injection rate subject to maximum BHP limit.",
+      "provenance": "OPM Flow Reference Manual (WELSPECS / WCONINJE); Peaceman (1978)",
+      "aliases": [
+        "WELSPECS_INJ",
+        "WCONINJE",
+        "INJECTOR"
+      ],
+      "parameters": [
+        {
+          "key": "targetRate",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "stb/d",
+          "description": "Target surface injection rate"
+        },
+        {
+          "key": "bhpMax",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "psia",
+          "description": "Maximum bottom-hole pressure constraint"
+        },
+        {
+          "key": "wellIndex",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "stb/(d*psi)",
+          "description": "Effective well injectivity index"
+        }
+      ],
+      "wasmKernel": "welspecs_inj",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "compdat",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:compdat",
+    "exports": [
+      "kx",
+      "ky",
+      "h",
+      "dx",
+      "dy",
+      "rw",
+      "skin",
+      "unitFactor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Peaceman Completion Index (COMPDAT)",
+      "category": "Wells & Aquifers",
+      "domain": "subsurface",
+      "description": "Peaceman (1978, 1983) anisotropic well productivity index WI = c_u * 2*pi*sqrt(kx*ky)*h / (ln(r_o/r_w) + s) with equivalent drainage radius r_o.",
+      "provenance": "Peaceman (1978) SPEJ 18(3):183-194; Peaceman (1983) SPEJ 23(3):531-543; OPM Flow Reference Manual (COMPDAT)",
+      "aliases": [
+        "COMPDAT",
+        "COMPDAT_PEACEMAN",
+        "PEACEMAN_WI"
+      ],
+      "parameters": [
+        {
+          "key": "kx",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "mD",
+          "description": "Grid block permeability in X direction"
+        },
+        {
+          "key": "ky",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "mD",
+          "description": "Grid block permeability in Y direction"
+        },
+        {
+          "key": "h",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "ft",
+          "description": "Completion net pay thickness dz"
+        },
+        {
+          "key": "dx",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "ft",
+          "description": "Grid block dimension dx"
+        },
+        {
+          "key": "dy",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "ft",
+          "description": "Grid block dimension dy"
+        },
+        {
+          "key": "rw",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "ft",
+          "description": "Wellbore radius"
+        },
+        {
+          "key": "skin",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Formation damage skin factor"
+        },
+        {
+          "key": "unitFactor",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Unit conversion constant (1.0 SI/canonical, 0.001127 FIELD)"
+        }
+      ],
+      "wasmKernel": "compdat",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "vfpprod",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:vfpprod",
+    "exports": [
+      "depth",
+      "gradHydro",
+      "fricCoeff",
+      "thpMin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Production VFP Lift Curve (VFPPROD)",
+      "category": "Wells & Aquifers",
+      "domain": "subsurface",
+      "description": "Vertical Flow Performance tubing-head pressure model combining hydrostatic fluid gradient and Darcy-Weisbach friction loss.",
+      "provenance": "Beggs & Brill (1973) JPT 25(5):607-617; OPM Flow Reference Manual (VFPPROD)",
+      "aliases": [
+        "VFPPROD",
+        "VFPPROD_LIFT"
+      ],
+      "parameters": [
+        {
+          "key": "depth",
+          "type": "real",
+          "defaultValue": 8000,
+          "unit": "ft",
+          "description": "Vertical tubing depth"
+        },
+        {
+          "key": "gradHydro",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "psi/ft",
+          "description": "Hydrostatic fluid pressure gradient"
+        },
+        {
+          "key": "fricCoeff",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "psi/(stb/d)^2",
+          "description": "Quadratic tubing friction coefficient"
+        },
+        {
+          "key": "thpMin",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "psia",
+          "description": "Minimum tubing head pressure"
+        }
+      ],
+      "wasmKernel": "vfpprod",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "mswell",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:mswell",
+    "exports": [
+      "segLen",
+      "segDz",
+      "diameter",
+      "roughness",
+      "rhoMix"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multi-Segment Wellbore (WELSEGS)",
+      "category": "Wells & Aquifers",
+      "domain": "subsurface",
+      "description": "Multi-segment wellbore hydraulics computing hydrostatic, frictional, and acceleration pressure drop along a tubing segment.",
+      "provenance": "Holmes, Barkve & Lund (1998) SPE 50646; OPM Flow Reference Manual (WELSEGS)",
+      "aliases": [
+        "WELSEGS",
+        "MSWELL",
+        "MSWELL_SEGMENT"
+      ],
+      "parameters": [
+        {
+          "key": "segLen",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "ft",
+          "description": "Segment measured length"
+        },
+        {
+          "key": "segDz",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "ft",
+          "description": "Segment true vertical depth change"
+        },
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "ft",
+          "description": "Internal tubing diameter"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "ft",
+          "description": "Tubing wall roughness"
+        },
+        {
+          "key": "rhoMix",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "lb/ft3",
+          "description": "Mixture fluid density"
+        }
+      ],
+      "wasmKernel": "mswell",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "aqufetp",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:aqufetp",
+    "exports": [
+      "pInit",
+      "wei",
+      "jProd"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fetkovich Analytical Aquifer (AQUFETP)",
+      "category": "Wells & Aquifers",
+      "domain": "subsurface",
+      "description": "Fetkovich (1971) pseudo-steady-state analytical aquifer model tracking cumulative water influx We and aquifer pressure depletion.",
+      "provenance": "Fetkovich (1971) JPT 23(7):814-828; OPM Flow Reference Manual (AQUFETP)",
+      "aliases": [
+        "AQUFETP",
+        "AQUFETP_FETKOVICH",
+        "FETKOVICH"
+      ],
+      "parameters": [
+        {
+          "key": "pInit",
+          "type": "real",
+          "defaultValue": 4000,
+          "unit": "psia",
+          "description": "Initial aquifer pressure"
+        },
+        {
+          "key": "wei",
+          "type": "real",
+          "defaultValue": 100000000,
+          "unit": "stb",
+          "description": "Maximum encroachable water volume Wei = ct * Vi * Pi"
+        },
+        {
+          "key": "jProd",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "stb/(d*psi)",
+          "description": "Aquifer productivity index J"
+        }
+      ],
+      "wasmKernel": "aqufetp",
+      "archetypeId": 35
+    }
+  },
+  {
+    "name": "aqutab",
+    "kind": "eclipse_physics_model",
+    "namePath": "eclipse:aqutab",
+    "exports": [
+      "pInit",
+      "influxConst",
+      "timeConst"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carter-Tracy Aquifer (AQUTAB / AQUCT)",
+      "category": "Wells & Aquifers",
+      "domain": "subsurface",
+      "description": "Carter-Tracy (1960) analytical radial aquifer model using dimensionless pressure P_D(t_D) approximation for unsteady-state water influx.",
+      "provenance": "Carter & Tracy (1960) Trans. AIME 219:415-417; van Everdingen & Hurst (1949); OPM Flow Reference Manual (AQUCT)",
+      "aliases": [
+        "AQUTAB",
+        "AQUCT",
+        "AQUTAB_CARTER_TRACY",
+        "CARTER_TRACY"
+      ],
+      "parameters": [
+        {
+          "key": "pInit",
+          "type": "real",
+          "defaultValue": 4000,
+          "unit": "psia",
+          "description": "Initial aquifer pressure"
+        },
+        {
+          "key": "influxConst",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "stb/psi",
+          "description": "Aquifer influx constant B = 1.119 * phi * ct * h * ro^2 * f"
+        },
+        {
+          "key": "timeConst",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1/day",
+          "description": "Dimensionless time conversion constant tD / t"
+        }
+      ],
+      "wasmKernel": "aqutab",
+      "archetypeId": 36
+    }
+  }
+]

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<runscript name="VTVL_Powered_Descent_Landing">
+  <use aircraft="lander" initialize="reset_descent"/>
+  <run start="0.0" end="45.0" dt="0.01">
+    <event name="LandingBurnIgnition">
+      <condition> simulation/sim-time-sec ge 2.0 </condition>
+      <set name="fcs/throttle-cmd-norm" value="0.85"/>
+    </event>
+    <event name="TouchdownCutoff">
+      <condition> position/h-agl-ft le 1.0 </condition>
+      <set name="fcs/throttle-cmd-norm" value="0.0"/>
+    </event>
+  </run>
+</runscript>

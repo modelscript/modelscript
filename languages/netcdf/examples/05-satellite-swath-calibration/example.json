@@ -1,0 +1,11 @@
+{
+  "id": "netcdf-05-satellite-swath-calibration",
+  "lang": "netcdf",
+  "subFormats": ["cdl", "cf-1.8"],
+  "difficulty": 5,
+  "title": "Satellite Multispectral Swath with Quality Flags & Calibration",
+  "description": "Level-1B polar-orbiting radiometer swath archive with scanline/pixel geolocation, packed calibrated radiance bands (scale_factor + add_offset), per-pixel quality flags, and calibration coefficients.",
+  "category": "Remote Sensing",
+  "tags": ["netcdf", "satellite", "swath", "radiance", "calibration", "quality-flags"],
+  "activeFile": "viirs_swath_l1b.cdl"
+}

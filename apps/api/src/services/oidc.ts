@@ -30,6 +30,7 @@ interface EeOidcInstance {
     expiresIn?: number | undefined;
   }>;
   getSigningKey(kid?: string): Promise<string>;
+  registerStaticSigningKey?(kid: string, publicKeyPem: string, ttlMs?: number): void;
   verifyIdToken(idToken: string): Promise<OidcClaims>;
   extractClaims(idToken: string): OidcClaims;
   handleOidcLogin(
@@ -94,6 +95,14 @@ export class OidcService implements EeOidcInstance {
 
   public async getSigningKey(kid?: string): Promise<string> {
     return this.requireDelegate().getSigningKey(kid);
+  }
+
+  public registerStaticSigningKey(kid: string, publicKeyPem: string, ttlMs?: number): void {
+    const delegate = this.requireDelegate();
+    if (!delegate.registerStaticSigningKey) {
+      throw new Error("Enterprise OIDC delegate does not support registerStaticSigningKey.");
+    }
+    delegate.registerStaticSigningKey(kid, publicKeyPem, ttlMs);
   }
 
   public async verifyIdToken(idToken: string): Promise<OidcClaims> {

@@ -1,0 +1,13 @@
+pmu Tie500_WestEast idcode=305 fnom=60 rate=30
+phasor V1_500 V format=polar scale=1.0 mag=504200 ang=-18.4
+phasor I1_TIE I format=polar scale=1.0 mag=1180 ang=-24.1
+analog TIE_FLOW_MW units=MW scale=1.0 init=965.0
+analog DAMPING_RATIO units=pct scale=1.0 init=3.2
+digital OSC_ALARM
+digital PSS_ACTIVE
+frame 2026-11-17T21:10:00.000Z 60.000 0.045
+frame 2026-11-17T21:10:00.350Z 60.038 0.002
+frame 2026-11-17T21:10:00.700Z 60.002 -0.044
+frame 2026-11-17T21:10:01.050Z 59.964 -0.001
+frame 2026-11-17T21:10:01.400Z 59.999 0.041
+frame 2026-11-17T21:10:01.750Z 60.032 0.001

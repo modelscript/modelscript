@@ -1,0 +1,32 @@
+BEGIN NEW DATA CASE
+C 230 kV Overhead Transmission Line Lightning Surge Traveling Wave Study
+C Sub-microsecond time step for steep-front surge propagation
+  5.0E-7  0.002
+/BRANCH
+C Surge impedance of lightning strike channel (400 Ohms)
+STRIKE  TOWER1  400.000  0.0000  0.0000
+C Tower 1 surge impedance and footing resistance (15 Ohms)
+TOWER1  FOOT1   150.000  0.0250  0.0000
+FOOT1   GND     15.0000  0.0000  0.0000
+C Span 1 (350 m overhead conductor: Zc = 380 Ohms)
+TOWER1  SPAN1   0.0420   0.4500  0.0000
+SPAN1   GND     0.0000   0.0000  0.0031
+C Span 2 toward substation gantry
+SPAN1   SUB_IN  0.0420   0.4500  0.0000
+SUB_IN  GND     0.0000   0.0000  0.0031
+C Substation transformer entrance capacitance (2.5 nF) and magnetizing branch
+SUB_IN  XFMR_H  0.5000   2.5000  0.0000
+XFMR_H  GND     1200.00  85.0000 0.0025
+BLANK RECORD
+/SWITCH
+C Sparkover gap at substation entrance closes if surge exceeds threshold
+SUB_IN  XFMR_H  0.000010    0.001800
+BLANK RECORD
+/SOURCE
+C Impulse surge injection (450 kV peak equivalent) + 230 kV AC pre-stress
+14 STRIKE  450000.00   5000.00   0.00
+14 XFMR_H  187794.00   60.00     0.00
+BLANK RECORD
+/OUTPUT
+STRIKE TOWER1 SPAN1 SUB_IN XFMR_H
+BLANK RECORD

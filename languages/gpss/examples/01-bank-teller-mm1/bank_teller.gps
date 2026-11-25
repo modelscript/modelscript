@@ -1,0 +1,11 @@
+* MODEL: BankTellerMM1
+* Single-Server Bank Teller M/M/1 Queueing Simulation
+      GENERATE 6,2          ; Customers arrive every 6 +/- 2 minutes
+      QUEUE    LOBBY        ; Join teller waiting line
+      SEIZE    TELLER1      ; Capture single bank teller
+      DEPART   LOBBY        ; Leave waiting line
+      ADVANCE  5,2          ; Transaction service takes 5 +/- 2 minutes
+      RELEASE  TELLER1      ; Free bank teller
+      TERMINATE 1           ; Customer departs bank
+      START    200          ; Simulate 200 completed customers
+      END

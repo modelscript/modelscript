@@ -1,0 +1,12 @@
+{
+  "id": "reqif-01-pump-safety-spec",
+  "lang": "reqif",
+  "subFormats": ["reqif"],
+  "difficulty": 1,
+  "title": "Centrifugal Pump Safety Requirements Specification",
+  "description": "OMG ReqIF 1.2 specification defining five core pressure, temperature, and over-speed safety requirements for an industrial centrifugal pump.",
+  "category": "Requirements Engineering",
+  "tags": ["reqif", "safety", "pump", "requirements", "industrial"],
+  "activeFile": "pump_safety.reqif",
+  "isDefaultStarter": true
+}

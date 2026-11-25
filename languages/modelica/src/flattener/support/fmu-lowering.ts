@@ -20,6 +20,8 @@ import {
   Variability,
   type DAEBuilder,
   type FmuInstanceMetadata,
+  type QueryDB,
+  type SymbolEntry,
   type SymbolId,
 } from "@modelscript/runtime";
 import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
@@ -30,6 +32,13 @@ import {
   tokenizeCommentStrippedWords,
   type CstNodeLike,
 } from "../expressions/cst-utils.js";
+import type { ComponentInstanceData } from "../types.js";
+
+export interface FmuFlattenerLike {
+  db: QueryDB;
+  fmuComponents?: Map<string, SymbolId> | undefined;
+  isFmuClass?(classId: SymbolId): boolean;
+}
 
 const PRIMITIVE_FMU_TYPES = new Set(["Real", "Integer", "Boolean", "String"]);
 
@@ -254,7 +263,7 @@ export function findDirectAnnotationClause(cstNode: CstNodeLike | null | undefin
  * Extracts FMU metadata properties from an AST node or raw text.
  */
 export function extractFmuAnnotation(
-  cstNode: any,
+  cstNode: CstNodeLike | null | undefined,
   evaluator?: AnnotationEvaluator,
 ): Partial<FmuInstanceMetadata> | null {
   if (!cstNode) return null;
@@ -322,7 +331,11 @@ export function extractFmuAnnotation(
 /**
  * Discovers and registers all root-level or instantiated FMU components in `dae.extensionMetadata.fmuInstances`.
  */
-export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, rootClassId?: SymbolId): void {
+export function extractAndRegisterFmuMetadata(
+  flattener: FmuFlattenerLike,
+  dae: DAEBuilder,
+  rootClassId?: SymbolId,
+): void {
   if (!dae.extensionMetadata.fmuInstances) {
     dae.extensionMetadata.fmuInstances = [];
   }
@@ -331,7 +344,7 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
 
   // 1. Check if the root class itself is an FMU wrapper
   if (rootClassId) {
-    const rootCst = flattener.db.cstNode(rootClassId);
+    const rootCst = flattener.db.cstNode(rootClassId) as CstNodeLike | null | undefined;
     const rootAnn = extractFmuAnnotation(rootCst);
     if (rootAnn && !existingNames.has("")) {
       const inputs: string[] = [];
@@ -365,15 +378,15 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
     }
   }
 
-  function isFmuClassTarget(flattener: any, classId: SymbolId): boolean {
-    if (typeof flattener.isFmuClass === "function") {
-      return flattener.isFmuClass(classId);
+  function isFmuClassTarget(targetFlattener: FmuFlattenerLike, classId: SymbolId): boolean {
+    if (typeof targetFlattener.isFmuClass === "function") {
+      return targetFlattener.isFmuClass(classId);
     }
-    const classSym = flattener.db.symbol(classId);
+    const classSym = targetFlattener.db.symbol(classId);
     if (typeof classSym?.metadata?.["fmuPath"] === "string" && classSym.metadata["fmuPath"].length > 0) {
       return true;
     }
-    const classCst = flattener.db.cstNode(classId);
+    const classCst = targetFlattener.db.cstNode(classId) as CstNodeLike | null | undefined;
     const ann = findDirectAnnotationClause(classCst);
     if (!ann) return false;
     const text = typeof ann.text === "string" ? ann.text : "";
@@ -381,7 +394,7 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
   }
 
   function discoverFmuComponents(
-    flattener: any,
+    targetFlattener: FmuFlattenerLike,
     classId: SymbolId,
     prefix: string,
     outMap: Map<string, SymbolId>,
@@ -390,21 +403,27 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
     if (visited.has(classId)) return;
     visited.add(classId);
 
-    const elements = flattener.db.query("instantiate", classId) as SymbolId[] | undefined;
+    const elements = targetFlattener.db.query<SymbolId[] | undefined>("instantiate", classId);
     if (!elements) return;
 
     for (const elemId of elements) {
-      const sym = flattener.db.symbol(elemId);
+      const sym = targetFlattener.db.symbol(elemId);
       if (!sym || sym.kind !== "Component") continue;
-      let targetClassId = flattener.db.query("classInstance", elemId) as SymbolId | undefined;
+      let targetClassId = targetFlattener.db.query<SymbolId | undefined>("classInstance", elemId);
       if (!targetClassId || targetClassId < 0) {
-        const ci = flattener.db.query("componentInstance", elemId) as any;
+        const ci = targetFlattener.db.query<ComponentInstanceData | null | undefined>("componentInstance", elemId);
         if (ci?.classInstance && ci.classInstance > 0) {
           targetClassId = ci.classInstance;
         } else if (ci?.typeSpecifier) {
-          const resolved =
-            flattener.db.query("resolveSimpleName", classId)?.(ci.typeSpecifier) ??
-            flattener.db.query("resolveName", classId)?.(ci.typeSpecifier);
+          const resolveSimple = targetFlattener.db.query<((name: string) => SymbolEntry | null) | undefined>(
+            "resolveSimpleName",
+            classId,
+          );
+          const resolveFull = targetFlattener.db.query<((name: string) => SymbolEntry | null) | undefined>(
+            "resolveName",
+            classId,
+          );
+          const resolved = resolveSimple?.(ci.typeSpecifier) ?? resolveFull?.(ci.typeSpecifier);
           if (resolved && resolved.kind === "Class") {
             targetClassId = resolved.id;
           }
@@ -413,16 +432,16 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
       if (!targetClassId || targetClassId < 0) continue;
 
       const fullPath = prefix ? `${prefix}.${sym.name}` : sym.name;
-      if (isFmuClassTarget(flattener, targetClassId)) {
+      if (isFmuClassTarget(targetFlattener, targetClassId)) {
         outMap.set(fullPath, targetClassId);
       } else {
-        discoverFmuComponents(flattener, targetClassId, fullPath, outMap, visited);
+        discoverFmuComponents(targetFlattener, targetClassId, fullPath, outMap, visited);
       }
     }
   }
 
   // 2. Check all instantiated FMU components recorded on flattener or discovered from hierarchy
-  let fmuComponents = flattener.fmuComponents as Map<string, SymbolId> | undefined;
+  let fmuComponents = flattener.fmuComponents;
   if (!fmuComponents) {
     fmuComponents = new Map<string, SymbolId>();
     flattener.fmuComponents = fmuComponents;
@@ -435,7 +454,7 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
     for (const [instanceName, classId] of fmuComponents) {
       if (existingNames.has(instanceName)) continue;
       const classSym = flattener.db.symbol(classId);
-      const classCst = flattener.db.cstNode(classId);
+      const classCst = flattener.db.cstNode(classId) as CstNodeLike | null | undefined;
       const compAnn = extractFmuAnnotation(classCst);
       const symFmuPath =
         typeof classSym?.metadata?.["fmuPath"] === "string" && classSym.metadata["fmuPath"].length > 0
@@ -448,14 +467,14 @@ export function extractAndRegisterFmuMetadata(flattener: any, dae: DAEBuilder, r
       const parameters: string[] = [];
 
       // Query component declarations from SymbolIndex
-      const childIds = flattener.db.query("instantiate", classId) as SymbolId[] | undefined;
+      const childIds = flattener.db.query<SymbolId[] | undefined>("instantiate", classId);
       if (Array.isArray(childIds) && childIds.length > 0) {
         for (const cId of childIds) {
           const sym = flattener.db.symbol(cId);
           if (!sym) continue;
           const cName = sym.name;
-          const causality = (sym.metadata as any)?.causality ?? flattener.db.query("causality", cId);
-          const variability = (sym.metadata as any)?.variability ?? flattener.db.query("variability", cId);
+          const causality = sym.metadata?.["causality"] ?? flattener.db.query("causality", cId);
+          const variability = sym.metadata?.["variability"] ?? flattener.db.query("variability", cId);
           if (causality === "input") inputs.push(cName);
           else if (causality === "output") outputs.push(cName);
           else if (variability === "parameter") parameters.push(cName);

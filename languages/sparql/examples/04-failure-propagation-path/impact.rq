@@ -1,0 +1,10 @@
+PREFIX grid: <http://modelscript.dev/ontology/substation#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT DISTINCT ?rootAsset ?affectedAsset ?affectedLabel
+WHERE {
+  ?rootAsset a grid:PowerTransformer ;
+             grid:feeds+ ?affectedAsset .
+  ?affectedAsset rdfs:label ?affectedLabel .
+}
+ORDER BY ?affectedLabel

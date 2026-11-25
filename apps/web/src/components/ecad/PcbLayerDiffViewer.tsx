@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { RenderPad, RenderTrace, RenderVia } from "@modelscript/cad";
 import { DiffAddedIcon, DiffIcon, DiffModifiedIcon, DiffRemovedIcon, ScreenFullIcon } from "@primer/octicons-react";
 import { Button, SegmentedControl, Text } from "@primer/react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +12,7 @@ export interface PcbLayerDiffViewerProps {
   revA: PcbDesignData;
   revB: PcbDesignData;
   height?: number | string | undefined;
-  onSelectFeature?: ((feature: any, status: DiffStatus) => void) | undefined;
+  onSelectFeature?: ((feature: RenderTrace | RenderPad | RenderVia, status: DiffStatus) => void) | undefined;
   className?: string | undefined;
 }
 
@@ -315,7 +316,7 @@ export function PcbLayerDiffViewer({
     };
 
     // Draw traces
-    const drawTrace = (feat: DiffFeature<any>) => {
+    const drawTrace = (feat: DiffFeature<RenderTrace>) => {
       const trace = feat.feature;
       if (!isLayerVisible(trace.layer)) return;
       if (trace.points.length < 2) return;
@@ -326,15 +327,17 @@ export function PcbLayerDiffViewer({
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
 
-      ctx.moveTo(pan.x + trace.points[0].x * zoom, pan.y + trace.points[0].y * zoom);
+      const first = trace.points[0]!;
+      ctx.moveTo(pan.x + first.x * zoom, pan.y + first.y * zoom);
       for (let i = 1; i < trace.points.length; i++) {
-        ctx.lineTo(pan.x + trace.points[i].x * zoom, pan.y + trace.points[i].y * zoom);
+        const pt = trace.points[i]!;
+        ctx.lineTo(pan.x + pt.x * zoom, pan.y + pt.y * zoom);
       }
       ctx.stroke();
     };
 
     // Draw pads
-    const drawPad = (feat: DiffFeature<any>) => {
+    const drawPad = (feat: DiffFeature<RenderPad>) => {
       const pad = feat.feature;
       if (!isLayerVisible(pad.layer)) return;
 
@@ -355,7 +358,7 @@ export function PcbLayerDiffViewer({
     };
 
     // Draw vias
-    const drawVia = (feat: DiffFeature<any>) => {
+    const drawVia = (feat: DiffFeature<RenderVia>) => {
       const via = feat.feature;
       const vx = pan.x + via.center.x * zoom;
       const vy = pan.y + via.center.y * zoom;

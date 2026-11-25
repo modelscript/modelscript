@@ -590,7 +590,9 @@ export class FederationRepository extends BaseRepository {
     let threshold = 5;
     try {
       threshold = Math.max(1, this.facade.getInstanceSettings().autoCircuitBreakThreshold || 5);
-    } catch {}
+    } catch {
+      // Fallback to default circuit-breaker threshold when settings unavailable
+    }
 
     const existing = this.getDomainTier(cleanDomain);
     const nextFailures = (existing.consecutiveFailures || 0) + 1;
@@ -709,7 +711,9 @@ export class FederationRepository extends BaseRepository {
     let domain = "unknown";
     try {
       domain = new URL(cleanInbox).hostname.toLowerCase();
-    } catch {}
+    } catch {
+      // Malformed inbox URL leaves domain empty
+    }
 
     this.run(
       `INSERT INTO federation_relays (inbox_url, actor_url, domain, state, follow_activity_id, updated_at)

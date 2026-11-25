@@ -1,0 +1,73 @@
+[
+  {
+    "id": "hdf4-01-sds-radiance-image",
+    "lang": "hdf4",
+    "subFormats": ["ddl"],
+    "difficulty": 1,
+    "title": "Single 2D Scientific Data Set (SDS) Radiance Image",
+    "description": "Minimal NASA HDF4 DDL archive defining a 3x4 FLOAT32 top-of-atmosphere radiance Scientific Data Set with physical units and fill value.",
+    "category": "Remote Sensing",
+    "tags": ["hdf4", "sds", "radiance", "earth-observation"],
+    "activeFile": "radiance_sds.hdf",
+    "fileNames": ["radiance_sds.hdf"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# NASA HDF4 Single 2D Scientific Data Set (SDS) Radiance Image\nHDF4 Radiance_Image_L1B VERSION=\"4.2\"\n  ATTR Mission = \"Terra\"\n  ATTR Instrument = \"ASTER\"\n\n  SDS Band1_Radiance TYPE=FLOAT32 REF=10 UNIT=\"W/(m2.sr.um)\"\n    DIM lines = 3\n    DIM pixels = 4\n    ATTR scale_factor = 1.0\n    ATTR add_offset = 0.0\n    ATTR _FillValue = -999.0\n    DATA [42.1, 43.5, 45.0, 44.2, 41.8, 44.0, 46.3, 45.7, 40.9, 43.1, 45.4, 44.8]\n  END\nEND\n"
+  },
+  {
+    "id": "hdf4-02-multispectral-reflectance-swath",
+    "lang": "hdf4",
+    "subFormats": ["ddl"],
+    "difficulty": 2,
+    "title": "Multispectral 3-Band Satellite Reflectance Swath",
+    "description": "Three-band (Red, NIR, SWIR) calibrated surface reflectance HDF4 SDS cube grouped inside an EOS Swath Vgroup for vegetation NDVI analysis.",
+    "category": "Remote Sensing",
+    "tags": ["hdf4", "multispectral", "reflectance", "ndvi", "vgroup"],
+    "activeFile": "multispectral_swath.hdf",
+    "fileNames": ["multispectral_swath.hdf"],
+    "fileCount": 1,
+    "code": "# Multispectral 3-Band Satellite Surface Reflectance Swath\nHDF4 Landsat_Reflectance_Swath VERSION=\"4.2\"\n  ATTR Mission = \"Aqua\"\n  ATTR Instrument = \"MODIS\"\n\n  SDS Red_Reflectance TYPE=FLOAT32 REF=10 UNIT=\"1\"\n    DIM lines = 2\n    DIM pixels = 3\n    ATTR _FillValue = -999.0\n    DATA [0.06, 0.08, 0.14, 0.05, 0.09, 0.16]\n  END\n\n  SDS NIR_Reflectance TYPE=FLOAT32 REF=11 UNIT=\"1\"\n    DIM lines = 2\n    DIM pixels = 3\n    ATTR _FillValue = -999.0\n    DATA [0.42, 0.39, 0.25, 0.45, 0.37, 0.22]\n  END\n\n  SDS SWIR_Reflectance TYPE=FLOAT32 REF=12 UNIT=\"1\"\n    DIM lines = 2\n    DIM pixels = 3\n    ATTR _FillValue = -999.0\n    DATA [0.18, 0.21, 0.29, 0.16, 0.22, 0.31]\n  END\n\n  VGROUP ReflectanceSwath CLASS=\"SWATH\" REF=40\n    MEMBER SDS Red_Reflectance\n    MEMBER SDS NIR_Reflectance\n    MEMBER SDS SWIR_Reflectance\n  END\nEND\n"
+  },
+  {
+    "id": "hdf4-03-vdata-atmospheric-sounding",
+    "lang": "hdf4",
+    "subFormats": ["ddl"],
+    "difficulty": 3,
+    "title": "Vdata Tabular Atmospheric Sounding Record",
+    "description": "HDF4 archive combining a structured multi-field Vdata vertical atmospheric sounding table with a companion temperature profile SDS.",
+    "category": "Atmospheric Science",
+    "tags": ["hdf4", "vdata", "sounding", "tabular"],
+    "activeFile": "airs_sounding.hdf",
+    "fileNames": ["airs_sounding.hdf"],
+    "fileCount": 1,
+    "code": "# AIRS Atmospheric Vertical Sounding Vdata & Profile SDS\nHDF4 AIRS_Sounding_L2 VERSION=\"4.2\"\n  ATTR Mission = \"Aqua\"\n  ATTR Instrument = \"AIRS\"\n\n  VDATA SoundingLevels CLASS=\"AtmosProfile\" REF=20\n    FIELD pressure_hPa : FLOAT32\n    FIELD altitude_m : FLOAT32\n    FIELD temperature_K : FLOAT32\n    FIELD rh_percent : FLOAT32\n    DATA [1000.0, 110.0, 290.5, 68.0]\n    DATA [850.0, 1480.0, 281.2, 61.5]\n    DATA [700.0, 3040.0, 272.0, 48.0]\n    DATA [500.0, 5620.0, 255.4, 34.0]\n    DATA [250.0, 10420.0, 222.8, 18.0]\n  END\n\n  SDS PressureGrid TYPE=FLOAT32 REF=21 UNIT=\"hPa\"\n    DIM levels = 5\n    DATA [1000.0, 850.0, 700.0, 500.0, 250.0]\n  END\n\n  VGROUP SoundingProduct CLASS=\"PROFILE\" REF=30\n    MEMBER VDATA SoundingLevels\n    MEMBER SDS PressureGrid\n  END\nEND\n"
+  },
+  {
+    "id": "hdf4-04-vgroup-calibration-geolocation",
+    "lang": "hdf4",
+    "subFormats": ["ddl"],
+    "difficulty": 4,
+    "title": "Hierarchical Vgroup Sensor Calibration & Geolocation Cube",
+    "description": "Multi-level HDF4 Vgroup hierarchy separating Geolocation SDS arrays, Radiance SDS data, and blackbody calibration telemetry Vdata under a root granule Vgroup.",
+    "category": "Remote Sensing",
+    "tags": ["hdf4", "vgroup", "geolocation", "calibration", "hierarchy"],
+    "activeFile": "calibrated_granule.hdf",
+    "fileNames": ["calibrated_granule.hdf"],
+    "fileCount": 1,
+    "code": "# Hierarchical HDF4 Sensor Calibration & Geolocation Granule\nHDF4 Calibrated_Sensor_Granule VERSION=\"4.2\"\n  ATTR Mission = \"Terra\"\n  ATTR Instrument = \"MODIS\"\n\n  SDS Latitude TYPE=FLOAT32 REF=10 UNIT=\"degrees_north\"\n    DIM lines = 2\n    DIM pixels = 3\n    DATA [37.1, 37.1, 37.1, 37.2, 37.2, 37.2]\n  END\n\n  SDS Longitude TYPE=FLOAT32 REF=11 UNIT=\"degrees_east\"\n    DIM lines = 2\n    DIM pixels = 3\n    DATA [-122.4, -122.3, -122.2, -122.4, -122.3, -122.2]\n  END\n\n  SDS Thermal_IR_Radiance TYPE=FLOAT32 REF=12 UNIT=\"W/(m2.sr.um)\"\n    DIM lines = 2\n    DIM pixels = 3\n    ATTR scale_factor = 0.005\n    ATTR add_offset = 0.1\n    ATTR _FillValue = -999.0\n    DATA [8.42, 8.51, 8.39, 8.48, 8.55, 8.44]\n  END\n\n  VDATA BlackbodyCal CLASS=\"Calibration\" REF=20\n    FIELD scan_id : INT16\n    FIELD bb_temp_K : FLOAT32\n    FIELD gain_coeff : FLOAT32\n    DATA [1, 290.15, 0.00501]\n    DATA [2, 290.18, 0.00500]\n  END\n\n  VGROUP GeolocationFields CLASS=\"SWATH_GEOLOC\" REF=30\n    MEMBER SDS Latitude\n    MEMBER SDS Longitude\n  END\n\n  VGROUP DataFields CLASS=\"SWATH_DATA\" REF=31\n    MEMBER SDS Thermal_IR_Radiance\n    MEMBER VDATA BlackbodyCal\n  END\n\n  VGROUP GranuleRoot CLASS=\"SWATH\" REF=40\n    MEMBER VGROUP GeolocationFields\n    MEMBER VGROUP DataFields\n  END\nEND\n"
+  },
+  {
+    "id": "hdf4-05-modis-eos-archive",
+    "lang": "hdf4",
+    "subFormats": ["ddl"],
+    "difficulty": 5,
+    "title": "MODIS-Style HDF-EOS Swath, Quicklook Raster & Telemetry Archive",
+    "description": "Complete HDF-EOS Level-1B granule uniting calibrated multi-band SDS radiance, geolocation, 8-bit quicklook browse raster, orbit ephemeris Vdata, and nested Vgroups.",
+    "category": "Earth Observation",
+    "tags": ["hdf4", "modis", "hdf-eos", "raster8", "vgroup", "vdata"],
+    "activeFile": "modis_eos_granule.hdf",
+    "fileNames": ["modis_eos_granule.hdf"],
+    "fileCount": 1,
+    "code": "# Complete NASA HDF-EOS MODIS Level-1B Granule Archive\nHDF4 MOD021KM_A2026196 VERSION=\"4.2\"\n  ATTR Mission = \"Terra\"\n  ATTR Instrument = \"MODIS\"\n  ATTR Product = \"MOD021KM\"\n  ATTR GranuleID = \"MOD021KM.A2026196.1835.061\"\n\n  SDS EV_1KM_RefSB TYPE=FLOAT32 REF=10 UNIT=\"W/(m2.sr.um)\"\n    DIM lines = 3\n    DIM pixels = 3\n    ATTR scale_factor = 0.01\n    ATTR add_offset = 0.0\n    ATTR _FillValue = -999.0\n    DATA [112.4, 118.2, 121.0, 109.8, 115.6, 124.3, 106.5, 113.1, 119.7]\n  END\n\n  SDS EV_1KM_Emissive TYPE=FLOAT32 REF=11 UNIT=\"W/(m2.sr.um)\"\n    DIM lines = 3\n    DIM pixels = 3\n    ATTR scale_factor = 0.002\n    ATTR add_offset = 0.0\n    ATTR _FillValue = -999.0\n    DATA [9.12, 9.25, 9.18, 9.04, 9.19, 9.31, 8.95, 9.10, 9.22]\n  END\n\n  SDS Latitude TYPE=FLOAT32 REF=12 UNIT=\"degrees_north\"\n    DIM lines = 3\n    DIM pixels = 3\n    DATA [36.0, 36.0, 36.0, 36.1, 36.1, 36.1, 36.2, 36.2, 36.2]\n  END\n\n  SDS Longitude TYPE=FLOAT32 REF=13 UNIT=\"degrees_east\"\n    DIM lines = 3\n    DIM pixels = 3\n    DATA [-121.0, -120.9, -120.8, -121.0, -120.9, -120.8, -121.0, -120.9, -120.8]\n  END\n\n  VDATA OrbitEphemeris CLASS=\"Ephemeris\" REF=20\n    FIELD tai_sec : FLOAT64\n    FIELD alt_km : FLOAT32\n    FIELD solar_zenith_deg : FLOAT32\n    DATA [1058294100.0, 705.2, 26.4]\n    DATA [1058294101.5, 705.2, 26.5]\n    DATA [1058294103.0, 705.1, 26.6]\n  END\n\n  RASTER8 Quicklook_RGB8 WIDTH=3 HEIGHT=3 REF=30\n    DATA [48, 72, 96, 64, 128, 160, 80, 144, 208]\n  END\n\n  VGROUP GeolocationGroup CLASS=\"SWATH_GEOLOC\" REF=40\n    MEMBER SDS Latitude\n    MEMBER SDS Longitude\n  END\n\n  VGROUP ScienceGroup CLASS=\"SWATH_DATA\" REF=41\n    MEMBER SDS EV_1KM_RefSB\n    MEMBER SDS EV_1KM_Emissive\n  END\n\n  VGROUP MODIS_SWATH_Type_L1B CLASS=\"SWATH\" REF=50\n    MEMBER VGROUP GeolocationGroup\n    MEMBER VGROUP ScienceGroup\n    MEMBER VDATA OrbitEphemeris\n    MEMBER RASTER8 Quicklook_RGB8\n  END\nEND\n"
+  }
+]

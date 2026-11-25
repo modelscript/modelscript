@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { getLanguageFlagKey, isLanguageEnabledInFlags, useEditorFeatureFlags as useFeatureFlags } from "../host";
+import { GENERATED_LANGUAGE_DEFAULTS } from "./generated/language-defaults.generated";
 
 export const defaultCode = `model Untitled
   Modelica.Blocks.Sources.Sine sine(f = 1)
@@ -31,7 +32,7 @@ export const SIMULATION_COLORS: string[] = [
   "#bc8cff",
 ];
 
-export interface MorselIconShapeTool {
+export interface AnsatzIconShapeTool {
   id: string;
   label: string;
   title: string;
@@ -41,13 +42,13 @@ export interface MorselIconShapeTool {
   primitive: Record<string, unknown>;
 }
 
-export interface MorselDiagramTypeOption {
+export interface AnsatzDiagramTypeOption {
   id: string;
   label: string;
-  iconTools?: readonly MorselIconShapeTool[] | undefined;
+  iconTools?: readonly AnsatzIconShapeTool[] | undefined;
 }
 
-export const MODELICA_ICON_SHAPE_TOOLS: readonly MorselIconShapeTool[] = [
+export const MODELICA_ICON_SHAPE_TOOLS: readonly AnsatzIconShapeTool[] = [
   {
     id: "rect",
     label: "Rect",
@@ -139,7 +140,7 @@ export const MODELICA_ICON_SHAPE_TOOLS: readonly MorselIconShapeTool[] = [
   },
 ];
 
-export type MorselSyntaxFamily =
+export type AnsatzSyntaxFamily =
   | "modelica"
   | "sysml2"
   | "step"
@@ -155,16 +156,16 @@ export type MorselSyntaxFamily =
   | "plcopen"
   | "simulink";
 
-export type MorselDefaultView = "diagram" | "3d" | "simulation" | "inspector" | "code";
+export type AnsatzDefaultView = "diagram" | "3d" | "simulation" | "inspector" | "code";
 
-export interface MorselLanguageInfo {
+export interface AnsatzLanguageInfo {
   id: string;
   name: string;
   label?: string | undefined;
   tier?: "beta" | "alpha" | "pre-alpha" | undefined;
   ext: string;
   extensions: string[];
-  family: MorselSyntaxFamily;
+  family: AnsatzSyntaxFamily;
   defaultCode: string;
   defaultFiles?: Record<string, string> | undefined;
   defaultActiveFile?: string | undefined;
@@ -172,10 +173,10 @@ export interface MorselLanguageInfo {
   supportsSimulation: boolean;
   supports3d: boolean;
   /** Preferred default visualizer/editor view for this language (defaults to diagram, or 3d when 2D diagram is unsupported). */
-  defaultView?: MorselDefaultView | undefined;
+  defaultView?: AnsatzDefaultView | undefined;
   /** Whether to open in split code+visualizer mode by default (defaults to true unless defaultView is "code"). */
   defaultSplit?: boolean | undefined;
-  diagramTypes?: MorselDiagramTypeOption[];
+  diagramTypes?: AnsatzDiagramTypeOption[];
   featureFlag?: string | undefined;
   hiddenByDefault?: boolean | undefined;
 }
@@ -205,7 +206,7 @@ export function isLanguageFlagEnabled(langIdOrFlagKey?: string, defaultEnabled =
   return defaultEnabled;
 }
 
-export const ALL_MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = [
+const BASE_ANSATZ_LANGUAGES: readonly AnsatzLanguageInfo[] = [
   {
     id: "modelica",
     name: "Modelica",
@@ -1008,6 +1009,36 @@ COMPONENT TF01 TYPE = TF
 COMPONENT INT1 TYPE = IN
   PARAMETER IC = 0.0
 CONNECT TF01.S_OUT TO INT1.S_IN
+`,
+    supportsDiagram: true,
+    supportsSimulation: true,
+    supports3d: false,
+  },
+  {
+    id: "twentysim",
+    name: "20-sim Bond Graphs",
+    label: "20-sim Bond Graphs",
+    tier: "beta",
+    ext: "emx",
+    extensions: [".emx", ".20sim"],
+    family: "xml",
+    defaultCode: `<?xml version="1.0" encoding="UTF-8"?>
+<Document>
+  <Model version="4.8" name="MassSpringDamper">
+    <Submodel name="Main">
+      <Port name="p" direction="none" />
+      <Component name="Se" type="Se" parameters="e=10.0" />
+      <Component name="J1" type="1" />
+      <Component name="I_mass" type="I" parameters="i=2.0" />
+      <Component name="R_damp" type="R" parameters="r=1.2" />
+      <Component name="C_spring" type="C" parameters="c=0.05" />
+      <Bond from="Se" to="J1" />
+      <Bond from="J1" to="I_mass" />
+      <Bond from="J1" to="R_damp" />
+      <Bond from="J1" to="C_spring" />
+    </Submodel>
+  </Model>
+</Document>
 `,
     supportsDiagram: true,
     supportsSimulation: true,
@@ -3674,12 +3705,104 @@ BREAKPOINT {
   },
 ];
 
-export const MORSEL_LANGUAGES: readonly MorselLanguageInfo[] = ALL_MORSEL_LANGUAGES.filter((lang) =>
+const SIMULATION_CAPABLE_SLUGS = new Set([
+  "acsl",
+  "apdl",
+  "asm",
+  "atp",
+  "cea",
+  "cgmes",
+  "chemkin",
+  "cplex-lp",
+  "csmp",
+  "cyme",
+  "datcom",
+  "doe2",
+  "dynamo",
+  "esl",
+  "esterel",
+  "gams",
+  "gaussian",
+  "gpss",
+  "gridlabd",
+  "hec-hms",
+  "hec-ras",
+  "hec1",
+  "hec2",
+  "ieee-cdf",
+  "landgem",
+  "lsdyna",
+  "lustre",
+  "matpower",
+  "mcnp",
+  "melcor",
+  "mlxtran",
+  "modflow",
+  "mps",
+  "nec2",
+  "nmodl",
+  "oneliner",
+  "powerfactory",
+  "powerworld",
+  "pslf",
+  "pypsa",
+  "rinex",
+  "rtds",
+  "scale",
+  "sdl",
+  "sel",
+  "simscript",
+  "sinda",
+  "slam",
+  "sparql",
+  "tough",
+  "trasys",
+  "trnsys",
+  "twentysim",
+  "verilog",
+  "vhdl",
+]);
+
+const CAD_3D_CAPABLE_SLUGS = new Set([
+  "apt",
+  "dxf",
+  "gcode",
+  "iges",
+  "lsdyna",
+  "molfile",
+  "obj",
+  "plot3d",
+  "stl",
+  "usgs-dem",
+]);
+
+export const ALL_ANSATZ_LANGUAGES: readonly AnsatzLanguageInfo[] = BASE_ANSATZ_LANGUAGES.map((lang) => {
+  const gen = GENERATED_LANGUAGE_DEFAULTS[lang.id];
+  const supportsSimulation = lang.supportsSimulation || SIMULATION_CAPABLE_SLUGS.has(lang.id);
+  const supports3d = lang.supports3d || CAD_3D_CAPABLE_SLUGS.has(lang.id);
+  if (!gen && supportsSimulation === lang.supportsSimulation && supports3d === lang.supports3d) {
+    return lang;
+  }
+  return {
+    ...lang,
+    supportsSimulation,
+    supports3d,
+    ...(gen
+      ? {
+          defaultCode: gen.defaultCode,
+          ...(gen.defaultFiles ? { defaultFiles: gen.defaultFiles } : {}),
+          ...(gen.defaultActiveFile ? { defaultActiveFile: gen.defaultActiveFile } : {}),
+        }
+      : {}),
+  };
+});
+
+export const ANSATZ_LANGUAGES: readonly AnsatzLanguageInfo[] = ALL_ANSATZ_LANGUAGES.filter((lang) =>
   isLanguageFlagEnabled(lang.featureFlag ?? getLanguageFlagKey(lang.id), !lang.hiddenByDefault),
 );
 
-export function getVisibleMorselLanguages(isFlagEnabled?: (key: string) => boolean): readonly MorselLanguageInfo[] {
-  return ALL_MORSEL_LANGUAGES.filter((lang) => {
+export function getVisibleAnsatzLanguages(isFlagEnabled?: (key: string) => boolean): readonly AnsatzLanguageInfo[] {
+  return ALL_ANSATZ_LANGUAGES.filter((lang) => {
     if (isFlagEnabled) {
       return isLanguageEnabledInFlags(lang.id, isFlagEnabled);
     }
@@ -3687,14 +3810,14 @@ export function getVisibleMorselLanguages(isFlagEnabled?: (key: string) => boole
   });
 }
 
-export function useVisibleMorselLanguages(): readonly MorselLanguageInfo[] {
+export function useVisibleAnsatzLanguages(): readonly AnsatzLanguageInfo[] {
   const { isEnabled } = useFeatureFlags();
-  return useMemo(() => getVisibleMorselLanguages(isEnabled), [isEnabled]);
+  return useMemo(() => getVisibleAnsatzLanguages(isEnabled), [isEnabled]);
 }
 
-export const MORSEL_LANGUAGE_MAP: ReadonlyMap<string, MorselLanguageInfo> = new Map(
-  ALL_MORSEL_LANGUAGES.flatMap((lang) => {
-    const entries: [string, MorselLanguageInfo][] = [[lang.id, lang]];
+export const ANSATZ_LANGUAGE_MAP: ReadonlyMap<string, AnsatzLanguageInfo> = new Map(
+  ALL_ANSATZ_LANGUAGES.flatMap((lang) => {
+    const entries: [string, AnsatzLanguageInfo][] = [[lang.id, lang]];
     if (lang.id === "sysml2") {
       entries.push(["sysml", lang]);
     }
@@ -3702,10 +3825,10 @@ export const MORSEL_LANGUAGE_MAP: ReadonlyMap<string, MorselLanguageInfo> = new 
   }),
 );
 
-export function getLanguageInfo(idOrAlias?: string | null): MorselLanguageInfo {
-  if (!idOrAlias) return MORSEL_LANGUAGES[0]!;
+export function getLanguageInfo(idOrAlias?: string | null): AnsatzLanguageInfo {
+  if (!idOrAlias) return ANSATZ_LANGUAGES[0]!;
   const norm = idOrAlias.trim().toLowerCase();
-  return MORSEL_LANGUAGE_MAP.get(norm) ?? MORSEL_LANGUAGES[0]!;
+  return ANSATZ_LANGUAGE_MAP.get(norm) ?? ANSATZ_LANGUAGES[0]!;
 }
 
 export function getLanguageExtension(idOrAlias?: string | null): string {
@@ -3717,18 +3840,18 @@ export function getLanguageExtension(idOrAlias?: string | null): string {
  * configuration (`defaultView` / `defaultSplit`), falling back based on
  * capabilities (2D diagram -> 3D canvas -> simulation -> inspector) with split enabled.
  */
-export function getDefaultLanguageView(langInfo: MorselLanguageInfo): {
-  view: MorselDefaultView;
+export function getDefaultLanguageView(langInfo: AnsatzLanguageInfo): {
+  view: AnsatzDefaultView;
   isSplit: boolean;
 } {
-  const isViewSupported = (candidate: MorselDefaultView): boolean => {
+  const isViewSupported = (candidate: AnsatzDefaultView): boolean => {
     if (candidate === "diagram") return langInfo.supportsDiagram;
     if (candidate === "3d") return langInfo.supports3d;
     if (candidate === "simulation") return langInfo.supportsSimulation;
     return true;
   };
 
-  let view: MorselDefaultView;
+  let view: AnsatzDefaultView;
   if (langInfo.defaultView && isViewSupported(langInfo.defaultView)) {
     view = langInfo.defaultView;
   } else if (langInfo.supportsDiagram) {
@@ -3747,13 +3870,192 @@ export function getDefaultLanguageView(langInfo: MorselLanguageInfo): {
 
 export function detectLanguageFromFilename(filename: string): string {
   const lower = filename.trim().toLowerCase();
-  for (const lang of ALL_MORSEL_LANGUAGES) {
+  for (const lang of ALL_ANSATZ_LANGUAGES) {
     if (lower.endsWith(`.${lang.ext}`)) return lang.id;
   }
-  for (const lang of ALL_MORSEL_LANGUAGES) {
+  for (const lang of ALL_ANSATZ_LANGUAGES) {
     for (const ext of lang.extensions) {
       if (lower.endsWith(ext.toLowerCase())) return lang.id;
     }
   }
   return "modelica";
+}
+
+/**
+ * Companion-file extensions owned by a specific active dialect when present inside a
+ * multi-file workspace (resolves ambiguous extensions like `.dat`, `.inp`, `.mod`,
+ * `.cfg`, `.cif`, `.xml`, `.k`, `.net`, `.sim`, `.sub`, `.txt` without misrouting).
+ */
+const DIALECT_OWNED_COMPANION_EXTS: Readonly<Record<string, readonly string[]>> = {
+  ampl: [".mod", ".dat", ".run", ".ampl"],
+  comtrade: [".cfg", ".dat", ".cff", ".hdr", ".inf"],
+  cgmes: [".cgmes", ".xml", ".rdf"],
+  chemkin: [".inp", ".dat", ".therm", ".tran"],
+  modflow: [
+    ".nam",
+    ".dis",
+    ".dis6",
+    ".npf",
+    ".npf6",
+    ".ic",
+    ".ic6",
+    ".chd",
+    ".chd6",
+    ".wel",
+    ".wel6",
+    ".riv",
+    ".riv6",
+    ".drn",
+    ".sto",
+    ".rch",
+    ".tdis",
+    ".oc",
+    ".bas",
+    ".lpf",
+    ".pcg",
+  ],
+  "hec-ras": [".prj", ".g01", ".g02", ".f01", ".f02", ".u01", ".p01"],
+  "hec-hms": [".hms", ".basin", ".met", ".control", ".gage"],
+  energyplus: [".idf", ".epjson", ".epw"],
+  eclipse: [".data", ".grdecl", ".inc", ".ecl"],
+  tough: [".tgh", ".tough", ".dat", "mesh", "incon"],
+  psse: [".raw", ".dyr", ".seq", ".sav", ".con", ".mon", ".sub"],
+  pslf: [".epc", ".dyd"],
+  pscad: [".pscx", ".pslx", ".pswx", ".psmx", ".tli"],
+  opendss: [".dss"],
+  spice: [".sp", ".cir", ".net", ".lib", ".sub", ".inc", ".mod"],
+  atp: [".atp", ".lib", ".pch", ".dat"],
+  "verilog-a": [".va", ".vams", ".h"],
+  verilog: [".v", ".vh", ".sv"],
+  vhdl: [".vhd", ".vhdl"],
+  scl: [".scd", ".icd", ".ssd", ".cid", ".iid"],
+  ssp: [".ssd", ".ssv", ".ssm", ".ssp"],
+  obj: [".obj", ".mtl"],
+  rinex: [".obs", ".nav", ".rnx"],
+  plot3d: [".xyz", ".q", ".p3d"],
+  kicad: [".kicad_pcb", ".kicad_sch", ".kicad_pro", ".kicad_sym", ".kicad_mod"],
+  gerber: [".gbr", ".gtl", ".gbl", ".g2l", ".g3l", ".gts", ".gbs", ".gto", ".gbo", ".gko", ".drl", ".xln"],
+  gtfs: [".gtfs", ".txt"],
+  "dicom-rt": [".rtplan", ".dcm.json", ".dicom-rt", ".json"],
+  jsbsim: [".jsbsim", ".xml"],
+  "iucr-cif": [".cif"],
+  pdb: [".pdb", ".ent", ".cif", ".mmcif"],
+  cif: [".cif"],
+  nmodl: [".mod", ".nmodl"],
+  nmtran: [".ctl", ".mod", ".nmtran"],
+  doe2: [".inp", ".bdl"],
+  fea: [".inp", ".fea", ".bdf", ".fem", ".dat", ".k"],
+  lsdyna: [".k", ".key", ".dyn"],
+  cfd: [".su2", ".cfg", ".cfd", ".foam"],
+  apdl: [".apdl", ".mac", ".inp"],
+  topas: [".topas", ".tps", ".mac"],
+  adams: [".adm", ".acf", ".cmd"],
+  simpack: [".spck", ".sim", ".sub"],
+  gensys: [".tsimf", ".runf", ".sub", ".gen"],
+  simscript: [".sim", ".inc"],
+  gams: [".gms", ".inc"],
+  epanet: [".inp", ".net", ".epanet"],
+  swmm: [".swmm", ".inp", ".dat"],
+  trnsys: [".dck", ".tm2"],
+  relap5: [".r5", ".i", ".relap"],
+  mcnp: [".mcnp", ".inc", ".i"],
+  melcor: [".mel", ".inc"],
+  atopile: [".ato", ".yaml", ".yml"],
+  asn1: [".asn", ".asn1"],
+  autosar: [".arxml"],
+  automationml: [".aml", ".caex"],
+  oscal: [".oscal", ".oscal.json", ".oscal.yaml", ".oscal.yml", ".oscal.xml", ".json"],
+  owl2: [".owl", ".ofn", ".ttl", ".rdf", ".owl2"],
+  urdf: [".urdf", ".xacro", ".sdf"],
+  usd: [".usd", ".usda", ".usdz"],
+  scad: [".scad"],
+  sysml2: [".sysml", ".kerml", ".sysml2"],
+  modelica: [".mo", ".mos", ".msim", "package.order"],
+  c: [".c", ".h"],
+  fortran: [".f90", ".f95", ".f03", ".f08", ".f", ".for", ".inc"],
+  cellml: [".cellml"],
+  antimony: [".ant", ".antimony"],
+  sbol: [".sbol", ".sbol3"],
+  magicdraw: [".mdzip", ".mdxml", ".xmi"],
+  waterml: [".waterml", ".xml"],
+  genbank: [".gb", ".gbk", ".genbank", ".fasta", ".fa"],
+  smiles: [".smi", ".smiles", ".ism", ".sdf"],
+  molfile: [".mol", ".sdf"],
+  febio: [".feb", ".scn"],
+  nifti: [".nii", ".nii.json", ".nifti", ".nrrd", ".nhdr"],
+  igtl: [".igtl", ".igtl.json", ".plus.xml"],
+  opensim: [".osim", ".mot", ".trc"],
+  optical: [".sor", ".opt", ".openroadm.json"],
+  ran: [".adf", ".msi", ".pat", ".pla"],
+  sel: [".rdb", ".txt"],
+  gridlabd: [".glm", ".player"],
+  ocpp: [".ocpp", ".ocpp.json"],
+  openadr: [".oadr", ".openadr.xml"],
+  ccsds: [".oem", ".opm", ".omm", ".ocm", ".tdm", ".xtce", ".ndm"],
+  simulink: [".mdl", ".slx", ".m"],
+  twentysim: [".emx", ".20sim"],
+  lps: [".lps", ".lpsx"],
+  olga: [".opi", ".olga", ".key", ".tab"],
+};
+
+/**
+ * Resolves the LSP language ID for a companion file inside a multi-file workspace,
+ * respecting the active project dialect first to prevent shared-extension collisions
+ * (e.g. AMPL `.dat` being misrouted to FEA, or CGMES `.xml` being downgraded to generic XML).
+ */
+export function resolveCompanionFileLanguage(filename: string, activeDialect?: string | null): string {
+  const clean = filename.trim();
+  const lower = clean.toLowerCase();
+  const baseName = lower.split("/").pop() ?? lower;
+  const normDialect = activeDialect?.trim().toLowerCase() ?? "";
+
+  if (normDialect) {
+    const ownedExts = DIALECT_OWNED_COMPANION_EXTS[normDialect];
+    if (ownedExts) {
+      for (const token of ownedExts) {
+        if (token.startsWith(".")) {
+          if (lower.endsWith(token)) return normDialect;
+        } else if (baseName === token) {
+          return normDialect;
+        }
+      }
+    }
+    const activeInfo = ANSATZ_LANGUAGE_MAP.get(normDialect);
+    if (activeInfo) {
+      if (lower.endsWith(`.${activeInfo.ext.toLowerCase()}`)) return activeInfo.id;
+      for (const ext of activeInfo.extensions) {
+        if (lower.endsWith(ext.toLowerCase())) return activeInfo.id;
+      }
+    }
+  }
+
+  // Unambiguous cross-language companion files (e.g. .xodr inside openscenario, .sbml inside sedml, .ttl/.owl inside sparql, .csv data)
+  if (lower.endsWith(".csv") || lower.endsWith(".tsv")) return "csv";
+  if (lower.endsWith(".xodr")) return "opendrive";
+  if (lower.endsWith(".xosc")) return "openscenario";
+  if (lower.endsWith(".sbml")) return "sbml";
+  if (lower.endsWith(".cellml")) return "cellml";
+  if (lower.endsWith(".ttl") || lower.endsWith(".ofn") || lower.endsWith(".owl")) return "owl2";
+  if (lower.endsWith(".rq")) return "sparql";
+  if (lower.endsWith(".mo") || lower.endsWith(".mos")) return "modelica";
+  if (lower.endsWith(".sysml") || lower.endsWith(".kerml")) return "sysml2";
+  if (lower.endsWith(".f90") || lower.endsWith(".f")) return "fortran";
+  if (lower.endsWith(".qif")) return "qif";
+  if (lower.endsWith(".step") || lower.endsWith(".stp")) return "step";
+  if (lower.endsWith(".stl")) return "stl";
+  if (lower.endsWith(".sp") || lower.endsWith(".cir")) return "spice";
+  if (lower.endsWith(".urdf") || lower.endsWith(".xacro")) return "urdf";
+  if (lower.endsWith(".st")) return "plcopen";
+  if (lower.endsWith(".sedml")) return "sedml";
+  if (lower.endsWith(".smi")) return "smiles";
+  if (lower.endsWith(".sin")) return "sinda";
+  if (lower.endsWith(".nii.json")) return "nifti";
+
+  if (lower.includes(".")) {
+    const detected = detectLanguageFromFilename(clean);
+    if (detected !== "modelica" || lower.endsWith(".mo") || lower.endsWith(".mos") || lower.endsWith(".msim")) {
+      return detected;
+    }
+  }
+  return normDialect || "modelica";
 }

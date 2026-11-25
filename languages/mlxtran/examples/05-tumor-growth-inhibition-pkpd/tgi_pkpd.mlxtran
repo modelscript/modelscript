@@ -1,0 +1,18 @@
+; Simeoni Tumor Growth Inhibition (TGI) Oncology PK/PD Model
+[LONGITUDINAL]
+input = {Cl, V, kg, kkill, ktr, Kmax}
+
+PK:
+compartment(cmt = 1, amount = Ac, volume = V)
+iv(cmt = 1)
+
+EQUATION:
+Cc = Ac / V
+Wtot = X1 + X2 + X3
+ddt_Ac = -(Cl / V) * Ac
+ddt_X1 = kg * X1 * (1.0 - Wtot / Kmax) - kkill * Cc * X1
+ddt_X2 = kkill * Cc * X1 - ktr * X2
+ddt_X3 = ktr * X2 - ktr * X3
+
+OUTPUT:
+output = {Cc, Wtot}

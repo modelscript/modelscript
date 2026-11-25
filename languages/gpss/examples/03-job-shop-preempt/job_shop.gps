@@ -1,0 +1,22 @@
+* MODEL: JobShopPriority
+* CNC Machining Center with Regular Production & High-Priority Rush Orders
+CYCLE TABLE M1,10,10,20
+      GENERATE 15,5,,,1     ; Regular production jobs (priority 1)
+      QUEUE    CNC_Q        ; Wait for CNC mill
+      SEIZE    CNC_MILL     ; Acquire CNC mill
+      DEPART   CNC_Q        ; Leave queue
+      ADVANCE  12,3         ; Machining cycle (12 +/- 3 min)
+      RELEASE  CNC_MILL     ; Free CNC mill
+      TABULATE CYCLE        ; Record cycle time
+      TERMINATE 1           ; Regular job complete
+
+      GENERATE 60,15,,,5    ; Urgent rush jobs (priority 5)
+      QUEUE    CNC_Q        ; Jump ahead in priority queue
+      SEIZE    CNC_MILL     ; Capture CNC mill with higher priority
+      DEPART   CNC_Q        ; Leave queue
+      ADVANCE  8,2          ; Rush machining operation
+      RELEASE  CNC_MILL     ; Free CNC mill
+      TERMINATE 1           ; Rush job complete
+
+      START    150          ; Simulate 150 total jobs
+      END

@@ -74,11 +74,11 @@ const activeSvg = computed<string>(() => {
   return isDark.value ? example.value.svgDark : example.value.svgLight;
 });
 
-const morselHref = computed<string>(() => {
+const ansatzHref = computed<string>(() => {
   if (!example.value) return `${ansatzOrigin.value}/editor`;
   return `${ansatzOrigin.value}/editor#m=${example.value.permalinkToken}`;
 });
-const sketchHref = morselHref;
+const sketchHref = ansatzHref;
 
 const canvasTransform = computed<string>(() => {
   return `translate(${panX.value}px, ${panY.value}px) scale(${zoom.value})`;
@@ -251,10 +251,10 @@ function onPointerUp(e: PointerEvent) {
         </div>
 
         <a
-          :href="morselHref"
+          :href="ansatzHref"
           target="_blank"
           rel="noopener noreferrer"
-          class="open-playground-link"
+          class="open-ansatz-editor-link"
           title="Open this model in Ansatz"
         >
           <span>Ansatz</span>
@@ -488,7 +488,7 @@ function onPointerUp(e: PointerEvent) {
   color: #10b981;
 }
 
-.open-playground-link {
+.open-ansatz-editor-link {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -503,7 +503,7 @@ function onPointerUp(e: PointerEvent) {
   transition: all 0.15s ease;
 }
 
-.open-playground-link:hover {
+.open-ansatz-editor-link:hover {
   color: var(--vp-c-brand-1);
   border-color: var(--vp-c-brand-1);
 }

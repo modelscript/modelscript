@@ -1,0 +1,8 @@
+station Bay_230kV_Prot ca=203 oa=2 port=2404 k=12 w=8 t1=15 t2=10
+point 1101 M_SP_TB_1 Zone1_Distance_Trip init=0
+point 1102 M_SP_TB_1 Inst_50P_Trip init=0
+point 1103 M_SP_TB_1 Recloser_79_Active init=0
+point 1104 M_DP_TB_1 Breaker_52_Position init=2
+point 1105 M_SP_TB_1 SF6_Pressure_Alarm init=0
+point 2101 M_ME_TF_1 Fault_Current_kA units=kA scale=1.0 offset=0.0 deadband=0.05 init=0.42
+point 2102 M_ME_TF_1 Bus_230_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.3 init=231.2

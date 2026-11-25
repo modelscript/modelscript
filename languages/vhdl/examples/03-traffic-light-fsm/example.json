@@ -1,0 +1,11 @@
+{
+  "id": "vhdl-03-traffic-light-fsm",
+  "lang": "vhdl",
+  "subFormats": ["vhd"],
+  "difficulty": 3,
+  "title": "Traffic Light Moore Finite State Machine",
+  "description": "Two-process Moore finite state machine for a main-and-side-road traffic intersection controller with enumerated state types, vehicle sensor input, and glitch-free output decoding.",
+  "category": "Finite State Machines",
+  "tags": ["vhdl", "fsm", "moore", "traffic-light"],
+  "activeFile": "fsm_traffic.vhd"
+}

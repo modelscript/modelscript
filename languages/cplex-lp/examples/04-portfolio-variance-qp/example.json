@@ -1,0 +1,11 @@
+{
+  "id": "cplex-lp-04-portfolio-variance-qp",
+  "lang": "cplex-lp",
+  "subFormats": ["cplex-lp", "qp"],
+  "difficulty": 4,
+  "title": "Markowitz Portfolio Variance Quadratic Program",
+  "description": "Convex quadratic program (QP) minimizing portfolio return variance across three asset classes subject to full capital allocation and minimum expected return.",
+  "category": "Quantitative Finance",
+  "tags": ["cplex-lp", "qp", "portfolio", "markowitz"],
+  "activeFile": "portfolio_qp.lp"
+}

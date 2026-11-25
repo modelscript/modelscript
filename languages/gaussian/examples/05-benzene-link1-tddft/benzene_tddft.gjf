@@ -1,0 +1,31 @@
+%chk=benzene_tddft.chk
+%mem=8GB
+%nprocshared=8
+#p B3LYP/6-311+G(d,p) Opt
+
+Step 1: Ground-state D6h benzene geometry optimization
+
+0 1
+C     1.395000    0.000000    0.000000
+C     0.697500    1.208100    0.000000
+C    -0.697500    1.208100    0.000000
+C    -1.395000    0.000000    0.000000
+C    -0.697500   -1.208100    0.000000
+C     0.697500   -1.208100    0.000000
+H     2.481000    0.000000    0.000000
+H     1.240500    2.148600    0.000000
+H    -1.240500    2.148600    0.000000
+H    -2.481000    0.000000    0.000000
+H    -1.240500   -2.148600    0.000000
+H     1.240500   -2.148600    0.000000
+
+--Link1--
+%chk=benzene_tddft.chk
+%mem=8GB
+%nprocshared=8
+#p TD=(NStates=6,Singlet) B3LYP/6-311+G(d,p) Geom=Check Guess=Read
+
+Step 2: Vertical TD-DFT UV-Vis singlet excitations of benzene
+
+0 1
+

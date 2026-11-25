@@ -1,0 +1,86 @@
+[
+  {
+    "id": "pypsa-01-wind-gas-economic-dispatch",
+    "lang": "pypsa",
+    "subFormats": ["pypsa"],
+    "difficulty": 1,
+    "title": "2-Bus Wind & Gas Economic Dispatch",
+    "description": "Minimal 380 kV two-bus PyPSA energy system dispatching zero-marginal-cost northern wind generation alongside southern combined-cycle gas generation across an AC corridor.",
+    "category": "Energy Systems Optimization",
+    "tags": ["pypsa", "economic-dispatch", "wind", "gas", "380kv"],
+    "activeFile": "wind_gas.pypsa",
+    "fileNames": ["wind_gas.pypsa"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "network WindGas_2Bus baseMva=100\nbus North v_nom=380 carrier=AC\nbus South v_nom=380 carrier=AC\ngenerator Wind_North bus=North carrier=wind p_nom=500 marginal_cost=0 capital_cost=1200\ngenerator CCGT_South bus=South carrier=gas p_nom=450 marginal_cost=52 capital_cost=650\nload Load_South bus=South p_set=620\nline Line_NS bus0=North bus1=South r=2.1 x=21.5 s_nom=700\n"
+  },
+  {
+    "id": "pypsa-02-three-bus-congestion",
+    "lang": "pypsa",
+    "subFormats": ["pypsa"],
+    "difficulty": 2,
+    "title": "3-Bus Meshed Grid with Transmission Congestion & LMPs",
+    "description": "Three-bus 230 kV triangular meshed network demonstrating Kirchhoff loop flows, binding thermal line limits, and locational marginal price (LMP) separation.",
+    "category": "Energy Systems Optimization",
+    "tags": ["pypsa", "congestion", "lmp", "kirchhoff", "3-bus"],
+    "activeFile": "mesh3_congestion.pypsa",
+    "fileNames": ["mesh3_congestion.pypsa"],
+    "fileCount": 1,
+    "code": "network Mesh3_Congestion baseMva=100\nbus BusA v_nom=230 carrier=AC\nbus BusB v_nom=230 carrier=AC\nbus BusC v_nom=230 carrier=AC\ngenerator Hydro_A bus=BusA carrier=hydro p_nom=400 marginal_cost=12 capital_cost=1800\ngenerator Gas_B bus=BusB carrier=gas p_nom=350 marginal_cost=58 capital_cost=600\ngenerator Peaker_C bus=BusC carrier=oil p_nom=250 marginal_cost=115 capital_cost=400\nload Demand_B bus=BusB p_set=180\nload Demand_C bus=BusC p_set=420\nline Line_AB bus0=BusA bus1=BusB r=1.2 x=12.0 s_nom=300\nline Line_BC bus0=BusB bus1=BusC r=1.5 x=15.0 s_nom=220\nline Line_AC bus0=BusA bus1=BusC r=2.0 x=18.0 s_nom=200\n"
+  },
+  {
+    "id": "pypsa-03-solar-bess-24h-lopf",
+    "lang": "pypsa",
+    "subFormats": ["pypsa", "csv"],
+    "difficulty": 3,
+    "title": "24-Hour Solar PV & Battery Storage LOPF Arbitrage",
+    "description": "Multi-file PyPSA linear optimal power flow model pairing utility-scale solar PV, 4-hour lithium-ion BESS storage, and backup gas generation with a 24-hour capacity-factor and demand profile CSV.",
+    "category": "Energy Systems Optimization",
+    "tags": ["pypsa", "solar-pv", "bess", "lopf", "multi-file"],
+    "activeFile": "solar_bess.pypsa",
+    "fileNames": ["solar_bess.pypsa", "profiles_24h.csv"],
+    "fileCount": 2,
+    "code": "network SolarBESS_24h baseMva=100\nbus SolarHub v_nom=230 carrier=AC\nbus CityLoad v_nom=230 carrier=AC\ngenerator PV_Farm bus=SolarHub carrier=solar p_nom=600 marginal_cost=0 capital_cost=850\ngenerator Gas_Backup bus=CityLoad carrier=gas p_nom=500 marginal_cost=64 capital_cost=600\nload Metro_Demand bus=CityLoad p_set=480\nline Corridor_SC bus0=SolarHub bus1=CityLoad r=1.8 x=16.5 s_nom=550\nstorage_unit BESS_Hub bus=SolarHub p_nom=150 max_hours=4 efficiency_store=0.93 efficiency_dispatch=0.93 standing_loss=0.001\nstorage_unit BESS_City bus=CityLoad p_nom=100 max_hours=4 efficiency_store=0.92 efficiency_dispatch=0.92 standing_loss=0.001\n",
+    "files": {
+      "solar_bess.pypsa": "network SolarBESS_24h baseMva=100\nbus SolarHub v_nom=230 carrier=AC\nbus CityLoad v_nom=230 carrier=AC\ngenerator PV_Farm bus=SolarHub carrier=solar p_nom=600 marginal_cost=0 capital_cost=850\ngenerator Gas_Backup bus=CityLoad carrier=gas p_nom=500 marginal_cost=64 capital_cost=600\nload Metro_Demand bus=CityLoad p_set=480\nline Corridor_SC bus0=SolarHub bus1=CityLoad r=1.8 x=16.5 s_nom=550\nstorage_unit BESS_Hub bus=SolarHub p_nom=150 max_hours=4 efficiency_store=0.93 efficiency_dispatch=0.93 standing_loss=0.001\nstorage_unit BESS_City bus=CityLoad p_nom=100 max_hours=4 efficiency_store=0.92 efficiency_dispatch=0.92 standing_loss=0.001\n",
+      "profiles_24h.csv": "hour,solar_cf,load_mw\n0,0.00,340\n4,0.00,310\n8,0.42,460\n12,0.92,510\n16,0.58,560\n20,0.00,590\n23,0.00,410\n"
+    }
+  },
+  {
+    "id": "pypsa-04-sector-coupled-p2h-electrolyzer",
+    "lang": "pypsa",
+    "subFormats": ["pypsa", "csv"],
+    "difficulty": 4,
+    "title": "Sector-Coupled Power-to-Heat & Green Hydrogen Network",
+    "description": "Multi-carrier PyPSA energy network coupling electricity, district heating (heat pumps + thermal storage), and green hydrogen electrolysis via directional conversion links and companion demand CSV.",
+    "category": "Energy Systems Optimization",
+    "tags": ["pypsa", "sector-coupling", "hydrogen", "heat-pump", "multi-file"],
+    "activeFile": "sector.pypsa",
+    "fileNames": ["sector.pypsa", "demand_heat_elec.csv"],
+    "fileCount": 2,
+    "code": "network SectorCoupled_P2X baseMva=100\nbus Elec_Grid v_nom=380 carrier=AC\nbus District_Heat v_nom=1 carrier=heat\nbus H2_Bus v_nom=1 carrier=H2\ngenerator Offshore_Wind bus=Elec_Grid carrier=wind p_nom=900 marginal_cost=0 capital_cost=1650\ngenerator Solar_PV bus=Elec_Grid carrier=solar p_nom=500 marginal_cost=0 capital_cost=800\ngenerator Backup_CCGT bus=Elec_Grid carrier=gas p_nom=400 marginal_cost=68 capital_cost=620\nload Elec_Demand bus=Elec_Grid p_set=520\nload Heat_Demand bus=District_Heat p_set=260\nload H2_Industry bus=H2_Bus p_set=140\nlink HeatPump_P2H bus0=Elec_Grid bus1=District_Heat p_nom=350 efficiency=0.95\nlink PEM_Electrolyzer bus0=Elec_Grid bus1=H2_Bus p_nom=250 efficiency=0.68\nlink H2_FuelCell bus0=H2_Bus bus1=Elec_Grid p_nom=120 efficiency=0.58\nstorage_unit Thermal_Tank bus=District_Heat p_nom=120 max_hours=12 efficiency_store=0.96 efficiency_dispatch=0.96 standing_loss=0.005\nstorage_unit H2_Cavern bus=H2_Bus p_nom=150 max_hours=48 efficiency_store=0.98 efficiency_dispatch=0.98 standing_loss=0.0001\n",
+    "files": {
+      "sector.pypsa": "network SectorCoupled_P2X baseMva=100\nbus Elec_Grid v_nom=380 carrier=AC\nbus District_Heat v_nom=1 carrier=heat\nbus H2_Bus v_nom=1 carrier=H2\ngenerator Offshore_Wind bus=Elec_Grid carrier=wind p_nom=900 marginal_cost=0 capital_cost=1650\ngenerator Solar_PV bus=Elec_Grid carrier=solar p_nom=500 marginal_cost=0 capital_cost=800\ngenerator Backup_CCGT bus=Elec_Grid carrier=gas p_nom=400 marginal_cost=68 capital_cost=620\nload Elec_Demand bus=Elec_Grid p_set=520\nload Heat_Demand bus=District_Heat p_set=260\nload H2_Industry bus=H2_Bus p_set=140\nlink HeatPump_P2H bus0=Elec_Grid bus1=District_Heat p_nom=350 efficiency=0.95\nlink PEM_Electrolyzer bus0=Elec_Grid bus1=H2_Bus p_nom=250 efficiency=0.68\nlink H2_FuelCell bus0=H2_Bus bus1=Elec_Grid p_nom=120 efficiency=0.58\nstorage_unit Thermal_Tank bus=District_Heat p_nom=120 max_hours=12 efficiency_store=0.96 efficiency_dispatch=0.96 standing_loss=0.005\nstorage_unit H2_Cavern bus=H2_Bus p_nom=150 max_hours=48 efficiency_store=0.98 efficiency_dispatch=0.98 standing_loss=0.0001\n",
+      "demand_heat_elec.csv": "hour,elec_mw,heat_mw,h2_mw\n0,410,310,140\n6,490,340,140\n12,560,220,140\n18,620,280,140\n22,470,295,140\n"
+    }
+  },
+  {
+    "id": "pypsa-05-eu-renewable-capacity-expansion",
+    "lang": "pypsa",
+    "subFormats": ["pypsa", "csv"],
+    "difficulty": 5,
+    "title": "Multi-Region European Renewable Capacity Expansion",
+    "description": "Multi-file four-region 380 kV AC + HVDC subsea interconnector PyPSA capacity expansion network paired with regional wind/solar capacity factors (wind_solar_cf.csv) and hourly regional loads (loads.csv).",
+    "category": "Energy Systems Optimization",
+    "tags": ["pypsa", "capacity-expansion", "hvdc", "renewables", "multi-file"],
+    "activeFile": "eu_expansion.pypsa",
+    "fileNames": ["eu_expansion.pypsa", "loads.csv", "wind_solar_cf.csv"],
+    "fileCount": 3,
+    "code": "network EU_4Region_Expansion baseMva=100\nbus DE_North v_nom=380 carrier=AC\nbus DE_South v_nom=380 carrier=AC\nbus FR_West v_nom=380 carrier=AC\nbus NO_Hydro v_nom=380 carrier=AC\ngenerator Wind_DE_N bus=DE_North carrier=wind p_nom=1800 marginal_cost=0 capital_cost=1350\ngenerator Solar_DE_S bus=DE_South carrier=solar p_nom=1400 marginal_cost=0 capital_cost=780\ngenerator Nuclear_FR bus=FR_West carrier=nuclear p_nom=1600 marginal_cost=14 capital_cost=4200\ngenerator Hydro_NO bus=NO_Hydro carrier=hydro p_nom=1500 marginal_cost=5 capital_cost=2100\ngenerator CCGT_DE_S bus=DE_South carrier=gas p_nom=900 marginal_cost=62 capital_cost=640\nload Load_DE_N bus=DE_North p_set=1100\nload Load_DE_S bus=DE_South p_set=1450\nload Load_FR bus=FR_West p_set=1200\nload Load_NO bus=NO_Hydro p_set=650\nline AC_DE_NS bus0=DE_North bus1=DE_South r=1.6 x=18.0 s_nom=1600\nline AC_DE_FR bus0=DE_South bus1=FR_West r=2.0 x=22.0 s_nom=1400\nlink HVDC_NordLink bus0=NO_Hydro bus1=DE_North p_nom=1400 efficiency=0.96\nlink HVDC_SuedLink bus0=DE_North bus1=DE_South p_nom=2000 efficiency=0.97\nstorage_unit BESS_DE_S bus=DE_South p_nom=400 max_hours=4 efficiency_store=0.92 efficiency_dispatch=0.92 standing_loss=0.001\nstorage_unit PSH_NO bus=NO_Hydro p_nom=600 max_hours=24 efficiency_store=0.86 efficiency_dispatch=0.86 standing_loss=0.0002\n",
+    "files": {
+      "eu_expansion.pypsa": "network EU_4Region_Expansion baseMva=100\nbus DE_North v_nom=380 carrier=AC\nbus DE_South v_nom=380 carrier=AC\nbus FR_West v_nom=380 carrier=AC\nbus NO_Hydro v_nom=380 carrier=AC\ngenerator Wind_DE_N bus=DE_North carrier=wind p_nom=1800 marginal_cost=0 capital_cost=1350\ngenerator Solar_DE_S bus=DE_South carrier=solar p_nom=1400 marginal_cost=0 capital_cost=780\ngenerator Nuclear_FR bus=FR_West carrier=nuclear p_nom=1600 marginal_cost=14 capital_cost=4200\ngenerator Hydro_NO bus=NO_Hydro carrier=hydro p_nom=1500 marginal_cost=5 capital_cost=2100\ngenerator CCGT_DE_S bus=DE_South carrier=gas p_nom=900 marginal_cost=62 capital_cost=640\nload Load_DE_N bus=DE_North p_set=1100\nload Load_DE_S bus=DE_South p_set=1450\nload Load_FR bus=FR_West p_set=1200\nload Load_NO bus=NO_Hydro p_set=650\nline AC_DE_NS bus0=DE_North bus1=DE_South r=1.6 x=18.0 s_nom=1600\nline AC_DE_FR bus0=DE_South bus1=FR_West r=2.0 x=22.0 s_nom=1400\nlink HVDC_NordLink bus0=NO_Hydro bus1=DE_North p_nom=1400 efficiency=0.96\nlink HVDC_SuedLink bus0=DE_North bus1=DE_South p_nom=2000 efficiency=0.97\nstorage_unit BESS_DE_S bus=DE_South p_nom=400 max_hours=4 efficiency_store=0.92 efficiency_dispatch=0.92 standing_loss=0.001\nstorage_unit PSH_NO bus=NO_Hydro p_nom=600 max_hours=24 efficiency_store=0.86 efficiency_dispatch=0.86 standing_loss=0.0002\n",
+      "loads.csv": "hour,de_north_mw,de_south_mw,fr_west_mw,no_hydro_mw\n0,920,1180,980,580\n6,1050,1360,1120,620\n12,1180,1520,1260,680\n18,1240,1610,1340,710\n23,960,1210,1010,590\n",
+      "wind_solar_cf.csv": "hour,wind_de_n_cf,solar_de_s_cf,hydro_no_cf\n0,0.68,0.00,0.75\n6,0.62,0.18,0.78\n12,0.54,0.86,0.80\n18,0.72,0.22,0.82\n23,0.76,0.00,0.76\n"
+    }
+  }
+]

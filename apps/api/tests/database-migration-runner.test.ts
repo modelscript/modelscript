@@ -328,8 +328,12 @@ test("Database Migration Runner Lifecycle & Safety", async (t) => {
       const rollback = await pgRunner.rollbackLast(allMigrations, { silent: true });
       assert.equal(rollback.rolledBack, allMigrations[allMigrations.length - 1]!.name);
       assert.ok(
-        executedSql.some((s) => /DROP TABLE IF EXISTS sysml2_project_owners/i.test(s)),
-        "0006 rollback must emit DROP TABLE IF EXISTS sysml2_project_owners",
+        executedSql.some((s) => /DROP TABLE IF EXISTS reference_library_items/i.test(s)),
+        "0007 rollback must emit DROP TABLE IF EXISTS reference_library_items",
+      );
+      assert.ok(
+        executedSql.some((s) => /DROP TABLE IF EXISTS reference_collections/i.test(s)),
+        "0007 rollback must emit DROP TABLE IF EXISTS reference_collections",
       );
     },
   );

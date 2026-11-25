@@ -1,0 +1,11 @@
+{
+  "id": "scad-05-planetary-gearbox-assembly",
+  "lang": "scad",
+  "subFormats": ["scad"],
+  "difficulty": 5,
+  "title": "Modular Planetary Gearbox Assembly",
+  "description": "Four-file OpenSCAD planetary gearbox assembly using include and use directives to compose shared gear parameters, sun and planet spur gears, and an outer ring housing.",
+  "category": "Multi-File Mechanical CAD",
+  "tags": ["scad", "planetary-gearbox", "include", "use", "multi-file"],
+  "activeFile": "assembly.scad"
+}

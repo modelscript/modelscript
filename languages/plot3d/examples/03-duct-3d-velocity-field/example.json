@@ -1,0 +1,11 @@
+{
+  "id": "plot3d-03-duct-3d-velocity-field",
+  "lang": "plot3d",
+  "subFormats": ["xyz", "q"],
+  "difficulty": 3,
+  "title": "3D Rectangular Duct Grid and Boundary-Layer Velocity Field",
+  "description": "Three-dimensional 3x3x3 rectangular wind-tunnel duct structured mesh paired with a conservative flow solution capturing wall-normal velocity shear from the boundary layer to the core.",
+  "category": "Structured CFD & Aerodynamics",
+  "tags": ["plot3d", "3d-duct", "boundary-layer", "multi-file"],
+  "activeFile": "duct3d.xyz"
+}

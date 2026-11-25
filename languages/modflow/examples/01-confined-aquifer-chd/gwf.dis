@@ -1,0 +1,10 @@
+# 1D Confined Aquifer Discretization (1 layer x 1 row x 10 columns)
+BEGIN DIS6
+  NLAY 1
+  NROW 1
+  NCOL 10
+  DELR 100.0
+  DELC 100.0
+  TOP 50.0
+  BOTM 20.0
+END DIS6

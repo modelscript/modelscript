@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { DAEBuilder, ExprKind, type QueryDB, type SymbolId, Variability } from "@modelscript/runtime";
+import type { SyntaxNode } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import {
   collectReferencedRootIdentsFromExprCst,
@@ -8,6 +9,20 @@ import {
   parseStandaloneExpressionCst,
 } from "../expressions/cst-utils.js";
 import { extractCompilerOptions } from "../support/compiler-options.js";
+import type { ComponentInstanceData, FlattenerCstNode, FlattenOptions } from "../types.js";
+
+interface ComponentInstanceQueryData extends Omit<ComponentInstanceData, "modification"> {
+  bindingExpression?: { text?: string } | undefined;
+  modification?:
+    | {
+        isEach?: boolean | undefined;
+        bindingExpression?: { text?: string } | undefined;
+        value?: { text?: string } | undefined;
+      }
+    | undefined;
+}
+
+type CycleCheckOptions = (FlattenOptions & { ignoreCycles?: boolean; scodeinstMode?: boolean }) | undefined;
 
 function stripLeafSubscript(name: string): string {
   const lastDot = name.lastIndexOf(".");
@@ -133,11 +148,11 @@ export function checkCyclicConstantsAndParameters(
   dae: DAEBuilder,
   rootClassId: SymbolId,
   db: QueryDB,
-  options: any,
+  options: CycleCheckOptions,
   varConditionDeps: Map<string, string[] | Set<string>>,
 ): void {
   const rootSym = db.symbol(rootClassId);
-  const rootCst = db.cstNode(rootClassId) as any;
+  const rootCst = db.cstNode(rootClassId) as FlattenerCstNode | null;
   const ignoreCycles =
     Boolean(options?.ignoreCycles) || extractCompilerOptions(rootCst, options, db, rootSym).ignoreCycles;
   if (ignoreCycles) return;
@@ -151,7 +166,7 @@ export function checkCyclicConstantsAndParameters(
     const paramNames = new Set<string>();
     for (const ch of children) {
       if (ch.kind === "Component") {
-        const ci = db.query<any>("componentInstance", ch.id);
+        const ci = db.query<ComponentInstanceQueryData | null>("componentInstance", ch.id);
         if (ci?.variability === "parameter") {
           paramNames.add(ch.name);
         }
@@ -160,28 +175,31 @@ export function checkCyclicConstantsAndParameters(
     if (paramNames.size > 0) {
       for (const ch of children) {
         if (ch.kind === "Component") {
-          const ci = db.query<any>("componentInstance", ch.id);
+          const ci = db.query<ComponentInstanceQueryData | null>("componentInstance", ch.id);
           const rawBind =
             ci?.modification?.bindingExpression?.text ?? ci?.modification?.value?.text ?? ci?.bindingExpression?.text;
           if (ci?.variability === "constant" && rawBind) {
             const bText = rawBind.trim();
-            const declCst = db.cstNode(ch.id) as any;
+            const declCst = db.cstNode(ch.id) as SyntaxNode | null;
             const exprCst = extractBindingExprFromDeclCst(declCst, ch.name) ?? parseStandaloneExpressionCst(bText);
             const ids = collectReferencedRootIdentsFromExprCst(exprCst);
             if (ids.some((id: string) => paramNames.has(id))) {
-              let clauseNode: any = declCst;
+              let clauseNode: FlattenerCstNode | null | undefined = declCst;
               while (clauseNode && clauseNode.type !== "component_clause" && clauseNode.type !== "element") {
                 clauseNode = clauseNode.parent;
               }
               const rNode = clauseNode ?? declCst;
-              const rangeObj = rNode
-                ? {
-                    startOffset: rNode.startIndex ?? rNode.startOffset,
-                    endOffset: rNode.endIndex ?? rNode.endOffset,
-                    startPosition: rNode.startPosition,
-                    endPosition: rNode.endPosition,
-                  }
-                : undefined;
+              const startOffset = rNode?.startIndex ?? rNode?.startOffset;
+              const endOffset = rNode?.endIndex ?? rNode?.endOffset;
+              const rangeObj =
+                rNode && startOffset !== undefined && endOffset !== undefined
+                  ? {
+                      startOffset,
+                      endOffset,
+                      startPosition: rNode.startPosition,
+                      endPosition: rNode.endPosition,
+                    }
+                  : undefined;
               dae.diagnostics.push({
                 severity: "error",
                 code: ModelicaErrorCode.CONSTANT_VARIABILITY_VIOLATION.code,
@@ -258,11 +276,11 @@ export function checkCyclicConstantsAndParameters(
     const children = db.childrenOf(rootClassId);
     for (const ch of children) {
       if (ch.kind === "Component" && rootVars.includes(ch.name)) {
-        const ci = db.query<any>("componentInstance", ch.id);
+        const ci = db.query<ComponentInstanceQueryData | null>("componentInstance", ch.id);
         if (ci?.variability !== "constant") continue;
         let rawBind =
           ci?.modification?.bindingExpression?.text ?? ci?.modification?.value?.text ?? ci?.bindingExpression?.text;
-        const cstNode = db.cstNode(ch.id) as any;
+        const cstNode = db.cstNode(ch.id) as SyntaxNode | null;
         if (!rawBind) {
           const cstText = cstNode?.text ?? "";
           const eqIdx = cstText.indexOf("=");
@@ -458,15 +476,18 @@ export function checkCyclicFunctionComponents(fn: DAEBuilder, fnSymId: SymbolId,
 
     if (dfs(startNode)) {
       const cycleStr = path.map((id) => compNames[id]!).join(", ");
-      const bCst = db.cstNode(fnSymId) as any;
-      const rangeObj = bCst
-        ? {
-            startOffset: bCst.startIndex ?? bCst.startOffset,
-            endOffset: bCst.endIndex ?? bCst.endOffset,
-            startPosition: bCst.startPosition,
-            endPosition: bCst.endPosition,
-          }
-        : undefined;
+      const bCst = db.cstNode(fnSymId) as FlattenerCstNode | null;
+      const startOffset = bCst?.startIndex ?? bCst?.startOffset;
+      const endOffset = bCst?.endIndex ?? bCst?.endOffset;
+      const rangeObj =
+        bCst && startOffset !== undefined && endOffset !== undefined
+          ? {
+              startOffset,
+              endOffset,
+              startPosition: bCst.startPosition,
+              endPosition: bCst.endPosition,
+            }
+          : undefined;
 
       fn.diagnostics.push({
         severity: "error",

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="6" name="Urban_Crosswalk_Street" version="1.0" date="2026-11-24" north="30.0" south="-30.0" east="200.0" west="0.0" vendor="Ansatz"/>
+  <road name="Urban_Street" length="200.0" id="1" junction="-1">
+    <planView><geometry s="0.0" x="0.0" y="0.0" hdg="0.0" length="200.0"><line/></geometry></planView>
+    <lanes>
+      <laneSection s="0.0">
+        <left>
+          <lane id="2" type="sidewalk" level="false"><width sOffset="0" a="2.0" b="0" c="0" d="0"/></lane>
+          <lane id="1" type="driving" level="false"><width sOffset="0" a="3.25" b="0" c="0" d="0"/></lane>
+        </left>
+        <center><lane id="0" type="none" level="false"/></center>
+        <right>
+          <lane id="-1" type="driving" level="false"><width sOffset="0" a="3.25" b="0" c="0" d="0"/></lane>
+          <lane id="-2" type="sidewalk" level="false"><width sOffset="0" a="2.0" b="0" c="0" d="0"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

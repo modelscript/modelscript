@@ -1,0 +1,11 @@
+{
+  "id": "edif-05-alu8-gate-netlist",
+  "lang": "edif",
+  "subFormats": ["edf"],
+  "difficulty": 5,
+  "title": "Hierarchical 8-Bit ALU Gate-Level ASIC Netlist",
+  "description": "Multi-level ASIC gate-level EDIF 2.0.0 netlist composing reusable 1-bit ALU slice subcells (AND/OR/XOR/ADD with MUX2 selection) into a complete 8-bit bit-slice datapath.",
+  "category": "ASIC Datapaths",
+  "tags": ["edif", "alu", "asic", "bit-slice", "hierarchical"],
+  "activeFile": "alu8.edf"
+}

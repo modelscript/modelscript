@@ -1,0 +1,11 @@
+{
+  "id": "usd-04-amr-factory-floor",
+  "lang": "usd",
+  "subFormats": ["usda"],
+  "difficulty": 4,
+  "title": "Autonomous Mobile Robot Factory Floor Scene",
+  "description": "Multi-file OpenUSD industrial simulation scene integrating an articulated differential-drive AMR robot asset, factory floor collision plane, and studio lighting layer.",
+  "category": "Robotics Simulation",
+  "tags": ["usd", "amr", "factory", "robotics", "multi-file"],
+  "activeFile": "floor.usda"
+}

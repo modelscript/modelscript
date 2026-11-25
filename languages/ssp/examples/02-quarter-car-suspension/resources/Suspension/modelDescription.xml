@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="Suspension" guid="{22222222-2222-2222-2222-222222222202}">
+  <CoSimulation modelIdentifier="Suspension" />
+  <ModelVariables>
+    <ScalarVariable name="z_road" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="a_sprung" valueReference="1" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="z_sprung" valueReference="2" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

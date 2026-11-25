@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="MM_Enzyme" name="Michaelis-Menten Kinetics">
+    <listOfCompartments><compartment id="cytosol" size="1.0" constant="true"/></listOfCompartments>
+    <listOfSpecies>
+      <species id="S" compartment="cytosol" initialConcentration="10.0" constant="false"/>
+      <species id="P" compartment="cytosol" initialConcentration="0.0" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="Vmax" value="1.5" constant="true"/>
+      <parameter id="Km" value="2.0" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_cat" reversible="false">
+        <listOfReactants><speciesReference species="S" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="P" stoichiometry="1"/></listOfProducts>
+        <kineticLaw><formula>(Vmax * S) / (Km + S)</formula></kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

@@ -181,7 +181,7 @@ function createVirtualEntryPlugin(): Plugin {
       if (id === VIRTUAL_LANGUAGE_UI_RESOLVED) {
         return `
 export const LANGUAGE_PANEL_META = [];
-export const MORSEL_PANEL_LOADERS = {};
+export const ANSATZ_PANEL_LOADERS = {};
 export const ARTIFACT_PANEL_LOADERS = {};
 export const LANGUAGE_STENCILS = {};
 export const LANGUAGE_SIMULATION_CARDS = [];

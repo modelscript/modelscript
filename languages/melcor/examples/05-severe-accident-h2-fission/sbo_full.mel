@@ -1,0 +1,83 @@
+! Severe Accident Containment Hydrogen and Fission Product Transport
+! Companion radionuclide inventory archive: radionuclides.inc
+MELGEN_INPUT
+TITLE 'Severe Accident Hydrogen and Fission Product Transport'
+
+EXEC_INPUT
+  EXEC_TSTART 0.0
+  EXEC_TEND 1200.0
+  EXEC_DT 0.05 1.0 1.0e-5
+
+CVH_INPUT
+  CV_ID 'RCS_Vessel' 100 NORMAL
+  CV_THR 1.55e7 595.0 0.42 0.58
+  CV_PAS 90.0 0.0 12.0
+  CV_NCG 'H2' 0.01
+
+  CV_ID 'Lower_Drywell' 200 NORMAL
+  CV_THR 1.05e5 318.0 0.02 0.12
+  CV_PAS 12000.0 0.0 18.0
+  CV_NCG 'N2' 0.78
+
+  CV_ID 'Upper_Dome' 300 NORMAL
+  CV_THR 1.01325e5 310.0 0.0 0.08
+  CV_PAS 46000.0 18.0 54.0
+  CV_NCG 'N2' 0.78
+
+FL_INPUT
+  FL_ID 'Hot_Leg_Break' 10
+  FL_FT 100 200 6.0 8.0
+  FL_GEO 0.08 2.0 1.0
+  FL_USL 1.8 2.2
+  FL_IC 0.0
+
+  FL_ID 'Drywell_to_Dome' 20
+  FL_FT 200 300 17.0 20.0
+  FL_GEO 18.0 3.0 1.0
+  FL_USL 1.2 1.4
+  FL_IC 0.0
+
+HS_INPUT
+  HS_ID 'RPV_Lower_Head' 1001 SPHERICAL
+  HS_GD 0.18 85.0 140000.0 28.0 530.0 7930.0
+  HS_LB 100 1800.0
+  HS_RB 200 60.0
+  HS_TEMP 580.0
+  HS_SRC 0.0
+
+  HS_ID 'Dome_Concrete' 3001 CYLINDRICAL
+  HS_GD 1.1 4800.0 250000.0 1.7 880.0 2400.0
+  HS_LB 300 220.0
+  HS_RB 300 12.0
+  HS_TEMP 310.0
+  HS_SRC 0.0
+
+COR_INPUT
+  COR_RP 5 12 3.4e9
+  COR_ZDF 98000.0 350.0 610.0 5000.0 23500.0 100
+  COR_PWR 3.6e7 3.4e9
+  COR_OX ON URBANIC_HEIDRICK 5000.0 23500.0
+
+RN1_INPUT
+  RN1_CLS 1 'XE' 165.0 0.08
+  RN1_CLS 2 'CS' 135.0 0.03
+  RN1_CLS 3 'BA' 48.0 0.005
+  RN1_CLS 4 'I2' 18.5 0.04
+
+CF_INPUT
+  CF_ID 'Primary_Containment_DP' 1 SUBTRACT
+  CF_SAI 1.0 0.0 0.0
+  CF_ARG CVH 100 P 1.0
+  CF_ARG CVH 200 P -1.0
+
+TF_INPUT
+  TF_ID 'Core_Decay_Heat' 10 1.0 0.0
+  TF_TAB 0.0 1.0 120.0 0.65 600.0 0.40 1200.0 0.30
+
+MP_INPUT
+  MP_ID 'Fuel_UO2_Cp' 1 UO2 CP 310.0
+
+NCG_INPUT
+  NCG_ID 'H2' 1 2.01588 14307.0
+
+END

@@ -1,0 +1,84 @@
+[
+  {
+    "id": "gensys-01-single-wheelset-stability",
+    "lang": "gensys",
+    "subFormats": ["tsimf"],
+    "difficulty": 1,
+    "title": "Single Wheelset Kalker Creepage Stability",
+    "description": "Single standard-gauge railway wheelset with S1002 tread profile and primary yaw/lateral suspension stiffnesses to evaluate Klingel kinematic oscillation and Kalker creepage stability.",
+    "category": "Rail Vehicle Dynamics",
+    "tags": ["wheelset", "kalker", "hunting", "rail"],
+    "activeFile": "wheelset.tsimf",
+    "fileNames": ["wheelset.tsimf"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# GENSYS Model: Single Wheelset Kalker Creepage Stability\n# Standard 1435 mm track gauge, S1002 tread profile, 0.46 m wheel radius\nset m_ws = 1500.0\nset r_nom = 0.46\n\nbody axle_frame 1200.0 650.0 950.0 1100.0 0.0 0.0 0.50\nwheelset ws1 m_ws 1.435 r_nom 0.05 \"S1002_profile.wheel\"\n\n# Primary longitudinal, lateral, and vertical suspension to reference frame\nspring prim_susp ws1 axle_frame 9000000 4000000 1200000 15000 12000 20000\nspring frame_gnd axle_frame ground 100000 500000 800000 5000 10000 15000\n"
+  },
+  {
+    "id": "gensys-02-freight-wagon-hunting",
+    "lang": "gensys",
+    "subFormats": ["tsimf"],
+    "difficulty": 2,
+    "title": "Two-Axle Freight Wagon Tangent Track Hunting",
+    "description": "Two-axle UIC freight wagon with tare carbody inertia, leaf-spring primary suspension couplings, and standard S1002 wheelsets for tangent-track critical hunting speed analysis.",
+    "category": "Rail Vehicle Dynamics",
+    "tags": ["freight-wagon", "hunting", "two-axle", "rail"],
+    "activeFile": "freight_wagon.tsimf",
+    "fileNames": ["freight_wagon.tsimf"],
+    "fileCount": 1,
+    "code": "# GENSYS Model: Two-Axle Freight Wagon Tangent Track Hunting\n# Wheelbase = 9.0 m, standard gauge 1.435 m\nset m_wagon = 14500.0\nset kx_leaf = 4500000.0\nset ky_leaf = 1800000.0\nset kz_leaf = 1650000.0\n\nbody wagon_body m_wagon 28000.0 420000.0 410000.0 0.0 0.0 1.45\nwheelset ws_lead 1350.0 1.435 0.46 0.08 \"S1002_freight.wheel\"\nwheelset ws_trail 1350.0 1.435 0.46 0.08 \"S1002_freight.wheel\"\n\n# Parabolic leaf-spring primary suspension couplings\nspring susp_lead wagon_body ws_lead kx_leaf ky_leaf kz_leaf 18000 14000 22000\nspring susp_trail wagon_body ws_trail kx_leaf ky_leaf kz_leaf 18000 14000 22000\n"
+  },
+  {
+    "id": "gensys-03-bogie-curved-track",
+    "lang": "gensys",
+    "subFormats": ["tsimf"],
+    "difficulty": 3,
+    "title": "Passenger Bogie Curved Track Flange Contact",
+    "description": "Two-axle passenger bogie with bolster, primary chevron springs, secondary air springs, and anti-yaw dampers configured for tight-curve flange contact and Nadal Y/Q derailment evaluation.",
+    "category": "Rail Vehicle Dynamics",
+    "tags": ["bogie", "curving", "nadal-yq", "flange-contact"],
+    "activeFile": "bogie_curve.tsimf",
+    "fileNames": ["bogie_curve.tsimf"],
+    "fileCount": 1,
+    "code": "# GENSYS Model: Passenger Bogie Curved Track Flange Contact (Nadal Y/Q)\n# Bogie wheelbase 2.50 m, primary chevron springs, secondary air springs\nset m_cb_half = 16000.0\nset m_bogie = 2850.0\n\nbody carbody_half m_cb_half 34000.0 820000.0 810000.0 0.0 0.0 1.65\nbody bogie_frame m_bogie 1950.0 1750.0 3200.0 0.0 0.0 0.55\n\nwheelset ws_front 1520.0 1.435 0.46 0.10 \"S1002_worn.wheel\"\nwheelset ws_rear 1520.0 1.435 0.46 0.10 \"S1002_worn.wheel\"\n\n# Secondary air-spring and yaw damper suspension\nspring sec_air carbody_half bogie_frame 165000 155000 420000 28000 32000 42000\n\n# Primary axlebox coil and chevron springs\nspring prim_front bogie_frame ws_front 8500000 3800000 1180000 14000 11000 19000\nspring prim_rear bogie_frame ws_rear 8500000 3800000 1180000 14000 11000 19000\n"
+  },
+  {
+    "id": "gensys-04-high-speed-coach",
+    "lang": "gensys",
+    "subFormats": ["tsimf", "runf", "sub"],
+    "difficulty": 4,
+    "title": "Four-Axle High-Speed Coach with Track Irregularity",
+    "description": "Full 4-axle 250 km/h high-speed passenger coach with front and rear bogies, secondary air springs, primary axlebox suspensions, a companion run control file, and measured track irregularity profile.",
+    "category": "High-Speed Rail",
+    "tags": ["high-speed-coach", "track-irregularity", "bogie", "multi-file"],
+    "activeFile": "coach.tsimf",
+    "fileNames": ["coach.tsimf", "run_250kmh.runf", "track_irreg.sub"],
+    "fileCount": 3,
+    "code": "# GENSYS Model: Full 4-Axle High-Speed Passenger Coach (250 km/h)\n# Pivot distance = 19.0 m, bogie wheelbase = 2.50 m\nset m_car = 34000.0\nset m_bogie = 2750.0\nset m_ws = 1480.0\n\nbody carbody m_car 68000.0 1920000.0 1850000.0 0.0 0.0 1.72\nbody bogie_front m_bogie 1900.0 1700.0 3150.0 9.5 0.0 0.55\nbody bogie_rear m_bogie 1900.0 1700.0 3150.0 -9.5 0.0 0.55\n\nwheelset ws1 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\nwheelset ws2 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\nwheelset ws3 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\nwheelset ws4 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\n\n# Secondary air springs & yaw dampers\nspring sec_front carbody bogie_front 150000 145000 410000 26000 30000 38000\nspring sec_rear carbody bogie_rear 150000 145000 410000 26000 30000 38000\n\n# Primary axlebox suspensions\nspring prim_1 bogie_front ws1 9500000 4200000 1200000 15000 12000 20000\nspring prim_2 bogie_front ws2 9500000 4200000 1200000 15000 12000 20000\nspring prim_3 bogie_rear ws3 9500000 4200000 1200000 15000 12000 20000\nspring prim_4 bogie_rear ws4 9500000 4200000 1200000 15000 12000 20000\n\nsub track_irreg\n",
+    "files": {
+      "coach.tsimf": "# GENSYS Model: Full 4-Axle High-Speed Passenger Coach (250 km/h)\n# Pivot distance = 19.0 m, bogie wheelbase = 2.50 m\nset m_car = 34000.0\nset m_bogie = 2750.0\nset m_ws = 1480.0\n\nbody carbody m_car 68000.0 1920000.0 1850000.0 0.0 0.0 1.72\nbody bogie_front m_bogie 1900.0 1700.0 3150.0 9.5 0.0 0.55\nbody bogie_rear m_bogie 1900.0 1700.0 3150.0 -9.5 0.0 0.55\n\nwheelset ws1 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\nwheelset ws2 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\nwheelset ws3 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\nwheelset ws4 m_ws 1.435 0.46 0.05 \"S1002_hs.wheel\"\n\n# Secondary air springs & yaw dampers\nspring sec_front carbody bogie_front 150000 145000 410000 26000 30000 38000\nspring sec_rear carbody bogie_rear 150000 145000 410000 26000 30000 38000\n\n# Primary axlebox suspensions\nspring prim_1 bogie_front ws1 9500000 4200000 1200000 15000 12000 20000\nspring prim_2 bogie_front ws2 9500000 4200000 1200000 15000 12000 20000\nspring prim_3 bogie_rear ws3 9500000 4200000 1200000 15000 12000 20000\nspring prim_4 bogie_rear ws4 9500000 4200000 1200000 15000 12000 20000\n\nsub track_irreg\n",
+      "run_250kmh.runf": "# GENSYS Run Control File: 250 km/h Mainline Stability & Ride Quality\n# Simulation parameters for coach.tsimf\nset v_kmh = 250.0\nset t_start = 0.0\nset t_stop = 20.0\nset dt_out = 0.005\nsub coach\nsub track_irreg\n",
+      "track_irreg.sub": "# GENSYS Track Irregularity Sub-File (s, lat_irreg, vert_irreg, cross_level, gauge_var, cant, curvature)\n0.0     0.0005  -0.0004   0.0002  -0.0001   0.000   0.0000\n25.0    0.0012  -0.0008   0.0005  -0.0002   0.015   0.0002\n50.0    0.0018  -0.0011   0.0007  -0.0003   0.030   0.0004\n75.0    0.0014  -0.0009   0.0004  -0.0002   0.045   0.0006\n100.0   0.0009  -0.0005   0.0003  -0.0001   0.060   0.0008\n"
+    }
+  },
+  {
+    "id": "gensys-05-tilting-trainset-en14363",
+    "lang": "gensys",
+    "subFormats": ["tsimf", "runf", "sub"],
+    "difficulty": 5,
+    "title": "Articulated Tilting Trainset EN 14363 Certification",
+    "description": "Two-car articulated tilting trainset with shared Jacobs bogie, active roll-tilt bolster actuators, EN 14363 homologation run script, and companion S1002 wheel and UIC60 rail profile sub-files.",
+    "category": "Rail Homologation",
+    "tags": ["en14363", "tilting-train", "jacobs-bogie", "multi-file"],
+    "activeFile": "tilting_train.tsimf",
+    "fileNames": ["tilting_train.tsimf", "en14363.runf", "s1002_wheel.sub", "uic60_rail.sub"],
+    "fileCount": 4,
+    "code": "# GENSYS Model: Two-Car Articulated Tilting Trainset (EN 14363 Certification)\n# Shared center Jacobs bogie + front/rear end bogies + tilting bolsters\nset m_car = 31500.0\nset m_bogie = 2900.0\nset m_bolster = 680.0\nset m_ws = 1520.0\n\nbody car_a m_car 62000.0 1680000.0 1620000.0 10.5 0.0 1.68\nbody car_b m_car 62000.0 1680000.0 1620000.0 -10.5 0.0 1.68\nbody bolster_a m_bolster 420.0 380.0 610.0 10.5 0.0 0.88\nbody bolster_b m_bolster 420.0 380.0 610.0 -10.5 0.0 0.88\n\nbody bogie_front m_bogie 2050.0 1850.0 3300.0 18.0 0.0 0.55\nbody bogie_jacobs 3250.0 2300.0 2100.0 3650.0 0.0 0.0 0.55\nbody bogie_rear m_bogie 2050.0 1850.0 3300.0 -18.0 0.0 0.55\n\nwheelset ws1 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws2 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws3 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws4 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws5 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws6 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\n\n# Active tilt bolster couplings\nspring tilt_a car_a bolster_a 450000 320000 680000 35000 28000 45000\nspring tilt_b car_b bolster_b 450000 320000 680000 35000 28000 45000\n\n# Secondary air springs & inter-car articulation\nspring sec_front bolster_a bogie_front 155000 150000 420000 28000 32000 40000\nspring sec_jac_a car_a bogie_jacobs 195000 185000 460000 32000 36000 44000\nspring sec_jac_b car_b bogie_jacobs 195000 185000 460000 32000 36000 44000\nspring sec_rear bolster_b bogie_rear 155000 150000 420000 28000 32000 40000\n\n# Primary axlebox suspensions\nspring p1 bogie_front ws1 9200000 4100000 1220000 15000 12000 20000\nspring p2 bogie_front ws2 9200000 4100000 1220000 15000 12000 20000\nspring p3 bogie_jacobs ws3 9600000 4300000 1280000 16000 13000 21000\nspring p4 bogie_jacobs ws4 9600000 4300000 1280000 16000 13000 21000\nspring p5 bogie_rear ws5 9200000 4100000 1220000 15000 12000 20000\nspring p6 bogie_rear ws6 9200000 4100000 1220000 15000 12000 20000\n\nsub s1002_wheel\nsub uic60_rail\n",
+    "files": {
+      "tilting_train.tsimf": "# GENSYS Model: Two-Car Articulated Tilting Trainset (EN 14363 Certification)\n# Shared center Jacobs bogie + front/rear end bogies + tilting bolsters\nset m_car = 31500.0\nset m_bogie = 2900.0\nset m_bolster = 680.0\nset m_ws = 1520.0\n\nbody car_a m_car 62000.0 1680000.0 1620000.0 10.5 0.0 1.68\nbody car_b m_car 62000.0 1680000.0 1620000.0 -10.5 0.0 1.68\nbody bolster_a m_bolster 420.0 380.0 610.0 10.5 0.0 0.88\nbody bolster_b m_bolster 420.0 380.0 610.0 -10.5 0.0 0.88\n\nbody bogie_front m_bogie 2050.0 1850.0 3300.0 18.0 0.0 0.55\nbody bogie_jacobs 3250.0 2300.0 2100.0 3650.0 0.0 0.0 0.55\nbody bogie_rear m_bogie 2050.0 1850.0 3300.0 -18.0 0.0 0.55\n\nwheelset ws1 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws2 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws3 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws4 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws5 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\nwheelset ws6 m_ws 1.435 0.46 0.06 \"s1002_wheel.sub\"\n\n# Active tilt bolster couplings\nspring tilt_a car_a bolster_a 450000 320000 680000 35000 28000 45000\nspring tilt_b car_b bolster_b 450000 320000 680000 35000 28000 45000\n\n# Secondary air springs & inter-car articulation\nspring sec_front bolster_a bogie_front 155000 150000 420000 28000 32000 40000\nspring sec_jac_a car_a bogie_jacobs 195000 185000 460000 32000 36000 44000\nspring sec_jac_b car_b bogie_jacobs 195000 185000 460000 32000 36000 44000\nspring sec_rear bolster_b bogie_rear 155000 150000 420000 28000 32000 40000\n\n# Primary axlebox suspensions\nspring p1 bogie_front ws1 9200000 4100000 1220000 15000 12000 20000\nspring p2 bogie_front ws2 9200000 4100000 1220000 15000 12000 20000\nspring p3 bogie_jacobs ws3 9600000 4300000 1280000 16000 13000 21000\nspring p4 bogie_jacobs ws4 9600000 4300000 1280000 16000 13000 21000\nspring p5 bogie_rear ws5 9200000 4100000 1220000 15000 12000 20000\nspring p6 bogie_rear ws6 9200000 4100000 1220000 15000 12000 20000\n\nsub s1002_wheel\nsub uic60_rail\n",
+      "en14363.runf": "# GENSYS EN 14363 Certification Run File\n# Test Zone 3 (Medium Curve R = 600 m, Cant Deficiency I = 245 mm, v = 180 km/h)\nset v_test = 180.0\nset cant_deficiency = 0.245\nset y_q_limit = 0.80\nsub tilting_train\nsub s1002_wheel\nsub uic60_rail\n",
+      "s1002_wheel.sub": "# S1002 Nominal Wheel Tread Profile Sub-File (lateral_mm, rolling_radius_m, contact_angle_rad)\n-6.0   0.4612   0.18\n-3.0   0.4603   0.08\n 0.0   0.4600   0.05\n 3.0   0.4597   0.03\n 6.0   0.4593   0.02\n",
+      "uic60_rail.sub": "# UIC60 1:40 Inclined Rail Profile & Curve Geometry Sub-File\n0.0     0.0004  -0.0003   0.0002  -0.0001   0.000   0.0000\n30.0    0.0010  -0.0006   0.0004  -0.0002   0.040   0.0005\n60.0    0.0015  -0.0009   0.0006  -0.0002   0.080   0.0010\n90.0    0.0014  -0.0008   0.0005  -0.0001   0.120   0.0016\n120.0   0.0011  -0.0006   0.0004  -0.0001   0.150   0.0016\n"
+    }
+  }
+]

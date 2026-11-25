@@ -25,7 +25,7 @@ export const nmea0183Language = language({
         shortTitle: "NMEA 0183",
         selector: ["*.nmea", "*.nme", "*.gps"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/Nmea0183Panel.tsx",
         artifactViewTypes: ["nmea0183", "nmea", "gps"],
       },

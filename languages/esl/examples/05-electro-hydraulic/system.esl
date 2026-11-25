@@ -1,0 +1,41 @@
+-- ESA ESL Modular Electro-Hydraulic Flight Control Actuator Study
+STUDY ElectroHydraulicStudy
+  PACKAGE HydraulicConstants
+    CONSTANT REAL: P_SUPPLY = 21.0e6; -- Supply pressure (Pa)
+    CONSTANT REAL: BETA_OIL = 1.4e9;  -- Hydraulic bulk modulus (Pa)
+    CONSTANT REAL: A_PISTON = 0.002;  -- Piston area (m^2)
+    CONSTANT REAL: V_CHAMBER = 0.0008;-- Effective chamber volume (m^3)
+  END PACKAGE HydraulicConstants
+
+  SUBMODEL ServoValve(IN REAL: cmd; IN REAL: kv; OUT REAL: q_flow)
+  DYNAMIC
+    q_flow = kv * cmd;
+  END SUBMODEL ServoValve
+
+  MODEL ActuatorSystem
+    CONSTANT REAL: KV = 0.0018;
+    CONSTANT REAL: KP = 14.0;
+    CONSTANT REAL: KD = 0.35;
+    CONSTANT REAL: BETA_OIL = 1.4e9;
+    CONSTANT REAL: A_PISTON = 0.002;
+    CONSTANT REAL: V_CHAMBER = 0.0008;
+    CONSTANT REAL: MASS = 12.0;
+    CONSTANT REAL: DAMP = 65.0;
+    CONSTANT REAL: X_REF = 0.05;
+    REAL: x_pos, v_pos, delta_p, cmd, q_flow;
+  INITIAL
+    x_pos = 0.0;
+    v_pos = 0.0;
+    delta_p = 0.0;
+  DYNAMIC
+    cmd = KP * (X_REF - x_pos) - KD * v_pos;
+    ServoValve(cmd, KV, q_flow);
+    delta_p' = (BETA_OIL / V_CHAMBER) * (q_flow - A_PISTON * v_pos);
+    x_pos' = v_pos;
+    v_pos' = (A_PISTON * delta_p - DAMP * v_pos) / MASS;
+    WHEN x_pos >= 0.095 THEN
+      x_pos := 0.095;
+      v_pos := 0.0;
+    END_WHEN
+  END MODEL ActuatorSystem
+END STUDY ElectroHydraulicStudy

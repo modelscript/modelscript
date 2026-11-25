@@ -216,7 +216,10 @@ export const Render: CommandModule<{}, RenderArgs> = {
       console.error(`'${args.name}' not found`);
       return;
     }
-    if (instance.isClassInstance === false || (instance.kind && instance.kind === "Component")) {
+    if (
+      ("isClassInstance" in instance && instance.isClassInstance === false) ||
+      ("kind" in instance && instance.kind === "Component")
+    ) {
       console.error(`'${args.name}' is not a class`);
       return;
     }

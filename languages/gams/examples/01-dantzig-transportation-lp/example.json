@@ -1,0 +1,12 @@
+{
+  "id": "gams-01-dantzig-transportation-lp",
+  "lang": "gams",
+  "subFormats": ["gams", "lp"],
+  "difficulty": 1,
+  "title": "Dantzig Transportation Problem LP (TRNSPORT)",
+  "description": "Classic George Dantzig (1963) two-plant, three-market linear transportation optimization minimizing total freight cost subject to supply and demand.",
+  "category": "Mathematical Optimization",
+  "tags": ["gams", "lp", "transportation", "dantzig"],
+  "activeFile": "trnsport.gms",
+  "isDefaultStarter": true
+}

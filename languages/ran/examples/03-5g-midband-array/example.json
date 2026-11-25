@@ -1,0 +1,11 @@
+{
+  "id": "ran-03-5g-midband-array",
+  "lang": "ran",
+  "subFormats": ["adf"],
+  "difficulty": 3,
+  "title": "Dual-Polarized 3.5 GHz 5G Mid-Band Active Array",
+  "description": "High-gain 21.5 dBi C-band 3.5 GHz (n78) 5G NR active antenna array pattern with tight 45-degree azimuth beamwidth and 6-degree electrical downtilt.",
+  "category": "5G NR Mid-Band",
+  "tags": ["ran", "5g-nr", "n78", "active-array", "adf"],
+  "activeFile": "nr_3500mhz_array.adf"
+}

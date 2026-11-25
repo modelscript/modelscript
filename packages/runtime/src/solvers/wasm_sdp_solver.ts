@@ -35,11 +35,29 @@
  *   - Direct extraction of Gram matrix SOS witness certificates for Nelson-Oppen theory propagation.
  */
 
-import { WasmScratchPool } from "@modelscript/solve";
+import { WasmScratchPool, type WasmMemoryHost } from "@modelscript/solve";
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 
+interface SdpWasmExports extends WasmMemoryHost {
+  sdp_cholesky?: (n: number, aPtr: number, lPtr: number) => number;
+  sdp_project_psd_cone?: (n: number, xPtr: number, eps: number, outPtr: number) => void;
+  sdp_solveAdmmWasm?: (
+    n: number,
+    m: number,
+    cPtr: number,
+    aPtr: number,
+    bPtr: number,
+    maxIter: number,
+    tol: number,
+    xOutPtr: number,
+    yOutPtr: number,
+    sOutPtr: number,
+    statsOutPtr: number,
+  ) => number;
+}
+
 const _sdpScratchPools = new WeakMap<object, WasmScratchPool>();
-function getSdpPool(wasm: any): WasmScratchPool {
+function getSdpPool(wasm: SdpWasmExports): WasmScratchPool {
   let pool = _sdpScratchPools.get(wasm);
   if (!pool) {
     pool = new WasmScratchPool(wasm, 65536);
@@ -98,7 +116,7 @@ export class SdpSolver {
     const n = A.length;
     if (n === 0) return [];
 
-    const wasm = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as SdpWasmExports | null;
     if (wasm && typeof wasm.sdp_cholesky === "function" && typeof wasm.__new === "function") {
       const scope = getSdpPool(wasm).scope();
       try {
@@ -149,7 +167,7 @@ export class SdpSolver {
    */
   public static projectPsdCone(X: number[][], eps = 1e-8): number[][] {
     const n = X.length;
-    const wasm = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as SdpWasmExports | null;
     if (wasm && typeof wasm.sdp_project_psd_cone === "function" && typeof wasm.__new === "function" && n > 0) {
       const scope = getSdpPool(wasm).scope();
       try {
@@ -423,7 +441,7 @@ export class SdpSolver {
       };
     }
 
-    const wasm = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as SdpWasmExports | null;
     if (wasm && typeof wasm.sdp_solveAdmmWasm === "function" && typeof wasm.__new === "function") {
       const scope = getSdpPool(wasm).scope();
       try {

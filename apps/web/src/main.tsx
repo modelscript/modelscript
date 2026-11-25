@@ -29,8 +29,8 @@ if (typeof setConsoleFunction === "function") {
   });
 }
 
-if (typeof window !== "undefined" && !(window as any).__threeClockWarningFilterInstalled__) {
-  (window as any).__threeClockWarningFilterInstalled__ = true;
+if (typeof window !== "undefined" && !window.__threeClockWarningFilterInstalled__) {
+  window.__threeClockWarningFilterInstalled__ = true;
   const originalWarn = console.warn.bind(console);
   console.warn = (...args: unknown[]) => {
     if (
@@ -45,8 +45,8 @@ if (typeof window !== "undefined" && !(window as any).__threeClockWarningFilterI
 }
 
 // Suppress benign Monaco internal cancellation errors (e.g. WordHighlighter / Delayer cancellation on model swap)
-if (typeof window !== "undefined" && !(window as any).__monacoCancellationFilterInstalled__) {
-  (window as any).__monacoCancellationFilterInstalled__ = true;
+if (typeof window !== "undefined" && !window.__monacoCancellationFilterInstalled__) {
+  window.__monacoCancellationFilterInstalled__ = true;
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason;
     if (

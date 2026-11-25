@@ -1,0 +1,11 @@
+{
+  "id": "ihex-02-avr-atmega328p-vectors",
+  "lang": "ihex",
+  "subFormats": ["i8hex"],
+  "difficulty": 2,
+  "title": "AVR ATmega328P Interrupt Vector Table & Stack Init",
+  "description": "56-byte I8HEX AVR ATmega328P firmware image encoding JMP interrupt vectors, stack pointer initialization to RAMEND (0x08FF), and Port B LED pin setup.",
+  "category": "Microcontroller Firmware",
+  "tags": ["ihex", "avr", "atmega328p", "vectors", "bootloader"],
+  "activeFile": "atmega328p_boot.hex"
+}

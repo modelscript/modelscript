@@ -1,19 +1,67 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import {
+  type ArenaBltResult,
   arenaFingerprint,
   DaeBltReachabilityEngine,
+  type DAEBuilder,
+  type DaeReachabilitySummary,
+  type DaeSingularityIssue,
   HybridModeConsistencyVerifier,
+  type HybridVerificationIssue,
+  type HybridVerificationResult,
   initBltWasm,
+  type NumericalInterval,
   performBltTransformationArena,
+  type SysmlRequirement,
   Variability,
+  type VerificationVerdict,
 } from "@modelscript/runtime";
-import { ModelicaAlgorithmAnalyzer } from "./formal/modelica-analyzer.js";
-import { ModelicaCFGLowerer } from "./formal/modelica-cfg-lowerer.js";
+import {
+  ModelicaAlgorithmAnalyzer,
+  type ModelicaFormalProofResult,
+  type ModelicaVariableDecl,
+} from "./formal/modelica-analyzer.js";
+import { ModelicaCFGLowerer, type ModelicaStatement } from "./formal/modelica-cfg-lowerer.js";
 
-function findCstNodesByType(root: any, targetType: string): any[] {
-  const out: any[] = [];
-  const visit = (n: any) => {
+export interface FormalValidatorCstNode {
+  type?: string | undefined;
+  text?: string | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  children?: readonly FormalValidatorCstNode[] | undefined;
+}
+
+export interface FormalValidatorParser {
+  parse?: ((text: string) => { rootNode?: FormalValidatorCstNode | null | undefined } | null | undefined) | undefined;
+}
+
+export type ModelicaDaeVerificationIssue = (DaeSingularityIssue | HybridVerificationIssue) & {
+  eqIdx?: number | undefined;
+  interval?: unknown;
+  standardClause?: string | undefined;
+  margin?: number | undefined;
+  suggestedValue?: unknown;
+  requiredLimit?: unknown;
+};
+
+export interface ModelicaDaeVerificationRecord {
+  isFullyCertified: boolean;
+  verdict: VerificationVerdict;
+  reachSummary: DaeReachabilitySummary;
+  hybridResult: HybridVerificationResult;
+  issues: ModelicaDaeVerificationIssue[];
+  variableBounds: Map<string, NumericalInterval>;
+  unboundedVariables: number;
+  fingerprint: string;
+}
+
+function findCstNodesByType(
+  root: FormalValidatorCstNode | null | undefined,
+  targetType: string,
+): FormalValidatorCstNode[] {
+  const out: FormalValidatorCstNode[] = [];
+  const visit = (n: FormalValidatorCstNode | null | undefined) => {
     if (!n) return;
     if (n.type === targetType) out.push(n);
     if (Array.isArray(n.children)) {
@@ -249,8 +297,8 @@ function parseVarDeclaratorItem(rawItem: string): {
   return { name, dimStr: leadingDim ?? trailingDim, initExpr };
 }
 
-function extractModelicaVarDeclsFromBody(body: string): any[] {
-  const variables: any[] = [];
+function extractModelicaVarDeclsFromBody(body: string): ModelicaVariableDecl[] {
+  const variables: ModelicaVariableDecl[] = [];
   for (const stmt of body.split(";")) {
     const tokens = tokenizeWordsAndPunct(stmt);
     if (tokens.length < 2) continue;
@@ -262,7 +310,7 @@ function extractModelicaVarDeclsFromBody(body: string): any[] {
     }
     while (idx < tokens.length && MODELICA_VAR_QUALIFIERS.has(tokens[idx]!.text)) idx++;
     if (idx + 1 >= tokens.length || !MODELICA_PRIMITIVE_TYPES.has(tokens[idx]!.text)) continue;
-    const type = tokens[idx]!.text;
+    const type = tokens[idx]!.text as ModelicaVariableDecl["type"];
     const declList = stmt.slice(tokens[idx]!.end);
     for (const rawItem of declList.split(",")) {
       const parsed = parseVarDeclaratorItem(rawItem);
@@ -288,18 +336,18 @@ function extractModelicaVarDeclsFromBody(body: string): any[] {
 export interface ModelicaAbstractInterpParams {
   text: string;
   positionAt: (offset: number) => { line: number; character: number };
-  cstRoot?: any;
-  moParser?: any;
+  cstRoot?: FormalValidatorCstNode | null | undefined;
+  moParser?: FormalValidatorParser | null | undefined;
   onError?: (msg: string) => void;
 }
 
 export function validateModelicaAbstractInterpretation(
   params: ModelicaAbstractInterpParams,
-): { proofMap: Map<string, any>; diagnostics: ModelicaLspDiagnostic[] } | null {
+): { proofMap: Map<string, ModelicaFormalProofResult>; diagnostics: ModelicaLspDiagnostic[] } | null {
   const { text, positionAt, moParser, onError } = params;
   if (!hasWordMatch(text, "algorithm")) return null;
 
-  const proofMap = new Map<string, any>();
+  const proofMap = new Map<string, ModelicaFormalProofResult>();
   const diagnostics: ModelicaLspDiagnostic[] = [];
 
   try {
@@ -317,7 +365,7 @@ export function validateModelicaAbstractInterpretation(
         const algSections = findCstNodesByType(classNode, "algorithm_section");
         if (algSections.length === 0) continue;
 
-        const algOffset = algSections[0].startIndex ?? 0;
+        const algOffset = algSections[0]?.startIndex ?? 0;
         const variables = ModelicaAlgorithmAnalyzer.extractVariablesFromClassCst(classNode);
         const statements: ReturnType<typeof ModelicaCFGLowerer.extractStatementsFromCst> = [];
         for (const algSec of algSections) {
@@ -343,8 +391,8 @@ export function validateModelicaAbstractInterpretation(
         }
 
         for (const warn of result.potentialBugs) {
-          let warnStart = (warn as any).startOffset ?? warn.startOffset ?? algOffset;
-          let warnEnd = (warn as any).endOffset ?? warn.endOffset;
+          let warnStart = warn.startOffset ?? algOffset;
+          let warnEnd = warn.endOffset;
           if (warnEnd === undefined) {
             while (warnStart < text.length && (text[warnStart] === " " || text[warnStart] === "\t")) {
               warnStart++;
@@ -366,16 +414,16 @@ export function validateModelicaAbstractInterpretation(
 
     for (const blk of extractModelicaAlgorithmBlocksFromSource(text)) {
       const { name, body, algText, algOffset } = blk;
-      const variables: any[] = extractModelicaVarDeclsFromBody(body);
-      const statements: any[] = ModelicaCFGLowerer.parseStatements(algText, algOffset);
+      const variables: ModelicaVariableDecl[] = extractModelicaVarDeclsFromBody(body);
+      const statements: ModelicaStatement[] = ModelicaCFGLowerer.parseStatements(algText, algOffset);
       if (statements.length === 0) continue;
 
       const result = ModelicaAlgorithmAnalyzer.analyze(statements, variables, { functionName: name });
       proofMap.set(name, result);
 
       for (const bug of result.definiteBugs) {
-        const bugStart = (bug as any).startOffset ?? bug.startOffset ?? algOffset;
-        const bugEnd = (bug as any).endOffset ?? bug.endOffset ?? bugStart + 10;
+        const bugStart = bug.startOffset ?? algOffset;
+        const bugEnd = bug.endOffset ?? bugStart + 10;
         diagnostics.push({
           severity: SEVERITY_ERROR,
           range: { start: positionAt(bugStart), end: positionAt(bugEnd) },
@@ -387,8 +435,8 @@ export function validateModelicaAbstractInterpretation(
       }
 
       for (const warn of result.potentialBugs) {
-        const warnStart = (warn as any).startOffset ?? warn.startOffset ?? algOffset;
-        const warnEnd = (warn as any).endOffset ?? warn.endOffset ?? warnStart + 10;
+        const warnStart = warn.startOffset ?? algOffset;
+        const warnEnd = warn.endOffset ?? warnStart + 10;
         diagnostics.push({
           severity: SEVERITY_WARNING,
           range: { start: positionAt(warnStart), end: positionAt(warnEnd) },
@@ -399,8 +447,9 @@ export function validateModelicaAbstractInterpretation(
         });
       }
     }
-  } catch (err: any) {
-    onError?.(`[modelica-prover] Error in abstract interpretation: ${err?.message}`);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    onError?.(`[modelica-prover] Error in abstract interpretation: ${errMsg}`);
   }
 
   return { proofMap, diagnostics };
@@ -410,14 +459,14 @@ export interface ModelicaDaeReachabilityParams {
   effectiveUri: string;
   text: string;
   positionAt: (offset: number) => { line: number; character: number };
-  classes: Array<{ name: string; symbolId: any; startOffset: number; endOffset: number }>;
-  flattenClass: (name: string, symbolId: any, effectiveUri: string) => any;
-  extractArenaStringParams: (arena: any) => Map<string, string>;
-  rootCst?: any;
-  sysmlReqs: any[];
+  classes: Array<{ name: string; symbolId: number | undefined; startOffset: number; endOffset: number }>;
+  flattenClass: (name: string, symbolId: number | undefined, effectiveUri: string) => DAEBuilder | null | undefined;
+  extractArenaStringParams: (arena: DAEBuilder) => Map<string, string>;
+  rootCst?: FormalValidatorCstNode | null | undefined;
+  sysmlReqs: SysmlRequirement[];
   reqFingerprint: string;
-  twinMap: any;
-  daeVerificationCache: Map<string, { fingerprint: string; record: any }>;
+  twinMap: Map<string, string>;
+  daeVerificationCache: Map<string, { fingerprint: string; record: ModelicaDaeVerificationRecord }>;
   budgetMs: number;
   formalVerificationOnSave: boolean;
   onWarn?: (msg: string) => void;
@@ -426,7 +475,7 @@ export interface ModelicaDaeReachabilityParams {
 
 export async function validateModelicaDaeReachability(
   params: ModelicaDaeReachabilityParams,
-): Promise<{ daeMap: Map<string, any>; diagnostics: ModelicaLspDiagnostic[] }> {
+): Promise<{ daeMap: Map<string, ModelicaDaeVerificationRecord>; diagnostics: ModelicaLspDiagnostic[] }> {
   const {
     effectiveUri,
     text,
@@ -445,7 +494,7 @@ export async function validateModelicaDaeReachability(
     onError,
   } = params;
 
-  const daeMap = new Map<string, any>();
+  const daeMap = new Map<string, ModelicaDaeVerificationRecord>();
   const diagnostics: ModelicaLspDiagnostic[] = [];
 
   try {
@@ -468,7 +517,7 @@ export async function validateModelicaDaeReachability(
       }
       const arena = flattenClass(cls.name, cls.symbolId, effectiveUri);
       if (!arena) continue;
-      let record: NonNullable<ReturnType<typeof daeVerificationCache.get>>["record"] | undefined;
+      let record: ModelicaDaeVerificationRecord | undefined;
       try {
         if (arena.eqCount === 0) continue;
 
@@ -540,7 +589,7 @@ export async function validateModelicaDaeReachability(
             }
           }
 
-          let bltResult: any;
+          let bltResult: ArenaBltResult;
           try {
             bltResult = performBltTransformationArena(arena, stateVars.size > 0 ? stateVars : undefined);
           } catch {
@@ -575,9 +624,9 @@ export async function validateModelicaDaeReachability(
           const reachIssues = isUnderdetermined
             ? reachSummary.issues.filter((iss) => iss.kind !== "singular_algebraic_loop")
             : reachSummary.issues;
-          const allIssues = [...reachIssues, ...hybridResult.issues];
+          const allIssues: ModelicaDaeVerificationIssue[] = [...reachIssues, ...hybridResult.issues];
 
-          const namedBounds = new Map<string, any>();
+          const namedBounds = new Map<string, NumericalInterval>();
           let unboundedVariables = 0;
           for (let i = 0; i < arena.varCount; i++) {
             const vName = arena.getVarName(i);
@@ -590,8 +639,8 @@ export async function validateModelicaDaeReachability(
             }
           }
 
-          const hasDefinite = allIssues.some((i: any) => i.severity === "definite");
-          let verdict: any;
+          const hasDefinite = allIssues.some((i) => i.severity === "definite");
+          let verdict: VerificationVerdict;
           if (reachSummary.verdict?.kind === "violated") {
             verdict = reachSummary.verdict;
           } else if (hasDefinite) {
@@ -634,12 +683,18 @@ export async function validateModelicaDaeReachability(
       const rawClassEnd = cls.endOffset;
       const classEnd = rawClassEnd > classStart ? rawClassEnd : text.length;
       const body = text.slice(classStart, classEnd);
-      let classCst: any = null;
+      let classCst: FormalValidatorCstNode | null = null;
       if (rootCst && findCstNodesByType) {
         const classNodes = findCstNodesByType(rootCst, "class_definition");
         for (const cNode of classNodes) {
           const idNode = findCstNodesByType(cNode, "identifier")[0];
-          if (idNode?.text === cls.name || (cNode.startIndex <= classStart && cNode.endIndex >= classEnd)) {
+          if (
+            idNode?.text === cls.name ||
+            (cNode.startIndex !== undefined &&
+              cNode.endIndex !== undefined &&
+              cNode.startIndex <= classStart &&
+              cNode.endIndex >= classEnd)
+          ) {
             classCst = cNode;
             break;
           }
@@ -658,7 +713,7 @@ export async function validateModelicaDaeReachability(
             const compDecls = findCstNodesByType(classCst, "component_declaration");
             for (const cd of compDecls) {
               const idNode = findCstNodesByType(cd, "identifier")[0];
-              if (idNode?.text === targetName) {
+              if (idNode?.text === targetName && idNode.startIndex !== undefined && idNode.endIndex !== undefined) {
                 issueOffset = idNode.startIndex;
                 issueLength = idNode.endIndex - idNode.startIndex;
                 foundLoc = true;
@@ -671,7 +726,7 @@ export async function validateModelicaDaeReachability(
             const eqSec = findCstNodesByType(classCst, "equation_section")[0];
             if (eqSec) {
               const eqNodes = (eqSec.children || []).filter(
-                (c: any) =>
+                (c) =>
                   c.type &&
                   c.type !== "equation_section" &&
                   c.type !== "annotation_clause" &&
@@ -679,16 +734,17 @@ export async function validateModelicaDaeReachability(
                   c.type !== "equation",
               );
               if (issue.eqIdx < eqNodes.length) {
-                const targetEq = eqNodes[issue.eqIdx];
-                issueOffset = targetEq.startIndex;
-                issueLength = Math.max(1, targetEq.endIndex - targetEq.startIndex);
+                const targetEq = eqNodes[issue.eqIdx]!;
+                issueOffset = targetEq.startIndex ?? classStart;
+                issueLength = Math.max(1, (targetEq.endIndex ?? issueOffset + 1) - issueOffset);
                 foundLoc = true;
               } else {
-                const eqKeyword = (eqSec.children || []).find(
-                  (c: any) => c.type === "equation" || c.text === "equation",
-                );
-                issueOffset = eqKeyword ? eqKeyword.startIndex : eqSec.startIndex;
-                issueLength = eqKeyword ? eqKeyword.endIndex - eqKeyword.startIndex : 8;
+                const eqKeyword = (eqSec.children || []).find((c) => c.type === "equation" || c.text === "equation");
+                issueOffset = eqKeyword?.startIndex ?? eqSec.startIndex ?? classStart;
+                issueLength =
+                  eqKeyword && eqKeyword.startIndex !== undefined && eqKeyword.endIndex !== undefined
+                    ? eqKeyword.endIndex - eqKeyword.startIndex
+                    : 8;
                 foundLoc = true;
               }
             }
@@ -736,12 +792,13 @@ export async function validateModelicaDaeReachability(
         }
 
         const definite = issue.severity === "definite";
-        const standardClause = (issue as any).standardClause as string | undefined;
+        const standardClause = issue.standardClause;
         if (!definite && !standardClause && !formalVerificationOnSave) {
           continue;
         }
+        const issueKind: string = issue.kind;
         const isUnreachable =
-          issue.kind === "unreachable_mode" || issue.kind === "dead_branch" || issue.kind === "unreachable_branch";
+          issueKind === "unreachable_mode" || issueKind === "dead_branch" || issueKind === "unreachable_branch";
         diagnostics.push({
           severity: definite ? SEVERITY_ERROR : SEVERITY_WARNING,
           range: { start: positionAt(issueOffset), end: positionAt(issueOffset + issueLength) },
@@ -756,9 +813,9 @@ export async function validateModelicaDaeReachability(
             varName: issue.varName,
             rule: standardClause ? (definite ? "S5020" : "S5021") : issue.kind === "div_by_zero" ? "M5101" : "M5103",
             standardClause,
-            margin: (issue as any).margin as number | undefined,
-            suggestedValue: (issue as any).suggestedValue,
-            requiredLimit: (issue as any).requiredLimit,
+            margin: issue.margin,
+            suggestedValue: issue.suggestedValue,
+            requiredLimit: issue.requiredLimit,
           },
         });
       }
@@ -770,8 +827,9 @@ export async function validateModelicaDaeReachability(
         if (k.startsWith(prefix) && !liveKeys.has(k)) daeVerificationCache.delete(k);
       }
     }
-  } catch (err: any) {
-    onError?.(`[modelica-dae-verifier] Error in DAE verification: ${err?.message}`);
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    onError?.(`[modelica-dae-verifier] Error in DAE verification: ${errMsg}`);
   }
 
   return { daeMap, diagnostics };

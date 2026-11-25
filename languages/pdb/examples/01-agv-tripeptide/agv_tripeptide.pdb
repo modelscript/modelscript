@@ -1,0 +1,16 @@
+HEADER    PEPTIDE                                 01-JAN-26   1AGV
+TITLE     ALANINE-GLYCINE-VALINE IDEALIZED TRIPEPTIDE
+REMARK   2 RESOLUTION.    1.20 ANGSTROMS.
+ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00 12.50           N
+ATOM      2  CA  ALA A   1       1.460   0.000   0.000  1.00 11.20           C
+ATOM      3  C   ALA A   1       2.005   1.419   0.000  1.00 11.80           C
+ATOM      4  O   ALA A   1       2.928   1.743   0.746  1.00 13.40           O
+ATOM      5  N   GLY A   2       1.425   2.266  -0.845  1.00 12.50           N
+ATOM      6  CA  GLY A   2       1.844   3.661  -0.953  1.00 11.20           C
+ATOM      7  C   GLY A   2       1.682   4.383   0.374  1.00 11.80           C
+ATOM      8  O   GLY A   2       2.568   5.116   0.809  1.00 13.40           O
+ATOM      9  N   VAL A   3       0.538   4.169   1.018  1.00 12.50           N
+ATOM     10  CA  VAL A   3       0.245   4.796   2.304  1.00 11.20           C
+ATOM     11  C   VAL A   3       1.272   4.398   3.351  1.00 11.80           C
+ATOM     12  O   VAL A   3       1.767   5.236   4.103  1.00 13.40           O
+END

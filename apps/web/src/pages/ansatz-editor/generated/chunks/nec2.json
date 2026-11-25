@@ -1,0 +1,73 @@
+[
+  {
+    "id": "nec2-01-halfwave-dipole-300mhz",
+    "lang": "nec2",
+    "subFormats": ["nec2"],
+    "difficulty": 1,
+    "title": "Half-Wave Resonant Dipole at 300 MHz",
+    "description": "Free-space center-fed half-wave dipole antenna resonant at 300 MHz (lambda = 1.0 m) with 21 wire segments, voltage excitation, and elevation radiation pattern.",
+    "category": "Antennas & Electromagnetics",
+    "tags": ["nec2", "dipole", "radiation-pattern", "wire-antenna"],
+    "activeFile": "dipole_300mhz.nec",
+    "fileNames": ["dipole_300mhz.nec"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "CM Half-Wave Resonant Dipole Antenna at 300 MHz (Free Space)\nCM Wire length = 0.475 m (adjusted for end effect), radius = 1 mm\nCE\nGW 1 21 0.0 0.0 -0.2375 0.0 0.0 0.2375 0.001\nGE 0\nFR 0 1 0 0 300.0 0.0\nEX 0 1 11 0 1.0 0.0\nRP 0 37 1 1000 0.0 0.0 5.0 0.0\nEN\n"
+  },
+  {
+    "id": "nec2-02-quarterwave-monopole-ground",
+    "lang": "nec2",
+    "subFormats": ["nec2", "ground-plane"],
+    "difficulty": 2,
+    "title": "Quarter-Wave Monopole Over Perfect Ground",
+    "description": "Base-fed vertical quarter-wave monopole at 146 MHz over a perfectly conducting ground plane (GE 1 / GN 1) with frequency sweep across the 2m amateur band.",
+    "category": "Antennas & Electromagnetics",
+    "tags": ["nec2", "monopole", "ground-plane", "vhf"],
+    "activeFile": "monopole_146mhz.nec",
+    "fileNames": ["monopole_146mhz.nec"],
+    "fileCount": 1,
+    "code": "CM Quarter-Wave Vertical Monopole at 146 MHz over Perfect Ground\nCM Lambda = 2.053 m, monopole height = 0.495 m\nCE\nGW 1 15 0.0 0.0 0.0 0.0 0.0 0.495 0.002\nGE 1\nGN 1\nFR 0 5 0 0 144.0 1.0\nEX 0 1 1 0 1.0 0.0\nRP 0 19 1 1000 0.0 0.0 5.0 0.0\nEN\n"
+  },
+  {
+    "id": "nec2-03-yagi-uda-3element",
+    "lang": "nec2",
+    "subFormats": ["nec2", "directional-array"],
+    "difficulty": 3,
+    "title": "3-Element Yagi-Uda Directional Beam Antenna",
+    "description": "Three-element parasitic Yagi-Uda beam antenna (reflector, driven element, director) tuned for 300 MHz with full 360-degree azimuth gain pattern.",
+    "category": "Antennas & Electromagnetics",
+    "tags": ["nec2", "yagi-uda", "directional", "parasitic-array"],
+    "activeFile": "yagi_3el.nec",
+    "fileNames": ["yagi_3el.nec"],
+    "fileCount": 1,
+    "code": "CM 3-Element Yagi-Uda Directional Beam Antenna at 300 MHz\nCM Boom along +X axis, elements parallel to Y axis\nCE\nGW 1 21 -0.20 0.0 -0.248 -0.20 0.0 0.248 0.002\nGW 2 21  0.00 0.0 -0.235  0.00 0.0 0.235 0.002\nGW 3 21  0.18 0.0 -0.215  0.18 0.0 0.215 0.002\nGE 0\nFR 0 1 0 0 300.0 0.0\nEX 0 2 11 0 1.0 0.0\nRP 0 1 73 1000 90.0 0.0 0.0 5.0\nEN\n"
+  },
+  {
+    "id": "nec2-04-folded-dipole-corner-reflector",
+    "lang": "nec2",
+    "subFormats": ["nec2", "reflector-array"],
+    "difficulty": 4,
+    "title": "Folded Dipole and Corner Reflector Array",
+    "description": "432 MHz UHF folded dipole driven element backed by a 90-degree wire-grid corner reflector for high front-to-back ratio and directional gain.",
+    "category": "Antennas & Electromagnetics",
+    "tags": ["nec2", "folded-dipole", "corner-reflector", "uhf"],
+    "activeFile": "corner_reflector.nec",
+    "fileNames": ["corner_reflector.nec"],
+    "fileCount": 1,
+    "code": "CM 432 MHz Folded Dipole with 90-Degree Wire-Grid Corner Reflector\nCM Lambda = 0.694 m, dipole spacing from apex = 0.35 m\nCE\nGW 1 15 0.35  0.00 -0.165 0.35  0.00 0.165 0.0015\nGW 2 15 0.37  0.00 -0.165 0.37  0.00 0.165 0.0015\nGW 3  3 0.35  0.00  0.165 0.37  0.00 0.165 0.0015\nGW 4  3 0.35  0.00 -0.165 0.37  0.00 -0.165 0.0015\nGW 10 17 0.00  0.00 -0.25 0.00  0.00 0.25 0.002\nGW 11 17 0.10  0.10 -0.25 0.10  0.10 0.25 0.002\nGW 12 17 0.20  0.20 -0.25 0.20  0.20 0.25 0.002\nGW 13 17 0.30  0.30 -0.25 0.30  0.30 0.25 0.002\nGW 14 17 0.10 -0.10 -0.25 0.10 -0.10 0.25 0.002\nGW 15 17 0.20 -0.20 -0.25 0.20 -0.20 0.25 0.002\nGW 16 17 0.30 -0.30 -0.25 0.30 -0.30 0.25 0.002\nGE 0\nFR 0 3 0 0 430.0 2.0\nEX 0 1 8 0 1.0 0.0\nRP 0 1 73 1000 90.0 0.0 0.0 5.0\nEN\n"
+  },
+  {
+    "id": "nec2-05-lpda-7element-wideband",
+    "lang": "nec2",
+    "subFormats": ["nec2", "wideband", "transmission-line"],
+    "difficulty": 5,
+    "title": "7-Element Log-Periodic Dipole Array (LPDA) Wideband Sweep",
+    "description": "Wideband 200-400 MHz 7-element log-periodic dipole array (tau = 0.865, sigma = 0.14) with crisscrossed TL transmission-line feeder and 50-ohm termination.",
+    "category": "Antennas & Electromagnetics",
+    "tags": ["nec2", "lpda", "wideband", "transmission-line", "sweep"],
+    "activeFile": "lpda_7el.nec",
+    "fileNames": ["lpda_7el.nec"],
+    "fileCount": 1,
+    "code": "CM 7-Element Log-Periodic Dipole Array (200 - 400 MHz)\nCM Scale factor tau = 0.865, crisscrossed 100-ohm boom feeder (TL cards)\nCE\nGW 1 19 0.000 0.0 -0.375 0.000 0.0 0.375 0.0020\nGW 2 17 0.210 0.0 -0.324 0.210 0.0 0.324 0.0018\nGW 3 15 0.392 0.0 -0.280 0.392 0.0 0.280 0.0016\nGW 4 13 0.549 0.0 -0.242 0.549 0.0 0.242 0.0015\nGW 5 11 0.685 0.0 -0.210 0.685 0.0 0.210 0.0014\nGW 6 11 0.802 0.0 -0.181 0.802 0.0 0.181 0.0013\nGW 7  9 0.904 0.0 -0.157 0.904 0.0 0.157 0.0012\nGE 0\nTL 1 10 2 9 -100.0 0.210 0.0 0.0 0.0 0.0\nTL 2  9 3 8 -100.0 0.182 0.0 0.0 0.0 0.0\nTL 3  8 4 7 -100.0 0.157 0.0 0.0 0.0 0.0\nTL 4  7 5 6 -100.0 0.136 0.0 0.0 0.0 0.0\nTL 5  6 6 6 -100.0 0.117 0.0 0.0 0.0 0.0\nTL 6  6 7 5 -100.0 0.102 0.0 0.0 0.0 0.0\nLD 4 1 10 10 100.0 0.0 0.0\nFR 0 5 0 0 200.0 50.0\nEX 0 7 5 0 1.0 0.0\nRP 0 1 73 1000 90.0 0.0 0.0 5.0\nEN\n"
+  }
+]

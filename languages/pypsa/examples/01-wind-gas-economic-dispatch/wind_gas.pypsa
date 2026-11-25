@@ -1,0 +1,7 @@
+network WindGas_2Bus baseMva=100
+bus North v_nom=380 carrier=AC
+bus South v_nom=380 carrier=AC
+generator Wind_North bus=North carrier=wind p_nom=500 marginal_cost=0 capital_cost=1200
+generator CCGT_South bus=South carrier=gas p_nom=450 marginal_cost=52 capital_cost=650
+load Load_South bus=South p_set=620
+line Line_NS bus0=North bus1=South r=2.1 x=21.5 s_nom=700

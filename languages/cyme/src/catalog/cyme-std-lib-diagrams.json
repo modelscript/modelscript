@@ -1,0 +1,817 @@
+[
+  {
+    "namePath": "cyme:OH_ACSR_336_LINNET",
+    "aliases": [
+      "336_ACSR",
+      "LINNET",
+      "OH_336_LINNET"
+    ],
+    "label": "336.4 kcmil 26/7 ACSR Overhead Conductor (Linnet)",
+    "category": "Conductors & Cables",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LINE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OH_ACSR_336_</text></svg>",
+    "ports": [
+      {
+        "name": "from",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:OH_ACSR_477_HAWK",
+    "aliases": [
+      "477_ACSR",
+      "HAWK",
+      "OH_477_HAWK"
+    ],
+    "label": "477 kcmil 26/7 ACSR Overhead Conductor (Hawk)",
+    "category": "Conductors & Cables",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LINE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OH_ACSR_477_</text></svg>",
+    "ports": [
+      {
+        "name": "from",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:OH_ACSR_1_0_RAVEN",
+    "aliases": [
+      "1/0_ACSR",
+      "RAVEN",
+      "OH_1_0_RAVEN"
+    ],
+    "label": "1/0 AWG 6/1 ACSR Overhead Conductor (Raven)",
+    "category": "Conductors & Cables",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LINE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OH_ACSR_1_0_</text></svg>",
+    "ports": [
+      {
+        "name": "from",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:OH_AAAC_394_CANTON",
+    "aliases": [
+      "394_AAAC",
+      "CANTON",
+      "OH_394_CANTON"
+    ],
+    "label": "394.5 kcmil 19-Strand AAAC Overhead Conductor (Canton)",
+    "category": "Conductors & Cables",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LINE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OH_AAAC_394_</text></svg>",
+    "ports": [
+      {
+        "name": "from",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:UG_XLPE_500MCM_15kV",
+    "aliases": [
+      "500MCM_XLPE_15KV",
+      "UG_500_15KV"
+    ],
+    "label": "500 kcmil Al 15 kV XLPE Concentric-Neutral Underground Cable",
+    "category": "Conductors & Cables",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LINE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">UG_XLPE_500M</text></svg>",
+    "ports": [
+      {
+        "name": "from",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:UG_XLPE_1000MCM_25kV",
+    "aliases": [
+      "1000MCM_XLPE_25KV",
+      "UG_1000_25KV"
+    ],
+    "label": "1000 kcmil Cu 25 kV XLPE Concentric-Neutral Underground Cable",
+    "category": "Conductors & Cables",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LINE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">UG_XLPE_1000</text></svg>",
+    "ports": [
+      {
+        "name": "from",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:UG_EPR_4_0_15kV",
+    "aliases": [
+      "4/0_EPR_15KV",
+      "UG_4_0_EPR"
+    ],
+    "label": "4/0 AWG Al 15 kV EPR Underground Distribution Cable",
+    "category": "Conductors & Cables",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LINE</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">UG_EPR_4_0_1</text></svg>",
+    "ports": [
+      {
+        "name": "from",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "to",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:XFMR_3P_DYN1_1500kVA",
+    "aliases": [
+      "DYN1_1500KVA",
+      "PADMOUNT_1500KVA"
+    ],
+    "label": "1500 kVA 3-Phase Delta-Wye (Dyn1) Pad-Mount Transformer",
+    "category": "Transformers & Regulators",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">XFMR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">XFMR_3P_DYN1</text></svg>",
+    "ports": [
+      {
+        "name": "primary",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "secondary",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "tap",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:XFMR_3P_YY_10MVA",
+    "aliases": [
+      "SUB_10MVA",
+      "YY_10MVA"
+    ],
+    "label": "10 MVA 3-Phase Grounded Wye-Wye Substation Transformer",
+    "category": "Transformers & Regulators",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">XFMR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">XFMR_3P_YY_1</text></svg>",
+    "ports": [
+      {
+        "name": "primary",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "secondary",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "tap",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:XFMR_1P_POLE_50kVA",
+    "aliases": [
+      "POLE_50KVA",
+      "1P_50KVA"
+    ],
+    "label": "50 kVA Single-Phase Center-Tapped Pole-Mount Transformer",
+    "category": "Transformers & Regulators",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">XFMR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">XFMR_1P_POLE</text></svg>",
+    "ports": [
+      {
+        "name": "primary",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "secondary",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "tap",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:REG_3P_STEP_32",
+    "aliases": [
+      "3P_REG_32",
+      "STEP_REG_3P"
+    ],
+    "label": "3-Phase 32-Step Voltage Regulator (+/-10% Range)",
+    "category": "Transformers & Regulators",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">XFMR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">REG_3P_STEP_</text></svg>",
+    "ports": [
+      {
+        "name": "primary",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "secondary",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "tap",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:REG_1P_STEP_32",
+    "aliases": [
+      "1P_REG_32",
+      "STEP_REG_1P"
+    ],
+    "label": "1-Phase 32-Step Voltage Regulator (+/-10% Range)",
+    "category": "Transformers & Regulators",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">XFMR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">REG_1P_STEP_</text></svg>",
+    "ports": [
+      {
+        "name": "primary",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "secondary",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "tap",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:FUSE_K_65A",
+    "aliases": [
+      "65K",
+      "FUSE_65K"
+    ],
+    "label": "65A Type-K (Fast) Expulsion Fuse Link",
+    "category": "Protection & Switching",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PROT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">FUSE_K_65A</text></svg>",
+    "ports": [
+      {
+        "name": "line",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:FUSE_T_100A",
+    "aliases": [
+      "100T",
+      "FUSE_100T"
+    ],
+    "label": "100A Type-T (Slow) Expulsion Fuse Link",
+    "category": "Protection & Switching",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PROT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">FUSE_T_100A</text></svg>",
+    "ports": [
+      {
+        "name": "line",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:RECLOSER_3P_HYD",
+    "aliases": [
+      "RECLOSER_HYD",
+      "HYD_RECLOSER"
+    ],
+    "label": "3-Phase Hydraulic Automatic Circuit Recloser",
+    "category": "Protection & Switching",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PROT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">RECLOSER_3P_</text></svg>",
+    "ports": [
+      {
+        "name": "line",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:RELAY_OC_IEEE_VI",
+    "aliases": [
+      "IEEE_VI",
+      "51_IEEE_VI",
+      "C37_112_VI"
+    ],
+    "label": "IEEE C37.112 Very Inverse Overcurrent Relay (51)",
+    "category": "Protection & Switching",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PROT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">RELAY_OC_IEE</text></svg>",
+    "ports": [
+      {
+        "name": "line",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:RELAY_OC_IEC_SI",
+    "aliases": [
+      "IEC_SI",
+      "51_IEC_SI",
+      "IEC_60255_SI"
+    ],
+    "label": "IEC 60255-151 Standard Inverse Overcurrent Relay",
+    "category": "Protection & Switching",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PROT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">RELAY_OC_IEC</text></svg>",
+    "ports": [
+      {
+        "name": "line",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:BREAKER_DIST_15kV",
+    "aliases": [
+      "CB_15KV",
+      "BREAKER_15KV"
+    ],
+    "label": "15 kV Substation Feeder Vacuum Circuit Breaker",
+    "category": "Protection & Switching",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PROT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">BREAKER_DIST</text></svg>",
+    "ports": [
+      {
+        "name": "line",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:SWITCH_LOADBREAK",
+    "aliases": [
+      "LBS_600A",
+      "LOADBREAK_SW"
+    ],
+    "label": "600A 15 kV Gang-Operated Load-Break Switch",
+    "category": "Protection & Switching",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PROT</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">SWITCH_LOADB</text></svg>",
+    "ports": [
+      {
+        "name": "line",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:CAP_BANK_3P_1200kVAR",
+    "aliases": [
+      "CAP_1200KVAR",
+      "SHUNT_CAP_1200"
+    ],
+    "label": "1200 kVAR 3-Phase Switched Shunt Capacitor Bank",
+    "category": "Shunts, Loads & DER",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">DER</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">CAP_BANK_3P_</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:LOAD_ZIP_DIST",
+    "aliases": [
+      "ZIP_LOAD",
+      "DIST_LOAD_ZIP"
+    ],
+    "label": "Composite ZIP Distribution Feeder Load",
+    "category": "Shunts, Loads & DER",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">DER</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">LOAD_ZIP_DIS</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:DER_PV_IEEE1547",
+    "aliases": [
+      "PV_IEEE1547",
+      "SMART_INVERTER_PV"
+    ],
+    "label": "IEEE 1547-2018 Category B Solar PV Smart Inverter",
+    "category": "Shunts, Loads & DER",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">DER</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DER_PV_IEEE1</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:DER_BESS_IEEE1547",
+    "aliases": [
+      "BESS_IEEE1547",
+      "BATTERY_DER"
+    ],
+    "label": "IEEE 1547-2018 Category B Battery Energy Storage (BESS)",
+    "category": "Shunts, Loads & DER",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">DER</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DER_BESS_IEE</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:DER_WIND_DIST",
+    "aliases": [
+      "WIND_IEEE1547",
+      "DIST_WIND"
+    ],
+    "label": "IEEE 1547-2018 Distributed Wind Turbine Generator",
+    "category": "Shunts, Loads & DER",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">DER</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DER_WIND_DIS</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "cyme:EV_CHARGER_L3",
+    "aliases": [
+      "DCFC_L3",
+      "EV_DCFC"
+    ],
+    "label": "Level-3 DC Fast Charger (Constant-Power Rectifier Load)",
+    "category": "Shunts, Loads & DER",
+    "domain": "electrical",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">DER</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">EV_CHARGER_L</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      }
+    ]
+  }
+]

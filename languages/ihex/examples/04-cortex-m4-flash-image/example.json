@@ -1,0 +1,11 @@
+{
+  "id": "ihex-04-cortex-m4-flash-image",
+  "lang": "ihex",
+  "subFormats": ["i32hex"],
+  "difficulty": 4,
+  "title": "ARM Cortex-M4 32-Bit Flash Image (Type 04 & Type 05)",
+  "description": "I32HEX ARM Cortex-M4 flash image mapped at 0x08000000 via Extended Linear Address (04) with vector table, Thumb-2 reset handler, and Start Linear Address (05).",
+  "category": "ARM Embedded Firmware",
+  "tags": ["ihex", "i32hex", "cortex-m4", "arm", "flash"],
+  "activeFile": "cortex_m4.hex"
+}

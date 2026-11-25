@@ -1,0 +1,11 @@
+{
+  "id": "cellml-03-fitzhugh-nagumo-cardiac",
+  "lang": "cellml",
+  "subFormats": ["cellml"],
+  "difficulty": 3,
+  "title": "FitzHugh-Nagumo Excitable Cardiac Cell Oscillator",
+  "description": "Two-variable reduced-order FitzHugh-Nagumo cardiac excitable cell dynamics coupling fast membrane excitation (v) with slow recovery (w) and periodic external pacing stimulus.",
+  "category": "Electrophysiology & Systems Biology",
+  "tags": ["cellml", "fitzhugh-nagumo", "cardiac", "nonlinear-oscillator"],
+  "activeFile": "fhn.cellml"
+}

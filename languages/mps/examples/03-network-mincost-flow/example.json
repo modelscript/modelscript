@@ -1,0 +1,11 @@
+{
+  "id": "mps-03-network-mincost-flow",
+  "lang": "mps",
+  "subFormats": ["mps", "lp", "network-flow"],
+  "difficulty": 3,
+  "title": "Minimum-Cost Network Flow Routing LP",
+  "description": "Four-node directed logistics network with node flow conservation equalities and arc capacity upper bounds minimizing total routing cost.",
+  "category": "Network Optimization",
+  "tags": ["mps", "lp", "network-flow", "routing"],
+  "activeFile": "mincost_flow.mps"
+}

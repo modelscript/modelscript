@@ -9,6 +9,7 @@ import { Connection, Definition, TextDocuments } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { LSPBridge, PositionIndex } from "../lsp-bridge.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
+import type { ValidationService } from "../services/validation-service.js";
 import {
   extractCrossDomainLineHints,
   extractLeafSymbolName,
@@ -17,6 +18,68 @@ import {
   parseStepReferenceToken,
 } from "../utils/lexical-utils.js";
 import { symbolEntryToLocation } from "../utils/lsp-utils.js";
+
+export interface DefinitionTreeEntryLike {
+  text?: string | undefined;
+  tree?: { rootNode?: { id?: number; ptr?: number }; rootPtr?: number } | null | undefined;
+  rootNode?: { id?: number; ptr?: number } | undefined;
+  rootPtr?: number | undefined;
+}
+
+interface DefinitionSymbolLike {
+  id: number;
+  name?: string | undefined;
+  kind?: string | undefined;
+  ruleName?: string | undefined;
+  language?: string | undefined;
+  resourceId?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  line?: number | undefined;
+  column?: number | undefined;
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number } | undefined> | undefined;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+interface DefinitionQueryEngineLike {
+  crossDomainBinding?(id: number): number[];
+  resolveEntry?(id: number): DefinitionSymbolLike | null | undefined;
+  symbol?(id: number): DefinitionSymbolLike | null | undefined;
+  resolvePolyglotSymbol?(name: string): number | null | undefined;
+}
+
+interface DefinitionProjectionTableLike {
+  getAllRules?(): unknown[];
+  canResolveAs(docPluginId: string, sym: DefinitionSymbolLike): boolean;
+}
+
+interface DefinitionWorkspaceIndexLike {
+  byName?: Map<string, number[]>;
+  symbols?: Map<number, DefinitionSymbolLike>;
+  tggProjectionTable?: DefinitionProjectionTableLike;
+}
+
+export interface DefinitionValidationServiceLike {
+  workspaceManager?: {
+    getQueryEngine?(langId: string): DefinitionQueryEngineLike | null | undefined;
+    queryEngine?: DefinitionQueryEngineLike | null | undefined;
+    unifiedWorkspace?: {
+      getIndex?(): DefinitionWorkspaceIndexLike | undefined;
+      tggProjectionTable?: DefinitionProjectionTableLike;
+    };
+    allWorkspaceIndices?: Map<string, DefinitionWorkspaceIndexLike>;
+    getThreadsForUri?(uri: string): Array<{ nodeId?: number; slot: number; meta?: { name?: string } }> | undefined;
+    findAlignedElementsBySlot?(slot: number): Array<{ uri?: string; line?: number; column?: number; name?: string }>;
+  };
+}
+
+interface DefinitionBridgeLike {
+  findEntryAtOffset?(offset: number): DefinitionSymbolLike | null | undefined;
+  findScopeAtOffset?(offset: number): DefinitionSymbolLike | null | undefined;
+  engine?: DefinitionQueryEngineLike | undefined;
+  getQueryEngine?(): DefinitionQueryEngineLike | null | undefined;
+  definitionRaw?(offset: number, text?: string): DefinitionSymbolLike | null | undefined;
+}
 
 function isStepDocument(document: TextDocument): boolean {
   return document.languageId === "step" || /\.(step|stp|p21)$/i.test(document.uri);
@@ -29,11 +92,12 @@ export function findCrossLanguageDefinition(
   document: TextDocument,
   offset: number,
   bridge: LSPBridge | undefined,
-  validationService: any | undefined,
+  rawValidationService: ValidationService | DefinitionValidationServiceLike | undefined,
   documentLSPBridges: Map<string, LSPBridge>,
-  documentTrees: Map<string, any>,
+  documentTrees: ReadonlyMap<string, DefinitionTreeEntryLike>,
   documents?: TextDocuments<TextDocument>,
 ): Definition | null {
+  const validationService = rawValidationService as unknown as DefinitionValidationServiceLike | undefined;
   const text = document.getText();
   if (!text) return null;
 
@@ -65,7 +129,8 @@ export function findCrossLanguageDefinition(
   const lineText = text.slice(lineStart, lineEnd);
 
   // 5. AST Entry at offset
-  const refEntry = (bridge as any)?.findEntryAtOffset?.(offset) || (bridge as any)?.findScopeAtOffset?.(offset);
+  const typedBridge = bridge as unknown as DefinitionBridgeLike | undefined;
+  const refEntry = typedBridge?.findEntryAtOffset?.(offset) || typedBridge?.findScopeAtOffset?.(offset);
 
   // 6. Structured line hints (CAD(...), twin="...", part x : Type)
   const lineHints = extractCrossDomainLineHints(lineText);
@@ -76,11 +141,12 @@ export function findCrossLanguageDefinition(
   if (fullToken && (fullToken.includes("::") || fullToken.includes("#") || fullToken.includes("//"))) {
     candidates.push(fullToken);
   }
-  if (refEntry?.metadata?.twin) candidates.push(String(refEntry.metadata.twin));
-  if (refEntry?.metadata?.counterpart) candidates.push(String(refEntry.metadata.counterpart));
-  if (refEntry?.metadata?.implements) candidates.push(String(refEntry.metadata.implements));
-  if (refEntry?.metadata?.cadBinding) candidates.push(String(refEntry.metadata.cadBinding));
-  if (refEntry?.metadata?.typeSpecifier) candidates.push(String(refEntry.metadata.typeSpecifier));
+  const refMeta = refEntry?.metadata;
+  if (refMeta?.["twin"]) candidates.push(String(refMeta["twin"]));
+  if (refMeta?.["counterpart"]) candidates.push(String(refMeta["counterpart"]));
+  if (refMeta?.["implements"]) candidates.push(String(refMeta["implements"]));
+  if (refMeta?.["cadBinding"]) candidates.push(String(refMeta["cadBinding"]));
+  if (refMeta?.["typeSpecifier"]) candidates.push(String(refMeta["typeSpecifier"]));
   if (lineHints.twin) candidates.push(lineHints.twin);
   if (lineHints.cadAnyPart) candidates.push(lineHints.cadAnyPart);
   if (word && word !== refEntry?.name) candidates.push(word);
@@ -104,17 +170,20 @@ export function findCrossLanguageDefinition(
           if (loc) return loc;
         }
       }
-    } catch {}
+    } catch {
+      // Counterpart lookup unavailable; continue to subsequent cross-language resolution strategies.
+    }
   }
 
   // Query engine resolution
-  const qe =
-    (bridge as any)?.engine ??
-    (bridge as any)?.getQueryEngine?.() ??
+  const pluginWithQe = globalLanguageRegistry.getAllPlugins().find((p) => p.queryEngine);
+  const qe: DefinitionQueryEngineLike | null | undefined =
+    typedBridge?.engine ??
+    typedBridge?.getQueryEngine?.() ??
     validationService?.workspaceManager?.getQueryEngine?.("modelica") ??
     validationService?.workspaceManager?.getQueryEngine?.("sysml2") ??
     validationService?.workspaceManager?.queryEngine ??
-    globalLanguageRegistry.getAllPlugins().find((p: any) => p.queryEngine)?.queryEngine;
+    (pluginWithQe?.queryEngine as DefinitionQueryEngineLike | undefined);
 
   const collectStepDocs = (): { uri: string; text: string }[] => {
     const out: { uri: string; text: string }[] = [];
@@ -151,7 +220,7 @@ export function findCrossLanguageDefinition(
       const symIds = uIndex.byName.get(cand);
       if (symIds && symIds.length > 0) {
         for (const symId of symIds) {
-          const sEntry = uIndex.symbols.get(symId);
+          const sEntry = uIndex.symbols?.get(symId);
           if (
             sEntry &&
             sEntry.resourceId &&
@@ -161,7 +230,7 @@ export function findCrossLanguageDefinition(
               sEntry.ruleName?.includes("step"))
           ) {
             const loc = symbolEntryToLocation(sEntry, documentLSPBridges, documentTrees, documents);
-            if (loc) return loc as any;
+            if (loc) return loc;
           }
         }
       }
@@ -187,10 +256,12 @@ export function findCrossLanguageDefinition(
           const bEntry = typeof qe.resolveEntry === "function" ? qe.resolveEntry(bid) : qe.symbol?.(bid);
           if (bEntry && bEntry.resourceId && bEntry.resourceId !== document.uri) {
             const loc = symbolEntryToLocation(bEntry, documentLSPBridges, documentTrees, documents);
-            if (loc) return loc as any;
+            if (loc) return loc;
           }
         }
-      } catch {}
+      } catch {
+        // Salsa crossDomainBinding unavailable; continue to resolvePolyglotSymbol below.
+      }
     }
 
     // 2. Resolve candidates via Salsa resolvePolyglotSymbol
@@ -202,10 +273,10 @@ export function findCrossLanguageDefinition(
           cand.includes("#") ||
           (cand.includes(".") && !cand.startsWith("."));
         const isExplicitMeta =
-          cand === refEntry?.metadata?.twin ||
-          cand === refEntry?.metadata?.counterpart ||
-          cand === refEntry?.metadata?.implements ||
-          cand === refEntry?.metadata?.cadBinding ||
+          cand === refMeta?.["twin"] ||
+          cand === refMeta?.["counterpart"] ||
+          cand === refMeta?.["implements"] ||
+          cand === refMeta?.["cadBinding"] ||
           cand === lineHints.twin ||
           cand === lineHints.cadAnyPart;
         if (!isQualified && !isExplicitMeta) continue;
@@ -215,16 +286,18 @@ export function findCrossLanguageDefinition(
             const targetEntry = typeof qe.resolveEntry === "function" ? qe.resolveEntry(symId) : qe.symbol?.(symId);
             if (targetEntry && targetEntry.resourceId && targetEntry.resourceId !== document.uri) {
               const loc = symbolEntryToLocation(targetEntry, documentLSPBridges, documentTrees, documents);
-              if (loc) return loc as any;
+              if (loc) return loc;
             }
           }
-        } catch {}
+        } catch {
+          // Candidate could not be resolved via Salsa; try remaining candidates and workspace indices.
+        }
       }
     }
   }
 
   // C. Search across workspace indices for candidate matches (validated against TggSymbolProjectionTable when available)
-  const workspaceIndices: any[] = [];
+  const workspaceIndices: DefinitionWorkspaceIndexLike[] = [];
   const uWorkspace = validationService?.workspaceManager?.unifiedWorkspace;
   const uIdx = uWorkspace?.getIndex?.();
   if (uIdx && !workspaceIndices.includes(uIdx)) {
@@ -236,21 +309,24 @@ export function findCrossLanguageDefinition(
     }
   }
   for (const plugin of globalLanguageRegistry.getAllPlugins()) {
-    if (plugin.workspaceIndex && !workspaceIndices.includes(plugin.workspaceIndex)) {
-      workspaceIndices.push(plugin.workspaceIndex);
+    const pluginWsIdx = plugin.workspaceIndex as DefinitionWorkspaceIndexLike | undefined;
+    if (pluginWsIdx && !workspaceIndices.includes(pluginWsIdx)) {
+      workspaceIndices.push(pluginWsIdx);
     }
   }
 
   const docPluginId = globalLanguageRegistry.getPluginForUri(document.uri, text)?.id ?? document.languageId ?? "";
   const projTable = uWorkspace?.tggProjectionTable ?? uIdx?.tggProjectionTable;
-  const hasProjRules = typeof projTable?.getAllRules === "function" && projTable.getAllRules().length > 0;
+  const hasProjRules = Boolean(
+    projTable && typeof projTable.getAllRules === "function" && projTable.getAllRules().length > 0,
+  );
 
   for (const cand of uniqueCandidates) {
     const isExplicitHint =
-      cand === refEntry?.metadata?.twin ||
-      cand === refEntry?.metadata?.counterpart ||
-      cand === refEntry?.metadata?.implements ||
-      cand === refEntry?.metadata?.cadBinding ||
+      cand === refMeta?.["twin"] ||
+      cand === refMeta?.["counterpart"] ||
+      cand === refMeta?.["implements"] ||
+      cand === refMeta?.["cadBinding"] ||
       cand === lineHints.twin ||
       cand === lineHints.cadAnyPart ||
       cand.includes("::") ||
@@ -264,6 +340,7 @@ export function findCrossLanguageDefinition(
           if (
             !isExplicitHint &&
             hasProjRules &&
+            projTable &&
             docPluginId &&
             sym.language &&
             sym.language.toLowerCase() !== docPluginId.toLowerCase()
@@ -271,7 +348,7 @@ export function findCrossLanguageDefinition(
             if (!projTable.canResolveAs(docPluginId, sym)) continue;
           }
           const loc = symbolEntryToLocation(sym, documentLSPBridges, documentTrees, documents);
-          if (loc) return loc as any;
+          if (loc) return loc;
         }
       }
     }
@@ -286,7 +363,7 @@ export function findCrossLanguageDefinition(
           if (refEntry?.id !== undefined && t.nodeId !== refEntry.id && t.meta?.name !== word) {
             continue;
           }
-          const aligned = validationService.workspaceManager.findAlignedElementsBySlot(t.slot);
+          const aligned = validationService.workspaceManager.findAlignedElementsBySlot?.(t.slot) ?? [];
           for (const elem of aligned) {
             if (elem.uri && elem.uri !== document.uri) {
               const l = Math.max(0, (elem.line ?? 1) - 1);
@@ -303,7 +380,9 @@ export function findCrossLanguageDefinition(
           }
         }
       }
-    } catch {}
+    } catch {
+      // Digital thread lookup unavailable; fall back to null definition.
+    }
   }
 
   return null;
@@ -313,8 +392,8 @@ export function registerDefinitionProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
   documentLSPBridges: Map<string, LSPBridge>,
-  documentTrees: Map<string, any>,
-  validationService?: any,
+  documentTrees: ReadonlyMap<string, DefinitionTreeEntryLike>,
+  validationService?: ValidationService | DefinitionValidationServiceLike,
 ) {
   connection.onDefinition((params): Definition | null => {
     const document = documents.get(params.textDocument.uri);
@@ -391,7 +470,7 @@ export function registerDefinitionProvider(
         documentTrees,
         documents,
       );
-      if (crossLoc) return crossLoc as any;
+      if (crossLoc) return crossLoc;
     }
 
     const plugin = globalLanguageRegistry.getPluginForUri(params.textDocument.uri, docText);
@@ -420,7 +499,9 @@ export function registerDefinitionProvider(
                 },
               };
             }
-          } catch {}
+          } catch {
+            // Facade definition lookup failed; fall back to cross-language definition lookup below.
+          }
         }
       }
 
@@ -439,15 +520,16 @@ export function registerDefinitionProvider(
       return null;
     }
 
-    const rawTarget = (bridge as any).definitionRaw(offset, document.getText());
+    const typedBridge = bridge as unknown as DefinitionBridgeLike;
+    const rawTarget = typedBridge.definitionRaw?.(offset, document.getText());
     if (rawTarget) {
-      const refEntry = (bridge as any).findEntryAtOffset(offset);
+      const refEntry = typedBridge.findEntryAtOffset?.(offset);
       const isSelfDeclaration = refEntry && rawTarget.id === refEntry.id && rawTarget.resourceId === document.uri;
 
       // If rawTarget points to a different symbol or external file, it's a genuine local jump
       if (!isSelfDeclaration) {
         const loc = symbolEntryToLocation(rawTarget, documentLSPBridges, documentTrees, documents);
-        if (loc) return loc as any;
+        if (loc) return loc;
       }
     }
 
@@ -461,10 +543,10 @@ export function registerDefinitionProvider(
       documentTrees,
       documents,
     );
-    if (crossLoc) return crossLoc as any;
+    if (crossLoc) return crossLoc;
 
     if (rawTarget) {
-      return symbolEntryToLocation(rawTarget, documentLSPBridges, documentTrees, documents) as any;
+      return symbolEntryToLocation(rawTarget, documentLSPBridges, documentTrees, documents);
     }
 
     return null;
@@ -488,7 +570,7 @@ export function registerDefinitionProvider(
       const typeTarget = bridge.typeDefinitionRaw(offset, docText);
       if (typeTarget) {
         const loc = symbolEntryToLocation(typeTarget, documentLSPBridges, documentTrees, documents);
-        if (loc) return loc as any;
+        if (loc) return loc;
       }
     }
 
@@ -501,7 +583,7 @@ export function registerDefinitionProvider(
       documentTrees,
       documents,
     );
-    if (crossLoc) return crossLoc as any;
+    if (crossLoc) return crossLoc;
 
     return null;
   });

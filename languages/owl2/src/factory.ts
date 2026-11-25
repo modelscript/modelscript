@@ -5,7 +5,6 @@ import {
   QueryEngine,
   WorkspaceIndex,
   type CSTTree,
-  type EditRange,
   type QueryCacheStore,
   type QueryDB,
   type SymbolEntry,
@@ -73,13 +72,16 @@ export function createOWL2WorkspaceIndex(): WorkspaceIndex {
   const origRegister = ws.register.bind(ws);
   ws.register = (
     uri: string,
-    treeFn?: (() => GenericSyntaxNode | null | undefined) | GenericSyntaxNode | null,
+    treeFn?: Parameters<typeof origRegister>[1],
     parentFQN?: string,
-    editRanges?: EditRange[],
+    editRanges?: Parameters<typeof origRegister>[3],
   ) => {
-    const getRootNode = typeof treeFn === "function" ? treeFn : () => treeFn;
+    const getRootNode =
+      typeof treeFn === "function"
+        ? () => treeFn() as GenericSyntaxNode | null | undefined
+        : () => treeFn as GenericSyntaxNode | null | undefined;
     cstByUri.set(uri, { getRootNode });
-    const fileId = origRegister(uri, getRootNode, parentFQN, editRanges);
+    const fileId = origRegister(uri, treeFn, parentFQN, editRanges);
     ws.getFileIndex?.(uri);
     return fileId;
   };

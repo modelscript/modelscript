@@ -1,0 +1,36 @@
+#usda 1.0
+(
+    defaultPrim = "ActuatorCell"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+over "ActuatorCell"
+{
+    over "stator_housing" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        bool physics:rigidBodyEnabled = false
+        float physics:mass = 18.5
+        float3 physics:diagonalInertia = (0.42, 0.42, 0.31)
+    }
+
+    over "rotor_shaft" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        bool physics:rigidBodyEnabled = true
+        float physics:mass = 4.2
+        float3 physics:diagonalInertia = (0.11, 0.11, 0.015)
+    }
+
+    def PhysicsRevoluteJoint "rotor_bearing_joint"
+    {
+        rel physics:body0 = </ActuatorCell/stator_housing>
+        rel physics:body1 = </ActuatorCell/rotor_shaft>
+        uniform token physics:axis = "Z"
+        float physics:lowerLimit = -3.14159
+        float physics:upperLimit = 3.14159
+    }
+}

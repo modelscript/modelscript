@@ -185,9 +185,9 @@ export class ReqIfParser {
         } else if (lowerDef.includes("limit")) {
           extractedLimit = Number(cleanVal);
         } else if (lowerDef.includes("comp")) {
-          extractedComparator = cleanVal as any;
+          extractedComparator = cleanVal as ReqIfRequirement["comparator"];
         } else if (lowerDef.includes("asil")) {
-          extractedAsil = cleanVal as any;
+          extractedAsil = cleanVal as ReqIfRequirement["asilLevel"];
         }
       }
 
@@ -558,8 +558,8 @@ export class ReqIfParser {
         text,
         attributes: {},
         limitValue: limitMatch ? parseFloat(limitMatch[1]!) : undefined,
-        comparator: compMatch ? (compMatch[1] as any) : undefined,
-        asilLevel: asilMatch ? (asilMatch[1] as any) : undefined,
+        comparator: compMatch ? (compMatch[1] as ReqIfRequirement["comparator"]) : undefined,
+        asilLevel: asilMatch ? (asilMatch[1] as ReqIfRequirement["asilLevel"]) : undefined,
         status: "Approved",
       });
     }

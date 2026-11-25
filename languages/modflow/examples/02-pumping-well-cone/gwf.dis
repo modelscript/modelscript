@@ -1,0 +1,10 @@
+# 2D Alluvial Aquifer Discretization (1 layer x 9 rows x 9 columns)
+BEGIN DIS6
+  NLAY 1
+  NROW 9
+  NCOL 9
+  DELR 100.0
+  DELC 100.0
+  TOP 60.0
+  BOTM 10.0
+END DIS6

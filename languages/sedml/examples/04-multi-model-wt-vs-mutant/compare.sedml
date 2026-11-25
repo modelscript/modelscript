@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sedML xmlns="http://sed-ml.org/sed-ml/level1/version4" level="1" version="4">
+  <listOfModels>
+    <model id="model_wt" name="Wild-Type Pathway" language="urn:sedml:language:sbml" source="wt.sbml"/>
+    <model id="model_mut" name="Reduced-Activity Mutant" language="urn:sedml:language:sbml" source="mutant.sbml"/>
+  </listOfModels>
+  <listOfSimulations>
+    <uniformTimeCourse id="sim_comp" name="Comparative Time Course" initialTime="0" outputStartTime="0" outputEndTime="30" numberOfSteps="150">
+      <algorithm kisaoID="KISAO:0000019" name="CVODE"/>
+    </uniformTimeCourse>
+  </listOfSimulations>
+  <listOfTasks>
+    <task id="task_wt" name="Wild-Type Run" modelReference="model_wt" simulationReference="sim_comp"/>
+    <task id="task_mut" name="Mutant Run" modelReference="model_mut" simulationReference="sim_comp"/>
+  </listOfTasks>
+  <listOfDataGenerators>
+    <dataGenerator id="dg_time" name="Time">
+      <listOfVariables>
+        <variable id="t" symbol="urn:sedml:symbol:time" taskReference="task_wt"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>t</ci></math>
+    </dataGenerator>
+    <dataGenerator id="dg_P_wt" name="Wild-Type Product">
+      <listOfVariables>
+        <variable id="P_wt" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='P']" taskReference="task_wt"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>P_wt</ci></math>
+    </dataGenerator>
+    <dataGenerator id="dg_P_mut" name="Mutant Product">
+      <listOfVariables>
+        <variable id="P_mut" target="/sbml:sbml/sbml:model/sbml:listOfSpecies/sbml:species[@id='P']" taskReference="task_mut"/>
+      </listOfVariables>
+      <math xmlns="http://www.w3.org/1998/Math/MathML"><ci>P_mut</ci></math>
+    </dataGenerator>
+  </listOfDataGenerators>
+  <listOfOutputs>
+    <plot2D id="plot_wt_vs_mut" name="Wild-Type vs Mutant Product Accumulation">
+      <listOfCurves>
+        <curve id="c_wt" xDataReference="dg_time" yDataReference="dg_P_wt"/>
+        <curve id="c_mut" xDataReference="dg_time" yDataReference="dg_P_mut"/>
+      </listOfCurves>
+    </plot2D>
+  </listOfOutputs>
+</sedML>

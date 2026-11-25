@@ -1,0 +1,12 @@
+{
+  "id": "jsbsim-02-cessna-172p-trainer",
+  "lang": "jsbsim",
+  "subFormats": ["xml"],
+  "difficulty": 2,
+  "title": "Cessna 172P General Aviation Trainer",
+  "description": "Cessna 172P Skyhawk 6-DOF flight dynamics configuration with tricycle landing gear contacts, aerodynamic stability derivatives, and companion Lycoming O-360 piston engine and Sensenich propeller files.",
+  "category": "General Aviation",
+  "tags": ["jsbsim", "c172p", "piston-engine", "propeller", "multi-file"],
+  "activeFile": "c172p.xml",
+  "fileOrder": ["c172p.xml", "engine/lycoming_o360.xml", "prop/sensenich.xml"]
+}

@@ -1,0 +1,12 @@
+{
+  "id": "twentysim-05-active-quarter-car-suspension",
+  "lang": "twentysim",
+  "subFormats": ["emx"],
+  "difficulty": 5,
+  "title": "Active Quarter-Car Hydropneumatic Suspension",
+  "description": "Two-DOF quarter-car bond graph modeling sprung chassis mass, unsprung wheel hub mass, tire vertical compliance, primary suspension spring-damper, and a companion skyhook active damping controller submodel.",
+  "category": "Automotive Mechatronics",
+  "tags": ["twentysim", "quarter-car", "suspension", "skyhook", "multi-file"],
+  "activeFile": "suspension_bg.emx",
+  "fileOrder": ["suspension_bg.emx", "skyhook_ctrl.emx"]
+}

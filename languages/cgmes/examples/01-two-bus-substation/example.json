@@ -1,0 +1,12 @@
+{
+  "id": "cgmes-01-two-bus-substation",
+  "lang": "cgmes",
+  "subFormats": ["cgmes", "xml"],
+  "difficulty": 1,
+  "title": "2-Bus Transformer Substation (EQ + TP)",
+  "description": "Minimal ENTSO-E CGMES 2.4.15 substation model with 400 kV and 110 kV voltage levels coupled by a two-winding power transformer across EQ and TP profiles.",
+  "category": "CIM / CGMES Profiles",
+  "tags": ["cgmes", "cim16", "substation", "transformer", "multi-file"],
+  "activeFile": "EQ.xml",
+  "isDefaultStarter": true
+}

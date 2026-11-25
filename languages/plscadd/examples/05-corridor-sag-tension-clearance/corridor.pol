@@ -1,0 +1,12 @@
+LINE Corridor_345kV_NorthSouth voltage_kv=345 freq=60
+CONDUCTOR Cardinal_954 weight_n_per_m=17.9 r_ohm_per_km=0.060 gmr_m=0.0122 rated_tension_n=150300
+STRUCTURE T401 station_m=0 x=0 y=0 z_base=150 height_m=38.0 phase_spacing_m=7.8
+STRUCTURE T402 station_m=340 x=340 y=0 z_base=154 height_m=38.0 phase_spacing_m=7.8
+STRUCTURE T403 station_m=700 x=700 y=0 z_base=148 height_m=40.0 phase_spacing_m=7.8
+STRUCTURE T404 station_m=1020 x=1020 y=0 z_base=152 height_m=38.0 phase_spacing_m=7.8
+SPAN S1 from=T401 to=T402 conductor=Cardinal_954 tension_n=45000 min_clearance_m=10.0
+SPAN S2 from=T402 to=T403 conductor=Cardinal_954 tension_n=47000 min_clearance_m=10.0
+SPAN S3 from=T403 to=T404 conductor=Cardinal_954 tension_n=45000 min_clearance_m=10.0
+TERRAIN 170 0 155.0
+TERRAIN 520 0 151.0
+TERRAIN 860 0 153.5

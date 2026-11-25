@@ -1,0 +1,35 @@
+BEGIN NEW DATA CASE
+C 3-Phase Underground XLPE Cable & Transformer Ferroresonance Study
+C Models single-pole fuse clearing leaving cable capacitance in series with core
+  1.0E-5  0.20
+/BRANCH
+C 34.5 kV Substation source impedance (Phases A, B, C)
+SRC_A   BUS_A   0.3500   4.8000  0.0000
+SRC_B   BUS_B   0.3500   4.8000  0.0000
+SRC_C   BUS_C   0.3500   4.8000  0.0000
+C Underground XLPE cable section (350 m, 0.28 uF/km per phase)
+BUS_A   CBL_A   0.0950   0.2100  0.0000
+CBL_A   GND     0.0000   0.0000  0.0980
+BUS_B   CBL_B   0.0950   0.2100  0.0000
+CBL_B   GND     0.0000   0.0000  0.0980
+BUS_C   CBL_C   0.0950   0.2100  0.0000
+CBL_C   GND     0.0000   0.0000  0.0980
+BLANK RECORD
+/SWITCH
+C Phase A fuse opens at t = 0.025 s while Phases B and C remain energized
+BUS_A   CBL_A   0.000000    0.025000
+BUS_B   CBL_B   0.000000    0.200000
+BUS_C   CBL_C   0.000000    0.200000
+BLANK RECORD
+/SOURCE
+C 34.5 kVrms L-L => 28.17 kV peak L-G balanced 3-phase at 60 Hz
+14 SRC_A   28169.00   60.00     0.00
+14 SRC_B   28169.00   60.00  -120.00
+14 SRC_C   28169.00   60.00   120.00
+BLANK RECORD
+/OUTPUT
+BUS_A CBL_A CBL_B CBL_C
+BLANK RECORD
+C External JMarti frequency-dependent cable punch and saturable transformer core
+$INCLUDE, jmarti_line.pch
+$INCLUDE, xfmr_sat.lib

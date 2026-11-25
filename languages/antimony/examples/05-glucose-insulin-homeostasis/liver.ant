@@ -1,0 +1,8 @@
+model HepaticMetabolism()
+  compartment hepatocyte = 1.5;
+  species Glycogen in hepatocyte = 400.0, G_hep in hepatocyte = 90.0;
+  const k_glycolysis = 0.02, k_glycogenesis = 0.015;
+
+  J_glycogenolysis: Glycogen => G_hep; k_glycolysis * Glycogen;
+  J_glycogenesis: G_hep => Glycogen; k_glycogenesis * G_hep;
+end

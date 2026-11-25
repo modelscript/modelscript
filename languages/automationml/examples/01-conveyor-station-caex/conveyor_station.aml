@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="conveyor_station.aml" SchemaVersion="2.15">
+  <InstanceHierarchy Name="ConveyorStation">
+    <Version>1.0.0</Version>
+    <InternalElement Name="InfeedConveyor" ID="conv-01">
+      <Attribute Name="beltLength" AttributeDataType="xs:double" Unit="m">
+        <Value>4.5</Value>
+      </Attribute>
+      <Attribute Name="maxSpeed" AttributeDataType="xs:double" Unit="m/s">
+        <Value>1.8</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.85</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="motorCmd" ID="conv-01-cmd" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="partDetected" ID="conv-01-det" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+    <InternalElement Name="StationPLC" ID="plc-01">
+      <Attribute Name="scanCycleMs" AttributeDataType="xs:double" Unit="ms">
+        <Value>10.0</Value>
+      </Attribute>
+      <ExternalInterface Name="driveStart" ID="plc-01-start" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="sensorIn" ID="plc-01-sens" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <InternalLink Name="MotorCommandLink" RefPartnerSideA="plc-01:driveStart" RefPartnerSideB="conv-01:motorCmd" />
+      <InternalLink Name="PhotoEyeLink" RefPartnerSideA="conv-01:partDetected" RefPartnerSideB="plc-01:sensorIn" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+  </InstanceHierarchy>
+  <InterfaceClassLib Name="AutomationMLInterfaceClassLib">
+    <InterfaceClass Name="AutomationMLBaseInterface" />
+    <InterfaceClass Name="SignalInterface" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+  </InterfaceClassLib>
+  <RoleClassLib Name="AutomationMLBaseRoleClassLib">
+    <RoleClass Name="AutomationMLBaseRole" />
+    <RoleClass Name="Resource" RefBaseClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+  </RoleClassLib>
+</CAEXFile>

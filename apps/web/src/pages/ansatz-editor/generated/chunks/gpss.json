@@ -1,0 +1,73 @@
+[
+  {
+    "id": "gpss-01-bank-teller-mm1",
+    "lang": "gpss",
+    "subFormats": ["gps"],
+    "difficulty": 1,
+    "title": "Single-Server M/M/1 Bank Teller Queue",
+    "description": "Classic single-server bank teller queueing system using GPSS GENERATE, QUEUE/DEPART, SEIZE/RELEASE, ADVANCE, and TERMINATE blocks.",
+    "category": "Queueing Systems",
+    "tags": ["gpss", "mm1", "queue", "banking"],
+    "activeFile": "bank_teller.gps",
+    "fileNames": ["bank_teller.gps"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "* MODEL: BankTellerMM1\n* Single-Server Bank Teller M/M/1 Queueing Simulation\n      GENERATE 6,2          ; Customers arrive every 6 +/- 2 minutes\n      QUEUE    LOBBY        ; Join teller waiting line\n      SEIZE    TELLER1      ; Capture single bank teller\n      DEPART   LOBBY        ; Leave waiting line\n      ADVANCE  5,2          ; Transaction service takes 5 +/- 2 minutes\n      RELEASE  TELLER1      ; Free bank teller\n      TERMINATE 1           ; Customer departs bank\n      START    200          ; Simulate 200 completed customers\n      END\n"
+  },
+  {
+    "id": "gpss-02-emergency-room-mmc",
+    "lang": "gpss",
+    "subFormats": ["gps"],
+    "difficulty": 2,
+    "title": "Multi-Server M/M/c Emergency Room",
+    "description": "Hospital emergency department with multiple treatment bays modeled as a GPSS STORAGE pool, exponential interarrival FUNCTION, and waiting-time TABLE.",
+    "category": "Healthcare Operations",
+    "tags": ["gpss", "storage", "mmc", "healthcare", "table"],
+    "activeFile": "emergency_room.gps",
+    "fileNames": ["emergency_room.gps"],
+    "fileCount": 1,
+    "code": "* MODEL: EmergencyRoomMMc\n* Multi-Server Hospital Emergency Room with Exponential Arrivals & Wait Table\nBAYS  STORAGE 4\nEXPON FUNCTION RN1,C4\n0,0/.5,.693/.9,2.303/.99,4.605\nWAIT_T TABLE M1,5,5,20\n      GENERATE 8,FN$EXPON   ; Patients arrive exponentially (mean 8 min)\n      QUEUE    TRIAGE_Q     ; Enter waiting room\n      ENTER    BAYS,1       ; Occupy one of 4 treatment bays\n      DEPART   TRIAGE_Q     ; Leave waiting room\n      ADVANCE  26,FN$EXPON  ; Treatment duration (mean 26 min)\n      LEAVE    BAYS,1       ; Vacate treatment bay\n      TABULATE WAIT_T       ; Record total time in ER\n      TERMINATE 1           ; Patient discharged\n      START    250          ; Simulate 250 patients\n      END\n"
+  },
+  {
+    "id": "gpss-03-job-shop-preempt",
+    "lang": "gpss",
+    "subFormats": ["gps"],
+    "difficulty": 3,
+    "title": "Manufacturing Job Shop with Priority Preemption",
+    "description": "CNC machining center serving regular production orders while urgent rush jobs preempt the machine via GPSS PREEMPT and RETURN blocks.",
+    "category": "Manufacturing Systems",
+    "tags": ["gpss", "preempt", "manufacturing", "priority"],
+    "activeFile": "job_shop.gps",
+    "fileNames": ["job_shop.gps"],
+    "fileCount": 1,
+    "code": "* MODEL: JobShopPriority\n* CNC Machining Center with Regular Production & High-Priority Rush Orders\nCYCLE TABLE M1,10,10,20\n      GENERATE 15,5,,,1     ; Regular production jobs (priority 1)\n      QUEUE    CNC_Q        ; Wait for CNC mill\n      SEIZE    CNC_MILL     ; Acquire CNC mill\n      DEPART   CNC_Q        ; Leave queue\n      ADVANCE  12,3         ; Machining cycle (12 +/- 3 min)\n      RELEASE  CNC_MILL     ; Free CNC mill\n      TABULATE CYCLE        ; Record cycle time\n      TERMINATE 1           ; Regular job complete\n\n      GENERATE 60,15,,,5    ; Urgent rush jobs (priority 5)\n      QUEUE    CNC_Q        ; Jump ahead in priority queue\n      SEIZE    CNC_MILL     ; Capture CNC mill with higher priority\n      DEPART   CNC_Q        ; Leave queue\n      ADVANCE  8,2          ; Rush machining operation\n      RELEASE  CNC_MILL     ; Free CNC mill\n      TERMINATE 1           ; Rush job complete\n\n      START    150          ; Simulate 150 total jobs\n      END\n"
+  },
+  {
+    "id": "gpss-04-warehouse-agv",
+    "lang": "gpss",
+    "subFormats": ["gps"],
+    "difficulty": 4,
+    "title": "Automated Warehouse AGV Forklift Dispatch",
+    "description": "Automated distribution center coordinating AGV forklift fleets, battery charging logic switches, and aisle traffic control using GPSS STORAGE, LOGIC, and GATE blocks.",
+    "category": "Logistics & Warehousing",
+    "tags": ["gpss", "agv", "warehouse", "gate", "logic"],
+    "activeFile": "warehouse_agv.gps",
+    "fileNames": ["warehouse_agv.gps"],
+    "fileCount": 1,
+    "code": "* MODEL: WarehouseAGVDispatch\n* Automated Warehouse AGV Fleet with Aisle Gate & Dock Capacity Control\nAGVS  STORAGE 6\nDOCKS STORAGE 3\nPICK_T TABLE M1,5,5,25\n      GENERATE 4,1          ; Pallet pick orders arrive every 4 +/- 1 min\n      QUEUE    ORDER_Q      ; Wait for available AGV\n      ENTER    AGVS,1       ; Dispatch one AGV forklift\n      DEPART   ORDER_Q      ; Leave order queue\n      GATE NU  AISLE        ; Wait until main aisle facility is free\n      SEIZE    AISLE        ; Lock main aisle for transit\n      ADVANCE  2,1          ; Traverse main aisle\n      RELEASE  AISLE        ; Release main aisle lock\n      QUEUE    DOCK_Q       ; Wait for outbound loading dock\n      ENTER    DOCKS,1      ; Acquire loading dock\n      DEPART   DOCK_Q       ; Leave dock queue\n      ADVANCE  7,2          ; Unload pallet onto trailer\n      LEAVE    DOCKS,1      ; Free loading dock\n      ADVANCE  3,1          ; Return AGV to staging zone\n      LEAVE    AGVS,1       ; Return AGV to fleet pool\n      TABULATE PICK_T       ; Record order fulfillment time\n      TERMINATE 1           ; Order fulfilled\n      START    300          ; Simulate 300 pallet orders\n      END\n"
+  },
+  {
+    "id": "gpss-05-port-container-terminal",
+    "lang": "gpss",
+    "subFormats": ["gps"],
+    "difficulty": 5,
+    "title": "Multi-Stage Port Container Terminal Crane-Truck Simulation",
+    "description": "End-to-end maritime container terminal modeling vessel berthing, quay crane unloading, customs inspection branching via probabilistic TRANSFER, and yard drayage truck dispatch.",
+    "category": "Maritime & Intermodal Logistics",
+    "tags": ["gpss", "port", "container", "transfer", "multi-stage"],
+    "activeFile": "port_terminal.gps",
+    "fileNames": ["port_terminal.gps"],
+    "fileCount": 1,
+    "code": "* MODEL: PortContainerTerminal\n* Multi-Stage Container Terminal: Quay Cranes, Yard Trucks & Customs Inspection\nCRANES STORAGE 4\nTRUCKS STORAGE 8\nGATES  STORAGE 2\nEXPON  FUNCTION RN1,C4\n0,0/.5,.693/.9,2.303/.99,4.605\nDWELL  TABLE M1,15,15,24\n      GENERATE 5,FN$EXPON   ; Container lift demand arrives\n      QUEUE    QUAY_Q       ; Wait for quay gantry crane\n      ENTER    CRANES,1     ; Assign gantry crane\n      DEPART   QUAY_Q       ; Leave quay queue\n      ADVANCE  4,1          ; Lift container from vessel to chassis\n      QUEUE    TRUCK_Q      ; Wait for yard drayage truck\n      ENTER    TRUCKS,1     ; Capture yard truck\n      DEPART   TRUCK_Q      ; Leave truck queue\n      LEAVE    CRANES,1     ; Release gantry crane for next lift\n      ADVANCE  6,2          ; Haul container to yard stack\n      TRANSFER 0.15,YARD_OUT,CUSTOMS ; 15% routed to customs X-ray inspection\nCUSTOMS SEIZE  XRAY_SCAN    ; Acquire customs X-ray bay\n      ADVANCE  12,4         ; Perform customs scan\n      RELEASE  XRAY_SCAN    ; Free customs X-ray bay\nYARD_OUT QUEUE GATE_Q       ; Approach terminal exit gate\n      ENTER    GATES,1      ; Acquire exit gate lane\n      DEPART   GATE_Q       ; Leave gate queue\n      ADVANCE  3,1          ; Process gate-out manifest\n      LEAVE    GATES,1      ; Free exit gate lane\n      LEAVE    TRUCKS,1     ; Return yard truck to pool\n      TABULATE DWELL        ; Record container terminal dwell time\n      TERMINATE 1           ; Container exits terminal\n      START    400          ; Simulate 400 containers\n      END\n"
+  }
+]

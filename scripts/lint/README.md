@@ -150,7 +150,7 @@ flowchart LR
 
 ### [`verify-language-ui-panels.ts`](./verify-language-ui-panels.ts)
 
-- **Purpose:** Boots a headless Vite middleware server rooted at `scripts/playground` and runs `transformRequest` on every `ui.panels` and `ui.simulationCards` entry discovered across `languages/*` to catch broken TSX or unresolved imports without a full Web/IDE build.
+- **Purpose:** Boots a headless Vite middleware server rooted at `scripts/ansatz` and runs `transformRequest` on every `ui.panels` and `ui.simulationCards` entry discovered across `languages/*` to catch broken TSX or unresolved imports without a full Web/IDE build.
 - **When to use:** Run `npm run verify:language-ui` after adding or editing any language's `src/ui/*.tsx` panels or `@modelscript/react` / `@modelscript/design-tokens` exports.
 
 ---

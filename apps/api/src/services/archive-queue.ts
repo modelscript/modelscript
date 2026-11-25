@@ -53,7 +53,9 @@ export class ArchiveQueue {
 
     try {
       fs.mkdirSync(this.storageDir, { recursive: true });
-    } catch {}
+    } catch {
+      // Directory may already exist or be created lazily on first write
+    }
   }
 
   public getConcurrency(): number {
@@ -195,7 +197,9 @@ export class ArchiveQueue {
         if (job.filePath && fs.existsSync(job.filePath)) {
           try {
             fs.unlinkSync(job.filePath);
-          } catch {}
+          } catch {
+            // Best-effort removal of expired archive file
+          }
         }
         this.jobs.delete(id);
         removedCount++;
@@ -221,10 +225,14 @@ export class ArchiveQueue {
               fs.unlinkSync(fullPath);
               removedCount++;
             }
-          } catch {}
+          } catch {
+            // Ignore per-file stat/unlink failures during expired archive sweep
+          }
         }
       }
-    } catch {}
+    } catch {
+      // Ignore storage directory read failures during expired archive sweep
+    }
 
     return { removedCount };
   }
@@ -239,7 +247,9 @@ export class ArchiveQueue {
         if (job.filePath && fs.existsSync(job.filePath)) {
           try {
             fs.unlinkSync(job.filePath);
-          } catch {}
+          } catch {
+            // Best-effort removal of purged user archive file
+          }
         }
         this.jobs.delete(id);
         const qIdx = this.queue.indexOf(id);

@@ -7,15 +7,18 @@ import {
   getUserFollowers,
   getUserFollowing,
   resolveFederatedActor,
+  type SearchCompletionItem,
+  type SocialTopicRecord,
 } from "../../api";
 import type { NotebookCell } from "../../util/notebook";
+import type { HashtagSuggestionItem, MentionSuggestionItem } from "./ComposeMentionHashtagPopups";
 
 export interface UseComposeAutocompleteParams {
-  user: any;
+  user: { username?: string | undefined } | null | undefined;
   token: string | null;
   content: string;
   setContent: (val: string) => void;
-  replyToPost?: any;
+  replyToPost?: ReplyRecipientSource | null | undefined;
   isNotebookMode: boolean;
   activeCellId: string | null;
   notebookCells: NotebookCell[];
@@ -29,7 +32,6 @@ export interface ReplyRecipientSource {
   author_username?: string | null | undefined;
   user?: { username?: string | null | undefined } | null | undefined;
   content?: string | null | undefined;
-  [key: string]: unknown;
 }
 
 export function resolveReplyRecipients(
@@ -70,12 +72,12 @@ export function useComposeAutocomplete({
   updateMarkdownCell,
   textareaRef,
 }: UseComposeAutocompleteParams) {
-  const [followers, setFollowers] = useState<any[]>([]);
-  const [following, setFollowing] = useState<any[]>([]);
+  const [followers, setFollowers] = useState<MentionSuggestionItem[]>([]);
+  const [following, setFollowing] = useState<MentionSuggestionItem[]>([]);
   const [mentionQuery, setMentionQuery] = useState<{ query: string; index: number } | null>(null);
   const [hashtagQuery, setHashtagQuery] = useState<{ query: string; index: number } | null>(null);
-  const [trendingTopics, setTrendingTopics] = useState<any[]>([]);
-  const [remoteActorSuggestions, setRemoteActorSuggestions] = useState<Map<string, any>>(new Map());
+  const [trendingTopics, setTrendingTopics] = useState<(SocialTopicRecord & HashtagSuggestionItem)[]>([]);
+  const [remoteActorSuggestions, setRemoteActorSuggestions] = useState<Map<string, MentionSuggestionItem>>(new Map());
 
   const allMentionedUsers = useMemo(() => {
     return resolveReplyRecipients(replyToPost, user?.username);
@@ -129,12 +131,18 @@ export function useComposeAutocomplete({
       const timer = setTimeout(() => {
         getSearchCompletions(handle, 8)
           .then((res) => {
-            const users = (res as any)?.users || res?.suggestions || [];
+            const resRecord = res as { users?: SearchCompletionItem[]; suggestions?: SearchCompletionItem[] };
+            const users = resRecord?.users || resRecord?.suggestions || [];
             if (Array.isArray(users) && users.length > 0) {
               setRemoteActorSuggestions((prev) => {
                 const next = new Map(prev);
                 for (const u of users) {
-                  if (u?.username) next.set(u.username.toLowerCase(), u);
+                  if (u?.username) {
+                    next.set(u.username.toLowerCase(), {
+                      ...u,
+                      username: u.username,
+                    });
+                  }
                 }
                 return next;
               });
@@ -150,7 +158,7 @@ export function useComposeAutocomplete({
   const mentionSuggestions = useMemo(() => {
     if (!mentionQuery) return [];
     const matches = (content.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g) || []).map((m: string) => m.slice(1));
-    const allUsers = new Map<string, any>();
+    const allUsers = new Map<string, MentionSuggestionItem>();
 
     following.forEach((f) => allUsers.set(f.username.toLowerCase(), f));
     followers.forEach((f) => {

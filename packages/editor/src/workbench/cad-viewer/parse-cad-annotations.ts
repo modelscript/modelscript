@@ -528,10 +528,22 @@ export function parseSourceCadVariables(source: string): RawCadVariableEntry[] {
  * Expects variables in the format `{ name: "x", cad: "CAD(uri=\"...\")" }`
  * or `{ name: "x", cad: { uri: "..." }, proceduralMesh, defaults }`.
  */
-export function extractCadComponents(daeVariables: any[] | string): CadComponent[] {
-  const normalizedVars: any[] =
+interface RawCadVariable {
+  name: string;
+  cad?: CadAnnotation | string | undefined;
+  ports?: CadComponent["ports"] | undefined;
+  dynamicBindings?: CadComponent["dynamicBindings"] | undefined;
+  proceduralMesh?: CadComponent["proceduralMesh"] | undefined;
+  defaults?: CadComponent["defaults"] | undefined;
+  shapeType?: CadComponent["shapeType"] | undefined;
+  sourceMetadata?: CadComponent["sourceMetadata"] | undefined;
+  cadPort?: string | undefined;
+}
+
+export function extractCadComponents(daeVariables: RawCadVariable[] | string): CadComponent[] {
+  const normalizedVars: RawCadVariable[] =
     typeof daeVariables === "string"
-      ? parseSourceCadVariables(daeVariables)
+      ? (parseSourceCadVariables(daeVariables) as RawCadVariable[])
       : Array.isArray(daeVariables)
         ? daeVariables
         : [];

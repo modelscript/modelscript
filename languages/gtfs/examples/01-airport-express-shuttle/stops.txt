@@ -1,0 +1,4 @@
+stop_id,stop_name,stop_lat,stop_lon
+AIR_TERM,International Terminal,37.6152,-122.3899
+AIR_PARKING,Long-Term Garage,37.6285,-122.4012
+DOWNTOWN_HUB,Downtown Transit Center,37.7897,-122.3965

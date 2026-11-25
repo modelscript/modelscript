@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument versionQIF="3.0.0" qpId="10000001-0000-4000-8000-000000000001">
+  <Header>
+    <Author><Name>Metrology Engineer</Name></Author>
+    <Application><Name>Ansatz QIF Suite</Name></Application>
+    <FileUnits>
+      <PrimaryUnits>
+        <LinearUnit><UnitName>mm</UnitName></LinearUnit>
+      </PrimaryUnits>
+    </FileUnits>
+  </Header>
+  <FeatureNominals>
+    <CylinderFeatureNominal id="F1" qpId="10000001-0000-4000-8000-000000000010">
+      <Name>MainBearingBore</Name>
+      <Diameter>32.0</Diameter>
+      <Location>0 0 0</Location>
+      <AxisVector>0 0 1</AxisVector>
+      <ProbingPoints>8</ProbingPoints>
+    </CylinderFeatureNominal>
+  </FeatureNominals>
+  <CharacteristicNominals>
+    <DiameterCharacteristicNominal id="C1" qpId="10000001-0000-4000-8000-000000000020" balloonNumber="1">
+      <Name>MainBearingBore_Diameter</Name>
+      <ToleranceValue>0.025</ToleranceValue>
+      <FeatureNominalIds><Id>F1</Id></FeatureNominalIds>
+      <MeasurementDeviceId>CMM1</MeasurementDeviceId>
+    </DiameterCharacteristicNominal>
+  </CharacteristicNominals>
+  <MeasurementResources>
+    <MeasurementDevice id="CMM1" deviceType="CMM">
+      <Name>Zeiss_Contura_G2</Name>
+      <CalibrationUncertainty>0.0015</CalibrationUncertainty>
+    </MeasurementDevice>
+  </MeasurementResources>
+  <Rules minTurRatio="4.0">
+    <FeatureRule featureType="Cylinder" minPoints="6"/>
+  </Rules>
+  <Plan>
+    <PlanStep id="S1" stepNumber="1" featureId="F1" characteristicId="C1" deviceId="CMM1" probingPointCount="8"/>
+  </Plan>
+</QIFDocument>

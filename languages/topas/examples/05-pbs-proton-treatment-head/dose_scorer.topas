@@ -1,0 +1,15 @@
+# PBS Patient Water-Equivalent Phantom & 3D Dose Scorer
+s:Ge/PatientPhantom/Type = "TsBox"
+s:Ge/PatientPhantom/Parent = "World"
+s:Ge/PatientPhantom/Material = "G4_TISSUE_SOFT_ICRP"
+d:Ge/PatientPhantom/HLX = 15.0 cm
+d:Ge/PatientPhantom/HLY = 15.0 cm
+d:Ge/PatientPhantom/HLZ = 15.0 cm
+d:Ge/PatientPhantom/TransZ = 150.0 mm
+
+s:Sc/PbsDose3D/Quantity = "DoseToMedium"
+s:Sc/PbsDose3D/Component = "PatientPhantom"
+i:Sc/PbsDose3D/XBins = 60
+i:Sc/PbsDose3D/YBins = 60
+i:Sc/PbsDose3D/ZBins = 60
+b:Sc/PbsDose3D/OutputToConsole = "True"

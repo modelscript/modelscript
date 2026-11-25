@@ -1,0 +1,12 @@
+{
+  "id": "optical-01-smf28-otdr-trace",
+  "lang": "optical",
+  "subFormats": ["sor"],
+  "difficulty": 1,
+  "title": "Single-Span SMF-28 OTDR Trace (.sor)",
+  "description": "Telcordia GR-196 v2.0 binary OTDR trace (.sor) of a clean 10 km G.652.D single-mode fiber span at 1550 nm with launch connector and end-of-fiber reflection.",
+  "category": "OTDR Fiber Diagnostics",
+  "tags": ["optical", "sor", "otdr", "smf-28"],
+  "activeFile": "span_10km.sor",
+  "isDefaultStarter": true
+}

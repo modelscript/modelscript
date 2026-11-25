@@ -1,0 +1,16 @@
+; Two-compartment nonlinear Michaelis-Menten elimination model
+[LONGITUDINAL]
+input = {Vm, Km, V1, Q, V2}
+
+PK:
+compartment(cmt = 1, amount = Ac, volume = V1)
+compartment(cmt = 2, amount = Ap, volume = V2)
+iv(cmt = 1)
+
+EQUATION:
+Cc = Ac / V1
+ddt_Ac = -(Vm * Cc) / (Km + Cc) - (Q / V1) * Ac + (Q / V2) * Ap
+ddt_Ap = (Q / V1) * Ac - (Q / V2) * Ap
+
+OUTPUT:
+output = {Cc}

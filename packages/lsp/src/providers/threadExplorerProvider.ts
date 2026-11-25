@@ -22,7 +22,7 @@ export interface ThreadGraphNode {
   uri?: string | undefined;
   line?: number | undefined;
   column?: number | undefined;
-  properties?: Record<string, any> | undefined;
+  properties?: Record<string, unknown> | undefined;
 }
 
 export interface ThreadGraphItem {
@@ -45,6 +45,10 @@ export interface ThreadGraphResponse {
   };
 }
 
+type ConflictLookupHypergraph = DigitalThreadHypergraph & {
+  getConflict?: (slot: number) => Parameters<typeof ThreadDiagnosticsProvider.diagnoseThread>[3];
+};
+
 export class ThreadExplorerProvider {
   /**
    * Generates a multi-domain graph representation of the Digital Thread for Web IDE visualization.
@@ -58,7 +62,7 @@ export class ThreadExplorerProvider {
         uri?: string | undefined;
         line?: number | undefined;
         column?: number | undefined;
-        properties?: Record<string, any> | undefined;
+        properties?: Record<string, unknown> | undefined;
       }
     >,
   ): ThreadGraphResponse {
@@ -114,8 +118,9 @@ export class ThreadExplorerProvider {
         });
       }
 
+      const conflictGraph = hypergraph as ConflictLookupHypergraph;
       const conflictClause =
-        typeof (hypergraph as any).getConflict === "function" ? (hypergraph as any).getConflict(rec.slot) : undefined;
+        typeof conflictGraph.getConflict === "function" ? conflictGraph.getConflict(rec.slot) : undefined;
       const diagnostics = ThreadDiagnosticsProvider.diagnoseThread(
         String(rec.threadId),
         domainElementsForDiag,

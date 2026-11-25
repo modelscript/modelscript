@@ -1,0 +1,11 @@
+{
+  "id": "iges-02-circular-flange-bolt-arcs",
+  "lang": "iges",
+  "subFormats": ["iges-5.3", "mechanical"],
+  "difficulty": 2,
+  "title": "Circular Flange with Bolt-Hole Arcs",
+  "description": "Machined 120 mm OD circular pipe flange in IGES 5.3 using Entity 100 Circular Arcs for outer rim, central bore, and four bolt holes plus Entity 110 centerlines.",
+  "category": "3D CAD Exchange",
+  "tags": ["iges", "flange", "entity-100", "arcs"],
+  "activeFile": "circular_flange.igs"
+}

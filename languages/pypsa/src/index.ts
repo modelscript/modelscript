@@ -10,7 +10,7 @@ export * from "./projections/pypsa-to-ampl.js";
 export * from "./tgg/index.js";
 export * from "./types.js";
 
-export async function buildPypsaDiagramInput(text: string): Promise<any> {
+export async function buildPypsaDiagramInput(text: string) {
   const { parsePypsa } = await import("./index.js");
   const net = parsePypsa(text);
   const busIdMap = new Map<string, number>();

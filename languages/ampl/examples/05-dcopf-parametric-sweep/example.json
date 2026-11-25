@@ -1,0 +1,11 @@
+{
+  "id": "ampl-05-dcopf-parametric-sweep",
+  "lang": "ampl",
+  "subFormats": ["mod", "dat", "run"],
+  "difficulty": 5,
+  "title": "Security-Constrained DC-OPF with Parametric Sweep Script",
+  "description": "Multi-bus DC Optimal Power Flow model minimizing generation dispatch cost subject to nodal power balance, line thermal limits, and a .run sweep script.",
+  "category": "Power Systems Optimization",
+  "tags": ["ampl", "dcopf", "power-systems", "run-script", "multi-file"],
+  "activeFile": "dcopf.mod"
+}

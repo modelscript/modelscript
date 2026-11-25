@@ -1,0 +1,14 @@
+from "generics/passives.ato" import Capacitor
+
+module PowerStage3V3:
+    signal v_in
+    signal v_out
+    signal gnd
+
+    c_bulk_in = new Capacitor
+    c_bulk_out = new Capacitor
+    c_bulk_in.capacitance = 10uF +/- 10%
+    c_bulk_out.capacitance = 22uF +/- 10%
+
+    v_in ~> c_bulk_in ~> gnd
+    v_out ~> c_bulk_out ~> gnd

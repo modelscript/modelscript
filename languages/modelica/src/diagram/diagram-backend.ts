@@ -11,35 +11,151 @@ import {
   type DiagramDrillDownResult,
   type DiagramGetComponentPropertiesParams,
   type DiagramGetDataParams,
+  type EdgeUpdate,
+  type PlacementItem,
   type DiagramTextEdit as TextEdit,
 } from "@modelscript/diagram/protocol";
+import type { SymbolIndex } from "@modelscript/runtime";
 import { applyIconEditActions, type IconEditAction, type IconPrimitiveSpec } from "./icon-annotation-edits.js";
-import { maskModelicaCommentsAndStrings as maskComments } from "./scanner.js";
+import { maskModelicaCommentsAndStrings as maskComments, type ScannedClassLayout } from "./scanner.js";
+import type { ModelicaClassInstance } from "./types.js";
 
 function isSimpleIdentifier(s: string): boolean {
   return /^[A-Za-z_][A-Za-z0-9_]*$/.test(s);
 }
 
-function getModelicaDiagramOps(): any {
-  return (globalThis as any).modelicaDiagramOps ?? {};
+export interface ModelicaIconCoordLike {
+  extent?: [[number, number], [number, number]] | undefined;
+  initialScale?: number | undefined;
+}
+
+export interface ModelicaCrossLanguageDropResolution {
+  className: string;
+  baseName: string;
+  importPath?: string | undefined;
+  stubBlock?: string | undefined;
+  stubName?: string | undefined;
+}
+
+export interface ModelicaCrossLanguageDropParams {
+  docText: string;
+  uri: string;
+  rawClassName: string;
+  x: number;
+  y: number;
+  classInstance: ModelicaClassInstance | null | undefined;
+  computeComponentInsert?:
+    | ((
+        ci: ModelicaClassInstance,
+        className: string,
+        compName: string,
+        x: number,
+        y: number,
+        docText: string,
+        componentIconCoord?: ModelicaIconCoordLike | null,
+      ) => TextEdit[])
+    | undefined;
+  unifiedIndex?: SymbolIndex | null | undefined;
+  instanceName?: string | undefined;
+  componentIconCoord?: ModelicaIconCoordLike | null | undefined;
+  getResourceText?: ((uri: string) => string | undefined) | undefined;
+}
+
+export interface ModelicaCrossLanguageDropOps {
+  resolveCrossLanguageComponentDrop?:
+    | ((
+        index: SymbolIndex | null | undefined,
+        rawClassName: string,
+        targetLang: "modelica" | "sysml2",
+        docText?: string,
+      ) => ModelicaCrossLanguageDropResolution)
+    | undefined;
+  computeModelicaComponentDropEdits?: ((opts: ModelicaCrossLanguageDropParams) => TextEdit[]) | undefined;
+}
+
+interface ModelicaDiagramOps {
+  buildDiagramData?: (
+    classInstance: ModelicaClassInstance,
+    diagramType?: string,
+  ) => Promise<DiagramData | null> | DiagramData | null;
+  buildComponentProperties?: (
+    classInstance: ModelicaClassInstance,
+    componentName: string,
+  ) => ComponentPropertyData | null;
+  buildFallbackClassInstance?: (docText: string, targetClassName?: string) => ModelicaClassInstance | null;
+  computeMinimalNonOverlappingEdits?: (oldText: string, newText: string) => TextEdit[];
+  maskModelicaCommentsAndStrings?: (text: string) => string;
+  scanModelicaClassLayout?: (
+    docText: string,
+    targetClassName?: string,
+    hintStartLine?: number,
+  ) => ScannedClassLayout | null;
+  deduplicateAndSort?: (edits: TextEdit[]) => TextEdit[];
+  computePlacementEdits?: (
+    docText: string,
+    classInstance: ModelicaClassInstance,
+    items: (PlacementItem & { isIconLayer?: boolean })[],
+  ) => TextEdit[];
+  computeEdgePointEdits?: (lines: string[], classInstance: ModelicaClassInstance, edges: EdgeUpdate[]) => TextEdit[];
+  computeConnectInsert?: (
+    docText: string,
+    classInstance: ModelicaClassInstance,
+    source: string,
+    target: string,
+    points?: { x: number; y: number }[],
+    color?: [number, number, number],
+  ) => TextEdit[];
+  computeConnectRemove?: (
+    docText: string,
+    classInstance: ModelicaClassInstance,
+    source: string,
+    target: string,
+  ) => TextEdit[];
+  computeComponentInsert?: (
+    classInstance: ModelicaClassInstance,
+    className: string,
+    componentName: string,
+    x: number,
+    y: number,
+    docText: string,
+    componentIconCoord?: ModelicaIconCoordLike | null,
+  ) => TextEdit[];
+  computeComponentsDelete?: (docText: string, classInstance: ModelicaClassInstance, names: string[]) => TextEdit[];
+  computeNameEdit?: (
+    classInstance: ModelicaClassInstance,
+    oldName: string,
+    newName: string,
+    docText?: string,
+  ) => TextEdit[];
+  computeDescriptionEdit?: (
+    docText: string,
+    classInstance: ModelicaClassInstance,
+    componentName: string,
+    newDescription: string,
+  ) => TextEdit[];
+  computeParameterEdit?: (
+    classInstance: ModelicaClassInstance,
+    componentName: string,
+    parameterName: string,
+    newValue: string,
+    docText?: string,
+  ) => TextEdit[];
+  healStrandedClassAnnotationsInText?: (docText: string, targetClassName?: string) => string;
+}
+
+function getModelicaDiagramOps(): ModelicaDiagramOps {
+  return (globalThis as { modelicaDiagramOps?: ModelicaDiagramOps }).modelicaDiagramOps ?? {};
 }
 
 export interface ModelicaBackendDeps {
-  getDocumentInstances: (uri: string) => any[] | undefined;
+  getDocumentInstances: (uri: string) => ModelicaClassInstance[] | undefined;
   getDocumentText: (uri: string) => string | undefined;
 
-  resolveClassInstance: (uri: string, className?: string) => any | null;
+  resolveClassInstance: (uri: string, className?: string) => ModelicaClassInstance | null;
   flushValidation: (uri: string) => Promise<void>;
   isDocumentStale?: ((uri: string) => boolean) | undefined;
-  getUnifiedIndex?: (() => any) | undefined;
-  crossLanguageDrop?:
-    | {
-        resolveCrossLanguageComponentDrop?:
-          | ((index: any, rawClassName: string, targetLang: "modelica" | "sysml2", docText?: string) => any)
-          | undefined;
-        computeModelicaComponentDropEdits?: ((opts: any) => TextEdit[]) | undefined;
-      }
-    | undefined;
+  getUnifiedIndex?: (() => SymbolIndex | null | undefined) | undefined;
+  crossLanguageDrop?: ModelicaCrossLanguageDropOps | undefined;
 }
 
 export class ModelicaDiagramBackend implements DiagramBackend {
@@ -74,14 +190,14 @@ export class ModelicaDiagramBackend implements DiagramBackend {
   private resolveTargetInstance(
     uri: string,
     className: string | undefined,
-    instances: any[] | undefined,
+    instances: ModelicaClassInstance[] | undefined,
     docText: string,
-  ): any | null {
+  ): ModelicaClassInstance | null {
     if (className) {
       const simpleName = className.split(".").pop()!;
       const matched =
         instances?.find(
-          (inst: any) =>
+          (inst) =>
             inst?.compositeName === className ||
             inst?.name === className ||
             inst?.compositeName?.endsWith(`.${className}`) ||
@@ -115,7 +231,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       return { seq: params.seq, edits: [], renderHint: "none" };
     }
 
-    let targetInstance = this.resolveTargetInstance(params.uri, params.className, instances, docText);
+    const targetInstance = this.resolveTargetInstance(params.uri, params.className, instances, docText);
     if (!targetInstance) {
       const currentText = docText ?? "";
       const strippedText = maskComments(currentText).trim();
@@ -146,12 +262,17 @@ export class ModelicaDiagramBackend implements DiagramBackend {
           ) {
             continue;
           }
-          const resolved = this.deps.crossLanguageDrop?.resolveCrossLanguageComponentDrop?.(
-            unifiedIndex,
-            rawClass,
-            "modelica",
-            currentText,
-          );
+          const fallbackShort = rawClass.split(".").pop() || "comp";
+          const resolved: ModelicaCrossLanguageDropResolution =
+            this.deps.crossLanguageDrop?.resolveCrossLanguageComponentDrop?.(
+              unifiedIndex,
+              rawClass,
+              "modelica",
+              currentText,
+            ) ?? {
+              className: rawClass,
+              baseName: fallbackShort.charAt(0).toLowerCase() + fallbackShort.slice(1),
+            };
           if (resolved.importPath && !seenImports.has(resolved.importPath)) {
             seenImports.add(resolved.importPath);
             importLines.push(`  import ${resolved.importPath};`);
@@ -287,7 +408,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     const needsUnifiedIndex = params.actions.some((a) => a.type === "addComponent");
 
     if (iconActions.length > 0) {
-      const workingText = applyIconEditActions(docText, targetInstance.name, iconActions);
+      const workingText = applyIconEditActions(docText, targetInstance.name ?? params.className ?? "", iconActions);
       const ops = getModelicaDiagramOps();
       if (remainingActions.length === 0) {
         if (workingText !== docText) {
@@ -319,12 +440,10 @@ export class ModelicaDiagramBackend implements DiagramBackend {
       const dropIconOptions = {
         crossLanguageDrop: this.deps.crossLanguageDrop,
         getResourceText: this.deps.getDocumentText,
-        resolveComponentIconCoord: (clsName: string) =>
+        resolveComponentIconCoord: (clsName: string): ModelicaIconCoordLike | null =>
           (
             this.deps.resolveClassInstance?.(params.uri, clsName)?.annotation?.("Icon") as
-              | { coordinateSystem?: unknown }
-              | null
-              | undefined
+              { coordinateSystem?: ModelicaIconCoordLike | null | undefined } | null | undefined
           )?.coordinateSystem ?? null,
       };
       const remResult = processDiagramEditBatch(
@@ -360,12 +479,10 @@ export class ModelicaDiagramBackend implements DiagramBackend {
     const dropIconOptions = {
       crossLanguageDrop: this.deps.crossLanguageDrop,
       getResourceText: this.deps.getDocumentText,
-      resolveComponentIconCoord: (clsName: string) =>
+      resolveComponentIconCoord: (clsName: string): ModelicaIconCoordLike | null =>
         (
           this.deps.resolveClassInstance?.(params.uri, clsName)?.annotation?.("Icon") as
-            | { coordinateSystem?: unknown }
-            | null
-            | undefined
+            { coordinateSystem?: ModelicaIconCoordLike | null | undefined } | null | undefined
         )?.coordinateSystem ?? null,
     };
     let result = processDiagramEditBatch(effectiveParams, targetInstance, docText, unifiedIndex, dropIconOptions);
@@ -414,7 +531,7 @@ export class ModelicaDiagramBackend implements DiagramBackend {
         { id: "root", label: "Root", uri: params.uri },
         { id: params.nodeId || targetName, label: targetName, uri: params.uri },
       ],
-      data: childData ?? undefined,
+      data: childData ?? null,
     };
   }
 }
@@ -472,7 +589,7 @@ function validatePostEditBalance(
   beforeText: string,
   edits: TextEdit[],
   targetClassName: string | undefined,
-  ops: any,
+  ops: ModelicaDiagramOps,
 ): boolean {
   if (edits.length === 0) return true;
   const afterText = applyTextEditsInMemory(beforeText, edits);
@@ -507,24 +624,13 @@ function validatePostEditBalance(
 
 export function processDiagramEditBatch(
   request: DiagramApplyEditsParams,
-  classInstance: any,
+  classInstance: ModelicaClassInstance | null | undefined,
   docText: string,
-  unifiedIndex?: any,
+  unifiedIndex?: SymbolIndex | null | undefined,
   dropIconOptions?: {
     getResourceText?: ((uri: string) => string | undefined) | undefined;
-    crossLanguageDrop?:
-      | {
-          resolveCrossLanguageComponentDrop?:
-            | ((index: any, rawClassName: string, targetLang: "modelica" | "sysml2", docText?: string) => any)
-            | undefined;
-          computeModelicaComponentDropEdits?: ((opts: any) => TextEdit[]) | undefined;
-        }
-      | undefined;
-    resolveComponentIconCoord?:
-      | ((
-          className: string,
-        ) => { extent?: [[number, number], [number, number]]; initialScale?: number } | null | undefined)
-      | undefined;
+    crossLanguageDrop?: ModelicaCrossLanguageDropOps | undefined;
+    resolveComponentIconCoord?: ((className: string) => ModelicaIconCoordLike | null | undefined) | undefined;
   },
 ): DiagramApplyEditsResult {
   const ops = getModelicaDiagramOps();
@@ -539,13 +645,15 @@ export function processDiagramEditBatch(
   const preservedDiagramAnnotation =
     typeof classInstance?.annotation === "function" ? classInstance.annotation("Diagram") : null;
 
-  const attachPreservedDiagram = (inst: any): any => {
+  const attachPreservedDiagram = (
+    inst: ModelicaClassInstance | null | undefined,
+  ): ModelicaClassInstance | null | undefined => {
     if (!inst || !preservedDiagramAnnotation) return inst;
     const origAnnot = typeof inst.annotation === "function" ? inst.annotation.bind(inst) : null;
     if (origAnnot && origAnnot("Diagram")) return inst;
     return {
       ...inst,
-      annotation: (key: string) => {
+      annotation: (key?: string) => {
         const own = origAnnot ? origAnnot(key) : null;
         if (own) return own;
         return key === "Diagram" ? preservedDiagramAnnotation : null;
@@ -553,7 +661,7 @@ export function processDiagramEditBatch(
     };
   };
 
-  let initialInstance = classInstance;
+  let initialInstance: ModelicaClassInstance | null | undefined = classInstance;
   if (!initialInstance && typeof ops.buildFallbackClassInstance === "function") {
     initialInstance = ops.buildFallbackClassInstance(docText, targetClassName);
   }
@@ -605,8 +713,12 @@ export function processDiagramEditBatch(
     }
   }
 
-  const runSingleAction = (action: StepAction, currentText: string, currentInstance: any): TextEdit[] => {
-    const execWithInstance = (ci: any): TextEdit[] => {
+  const runSingleAction = (
+    action: StepAction,
+    currentText: string,
+    currentInstance: ModelicaClassInstance | null | undefined,
+  ): TextEdit[] => {
+    const execWithInstance = (ci: ModelicaClassInstance | null | undefined): TextEdit[] => {
       if (!ci) return [];
       switch (action.type) {
         case "move": {
@@ -646,7 +758,7 @@ export function processDiagramEditBatch(
           let uniqueName = action.name || baseName + "1";
           let counter = 1;
 
-          const existingNames = new Set<string>(Array.from(ci.components || []).map((c: any) => c.name));
+          const existingNames = new Set<string>(Array.from(ci.components || []).map((c) => c.name));
           if (typeof ops.scanModelicaClassLayout === "function") {
             const scanned = ops.scanModelicaClassLayout(currentText, targetClassName || ci.name);
             for (const c of scanned?.components ?? []) {

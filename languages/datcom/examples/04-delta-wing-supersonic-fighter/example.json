@@ -1,0 +1,11 @@
+{
+  "id": "datcom-04-delta-wing-supersonic-fighter",
+  "lang": "datcom",
+  "subFormats": ["digital-datcom", "supersonic"],
+  "difficulty": 4,
+  "title": "Delta-Wing Supersonic Fighter Mach Sweep",
+  "description": "Cropped-delta supersonic fighter configuration with 52-degree leading-edge sweep and Sears-Haack area-ruled fuselage swept from Mach 1.4 to 2.2.",
+  "category": "Supersonic Aerodynamics",
+  "tags": ["datcom", "supersonic", "delta-wing", "fighter"],
+  "activeFile": "supersonic_delta.dcm"
+}

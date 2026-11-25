@@ -8,6 +8,8 @@ import {
   type DiagramComponentSpec,
   type LibrarySymbolStub,
   type ModelscriptLibraryManifest,
+  type SymbolEntry,
+  type SymbolIndex,
 } from "@modelscript/runtime";
 import { createSysML2QueryEngine, createSysML2WorkspaceIndex } from "@modelscript/sysml2/factory";
 import path from "node:path";
@@ -16,6 +18,7 @@ import { LspContext, type ModelScriptLspSettings } from "../lsp-context.js";
 import { ThreadExplorerProvider } from "../providers/threadExplorerProvider.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 import { getTraceabilityMatrix } from "../requirements.js";
+import type { ComputeWritebackEditParams } from "../services/writeback-service.js";
 import {
   getCompositeName,
   loadingLibraryState,
@@ -34,16 +37,47 @@ import {
   type RegistryPackageInfo,
 } from "../vfs/library-loader.js";
 
+export interface SemanticRegulatoryImpact {
+  isSafetyCritical: boolean;
+  hazardId?: string | undefined;
+  hazardName?: string | undefined;
+  requirementId?: string | undefined;
+  riskSeverity: number;
+  invalidatedLinks: { targetName: string; targetKind: string; reason: string }[];
+}
+
 export interface FlatSemanticEdit {
   action: "insert" | "delete" | "update" | "none" | "move";
   description: string;
   oldRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
   newRange?: { startLine: number; startCharacter: number; endLine: number; endCharacter: number } | undefined;
   kind?: string | undefined;
-  regulatoryImpact?: any;
+  regulatoryImpact?: SemanticRegulatoryImpact | undefined;
 }
 
-function isValueCarryingEntry(entry: any, slice?: string): boolean {
+interface ValueCarryingEntryLike {
+  name?: string | undefined;
+  ruleName?: string | undefined;
+  fieldRanges?: Record<string, unknown> | undefined;
+}
+
+interface DiffTreeLike {
+  rootNode: unknown;
+  delete?: () => void;
+}
+
+interface DiffParserLike {
+  parse(text: string): DiffTreeLike;
+}
+
+interface DiffWorkspaceIndexLike {
+  reindexDocument?: (uri: string, getRoot: () => unknown) => void;
+  getIndex?: () => SymbolIndex;
+  symbols?: SymbolIndex["symbols"];
+  childrenOf?: SymbolIndex["childrenOf"];
+}
+
+function isValueCarryingEntry(entry: ValueCarryingEntryLike, slice?: string): boolean {
   if (!entry.name) return false;
   const rule = entry.ruleName || "";
 
@@ -76,7 +110,7 @@ function isValueCarryingEntry(entry: any, slice?: string): boolean {
     return true;
   }
 
-  if (entry.fieldRanges?.value || entry.fieldRanges?.expression) {
+  if (entry.fieldRanges?.["value"] || entry.fieldRanges?.["expression"]) {
     return true;
   }
 
@@ -134,8 +168,9 @@ export function registerMiscEndpoints(context: LspContext) {
       }
       // Use the bridge's PositionIndex to convert lines → character offsets,
       // falling back to DocumentManager's PositionIndex if bridge is not yet ready.
-      const bridge = context.validationService.documentLSPBridges.get(params.uri);
-      const bridgePositions = (bridge as any)?.positions;
+      const bridge = context.validationService.documentLSPBridges.get(params.uri) as
+        { positions?: { positionToCharOffset?: (line: number, character: number) => number } } | undefined;
+      const bridgePositions = bridge?.positions;
       const positions =
         bridgePositions && typeof bridgePositions.positionToCharOffset === "function"
           ? bridgePositions
@@ -161,8 +196,14 @@ export function registerMiscEndpoints(context: LspContext) {
     },
   );
 
-  const getLoaderCtx = () => context.parserService?.getOrCreateLoaderContext?.() ?? (globalThis as any).savedLoaderCtx;
-  const getServerDistBase = () => (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
+  const globalMisc = globalThis as {
+    savedLoaderCtx?: Parameters<typeof loadRegistryPackages>[1];
+    serverDistBase?: string;
+    sysml2Parser?: DiffParserLike;
+    parser?: DiffParserLike;
+  };
+  const getLoaderCtx = () => context.parserService?.getOrCreateLoaderContext?.() ?? globalMisc.savedLoaderCtx;
+  const getServerDistBase = () => globalMisc.serverDistBase ?? context.parserService?.getServerDistBase?.();
 
   const syncAndRevalidateAll = () => {
     (context.validationService as { syncWorkspaceStateAfterIndex?: () => void }).syncWorkspaceStateAfterIndex?.();
@@ -457,7 +498,7 @@ export function registerMiscEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/setActiveStandards", applyActiveStandardsUpdate);
   context.connection.onNotification("modelscript/setActiveStandards", applyActiveStandardsUpdate);
 
-  // Request-based package lifecycle endpoints (awaited by Morsel & VS Code Package Hub)
+  // Request-based package lifecycle endpoints (awaited by Ansatz & VS Code Package Hub)
   context.connection.onRequest("modelscript/installPackage", performInstallPackage);
   context.connection.onRequest("modelscript/uninstallPackage", performUninstallPackage);
   context.connection.onRequest(
@@ -591,7 +632,7 @@ export function registerMiscEndpoints(context: LspContext) {
     }
   });
 
-  context.connection.onRequest("modelscript/computeWritebackEdit", async (params: any) => {
+  context.connection.onRequest("modelscript/computeWritebackEdit", async (params: ComputeWritebackEditParams) => {
     const { computeWritebackEdit } = await import("../services/writeback-service.js");
     return await computeWritebackEdit(context, params);
   });
@@ -623,24 +664,30 @@ export function registerMiscEndpoints(context: LspContext) {
         scopeStr = isSysml ? "sysml" : "modelica";
 
         const langParser =
-          context.parserService.getParser(isSysml ? "sysml2" : "modelica") ??
-          (isSysml ? (globalThis as any).sysml2Parser : (globalThis as any).parser);
+          (context.parserService.getParser(isSysml ? "sysml2" : "modelica") as DiffParserLike | null | undefined) ??
+          (isSysml ? globalMisc.sysml2Parser : globalMisc.parser);
 
         if (!langParser) continue;
 
-        let oldTree: any = null;
-        let newTree: any = null;
+        let oldTree: DiffTreeLike | null = null;
+        let newTree: DiffTreeLike | null = null;
         try {
           oldTree = langParser.parse(change.oldText);
           const oldWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
-          oldWs.reindexDocument(change.uri, () => oldTree.rootNode);
+          oldWs.reindexDocument(
+            change.uri,
+            () => oldTree!.rootNode as ReturnType<NonNullable<Parameters<typeof oldWs.reindexDocument>[1]>>,
+          );
           const oldIndex = oldWs.getIndex();
           const oldDb = isSysml ? createSysML2QueryEngine(oldIndex) : createModelicaQueryEngine(oldIndex);
           const oldRootEntries = oldIndex.childrenOf.get(null) || [];
 
           newTree = langParser.parse(change.newText);
           const newWs = isSysml ? createSysML2WorkspaceIndex() : createModelicaWorkspaceIndex();
-          newWs.reindexDocument(change.uri, () => newTree.rootNode);
+          newWs.reindexDocument(
+            change.uri,
+            () => newTree!.rootNode as ReturnType<NonNullable<Parameters<typeof newWs.reindexDocument>[1]>>,
+          );
           const newIndex = newWs.getIndex();
           const newDb = isSysml ? createSysML2QueryEngine(newIndex) : createModelicaQueryEngine(newIndex);
           const newRootEntries = newIndex.childrenOf.get(null) || [];
@@ -663,7 +710,7 @@ export function registerMiscEndpoints(context: LspContext) {
               },
             );
 
-            const collectDescriptions = (edit: any) => {
+            const collectDescriptions = (edit: SemanticEdit) => {
               if (edit.description) descriptions.push(edit.description);
               if (edit.children) {
                 for (const child of edit.children) collectDescriptions(child);
@@ -693,7 +740,7 @@ export function registerMiscEndpoints(context: LspContext) {
 
   context.connection.onRequest(
     "modelscript/getSemanticDiff",
-    async (params: { uri: string; oldText: string; newText: string }): Promise<{ diffs: any[] }> => {
+    async (params: { uri: string; oldText: string; newText: string }): Promise<{ diffs: FlatSemanticEdit[] }> => {
       const plugin =
         globalLanguageRegistry.getPluginForLanguageIdOrUri(undefined, params.uri) ||
         globalLanguageRegistry.getPluginForUri(params.uri);
@@ -706,42 +753,47 @@ export function registerMiscEndpoints(context: LspContext) {
       const langId = plugin?.id ?? (isSysml ? "sysml2" : isModelica ? "modelica" : null);
 
       const langParser =
-        (langId ? context.parserService.getParser(langId) : null) ??
-        context.parserService.getParserForUri(params.uri) ??
-        (isSysml ? (globalThis as any).sysml2Parser : (globalThis as any).parser);
+        ((langId ? context.parserService.getParser(langId) : null) as DiffParserLike | null | undefined) ??
+        (context.parserService.getParserForUri(params.uri) as DiffParserLike | null | undefined) ??
+        (isSysml ? globalMisc.sysml2Parser : globalMisc.parser);
 
       if (!langParser) return { diffs: [] };
 
-      let oldTree: any = null;
-      let newTree: any = null;
+      let oldTree: DiffTreeLike | null = null;
+      let newTree: DiffTreeLike | null = null;
       try {
         const docLang = langId ?? (isSysml ? "sysml2" : "modelica");
         const oldDoc = TextDocument.create(params.uri, docLang, 1, params.oldText);
         const newDoc = TextDocument.create(params.uri, docLang, 1, params.newText);
 
-        const createWsIndex = () => {
-          if (isSysml) return createSysML2WorkspaceIndex();
-          if (isModelica) return createModelicaWorkspaceIndex();
+        const createWsIndex = (): DiffWorkspaceIndexLike => {
+          if (isSysml) return createSysML2WorkspaceIndex() as unknown as DiffWorkspaceIndexLike;
+          if (isModelica) return createModelicaWorkspaceIndex() as unknown as DiffWorkspaceIndexLike;
           if (langId) {
             const norm = langId.toLowerCase();
+            const globalRecord = globalThis as unknown as Record<string, unknown>;
+            const pluginWithFactory = plugin as unknown as
+              { createWorkspaceIndex?: () => DiffWorkspaceIndexLike } | undefined;
             const factory =
-              (plugin as any)?.createWorkspaceIndex ??
-              (globalThis as any)[`create_${norm}_workspace_index`] ??
-              (globalThis as any)[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}WorkspaceIndex`];
+              pluginWithFactory?.createWorkspaceIndex ??
+              globalRecord[`create_${norm}_workspace_index`] ??
+              globalRecord[`create${norm.charAt(0).toUpperCase() + norm.slice(1)}WorkspaceIndex`];
             if (typeof factory === "function") {
-              return factory();
+              return (factory as () => DiffWorkspaceIndexLike)();
             }
           }
-          return createModelicaWorkspaceIndex();
+          return createModelicaWorkspaceIndex() as unknown as DiffWorkspaceIndexLike;
         };
 
-        const createDb = (idx: any) => {
+        const createDb = (idx: SymbolIndex) => {
           if (isSysml) return createSysML2QueryEngine(idx);
           if (isModelica) return createModelicaQueryEngine(idx);
           if (plugin?.createQueryEngine) {
             try {
               return plugin.createQueryEngine(idx, null);
-            } catch {}
+            } catch {
+              // Plugin query engine creation failed; fall back to default Modelica query engine below.
+            }
           }
           return createModelicaQueryEngine(idx);
         };
@@ -749,23 +801,23 @@ export function registerMiscEndpoints(context: LspContext) {
         oldTree = langParser.parse(params.oldText);
         const oldWs = createWsIndex();
         if (typeof oldWs.reindexDocument === "function") {
-          oldWs.reindexDocument(params.uri, () => oldTree.rootNode);
+          oldWs.reindexDocument(params.uri, () => oldTree!.rootNode);
         }
-        const oldIndex = typeof oldWs.getIndex === "function" ? oldWs.getIndex() : oldWs;
+        const oldIndex = (typeof oldWs.getIndex === "function" ? oldWs.getIndex() : oldWs) as SymbolIndex;
         const oldDb = createDb(oldIndex);
         const oldRootEntries = oldIndex?.childrenOf?.get(null) || [];
 
         newTree = langParser.parse(params.newText);
         const newWs = createWsIndex();
         if (typeof newWs.reindexDocument === "function") {
-          newWs.reindexDocument(params.uri, () => newTree.rootNode);
+          newWs.reindexDocument(params.uri, () => newTree!.rootNode);
         }
-        const newIndex = typeof newWs.getIndex === "function" ? newWs.getIndex() : newWs;
+        const newIndex = (typeof newWs.getIndex === "function" ? newWs.getIndex() : newWs) as SymbolIndex;
         const newDb = createDb(newIndex);
         const newRootEntries = newIndex?.childrenOf?.get(null) || [];
 
         // Pre-build index of safety critical symbols and their mitigations
-        const hazardSymbols = new Map<string, any>();
+        const hazardSymbols = new Map<string, SymbolEntry>();
         const mitigatedReqs = new Map<string, string>();
 
         for (const entry of newIndex.symbols.values()) {
@@ -1055,7 +1107,11 @@ export function registerMiscEndpoints(context: LspContext) {
               );
             }
             if (parsedTree?.rootNode) {
-              wsIdx.register(targetUri, () => parsedTree.rootNode as any, docText);
+              wsIdx.register(
+                targetUri,
+                () => parsedTree.rootNode as ReturnType<NonNullable<Parameters<typeof wsIdx.register>[1]>>,
+                docText,
+              );
             }
             const localUnified = await wsIdx.getIndexAsync();
             const qe = createSysML2QueryEngine(
@@ -1103,12 +1159,17 @@ export function registerMiscEndpoints(context: LspContext) {
                 },
               );
               ctx.load(docText, targetUri);
+              const ctxWithWsIndex = ctx as unknown as {
+                workspaceIndex?: {
+                  getUnifiedIndex?: () => {
+                    symbols?: {
+                      values?: () => Iterable<{ kind?: string; name?: string; resourceId?: string }>;
+                    };
+                  };
+                };
+              };
               const loadedSymbols = Array.from(
-                ((ctx as any).workspaceIndex?.getUnifiedIndex?.()?.symbols?.values?.() ?? []) as Array<{
-                  kind?: string;
-                  name?: string;
-                  resourceId?: string;
-                }>,
+                ctxWithWsIndex.workspaceIndex?.getUnifiedIndex?.()?.symbols?.values?.() ?? [],
               ).filter((s) => (s.kind === "Class" || s.kind === "Def") && s.name);
               const targetClass = loadedSymbols.length > 0 ? loadedSymbols[loadedSymbols.length - 1]!.name : undefined;
               if (targetClass && typeof (ctx as { verifyFormal?: unknown }).verifyFormal === "function") {
@@ -1148,7 +1209,9 @@ export function registerMiscEndpoints(context: LspContext) {
                   );
                 }
               }
-            } catch {}
+            } catch {
+              // Formal verification pass is best-effort; return collected compiler diagnostics.
+            }
           }
         } finally {
           parsedTree?.delete?.();
@@ -1202,6 +1265,7 @@ export function registerMiscEndpoints(context: LspContext) {
         return { success: true, message: "Slot not in conflict or stale.", reconciledValue: undefined };
       }
 
+      const domainIndexToName = DOMAIN_INDEX_TO_NAME as Record<number, string>;
       let consensusVal = customValue;
       if (consensusVal === undefined) {
         // Evaluate physics-simplex balance across aligned domain elements
@@ -1223,7 +1287,7 @@ export function registerMiscEndpoints(context: LspContext) {
           for (let dom = 0; dom < 16; dom++) {
             const nodeId = sharedHypergraph.getDomainNode(slot, dom);
             if (nodeId && nodeId > 0) {
-              const domName = (DOMAIN_INDEX_TO_NAME as any)[dom] ?? "unknown";
+              const domName = domainIndexToName[dom] ?? "unknown";
               const meta = sharedMetadataMap.get(`${domName}:${nodeId}`);
               const p = meta?.properties?.["mass"] ?? meta?.properties?.["voltage"] ?? meta?.properties?.["value"];
               if (typeof p === "number") {
@@ -1243,7 +1307,7 @@ export function registerMiscEndpoints(context: LspContext) {
       for (let dom = 0; dom < 16; dom++) {
         const nodeId = sharedHypergraph.getDomainNode(slot, dom);
         if (nodeId && nodeId > 0) {
-          const domName = (DOMAIN_INDEX_TO_NAME as any)[dom] ?? "unknown";
+          const domName = domainIndexToName[dom] ?? "unknown";
           const key = `${domName}:${nodeId}`;
           const meta = sharedMetadataMap.get(key);
           if (meta && meta.properties) {

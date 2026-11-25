@@ -4,7 +4,7 @@
  * @modelscript/sysml2 — On-Demand Deep Formal Verification Linter (`S7001`–`S7006`).
  *
  * Orchestrates `@modelscript/runtime`'s deep formal verification engines for `--formal` CLI
- * runs and Morsel interactive verification:
+ * runs and Ansatz interactive verification:
  *   - S6031 (`high-index-parametric-constraint`): `SysML2DaeLowerer` + `computePryceSignatureMatrix` +
  *            `pantelidesIndexReductionArena` (Pantelides / Pryce Structural DAE Index Analysis)
  *   - S7001 (`hierarchical-pdr-unsafe-state`): `WasmRtcStateMachine` + `PdrEngine` (`IC3Engine`)

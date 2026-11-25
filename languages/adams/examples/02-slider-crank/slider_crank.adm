@@ -1,0 +1,60 @@
+!------------------------------------------------------------------
+! MSC Adams Dataset: Slider-Crank Reciprocating Mechanism
+! Spatial mobility: 3 moving bodies (18 DOF)
+! Joints: REVOLUTE(5) + SPHERICAL(3) + UNIVERSAL(4) + TRANSLATIONAL(5) = 17 => M = 1 DOF
+!------------------------------------------------------------------
+ADAMS/
+!
+!----------------------------------- PARTS ------------------------
+PART/1, GROUND
+!
+! Crankshaft (radius = 0.10 m)
+PART/2, MASS = 1.8 &
+  , CM = 201 &
+  , IP = 0.012, 0.015, 0.018
+!
+! Connecting rod (length = 0.30 m)
+PART/3, MASS = 0.9 &
+  , CM = 301 &
+  , IP = 0.008, 0.010, 0.012
+!
+! Reciprocating piston
+PART/4, MASS = 0.65 &
+  , CM = 401 &
+  , IP = 0.004, 0.004, 0.005
+!
+!---------------------------------- MARKERS -----------------------
+! Ground crank bearing and cylinder bore axis
+MARKER/101, PART = 1, QP = 0.0, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/102, PART = 1, QP = 0.4, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+!
+! Crank markers
+MARKER/201, PART = 2, QP = 0.05, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/202, PART = 2, QP = 0.0, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/203, PART = 2, QP = 0.1, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+!
+! Connecting rod markers
+MARKER/301, PART = 3, QP = 0.25, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/302, PART = 3, QP = 0.1, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/303, PART = 3, QP = 0.4, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+!
+! Piston markers
+MARKER/401, PART = 4, QP = 0.4, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+MARKER/402, PART = 4, QP = 0.4, 0.0, 0.0, REULER = 0.0, 0.0, 0.0
+!
+!----------------------------------- JOINTS -----------------------
+JOINT/1, REVOLUTE, I = 101, J = 202
+JOINT/2, SPHERICAL, I = 203, J = 302
+JOINT/3, UNIVERSAL, I = 303, J = 402
+JOINT/4, TRANSLATIONAL, I = 102, J = 401
+!
+!----------------------------------- FORCES -----------------------
+SPRINGDAMPER/1, TRANSLATIONAL, I = 102, J = 401, K = 500.0, C = 12.0, LENGTH = 0.1
+!
+!---------------------------------- MOTIONS -----------------------
+MOTION/1, JOINT = 1, ROTATIONAL, FUNCTION = 360D * TIME
+!
+!--------------------------- SIMULATION CONTROL -------------------
+ACCGRAV/JGRAV = -9.80665
+SIMULATE/DYNAMIC, END = 2.0, DTOUT = 0.005
+END

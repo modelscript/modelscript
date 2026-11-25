@@ -1,0 +1,5 @@
+** Companion refined mesh near circular cutout
+*NSET, NSET=HOLE_RIM
+1, 4
+*ELSET, ELSET=REFINED_ZONE
+1

@@ -1,0 +1,11 @@
+{
+  "id": "c37118-03-interarea-oscillation-event",
+  "lang": "c37118",
+  "subFormats": ["c37118"],
+  "difficulty": 3,
+  "title": "Inter-Area 0.7 Hz Electromechanical Oscillation Event",
+  "description": "Wide-area 500 kV tie-line PMU recording capturing a lightly damped 0.7 Hz inter-area frequency and tie-line power oscillation across consecutive synchrophasor frames.",
+  "category": "Wide-Area Grid Monitoring",
+  "tags": ["c37118", "oscillation", "inter-area", "500kv", "dynamics"],
+  "activeFile": "interarea_osc.c37118"
+}

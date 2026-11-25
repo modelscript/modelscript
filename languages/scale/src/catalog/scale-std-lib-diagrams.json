@@ -1,0 +1,388 @@
+[
+  {
+    "namePath": "SCALE.UO2",
+    "aliases": [
+      "uo2",
+      "uranium_dioxide"
+    ],
+    "label": "UO2 Fuel",
+    "category": "Standard Composition",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MAT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">UO2</text></svg>",
+    "ports": [
+      {
+        "name": "neutronFlux",
+        "kind": "neutronics",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "region",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.H2O",
+    "aliases": [
+      "h2o",
+      "water",
+      "light_water"
+    ],
+    "label": "H2O Moderator",
+    "category": "Standard Composition",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MAT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">H2O</text></svg>",
+    "ports": [
+      {
+        "name": "neutronFlux",
+        "kind": "neutronics",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "region",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.SS304",
+    "aliases": [
+      "ss304",
+      "stainless_steel_304"
+    ],
+    "label": "SS304 Steel",
+    "category": "Standard Composition",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MAT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SS304</text></svg>",
+    "ports": [
+      {
+        "name": "neutronFlux",
+        "kind": "neutronics",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "region",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.ZIRC4",
+    "aliases": [
+      "zirc4",
+      "zircaloy-4",
+      "zircaloy4"
+    ],
+    "label": "Zircaloy-4",
+    "category": "Standard Composition",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MAT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ZIRC4</text></svg>",
+    "ports": [
+      {
+        "name": "neutronFlux",
+        "kind": "neutronics",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "region",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.B4C",
+    "aliases": [
+      "b4c",
+      "boron_carbide"
+    ],
+    "label": "B4C Absorber",
+    "category": "Standard Composition",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MAT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">B4C</text></svg>",
+    "ports": [
+      {
+        "name": "neutronFlux",
+        "kind": "neutronics",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "region",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.MOX",
+    "aliases": [
+      "mox",
+      "mixed_oxide"
+    ],
+    "label": "MOX Fuel",
+    "category": "Standard Composition",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#172554\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MAT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MOX</text></svg>",
+    "ports": [
+      {
+        "name": "neutronFlux",
+        "kind": "neutronics",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "region",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.U-235",
+    "aliases": [
+      "u235",
+      "u-235",
+      "92235"
+    ],
+    "label": "U-235",
+    "category": "Actinide Nuclide",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">ACT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">U-235</text></svg>",
+    "ports": [
+      {
+        "name": "parent",
+        "kind": "decay",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "daughter",
+        "kind": "decay",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.U-238",
+    "aliases": [
+      "u238",
+      "u-238",
+      "92238"
+    ],
+    "label": "U-238",
+    "category": "Actinide Nuclide",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">ACT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">U-238</text></svg>",
+    "ports": [
+      {
+        "name": "parent",
+        "kind": "decay",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "daughter",
+        "kind": "decay",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.Pu-239",
+    "aliases": [
+      "pu239",
+      "pu-239",
+      "94239"
+    ],
+    "label": "Pu-239",
+    "category": "Actinide Nuclide",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#450a0a\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">ACT</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PU-239</text></svg>",
+    "ports": [
+      {
+        "name": "parent",
+        "kind": "decay",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "daughter",
+        "kind": "decay",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.I-135",
+    "aliases": [
+      "i135",
+      "i-135",
+      "53135"
+    ],
+    "label": "I-135",
+    "category": "Fission Product",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">FP</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">I-135</text></svg>",
+    "ports": [
+      {
+        "name": "parent",
+        "kind": "decay",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "daughter",
+        "kind": "decay",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.Xe-135",
+    "aliases": [
+      "xe135",
+      "xe-135",
+      "54135"
+    ],
+    "label": "Xe-135",
+    "category": "Fission Product",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">FP</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">XE-135</text></svg>",
+    "ports": [
+      {
+        "name": "parent",
+        "kind": "decay",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "daughter",
+        "kind": "decay",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.Cs-137",
+    "aliases": [
+      "cs137",
+      "cs-137",
+      "55137"
+    ],
+    "label": "Cs-137",
+    "category": "Fission Product",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">FP</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CS-137</text></svg>",
+    "ports": [
+      {
+        "name": "parent",
+        "kind": "decay",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "daughter",
+        "kind": "decay",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "SCALE.Sr-90",
+    "aliases": [
+      "sr90",
+      "sr-90",
+      "38090"
+    ],
+    "label": "Sr-90",
+    "category": "Fission Product",
+    "domain": "nuclear-criticality",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b0764\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">FP</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SR-90</text></svg>",
+    "ports": [
+      {
+        "name": "parent",
+        "kind": "decay",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "daughter",
+        "kind": "decay",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  }
+]

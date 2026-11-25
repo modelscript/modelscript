@@ -1,0 +1,11 @@
+{
+  "id": "rtds-05-hil-relay-testing-microgrid",
+  "lang": "rtds",
+  "subFormats": ["dft", "csv"],
+  "difficulty": 5,
+  "title": "Hardware-in-the-Loop Relay Testing Microgrid Suite",
+  "description": "Multi-file RTDS closed-loop relay testing benchmark pairing a multi-subsystem microgrid draft (grid tie, BESS inverter, diesel genset, critical load) with an automated fault-injection schedule CSV.",
+  "category": "Real-Time HIL Simulation",
+  "tags": ["rtds", "microgrid", "closed-loop-hil", "relay-testing", "multi-file"],
+  "activeFile": "hil_microgrid.dft"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "sdl-04-telecom-call-setup",
+  "lang": "sdl",
+  "subFormats": ["sdl"],
+  "difficulty": 4,
+  "title": "Telecom Call Setup and Teardown Signaling",
+  "description": "ISDN/Q.931-inspired telecom call-control signaling between originating and terminating switch exchanges using SETUP, ALERT, CONNECT, and RELEASE handshakes with ring-timeout supervision.",
+  "category": "Telecommunications Signaling",
+  "tags": ["sdl", "telecom", "q931", "signaling", "call-control"],
+  "activeFile": "call_signaling.sdl"
+}

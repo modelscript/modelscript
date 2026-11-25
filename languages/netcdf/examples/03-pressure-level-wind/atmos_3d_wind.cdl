@@ -1,0 +1,51 @@
+// 3D Isobaric Tropospheric Wind and Temperature Field (850, 500, 250 hPa)
+netcdf atmos_isobaric_3d {
+dimensions:
+  plev = 3 ;
+  lat = 2 ;
+  lon = 3 ;
+variables:
+  float plev(plev) ;
+    plev:units = "hPa" ;
+    plev:long_name = "Isobaric Pressure Level" ;
+    plev:standard_name = "air_pressure" ;
+  float lat(lat) ;
+    lat:units = "degrees_north" ;
+    lat:long_name = "latitude" ;
+  float lon(lon) ;
+    lon:units = "degrees_east" ;
+    lon:long_name = "longitude" ;
+  float u_wind(plev, lat, lon) ;
+    u_wind:units = "m s-1" ;
+    u_wind:long_name = "Eastward Zonal Wind Component" ;
+    u_wind:standard_name = "eastward_wind" ;
+  float v_wind(plev, lat, lon) ;
+    v_wind:units = "m s-1" ;
+    v_wind:long_name = "Northward Meridional Wind Component" ;
+    v_wind:standard_name = "northward_wind" ;
+  float temperature(plev, lat, lon) ;
+    temperature:units = "K" ;
+    temperature:long_name = "Air Temperature" ;
+    temperature:standard_name = "air_temperature" ;
+
+// global attributes:
+  :Conventions = "CF-1.8" ;
+  :title = "Mid-Latitude Jet Stream 3D Isobaric Analysis" ;
+  :institution = "National Centers for Environmental Prediction" ;
+data:
+  plev = 850.0, 500.0, 250.0 ;
+  lat = 40.0, 45.0 ;
+  lon = -105.0, -100.0, -95.0 ;
+  u_wind =
+     8.2,  9.5, 10.1,  6.4,  7.8,  8.5,
+    22.5, 25.0, 24.2, 19.8, 21.4, 20.9,
+    46.0, 51.2, 48.7, 42.3, 45.8, 44.1 ;
+  v_wind =
+     2.1,  1.4, -0.8,  3.0,  2.2,  0.5,
+     5.4,  3.1, -2.2,  6.1,  4.0, -1.5,
+     9.2,  4.8, -5.6, 10.5,  6.2, -4.1 ;
+  temperature =
+    284.5, 285.1, 285.8, 281.2, 281.9, 282.4,
+    256.4, 257.0, 257.5, 253.1, 253.8, 254.2,
+    221.0, 221.5, 222.1, 219.4, 219.8, 220.2 ;
+}

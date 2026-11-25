@@ -1,0 +1,38 @@
+$PROBLEM Joint Oral PK and Indirect-Response PD Biomarker Model
+$INPUT ID TIME AMT DV CMT EVID
+$DATA clinical_trial.csv IGNORE=@
+$SUBROUTINES ADVAN6 TOL=6
+$MODEL NCOMPARTMENTS=3 COMP=(DEPOT DEFDOSE) COMP=(CENTRAL DEFOBS) COMP=(BIOMARKER)
+$PK
+  KA   = THETA(1) * EXP(ETA(1))
+  CL   = THETA(2) * EXP(ETA(2))
+  V    = THETA(3)
+  KIN  = THETA(4)
+  KOUT = THETA(5)
+  IC50 = THETA(6)
+  K    = CL / V
+  S2   = V
+$DES
+  CONC    = A(2) / V
+  INH     = CONC / (IC50 + CONC)
+  DADT(1) = -KA * A(1)
+  DADT(2) = KA * A(1) - K * A(2)
+  DADT(3) = KIN * (1.0 - INH) - KOUT * A(3)
+$ERROR
+  IPRED = A(2) / V
+  Y = IPRED * (1 + EPS(1))
+$THETA
+  (0, 1.1, 10.0)   ; KA (1/h)
+  (0, 4.2, 40.0)   ; CL (L/h)
+  (0, 25.0, 200.0) ; V (L)
+  (0, 10.0, 100.0) ; KIN (U/h)
+  (0, 0.10, 2.0)   ; KOUT (1/h)
+  (0, 1.5, 50.0)   ; IC50 (mg/L)
+$OMEGA
+  0.06 ; IIV_KA
+  0.04 ; IIV_CL
+$SIGMA
+  0.01 ; RUV_PROP
+$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT
+$DOSE
+  TIME=0 AMT=200 RATE=0 CMT=1 EVID=1 II=24 ADDL=2

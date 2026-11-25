@@ -16,6 +16,7 @@ import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { BUILTIN_FUNCTIONS } from "../../builtins.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { getShortClassSpecifierNode, isScopeEncapsulated } from "../../queries.js";
+import type { ModelicaFlattener } from "../class-flattener.js";
 import {
   type CstNodeLike,
   extractFunctionCallArgExprNodesCst,
@@ -41,10 +42,81 @@ import {
   lookupDbConstant,
 } from "../expressions/index.js";
 import { getClassDiagRange } from "../support/range-utils.js";
-import type { ComponentInstanceData } from "../types.js";
+import type { FlatteningState } from "../support/state.js";
+import type { ComponentInstanceData, ComponentModArgData, FlattenerCstNode, ParentModsLike } from "../types.js";
 import { collectExtendsMods } from "./component-inst.js";
 
-type DaeWithParent = DAEBuilder & { parentDae?: DaeWithParent };
+type DaeDiagnosticWithOrigin = DAEBuilder["diagnostics"][number] & { fromFunction?: boolean };
+
+interface FlattenedFunctionDae extends DAEBuilder {
+  parentDae?: FlattenedFunctionDae | undefined;
+  db?: QueryDB | undefined;
+  symId?: SymbolId | undefined;
+  flattener?: ModelicaFlattener | undefined;
+  enclosingScopeId?: SymbolId | null | undefined;
+  componentPrefix?: string | undefined;
+  specializedPrefix?: string | undefined;
+  componentParentMods?: ParentModsLike | undefined;
+  isBeingFlattened?: boolean | undefined;
+  fnRange?: ReturnType<typeof getClassDiagRange> | undefined;
+  isShortFunc?: boolean | undefined;
+  shortBaseFuncName?: string | undefined;
+  isOperatorRecord?: boolean | undefined;
+  wasCalled?: boolean | undefined;
+  isDerivativeFunction?: boolean | undefined;
+  isNestedMember?: boolean | undefined;
+  isExplicitImpure?: boolean | undefined;
+  isEarlyInline?: boolean | undefined;
+  aliasTo?: string | undefined;
+  externalInclude?: string | undefined;
+  builtinFunctions?: Map<string, DAEBuilder> | undefined;
+  rootClassId?: SymbolId | undefined;
+  _recordConstVarIndices?: Set<number> | undefined;
+}
+
+type FlattenerWithFnRuntime = ModelicaFlattener & {
+  _recordCtorCache?: Map<string, DAEBuilder>;
+  _flattenedFunctionCache?: Map<string, DAEBuilder>;
+  currentFunctionComponentPrefix?: string;
+  currentFunctionSpecializedPrefix?: string;
+  instantiatedRecordComponents?: Map<string, Set<string>>;
+  state?: FlatteningState & { rootClassId?: SymbolId };
+};
+
+type SymbolWithFnCache = SymbolEntry & { _isFunction?: boolean };
+
+interface SymbolMetaLike {
+  classKind?: string;
+  classPrefixes?: string;
+  typeSpecifier?: string;
+  variability?: string;
+  isConstant?: boolean;
+  varType?: VarType;
+}
+
+interface ModArgLike extends ComponentModArgData {
+  isRedeclaration?: boolean;
+}
+
+interface EffectiveModLike {
+  args?: ModArgLike[];
+}
+
+interface ArrayDimLike {
+  kind?: string;
+  value?: number;
+  text?: string;
+  cstBytes?: readonly [number, number];
+}
+
+type NameResolverFn = (name: string) => SymbolEntry | null | undefined;
+
+interface OperatorConstructorEntry {
+  qualifiedName: string;
+  funcSymId: SymbolId;
+}
+
+type DaeWithParent = FlattenedFunctionDae;
 
 const C_MATH_EXTERNAL_FUNCS = new Set([
   "sin",
@@ -316,27 +388,28 @@ function extractNamedTwoArgCallCst(
   return args.length === 2 ? [args[0]!, args[1]!] : null;
 }
 
-export function isFunctionSym(db: QueryDB, sym: any): boolean {
+export function isFunctionSym(db: QueryDB, sym: SymbolEntry | null | undefined): boolean {
   if (!sym) return false;
-  if ((sym as any)._isFunction !== undefined) return (sym as any)._isFunction;
-  const meta = (sym.metadata as any) || {};
+  const cachedSym = sym as SymbolWithFnCache;
+  if (cachedSym._isFunction !== undefined) return cachedSym._isFunction;
+  const meta = (sym.metadata ?? {}) as SymbolMetaLike;
   const rawKind = String(meta.classKind ?? meta.classPrefixes ?? "");
   const words = tokenizeCommentStrippedWords(rawKind);
   if (words.includes("function")) {
-    (sym as any)._isFunction = true;
+    cachedSym._isFunction = true;
     return true;
   }
   if (words.length > 0 && !words.includes("function")) {
-    (sym as any)._isFunction = false;
+    cachedSym._isFunction = false;
     return false;
   }
-  const cst = db.cstNode(sym.id) as any;
+  const cst = db.cstNode(sym.id) as FlattenerCstNode | null;
   if (cst) {
     for (const child of cst.children || []) {
       if (child.type === "class_prefixes") {
         const childWords = tokenizeCommentStrippedWords(child.text ?? "");
         if (childWords.includes("function")) {
-          (sym as any)._isFunction = true;
+          cachedSym._isFunction = true;
           return true;
         }
       }
@@ -354,23 +427,25 @@ export function isFunctionSym(db: QueryDB, sym: any): boolean {
       idx++;
     }
     if (headerWords[idx] === "function") {
-      (sym as any)._isFunction = true;
+      cachedSym._isFunction = true;
       return true;
     }
   }
-  (sym as any)._isFunction = false;
+  cachedSym._isFunction = false;
   return false;
 }
 
 export function generateRecordConstructorFor(
-  flattener: any,
-  sym: any,
+  flattener: ModelicaFlattener,
+  sym: SymbolEntry | null | undefined,
   dae: DAEBuilder,
   rootClassId?: SymbolId,
   overrideFnName?: string,
   overrideResType?: string,
 ): DAEBuilder | null {
   if (!sym) return null;
+  const rt = flattener as FlattenerWithFnRuntime;
+  const daeFn = dae as FlattenedFunctionDae;
   const db: QueryDB = flattener.db;
   const qualName = getSymbolQualifiedName(db, sym.id);
   let effParentId = sym.parentId;
@@ -386,8 +461,8 @@ export function generateRecordConstructorFor(
     rootClassId &&
     sym.parentId !== rootClassId &&
     qualName &&
-    collectExtendsMods(flattener, rootClassId).some(
-      (a: any) =>
+    (collectExtendsMods(flattener, rootClassId) as ModArgLike[]).some(
+      (a) =>
         a.isRedeclaration &&
         a.name === sym.name &&
         (a.redeclaredTypeSpecifier === qualName || a.redeclaredTypeSpecifier === `.${qualName}`),
@@ -417,7 +492,7 @@ export function generateRecordConstructorFor(
 
   const resTypeName = overrideResType ?? sym.name;
   const ctorCacheKey = `${sym.id}:${fnName}:${resTypeName}`;
-  const cachedCtor = (flattener as any)._recordCtorCache?.get(ctorCacheKey) as DAEBuilder | undefined;
+  const cachedCtor = rt._recordCtorCache?.get(ctorCacheKey);
   if (cachedCtor && cachedCtor.interner === dae.interner) {
     dae.addFunction(fnName, cachedCtor);
     if (resTypeName && resTypeName !== fnName && !overrideFnName?.includes("$") && !dae.getFunction(resTypeName)) {
@@ -425,14 +500,15 @@ export function generateRecordConstructorFor(
     }
     if (!overrideFnName && qualName && qualName !== fnName && qualName !== sym.name)
       dae.addFunction(qualName, cachedCtor);
-    const isSpeculativeFnDae = dae.classKind === "function" && !(dae as any).parentDae;
+    const isSpeculativeFnDae = dae.classKind === "function" && !daeFn.parentDae;
     const rootModelResourceId = db.symbol(flattener.currentRootClassId ?? rootClassId)?.resourceId;
     const isCrossFileFnLocalRecord =
       dae.classKind === "function" &&
       Boolean(rootModelResourceId && sym.resourceId && sym.resourceId !== rootModelResourceId) &&
       !flattener.usedRecordSymIds?.has(sym.id);
     if (!isSpeculativeFnDae && !isCrossFileFnLocalRecord) {
-      let rootDae: any = (flattener as any)?.currentRootDae ?? dae;
+      let rootDae: FlattenedFunctionDae =
+        (flattener.currentRootDae as FlattenedFunctionDae | null | undefined) ?? daeFn;
       while (rootDae.parentDae) rootDae = rootDae.parentDae;
       rootDae.addFunction(fnName, cachedCtor);
       if (
@@ -449,13 +525,13 @@ export function generateRecordConstructorFor(
     return cachedCtor;
   }
 
-  const fn = dae.exports
-    ? new DAEBuilder(dae.exports, fnName, "", dae.interner)
-    : new DAEBuilder(dae.interner, fnName, "");
+  const fn = (
+    dae.exports ? new DAEBuilder(dae.exports, fnName, "", dae.interner) : new DAEBuilder(dae.interner, fnName, "")
+  ) as FlattenedFunctionDae;
   fn.classKind = "function";
   fn.description = `Automatically generated record constructor for ${fnName}`;
   if (flattener.isOperatorRecordSym(sym)) {
-    (fn as any).isOperatorRecord = true;
+    fn.isOperatorRecord = true;
     fn.extensionMetadata.isOperatorRecord = true;
   }
   const instElements = db.query<SymbolId[]>("instantiate", sym.id);
@@ -470,13 +546,13 @@ export function generateRecordConstructorFor(
       if (comp && comp.kind === "Component") comps.push(comp);
     }
   }
-  const symMod = db.query<any>("effectiveModification", sym.id);
-  const extendsMods = collectExtendsMods(flattener, sym.id);
+  const symMod = db.query<EffectiveModLike | null>("effectiveModification", sym.id);
+  const extendsMods = collectExtendsMods(flattener, sym.id) as ModArgLike[];
   const redeclArgs = [
-    ...extendsMods.filter((a: any) => a.isRedeclaration),
-    ...(symMod?.args?.filter((a: any) => a.isRedeclaration) ?? []),
+    ...extendsMods.filter((a) => a.isRedeclaration),
+    ...(symMod?.args?.filter((a) => a.isRedeclaration) ?? []),
   ];
-  const redeclaredCompNames = new Set(redeclArgs.map((a: any) => a.name));
+  const redeclaredCompNames = new Set(redeclArgs.map((a) => a.name));
 
   if (
     !flattener.isOperatorRecordSym(sym) &&
@@ -492,8 +568,8 @@ export function generateRecordConstructorFor(
   for (const comp of comps) {
     if (comp && comp.kind === "Component") {
       const ci = db.query<ComponentInstanceData>("componentInstance", comp.id);
-      const cm = (comp.metadata as any) || {};
-      const cc = db.cstNode(comp.id) as any;
+      const cm = (comp.metadata ?? {}) as SymbolMetaLike;
+      const cc = db.cstNode(comp.id) as CstNodeLike | null;
       const isConst =
         ci?.variability === "constant" ||
         cm.variability === "constant" ||
@@ -513,8 +589,8 @@ export function generateRecordConstructorFor(
   const orderedComps = [...comps].sort((a, b) => {
     const aInst = db.query<ComponentInstanceData>("componentInstance", a.id);
     const bInst = db.query<ComponentInstanceData>("componentInstance", b.id);
-    const aCst = db.cstNode(a.id) as any;
-    const bCst = db.cstNode(b.id) as any;
+    const aCst = db.cstNode(a.id) as CstNodeLike | null;
+    const bCst = db.cstNode(b.id) as CstNodeLike | null;
     const aProt =
       flattener.isCstNodeProtected(aCst) ||
       aInst?.variability === "constant" ||
@@ -530,18 +606,20 @@ export function generateRecordConstructorFor(
   for (const comp of orderedComps) {
     if (comp && comp.kind === "Component") {
       const compInst = db.query<ComponentInstanceData>("componentInstance", comp.id);
-      const cMeta = (comp.metadata as any) || {};
-      const redeclForComp = redeclArgs.find((a: any) => a.name === comp.name);
+      const cMeta = (comp.metadata ?? {}) as SymbolMetaLike;
+      const redeclForComp = redeclArgs.find((a) => a.name === comp.name);
       let typeSpec = redeclForComp?.redeclaredTypeSpecifier ?? compInst?.typeSpecifier ?? cMeta.typeSpecifier;
       let compTargetId: SymbolId | null = compInst?.classInstance ?? null;
       if (!compTargetId && typeSpec) {
         const simple = typeSpec.split(".").pop()!;
         const targets = db.byName(simple);
-        const found = targets.find((t) => t.kind === "Class" || (t.metadata as any)?.classKind === "type");
+        const found = targets.find(
+          (t) => t.kind === "Class" || (t.metadata as SymbolMetaLike | undefined)?.classKind === "type",
+        );
         if (found) compTargetId = found.id;
       }
 
-      const compTypeMods: any[] = [];
+      const compTypeMods: ModArgLike[] = [];
       let enumLits: string[] | null = null;
       if (compTargetId) {
         const targetSym = db.symbol(compTargetId);
@@ -559,12 +637,12 @@ export function generateRecordConstructorFor(
       if (compTargetId && flattener.isClassType(compTargetId) && !enumLits) {
         let currTypeId: SymbolId | null = compTargetId;
         while (currTypeId) {
-          const mod = db.query<any>("effectiveModification", currTypeId);
+          const mod = db.query<EffectiveModLike | null>("effectiveModification", currTypeId);
           if (mod?.args) compTypeMods.push(...mod.args);
-          let base: any = db.query("resolvedBaseClass", currTypeId);
-          const extChild = db.childrenOf(currTypeId).find((c) => c.kind === "Extends");
+          let base: SymbolEntry | null | undefined = db.query<SymbolEntry | null>("resolvedBaseClass", currTypeId);
+          const extChild: SymbolEntry | undefined = db.childrenOf(currTypeId).find((c) => c.kind === "Extends");
           if (extChild && !base) {
-            base = db.query("resolvedBaseClass", extChild.id) ?? db.byName(extChild.name)[0];
+            base = db.query<SymbolEntry | null>("resolvedBaseClass", extChild.id) ?? db.byName(extChild.name)[0];
           }
           if (!base || base.id === currTypeId) break;
           typeSpec = base.name;
@@ -579,7 +657,7 @@ export function generateRecordConstructorFor(
       else if (typeSpec === "String" || cMeta.varType === VarType.String) vType = VarType.String;
       else if (typeSpec === "Clock" || cMeta.varType === VarType.Clock) vType = VarType.Clock;
 
-      const compCst = db.cstNode(comp.id) as any;
+      const compCst = db.cstNode(comp.id) as CstNodeLike | null;
       const isInput = hasComponentPrefixWordCst(compCst, "input");
       const isOutput = hasComponentPrefixWordCst(compCst, "output");
       const isConstant =
@@ -592,7 +670,7 @@ export function generateRecordConstructorFor(
       const variability = Variability.Continuous;
       const varIdx = fn.addVariable(comp.name, vType, variability, causality);
       if (isConstant) {
-        ((fn as any)._recordConstVarIndices ??= new Set<number>()).add(varIdx);
+        (fn._recordConstVarIndices ??= new Set<number>()).add(varIdx);
       }
       if (isCompProt) {
         fn.setVarProtected(varIdx, true);
@@ -613,7 +691,7 @@ export function generateRecordConstructorFor(
         }
         fn.setVarCustomType(varIdx, customTypeStr);
       }
-      const rawDims = db.query<any[] | null>("arrayDimensions", comp.id);
+      const rawDims = db.query<ArrayDimLike[] | null>("arrayDimensions", comp.id);
       const evaluatedDims: number[] = [];
       if (compInst?.arrayDimensions && compInst.arrayDimensions.length > 0) {
         const effectiveShape = compInst.arrayDimensions.map((dimVal, dIdx) =>
@@ -628,7 +706,7 @@ export function generateRecordConstructorFor(
             let exprId = -1;
             let evalDim: number | null = null;
             if (d.cstBytes) {
-              const cstNode = db.cstNodeRange(d.cstBytes[0], d.cstBytes[1], comp) as any;
+              const cstNode = db.cstNodeRange(d.cstBytes[0], d.cstBytes[1], comp) as SyntaxNode | null;
               if (cstNode) {
                 const loweredDimId = flattener.lowerExpr(cstNode, fn, "");
                 if (loweredDimId >= 0) {
@@ -654,7 +732,7 @@ export function generateRecordConstructorFor(
             if (exprId >= 0) {
               shapeExprIds.push(exprId);
             }
-          } else if (d.kind === "literal") {
+          } else if (d.kind === "literal" && d.value !== undefined) {
             shapeExprIds.push(fn.addIntLiteral(d.value));
             evaluatedDims.push(d.value);
           } else if (d.kind === "colon" || d.kind === "flexible" || d.text?.trim() === ":") {
@@ -707,7 +785,7 @@ export function generateRecordConstructorFor(
           }
         }
       }
-      const extModForComp = [...extendsMods].reverse().find((m: any) => m.name === comp.name && m.value?.text);
+      const extModForComp = [...extendsMods].reverse().find((m) => m.name === comp.name && m.value?.text);
       const bText = (extModForComp?.value?.text ?? compInst?.modification?.bindingExpression?.text)?.trim();
       if (isConstant && evaluatedDims.length > 0 && evaluatedDims.some((dim) => dim === 0)) {
         fn.setVarExpression(varIdx, fn.addArrayCtorExpr([]));
@@ -727,7 +805,7 @@ export function generateRecordConstructorFor(
         } else if (bText.startsWith('"') && bText.endsWith('"')) {
           fn.setVarExpression(varIdx, fn.addStringLiteral(bText.slice(1, -1)));
         } else {
-          const findBindingExprNode = (n: any): any => {
+          const findBindingExprNode = (n: CstNodeLike | null | undefined): CstNodeLike | null => {
             if (!n) return null;
             if (n.type === "expression") return n;
             for (const c of n.children || []) {
@@ -736,16 +814,20 @@ export function generateRecordConstructorFor(
             }
             return null;
           };
-          let exprCst: any = null;
+          let exprCst: CstNodeLike | null = null;
           if (extModForComp?.value?.cstBytes) {
-            exprCst = db.cstNodeRange(extModForComp.value.cstBytes[0], extModForComp.value.cstBytes[1], sym) as any;
+            exprCst = db.cstNodeRange(
+              extModForComp.value.cstBytes[0],
+              extModForComp.value.cstBytes[1],
+              sym,
+            ) as CstNodeLike | null;
           }
           if (!exprCst) {
-            const modChild = (compCst as any)?.children?.find((c: any) => c.type === "modification");
+            const modChild = compCst?.children?.find((c) => c.type === "modification");
             exprCst = findBindingExprNode(modChild ?? compCst);
           }
           if (exprCst) {
-            let exprId = flattener.lowerExpr(exprCst, fn, "");
+            let exprId = flattener.lowerExpr(exprCst as SyntaxNode, fn, "");
             if (exprId >= 0) {
               if (isConstant) {
                 const ev = evalDaeExpr(exprId, fn);
@@ -758,9 +840,9 @@ export function generateRecordConstructorFor(
                 } else if (Array.isArray(ev)) {
                   if (ev.length === 0) {
                     exprId = fn.addArrayCtorExpr([]);
-                  } else if (ev.every((x) => typeof x === "number" && !isNaN(x))) {
+                  } else if (ev.every((x): x is number => typeof x === "number" && !isNaN(x))) {
                     exprId = fn.addArrayCtorExpr(
-                      ev.map((x: number) =>
+                      ev.map((x) =>
                         vType === VarType.Integer ? fn.addIntLiteral(Math.round(x)) : fn.addRealLiteral(x),
                       ),
                     );
@@ -779,21 +861,21 @@ export function generateRecordConstructorFor(
   }
   const resIdx = fn.addVariable("res", VarType.Real, Variability.Continuous, Causality.Output);
   fn.setVarCustomType(resIdx, resTypeName);
-  ((flattener as any)._recordCtorCache ??= new Map<string, DAEBuilder>()).set(ctorCacheKey, fn);
+  (rt._recordCtorCache ??= new Map<string, DAEBuilder>()).set(ctorCacheKey, fn);
   dae.addFunction(fnName, fn);
   if (resTypeName && resTypeName !== fnName && !overrideFnName?.includes("$") && !dae.getFunction(resTypeName)) {
     dae.addFunction(resTypeName, fn);
   }
   if (!overrideFnName && qualName && qualName !== fnName && qualName !== sym.name) dae.addFunction(qualName, fn);
 
-  const isSpeculativeFnDae = dae.classKind === "function" && !(dae as any).parentDae;
+  const isSpeculativeFnDae = dae.classKind === "function" && !daeFn.parentDae;
   const rootModelResourceId = db.symbol(flattener.currentRootClassId ?? rootClassId)?.resourceId;
   const isCrossFileFnLocalRecord =
     dae.classKind === "function" &&
     Boolean(rootModelResourceId && sym.resourceId && sym.resourceId !== rootModelResourceId) &&
     !flattener.usedRecordSymIds?.has(sym.id);
   if (!isSpeculativeFnDae && !isCrossFileFnLocalRecord) {
-    let rootDae: any = (flattener as any)?.currentRootDae ?? dae;
+    let rootDae: FlattenedFunctionDae = (flattener.currentRootDae as FlattenedFunctionDae | null | undefined) ?? daeFn;
     while (rootDae.parentDae) rootDae = rootDae.parentDae;
     rootDae.addFunction(fnName, fn);
     if (resTypeName && resTypeName !== fnName && !overrideFnName?.includes("$") && !rootDae.getFunction(resTypeName)) {
@@ -805,21 +887,22 @@ export function generateRecordConstructorFor(
   return fn;
 }
 
-export function generateRecordConstructors(flattener: any, rootClassId: SymbolId, dae: DAEBuilder): void {
+export function generateRecordConstructors(flattener: ModelicaFlattener, rootClassId: SymbolId, dae: DAEBuilder): void {
   const db: QueryDB = flattener.db;
+  const daeFn = dae as FlattenedFunctionDae;
   const rootSym = db.symbol(rootClassId);
   const childEntries = db.childrenOf(rootClassId);
-  const candidates: any[] = [];
+  const candidates: SymbolEntry[] = [];
   for (const sym of childEntries) {
     if (sym && sym.kind === "Class" && sym.id !== rootClassId) candidates.push(sym);
   }
-  const fileSymbols: any[] = flattener.getFileSymbols(rootSym?.resourceId);
-  const fileClasses = fileSymbols.filter((s: any) => s.kind === "Class" && s.id !== rootClassId);
+  const fileSymbols: SymbolEntry[] = flattener.getFileSymbols(rootSym?.resourceId);
+  const fileClasses = fileSymbols.filter((s) => s.kind === "Class" && s.id !== rootClassId);
   for (const fc of fileClasses) {
     if (!candidates.some((c) => c.id === fc.id)) candidates.push(fc);
   }
 
-  const isRecordSym = (sym: any): boolean => {
+  const isRecordSym = (sym: SymbolEntry): boolean => {
     if (sym.id === rootClassId) return false;
     return flattener.isRecordSym(sym);
   };
@@ -857,20 +940,20 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
   const directCompRecordIds = new Set<SymbolId>();
   for (const comp of rootComps) {
     const compInst = db.query<ComponentInstanceData>("componentInstance", comp.id);
-    const cMeta = (comp.metadata as any) || {};
+    const cMeta = (comp.metadata ?? {}) as SymbolMetaLike;
     const typeSpec = compInst?.typeSpecifier ?? cMeta.typeSpecifier;
     if (typeSpec) {
       const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
       usedRecordNames.add(cleanType);
       usedRecordNames.add(typeSpec);
-      const rawTarget = db.query<any>("classInstance", comp.id);
+      const rawTarget = db.query<SymbolId | SymbolEntry | null>("classInstance", comp.id);
       let compTarget: SymbolEntry | null =
         typeof rawTarget === "number" ? (db.symbol(rawTarget) ?? null) : (rawTarget ?? null);
       if (!compTarget) {
         const resolver =
-          (comp.parentId ? db.query<any>("resolveName", comp.parentId) : null) ??
-          (comp.parentId ? db.query<any>("resolveSimpleName", comp.parentId) : null) ??
-          db.query<any>("resolveName", rootClassId);
+          (comp.parentId ? db.query<NameResolverFn | null>("resolveName", comp.parentId) : null) ??
+          (comp.parentId ? db.query<NameResolverFn | null>("resolveSimpleName", comp.parentId) : null) ??
+          db.query<NameResolverFn | null>("resolveName", rootClassId);
         const resolved = resolver?.(typeSpec) ?? resolver?.(cleanType);
         if (resolved && isRecordSym(resolved)) {
           compTarget = resolved;
@@ -900,16 +983,17 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
               : (db.childrenOf(clsId) || []).filter((s) => s && s.kind === "Component");
           for (const sc of subComps) {
             const scInst = db.query<ComponentInstanceData>("componentInstance", sc.id);
-            const scMeta = (sc.metadata as any) || {};
+            const scMeta = (sc.metadata ?? {}) as SymbolMetaLike;
             const scType = scInst?.typeSpecifier ?? scMeta.typeSpecifier;
             if (!scType) continue;
             const scClean = scType.includes(".") ? scType.split(".").pop()! : scType;
-            const rawSub = db.query<any>("classInstance", sc.id);
+            const rawSub = db.query<SymbolId | SymbolEntry | null>("classInstance", sc.id);
             let subTarget: SymbolEntry | null =
               typeof rawSub === "number" ? (db.symbol(rawSub) ?? null) : (rawSub ?? null);
             if (!subTarget) {
               const res =
-                (sc.parentId ? db.query<any>("resolveName", sc.parentId) : null) ?? db.query<any>("resolveName", clsId);
+                (sc.parentId ? db.query<NameResolverFn | null>("resolveName", sc.parentId) : null) ??
+                db.query<NameResolverFn | null>("resolveName", clsId);
               subTarget = res?.(scType) ?? res?.(scClean) ?? null;
             }
             if (!subTarget) continue;
@@ -976,7 +1060,7 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
       }
     }
   }
-  const rootCst = db.cstNode(rootClassId) as any;
+  const rootCst = db.cstNode(rootClassId) as CstNodeLike | null;
   if (rootCst) {
     const { calledNames, referencedPaths } = collectCstFunctionRefs(rootCst);
     for (const sym of candidates) {
@@ -997,11 +1081,11 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
         const qCompName = getSymbolQualifiedName(db, fsym.id);
         if (qCompName && referencedPaths.has(qCompName)) {
           const compInst = db.query<ComponentInstanceData>("componentInstance", fsym.id);
-          const rawTarget = db.query<any>("classInstance", fsym.id);
+          const rawTarget = db.query<SymbolId | SymbolEntry | null>("classInstance", fsym.id);
           let compTarget: SymbolEntry | null =
             typeof rawTarget === "number" ? (db.symbol(rawTarget) ?? null) : (rawTarget ?? null);
           if (!compTarget) {
-            const tSpec = compInst?.typeSpecifier ?? (fsym.metadata as any)?.typeSpecifier;
+            const tSpec = compInst?.typeSpecifier ?? (fsym.metadata as SymbolMetaLike | undefined)?.typeSpecifier;
             if (tSpec) {
               compTarget = db.byName(String(tSpec).split(".").pop()!).find((t) => isRecordSym(t)) ?? null;
             }
@@ -1063,7 +1147,7 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
           }
           for (const comp of comps) {
             const compInst = db.query<ComponentInstanceData>("componentInstance", comp.id);
-            const cMeta = (comp.metadata as any) || {};
+            const cMeta = (comp.metadata ?? {}) as SymbolMetaLike;
             const typeSpec = compInst?.typeSpecifier ?? cMeta.typeSpecifier;
             if (typeSpec) {
               const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
@@ -1094,7 +1178,7 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
     }
   }
 
-  const isRecordUsed = (sym: any): boolean => {
+  const isRecordUsed = (sym: SymbolEntry | null | undefined): boolean => {
     if (!sym || !sym.name) return false;
     const name = sym.name;
     const qName = getSymbolQualifiedName(db, sym.id);
@@ -1105,7 +1189,7 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
     if (effParentId && effParentId !== rootClassId && flattener.isClassPartial?.(effParentId)) {
       if (
         (dae.classKind === "function" && directCompRecordIds.has(sym.id)) ||
-        ((dae as any).specializedPrefix && effParentId === (dae as any).enclosingScopeId)
+        (daeFn.specializedPrefix && effParentId === daeFn.enclosingScopeId)
       ) {
         return usedRecordNames.has(name) || (Boolean(qName) && usedRecordNames.has(qName!));
       }
@@ -1120,11 +1204,11 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
   for (const sym of candidates) {
     if (isRecordSym(sym) && isRecordUsed(sym)) {
       const specOverrideName =
-        (dae as any).specializedPrefix &&
+        daeFn.specializedPrefix &&
         sym.parentId &&
         sym.parentId !== rootClassId &&
         flattener.isClassPartial?.(sym.parentId)
-          ? `${(dae as any).specializedPrefix}.${sym.name}`
+          ? `${daeFn.specializedPrefix}.${sym.name}`
           : undefined;
       const fn = flattener.generateRecordConstructorFor(sym, dae, rootClassId, specOverrideName);
       if (fn) {
@@ -1137,13 +1221,15 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
             const specFnName = `${qualName}$${compName}`;
             const specSimpleName = `${sym.name}$${compName}`;
             if (!dae.functions.has(specFnName)) {
-              const specFn = dae.exports
-                ? new DAEBuilder(dae.exports, specFnName, "", dae.interner)
-                : new DAEBuilder(dae.interner, specFnName, "");
+              const specFn = (
+                dae.exports
+                  ? new DAEBuilder(dae.exports, specFnName, "", dae.interner)
+                  : new DAEBuilder(dae.interner, specFnName, "")
+              ) as FlattenedFunctionDae;
               specFn.classKind = "function";
               specFn.description = `Automatically generated record constructor for ${specFnName}`;
               if (flattener.isOperatorRecordSym(sym)) {
-                (specFn as any).isOperatorRecord = true;
+                specFn.isOperatorRecord = true;
                 specFn.extensionMetadata.isOperatorRecord = true;
               }
               for (let i = 0; i < fn.varCount; i++) {
@@ -1188,15 +1274,15 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
             const qualName = getSymbolQualifiedName(db, sym.id) || sym.name;
             const eqFnName = `${qualName}.equalityConstraint`;
             if (!dae.functions.has(eqFnName) && !flattener.activeFlatteningFunctionIds.has(ch.id)) {
-              const eqFn = flattener.flattenFunction(ch.id, eqFnName, undefined, dae);
-              (eqFn as any).wasCalled = true;
+              const eqFn = flattener.flattenFunction(ch.id, eqFnName, undefined, dae) as FlattenedFunctionDae;
+              eqFn.wasCalled = true;
               dae.addFunction(eqFnName, eqFn);
             }
           }
         }
       }
       if (flattener.isOperatorRecordSym(sym) && dae.classKind !== "function") {
-        const ctors = db.query<any[]>("operatorConstructors", sym.id);
+        const ctors = db.query<OperatorConstructorEntry[] | null>("operatorConstructors", sym.id);
         if (ctors && ctors.length > 0) {
           for (const ctor of ctors) {
             if (
@@ -1216,31 +1302,31 @@ export function generateRecordConstructors(flattener: any, rootClassId: SymbolId
 }
 
 export function flattenFunction(
-  flattener: any,
+  flattener: ModelicaFlattener,
   fnSymId: SymbolId,
   fnName: string,
-  modifiers?: any[],
+  modifiers?: ModArgLike[],
   parentDae?: DAEBuilder,
   enclosingScopeId?: SymbolId,
 ): DAEBuilder {
+  const rt = flattener as FlattenerWithFnRuntime;
+  const parentFnDae = parentDae as FlattenedFunctionDae | undefined;
   const db: QueryDB = flattener.db;
   const cleanFnName = stripLeadingDots(fnName);
   const fnParentId = db.symbol(fnSymId)?.parentId;
-  const compModsArgs =
-    (
-      (parentDae as any)?.componentParentMods ??
-      (parentDae?.classKind !== "function" ? flattener.currentParentMods : undefined)
-    )?.args ?? [];
+  const compModsArgs = ((
+    parentFnDae?.componentParentMods ?? (parentDae?.classKind !== "function" ? flattener.currentParentMods : undefined)
+  )?.args ?? []) as ModArgLike[];
   const redeclSig = compModsArgs
-    .filter((a: any) => a && !a.isBreak && (a.isRedeclaration || a.redeclaredTypeSpecifier))
-    .map((a: any) => `${a.name}=${a.redeclaredTypeSpecifier}`)
+    .filter((a) => a && !a.isBreak && (a.isRedeclaration || a.redeclaredTypeSpecifier))
+    .map((a) => `${a.name}=${a.redeclaredTypeSpecifier}`)
     .join(",");
   const canCache = !modifiers || modifiers.length === 0;
   const fnCacheKey = canCache ? `${fnSymId}:${cleanFnName}:${enclosingScopeId ?? ""}:${redeclSig}` : "";
   if (fnCacheKey) {
-    const cache = ((flattener as any)._flattenedFunctionCache ??= new Map<string, DAEBuilder>());
-    const cachedFn = cache.get(fnCacheKey);
-    if (cachedFn && !(cachedFn as any).isBeingFlattened) {
+    const cache = (rt._flattenedFunctionCache ??= new Map<string, DAEBuilder>());
+    const cachedFn = cache.get(fnCacheKey) as FlattenedFunctionDae | undefined;
+    if (cachedFn && !cachedFn.isBeingFlattened) {
       const parts = cleanFnName.split(".");
       const baseName = parts[parts.length - 1]!;
       if (parentDae) {
@@ -1256,7 +1342,8 @@ export function flattenFunction(
         ) {
           parentDae.addFunction(baseName, cachedFn);
         }
-        let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
+        let rootDae: FlattenedFunctionDae | undefined =
+          (flattener.currentRootDae as FlattenedFunctionDae | null | undefined) ?? parentFnDae;
         while (rootDae?.parentDae) rootDae = rootDae.parentDae;
         if (rootDae && rootDae !== parentDae) {
           rootDae.addFunction(cleanFnName, cachedFn);
@@ -1279,7 +1366,7 @@ export function flattenFunction(
   const prevEnclosingScope = flattener.currentFunctionEnclosingScope;
   const prevActiveLoopVars = flattener.activeLoopVars;
   flattener.activeLoopVars = new Set<string>();
-  flattener.state.activeLoopVars = flattener.activeLoopVars;
+  if (rt.state) rt.state.activeLoopVars = flattener.activeLoopVars;
   flattener.currentFlatteningFunctionId = fnSymId;
   flattener.activeFlatteningFunctionIds.add(fnSymId);
   if (enclosingScopeId !== undefined) {
@@ -1294,32 +1381,31 @@ export function flattenFunction(
     flattener.currentFunctionEnclosingScope = null;
   }
 
-  const fn = parentDae?.exports
-    ? new DAEBuilder(parentDae.exports, cleanFnName, "", parentDae.interner)
-    : new DAEBuilder(parentDae ? parentDae.interner : undefined, cleanFnName, "");
-  (fn as any).parentDae = parentDae;
-  (fn as any).db = db;
+  const fn = (
+    parentDae?.exports
+      ? new DAEBuilder(parentDae.exports, cleanFnName, "", parentDae.interner)
+      : new DAEBuilder(parentDae ? parentDae.interner : undefined, cleanFnName, "")
+  ) as FlattenedFunctionDae;
+  fn.parentDae = parentFnDae;
+  fn.db = db;
   fn.classKind = "function";
-  (fn as any).symId = fnSymId;
-  (fn as any).flattener = flattener;
+  fn.symId = fnSymId;
+  fn.flattener = flattener;
   const resolvedEncScope = enclosingScopeId ?? fnParentId ?? db.symbol(fnSymId)?.parentId;
-  (fn as any).enclosingScopeId = resolvedEncScope;
-  const sameEnclosingAsParent =
-    resolvedEncScope !== undefined && resolvedEncScope === (parentDae as any)?.enclosingScopeId;
-  (fn as any).componentPrefix =
-    (flattener as any).currentFunctionComponentPrefix ??
-    (sameEnclosingAsParent ? (parentDae as any)?.componentPrefix : undefined);
-  (fn as any).specializedPrefix =
-    (flattener as any).currentFunctionSpecializedPrefix ??
-    (sameEnclosingAsParent ? (parentDae as any)?.specializedPrefix : undefined);
-  (fn as any).componentParentMods =
-    (parentDae as any)?.componentParentMods ??
-    (parentDae?.classKind !== "function" ? flattener.currentParentMods : undefined);
-  (fn as any).isBeingFlattened = true;
+  fn.enclosingScopeId = resolvedEncScope;
+  const sameEnclosingAsParent = resolvedEncScope !== undefined && resolvedEncScope === parentFnDae?.enclosingScopeId;
+  fn.componentPrefix =
+    rt.currentFunctionComponentPrefix ?? (sameEnclosingAsParent ? parentFnDae?.componentPrefix : undefined);
+  fn.specializedPrefix =
+    rt.currentFunctionSpecializedPrefix ?? (sameEnclosingAsParent ? parentFnDae?.specializedPrefix : undefined);
+  fn.componentParentMods =
+    parentFnDae?.componentParentMods ??
+    (parentDae?.classKind !== "function" ? (flattener.currentParentMods ?? undefined) : undefined);
+  fn.isBeingFlattened = true;
   fn.extensionMetadata["isOldFrontend"] = Boolean(
-    parentDae?.extensionMetadata?.["isOldFrontend"] ?? (flattener.options as any)?.isOldFrontend,
+    parentDae?.extensionMetadata?.["isOldFrontend"] ?? flattener.options?.isOldFrontend,
   );
-  (fn.extensionMetadata as any).hasOldInstOption = Boolean((parentDae?.extensionMetadata as any)?.hasOldInstOption);
+  fn.extensionMetadata["hasOldInstOption"] = Boolean(parentDae?.extensionMetadata?.["hasOldInstOption"]);
 
   const prevImports = flattener.currentImports;
   try {
@@ -1351,12 +1437,12 @@ export function flattenFunction(
         : fnImports,
     );
 
-    const cst = db.cstNode(fnSymId) as any;
+    const cst = db.cstNode(fnSymId) as SyntaxNode | null;
     if (cst) {
-      (fn as any).fnRange = getClassDiagRange(cst);
+      fn.fnRange = getClassDiagRange(cst);
     }
     if (hasAnnotationBoolModificationCst(cst, "__OpenModelica_EarlyInline", true)) {
-      (fn as { isEarlyInline?: boolean }).isEarlyInline = true;
+      fn.isEarlyInline = true;
     }
 
     let _pureDeclared = false;
@@ -1374,7 +1460,7 @@ export function flattenFunction(
 
     if (impureDeclared) {
       fn.isImpure = true;
-      (fn as { isExplicitImpure?: boolean }).isExplicitImpure = true;
+      fn.isExplicitImpure = true;
     }
 
     const findDesc = (node: CstNodeLike | null | undefined): string | null => {
@@ -1413,23 +1499,25 @@ export function flattenFunction(
 
     const shortSpec = getShortClassSpecifierNode(cst);
     if (shortSpec) {
-      (fn as any).isShortFunc = true;
+      fn.isShortFunc = true;
     }
     let targetSymId = fnSymId;
-    const combinedMods = [...(modifiers ?? [])];
+    const combinedMods: ModArgLike[] = [...(modifiers ?? [])];
 
     const visitedUnwrap = new Set<SymbolId>();
     while (!visitedUnwrap.has(targetSymId)) {
       visitedUnwrap.add(targetSymId);
       const currSym = db.symbol(targetSymId);
-      const currCst = db.cstNode(targetSymId) as any;
+      const currCst = db.cstNode(targetSymId) as SyntaxNode | null;
       if (!currSym || !currCst) break;
 
       const currParentSym = currSym.parentId != null ? db.symbol(currSym.parentId) : null;
       const isCurrInNonFuncClass = Boolean(currParentSym && !isFunctionSym(db, currParentSym));
-      const compModsArgs = (fn as any).componentParentMods?.args ?? flattener.currentParentMods?.args ?? [];
-      const allCandidateMods = [...compModsArgs, ...combinedMods];
-      let matchedRedecl: any = null;
+      const compModsArgsInner = (fn.componentParentMods?.args ??
+        flattener.currentParentMods?.args ??
+        []) as ModArgLike[];
+      const allCandidateMods = [...compModsArgsInner, ...combinedMods];
+      let matchedRedecl: ModArgLike | null = null;
       let matchedRedeclTarget: SymbolEntry | null = null;
       for (let i = allCandidateMods.length - 1; i >= 0; i--) {
         const a = allCandidateMods[i];
@@ -1449,14 +1537,17 @@ export function flattenFunction(
         const resolver =
           (lookupScope
             ? rawSpec.includes(".")
-              ? db.query<any>("resolveName", lookupScope)
-              : (db.query<any>("resolveSimpleName", lookupScope) ?? db.query<any>("resolveName", lookupScope))
+              ? db.query<NameResolverFn | null>("resolveName", lookupScope)
+              : (db.query<NameResolverFn | null>("resolveSimpleName", lookupScope) ??
+                db.query<NameResolverFn | null>("resolveName", lookupScope))
             : null) ??
-          (flattener.currentRootClassId ? db.query<any>("resolveName", flattener.currentRootClassId) : null);
+          (flattener.currentRootClassId
+            ? db.query<NameResolverFn | null>("resolveName", flattener.currentRootClassId)
+            : null);
         let candSym = resolver ? resolver(rawSpec) : null;
         if (!candSym) {
           const shortR = rawSpec.includes(".") ? rawSpec.split(".").pop()! : rawSpec;
-          candSym = db.byName(shortR).find((e: any) => {
+          candSym = db.byName(shortR).find((e) => {
             if (e.kind !== "Class" && e.kind !== "Function") return false;
             if (rawSpec.includes(".")) {
               const qn = getSymbolQualifiedName(db, e.id);
@@ -1473,48 +1564,49 @@ export function flattenFunction(
       }
 
       if (matchedRedecl && matchedRedeclTarget) {
-        const subArgs = matchedRedecl.nestedArgs ?? matchedRedecl.args;
+        const subArgs = (matchedRedecl.nestedArgs ?? matchedRedecl.args) as ModArgLike[] | undefined;
         if (subArgs && subArgs.length > 0) {
           combinedMods.unshift(
-            ...subArgs.map((sa: any) => ({
+            ...subArgs.map((sa) => ({
               ...sa,
               ownerClassId: sa.ownerClassId ?? matchedRedeclTarget!.id,
               evaluationScopeId:
                 sa.evaluationScopeId ??
-                matchedRedecl.evaluationScopeId ??
-                matchedRedecl.ownerClassId ??
-                currSym.parentId,
+                matchedRedecl!.evaluationScopeId ??
+                matchedRedecl!.ownerClassId ??
+                currSym.parentId ??
+                undefined,
             })),
           );
         }
         targetSymId = matchedRedeclTarget.id;
         if (!fn.description) {
-          const targetCst = db.cstNode(targetSymId) as any;
+          const targetCst = db.cstNode(targetSymId) as CstNodeLike | null;
           const targetDesc = findDesc(targetCst);
           if (targetDesc) fn.description = targetDesc;
         }
         continue;
       }
 
-      const currShortSpec = getShortClassSpecifierNode(currCst);
+      const currShortSpec = getShortClassSpecifierNode(currCst) as SyntaxNode | null;
       if (!currShortSpec) break;
 
       const typeSpecNode =
         Cst.ShortClassSpecifier.typeSpecifier(currShortSpec) ??
-        currShortSpec.children?.find((c: any) => c.type === "type_specifier");
+        currShortSpec.children?.find((c) => c.type === "type_specifier");
       const rawBaseName = typeSpecNode?.text?.trim() ?? "";
       const cleanBase = stripLeadingDots(rawBaseName);
       const modNode =
         Cst.ShortClassSpecifier.classModification(currShortSpec) ??
-        currShortSpec.children?.find((c: any) => c.type === "class_modification");
+        currShortSpec.children?.find((c) => c.type === "class_modification");
       if (modNode) {
-        const parsed = db.query<any>("effectiveModification", targetSymId);
+        const parsed = db.query<EffectiveModLike | null>("effectiveModification", targetSymId);
         if (parsed?.args) {
           combinedMods.unshift(
-            ...parsed.args.map((pa: any) => ({
+            ...parsed.args.map((pa) => ({
               ...pa,
               ownerClassId: pa.ownerClassId ?? targetSymId,
-              evaluationScopeId: pa.evaluationScopeId ?? currSym.parentId ?? fnParentId,
+              evaluationScopeId: pa.evaluationScopeId ?? currSym.parentId ?? fnParentId ?? undefined,
             })),
           );
         }
@@ -1523,20 +1615,20 @@ export function flattenFunction(
           ? cleanBase.slice("Modelica.Math.".length)
           : cleanBase;
         if (MATH_FUNC_ALIAS_SET.has(mathAliasCandidate)) {
-          (fn as { aliasTo?: string }).aliasTo = mathAliasCandidate;
+          fn.aliasTo = mathAliasCandidate;
         }
       }
 
       if (!cleanBase) break;
       const parentScopeId = currSym.parentId ?? fnParentId;
       const resolver =
-        (parentScopeId ? db.query<any>("resolveName", parentScopeId) : null) ??
-        db.query<any>("resolveName", targetSymId) ??
-        db.query<any>("resolveSimpleName", targetSymId);
+        (parentScopeId ? db.query<NameResolverFn | null>("resolveName", parentScopeId) : null) ??
+        db.query<NameResolverFn | null>("resolveName", targetSymId) ??
+        db.query<NameResolverFn | null>("resolveSimpleName", targetSymId);
       let baseSym = resolver ? resolver(cleanBase) : null;
       if (!baseSym) {
         const shortBase = cleanBase.includes(".") ? cleanBase.split(".").pop()! : cleanBase;
-        baseSym = db.byName(shortBase).find((e: any) => {
+        baseSym = db.byName(shortBase).find((e) => {
           if (e.kind !== "Class" && e.kind !== "Function") return false;
           if (cleanBase.includes(".")) {
             const qn = getSymbolQualifiedName(db, e.id);
@@ -1547,17 +1639,17 @@ export function flattenFunction(
       }
       if (!baseSym || visitedUnwrap.has(baseSym.id)) break;
       if (targetSymId === fnSymId && baseSym.parentId === currSym.parentId && !cleanBase.includes(".")) {
-        (fn as any).shortBaseFuncName = baseSym.name;
+        fn.shortBaseFuncName = baseSym.name;
       }
       targetSymId = baseSym.id;
       if (!fn.description) {
-        const targetCst = db.cstNode(baseSym.id) as any;
+        const targetCst = db.cstNode(baseSym.id) as CstNodeLike | null;
         const targetDesc = findDesc(targetCst);
         if (targetDesc) fn.description = targetDesc;
       }
     }
 
-    const extMods = collectExtendsMods(flattener, targetSymId);
+    const extMods = collectExtendsMods(flattener, targetSymId) as ModArgLike[];
     if (extMods.length > 0) {
       combinedMods.unshift(...extMods);
     }
@@ -1600,7 +1692,7 @@ export function flattenFunction(
       for (const ext of extendsChildren) {
         const base = db.query<SymbolEntry | null>("resolvedBaseClass", ext.id);
         if (base) {
-          const baseCst = db.cstNode(base.id) as any;
+          const baseCst = db.cstNode(base.id) as CstNodeLike | null;
           if (findExternalClause(baseCst)) {
             inheritedExtClause = ext;
             break;
@@ -1612,18 +1704,21 @@ export function flattenFunction(
     const isOldFrontend = Boolean(
       fn.extensionMetadata?.["isOldFrontend"] ||
       parentDae?.extensionMetadata?.["isOldFrontend"] ||
-      (flattener.options as any)?.isOldFrontend,
+      flattener.options?.isOldFrontend,
     );
     if (!isOldFrontend && (ownExtClause || hasOwnAlgo) && inheritedExtClause) {
-      const extCst = db.cstNode(inheritedExtClause.id) as any;
-      const notifRange = extCst
-        ? {
-            startPosition: extCst.startPosition,
-            endPosition: extCst.endPosition,
-            startOffset: extCst.startIndex ?? extCst.startOffset,
-            endOffset: extCst.endIndex ?? extCst.endOffset,
-          }
-        : undefined;
+      const extCst = db.cstNode(inheritedExtClause.id) as FlattenerCstNode | null;
+      const extStart = extCst?.startIndex ?? extCst?.startOffset;
+      const extEnd = extCst?.endIndex ?? extCst?.endOffset;
+      const notifRange =
+        extCst && extStart !== undefined && extEnd !== undefined
+          ? {
+              startPosition: extCst.startPosition,
+              endPosition: extCst.endPosition,
+              startOffset: extStart,
+              endOffset: extEnd,
+            }
+          : undefined;
       fn.diagnostics.push({
         severity: "notification",
         code: ModelicaErrorCode.NOTIFICATION_FROM_HERE.code,
@@ -1678,9 +1773,7 @@ export function flattenFunction(
 
       const includeVal = findAnnotationStringModificationCst(extClause, "Include");
       if (includeVal !== null) {
-        (fn as { externalInclude?: string }).externalInclude = includeVal
-          .replaceAll('\\"', '"')
-          .replaceAll("\\n", "\n");
+        fn.externalInclude = includeVal.replaceAll('\\"', '"').replaceAll("\\n", "\n");
       }
 
       const extParts: string[] = [];
@@ -1736,7 +1829,7 @@ export function flattenFunction(
             const vtName = varTypeName(vt);
             const shapeStr = shape.map((s) => (s > 0 ? String(s) : ":")).join(", ");
             const typeStr = `${vtName}[${shapeStr}]`;
-            const bCst = db.cstNode(targetSymId) as any;
+            const bCst = db.cstNode(targetSymId) as CstNodeLike | null;
             const rangeObj = getClassDiagRange(bCst);
             fn.diagnostics.push({
               severity: "error",
@@ -1750,9 +1843,9 @@ export function flattenFunction(
 
       // 3. External function call arguments validation
       const exprListNode = extCallNode?.children?.find(
-        (c: any) => c.type === "expression_list" || c.type === "ExpressionList",
+        (c) => c.type === "expression_list" || c.type === "ExpressionList",
       );
-      const argList: { text: string; node?: any }[] = [];
+      const argList: { text: string; node?: CstNodeLike }[] = [];
       if (exprListNode?.children) {
         for (const ch of exprListNode.children) {
           if (ch.type === "expression" || (ch.text && ch.text !== "," && ch.text !== "(" && ch.text !== ")")) {
@@ -1787,10 +1880,10 @@ export function flattenFunction(
         const a = arg.text;
         const isArrayCtor =
           arg.node?.type === "array_constructor" ||
-          arg.node?.children?.some((c: any) => c.type === "array_constructor") ||
+          arg.node?.children?.some((c) => c.type === "array_constructor") ||
           (a.startsWith("{") && a.endsWith("}"));
         if (isArrayCtor) {
-          const bCst = db.cstNode(targetSymId) as any;
+          const bCst = db.cstNode(targetSymId) as CstNodeLike | null;
           const rangeObj = getClassDiagRange(bCst);
           fn.diagnostics.push({
             severity: "error",
@@ -1805,7 +1898,7 @@ export function flattenFunction(
           const dimExpr = sizeArgs[1]?.text?.trim() ?? "";
           const isConstNum = isAsciiDigitsOnly(dimExpr);
           if (!isConstNum) {
-            const bCst = db.cstNode(targetSymId) as any;
+            const bCst = db.cstNode(targetSymId) as CstNodeLike | null;
             const rangeObj = getClassDiagRange(bCst);
             fn.diagnostics.push({
               severity: "error",
@@ -1859,11 +1952,13 @@ export function flattenFunction(
       fn.externalDecl = extText;
     }
 
-    const targetFnCst = (db.cstNode(targetSymId) as any) ?? cst;
+    const targetFnCst = (db.cstNode(targetSymId) as CstNodeLike | null) ?? cst;
     const derivRawName = findFunctionAnnotationTargetCst(targetFnCst, "derivative");
     if (derivRawName) {
       const scopeToSearch = fnParentId ?? enclosingScopeId ?? targetSymId;
-      const resolver = db.query<any>("resolveName", scopeToSearch) ?? db.query<any>("resolveSimpleName", scopeToSearch);
+      const resolver =
+        db.query<NameResolverFn | null>("resolveName", scopeToSearch) ??
+        db.query<NameResolverFn | null>("resolveSimpleName", scopeToSearch);
       const derivSym =
         (fnParentId
           ? db
@@ -1881,16 +1976,15 @@ export function flattenFunction(
             undefined,
             parentDae ?? fn,
             fnParentId ?? undefined,
-          );
-          (derivFn as any).isDerivativeFunction = true;
-          (derivFn as any).wasCalled = true;
+          ) as FlattenedFunctionDae;
+          derivFn.isDerivativeFunction = true;
+          derivFn.wasCalled = true;
           fn.addFunction(derivQualName, derivFn);
           if (parentDae) {
             parentDae.addFunction(derivQualName, derivFn);
           }
           let rootDae: DaeWithParent | undefined =
-            (flattener as { currentRootDae?: DaeWithParent })?.currentRootDae ??
-            (parentDae as DaeWithParent | undefined);
+            (flattener.currentRootDae as DaeWithParent | null | undefined) ?? parentFnDae;
           while (rootDae?.parentDae) rootDae = rootDae.parentDae;
           if (rootDae) {
             rootDae.addFunction(derivQualName, derivFn);
@@ -1916,7 +2010,8 @@ export function flattenFunction(
           const typeName = compInst?.typeSpecifier;
           if (typeName) {
             const resolver =
-              db.query<any>("resolveName", targetSymId) ?? db.query<any>("resolveSimpleName", targetSymId);
+              db.query<NameResolverFn | null>("resolveName", targetSymId) ??
+              db.query<NameResolverFn | null>("resolveSimpleName", targetSymId);
             const targetClass =
               resolver?.(typeName) ?? db.byName(typeName.split(".").pop()!).find((e) => e.kind === "Class");
             if (targetClass) {
@@ -1928,15 +2023,18 @@ export function flattenFunction(
                 if (!isConstructor) {
                   const fnQName = getSymbolQualifiedName(db, targetSymId);
                   const extObjQName = getSymbolQualifiedName(db, targetClass.id);
-                  const bCst = db.cstNode(targetSymId) as any;
-                  const rangeObj = bCst
-                    ? {
-                        startOffset: bCst.startIndex ?? bCst.startOffset,
-                        endOffset: bCst.endIndex ?? bCst.endOffset,
-                        startPosition: bCst.startPosition,
-                        endPosition: bCst.endPosition,
-                      }
-                    : undefined;
+                  const bCst = db.cstNode(targetSymId) as FlattenerCstNode | null;
+                  const bStart = bCst?.startIndex ?? bCst?.startOffset;
+                  const bEnd = bCst?.endIndex ?? bCst?.endOffset;
+                  const rangeObj =
+                    bCst && bStart !== undefined && bEnd !== undefined
+                      ? {
+                          startOffset: bStart,
+                          endOffset: bEnd,
+                          startPosition: bCst.startPosition,
+                          endPosition: bCst.endPosition,
+                        }
+                      : undefined;
                   fn.diagnostics.push({
                     severity: "error",
                     code: ModelicaErrorCode.EXTERNAL_OBJECT_RETURN_RESTRICTION.code,
@@ -1951,16 +2049,19 @@ export function flattenFunction(
       }
     }
 
-    if (fn.externalDecl && ((fn as any).hasAlgorithmSection || fn.algorithmSections.length > 0)) {
-      const bCst = db.cstNode(targetSymId) as any;
-      const rangeObj = bCst
-        ? {
-            startOffset: bCst.startIndex ?? bCst.startOffset,
-            endOffset: bCst.endIndex ?? bCst.endOffset,
-            startPosition: bCst.startPosition,
-            endPosition: bCst.endPosition,
-          }
-        : undefined;
+    if (fn.externalDecl && (fn.hasAlgorithmSection || fn.algorithmSections.length > 0)) {
+      const bCst = db.cstNode(targetSymId) as FlattenerCstNode | null;
+      const bStart = bCst?.startIndex ?? bCst?.startOffset;
+      const bEnd = bCst?.endIndex ?? bCst?.endOffset;
+      const rangeObj =
+        bCst && bStart !== undefined && bEnd !== undefined
+          ? {
+              startOffset: bStart,
+              endOffset: bEnd,
+              startPosition: bCst.startPosition,
+              endPosition: bCst.endPosition,
+            }
+          : undefined;
       fn.diagnostics.push({
         severity: "error",
         code: ModelicaErrorCode.EXTERNAL_WITH_ALGORITHM.code,
@@ -1969,7 +2070,7 @@ export function flattenFunction(
       });
     }
 
-    const cleanupFrom = (targetDae: any) => {
+    const cleanupFrom = (targetDae: FlattenedFunctionDae | undefined) => {
       if (!targetDae) return;
       for (const k of [cleanFnName, fnName, baseName]) {
         if (!k) continue;
@@ -1980,30 +2081,32 @@ export function flattenFunction(
     };
 
     if (fn.externalDecl && fn.externalDecl.includes('"builtin"')) {
-      const saveBuiltin = (targetDae: any) => {
+      const saveBuiltin = (targetDae: FlattenedFunctionDae | undefined) => {
         if (!targetDae) return;
-        const map = ((targetDae as any).builtinFunctions ??= new Map<string, DAEBuilder>());
+        const map = (targetDae.builtinFunctions ??= new Map<string, DAEBuilder>());
         for (const k of [cleanFnName, fnName, baseName]) {
           if (k) map.set(k, fn);
         }
       };
       saveBuiltin(fn);
-      saveBuiltin(parentDae);
-      cleanupFrom(parentDae);
-      let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
+      saveBuiltin(parentFnDae);
+      cleanupFrom(parentFnDae);
+      let rootDae: FlattenedFunctionDae | undefined =
+        (flattener.currentRootDae as FlattenedFunctionDae | null | undefined) ?? parentFnDae;
       while (rootDae?.parentDae) rootDae = rootDae.parentDae;
       saveBuiltin(rootDae);
       cleanupFrom(rootDae);
     }
 
-    if (fn.diagnostics.some((d: any) => d.severity === "error")) {
-      cleanupFrom(parentDae);
-      let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
+    if (fn.diagnostics.some((d) => d.severity === "error")) {
+      cleanupFrom(parentFnDae);
+      let rootDae: FlattenedFunctionDae | undefined =
+        (flattener.currentRootDae as FlattenedFunctionDae | null | undefined) ?? parentFnDae;
       while (rootDae?.parentDae) rootDae = rootDae.parentDae;
       cleanupFrom(rootDae);
       flattener.failedFunctionIds.add(fnSymId);
       const hasInterfaceError = fn.diagnostics.some(
-        (d: any) =>
+        (d) =>
           d.severity === "error" &&
           d.code !== ModelicaErrorCode.CYCLIC_FUNCTION_COMPONENTS.code &&
           !d.message.includes("looking for a function or record"),
@@ -2013,11 +2116,12 @@ export function flattenFunction(
       }
     } else {
       if (fnCacheKey && !(fn.externalDecl && fn.externalDecl.includes('"builtin"'))) {
-        const cache = ((flattener as any)._flattenedFunctionCache ??= new Map<string, DAEBuilder>());
+        const cache = (rt._flattenedFunctionCache ??= new Map<string, DAEBuilder>());
         cache.set(fnCacheKey, fn);
       }
       if (parentDae) {
-        let rootDae: any = (flattener as any)?.currentRootDae ?? parentDae;
+        let rootDae: FlattenedFunctionDae | undefined =
+          (flattener.currentRootDae as FlattenedFunctionDae | null | undefined) ?? parentFnDae;
         while (rootDae?.parentDae) rootDae = rootDae.parentDae;
         if (rootDae && rootDae !== parentDae && !(fn.externalDecl && fn.externalDecl.includes('"builtin"'))) {
           rootDae.addFunction(cleanFnName, fn);
@@ -2046,16 +2150,16 @@ export function flattenFunction(
     flattener.currentFunctionEnclosingScope = prevEnclosingScope;
     flattener.activeFlatteningFunctionIds.delete(fnSymId);
     flattener.activeLoopVars = prevActiveLoopVars;
-    flattener.state.activeLoopVars = flattener.activeLoopVars;
-    (fn as any).isBeingFlattened = false;
+    if (rt.state) rt.state.activeLoopVars = flattener.activeLoopVars;
+    fn.isBeingFlattened = false;
   }
 }
 
-export function generateOperatorFunctions(flattener: any, dae: DAEBuilder): void {
+export function generateOperatorFunctions(flattener: ModelicaFlattener, dae: DAEBuilder): void {
   if (!flattener.usedOperatorFunctions || flattener.usedOperatorFunctions.size === 0) return;
   const processed = new Set<string>();
   while (processed.size < flattener.usedOperatorFunctions.size) {
-    const entries = Array.from((flattener.usedOperatorFunctions as Map<string, SymbolId>).entries());
+    const entries = Array.from(flattener.usedOperatorFunctions.entries());
     for (const [qualName, symId] of entries) {
       if (processed.has(qualName)) continue;
       processed.add(qualName);
@@ -2067,7 +2171,7 @@ export function generateOperatorFunctions(flattener: any, dae: DAEBuilder): void
   }
 }
 
-export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DAEBuilder): void {
+export function generateFunctions(flattener: ModelicaFlattener, rootClassId: SymbolId, dae: DAEBuilder): void {
   const db: QueryDB = flattener.db;
   const rootSym = db.symbol(rootClassId);
   if (!rootSym) return;
@@ -2077,20 +2181,20 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
   for (const cc of childClasses) {
     if (isFunctionSym(db, cc)) {
       const qualifiedName = `${dae.name}.${cc.name}`;
-      const fn = flattener.flattenFunction(cc.id, qualifiedName, undefined, dae);
-      if (fn.diagnostics.some((d: any) => d.severity === "error")) {
+      const fn = flattener.flattenFunction(cc.id, qualifiedName, undefined, dae) as FlattenedFunctionDae;
+      if (fn.diagnostics.some((d) => d.severity === "error")) {
         for (const d of fn.diagnostics) {
           if (!dae.diagnostics.some((existing) => existing.message === d.message)) {
-            (d as any).fromFunction = true;
+            (d as DaeDiagnosticWithOrigin).fromFunction = true;
             dae.diagnostics.push(d);
           }
         }
         flattener.failedFunctionIds.add(cc.id);
       } else if (!(fn.externalDecl && fn.externalDecl.includes('"builtin"'))) {
-        (fn as any).isNestedMember = true;
-        (fn as any).symId = cc.id;
+        fn.isNestedMember = true;
+        fn.symId = cc.id;
         if (flattener.calledFunctionSymIds.has(cc.id)) {
-          (fn as any).wasCalled = true;
+          fn.wasCalled = true;
         }
         dae.addFunction(qualifiedName, fn);
         dae.addFunction(cc.name, fn);
@@ -2099,24 +2203,29 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
   }
 
   // 2. Short class specifiers or base class redeclarations on rootClassId
-  const rootMod = db.query<any>("effectiveModification", rootClassId);
+  const rootMod = db.query<EffectiveModLike | null>("effectiveModification", rootClassId);
   if (rootMod?.args) {
     for (const arg of rootMod.args) {
       if (arg.isRedeclaration && arg.redeclaredTypeSpecifier) {
         const target = db.byName(arg.redeclaredTypeSpecifier).find((e) => e.kind === "Class");
         if (target && isFunctionSym(db, target)) {
           const qualifiedName = `${dae.name}.${arg.name}`;
-          const fn = flattener.flattenFunction(target.id, qualifiedName, arg.nestedArgs, dae);
-          if (fn.diagnostics.some((d: any) => d.severity === "error")) {
+          const fn = flattener.flattenFunction(
+            target.id,
+            qualifiedName,
+            arg.nestedArgs as ModArgLike[] | undefined,
+            dae,
+          ) as FlattenedFunctionDae;
+          if (fn.diagnostics.some((d) => d.severity === "error")) {
             for (const d of fn.diagnostics) {
               if (!dae.diagnostics.some((existing) => existing.message === d.message)) {
-                (d as any).fromFunction = true;
+                (d as DaeDiagnosticWithOrigin).fromFunction = true;
                 dae.diagnostics.push(d);
               }
             }
             flattener.failedFunctionIds.add(target.id);
           } else {
-            (fn as any).symId = target.id;
+            fn.symId = target.id;
             dae.addFunction(qualifiedName, fn);
             dae.addFunction(arg.name, fn);
           }
@@ -2128,21 +2237,21 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
   const addFunctionsFromBase = (base: SymbolEntry) => {
     const baseFuncs = db.childrenOf(base.id).filter((c) => c.kind === "Class" && isFunctionSym(db, c));
     for (const bf of baseFuncs) {
-      const matchingRedecl = rootMod?.args?.find((a: any) => a.isRedeclaration && a.name === bf.name);
+      const matchingRedecl = rootMod?.args?.find((a) => a.isRedeclaration && a.name === bf.name);
       if (!matchingRedecl) {
         const qualifiedName = `${dae.name}.${bf.name}`;
         if (!dae.functions.has(qualifiedName)) {
-          const fn = flattener.flattenFunction(bf.id, qualifiedName, undefined, dae);
-          if (fn.diagnostics.some((d: any) => d.severity === "error")) {
+          const fn = flattener.flattenFunction(bf.id, qualifiedName, undefined, dae) as FlattenedFunctionDae;
+          if (fn.diagnostics.some((d) => d.severity === "error")) {
             for (const d of fn.diagnostics) {
               if (!dae.diagnostics.some((existing) => existing.message === d.message)) {
-                (d as any).fromFunction = true;
+                (d as DaeDiagnosticWithOrigin).fromFunction = true;
                 dae.diagnostics.push(d);
               }
             }
             flattener.failedFunctionIds.add(bf.id);
           } else {
-            (fn as any).symId = bf.id;
+            fn.symId = bf.id;
             dae.addFunction(qualifiedName, fn);
             dae.addFunction(bf.name, fn);
           }
@@ -2182,9 +2291,9 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
   // 3. Top-level functions in the same file that are referenced in rootClassId
   if (rootSym.resourceId && !isScopeEncapsulated(db, rootClassId)) {
     const fileClasses = (db.childrenOf(null) ?? []).filter(
-      (s: any) => s.resourceId === rootSym.resourceId && s.kind === "Class" && s.id !== rootClassId,
+      (s) => s.resourceId === rootSym.resourceId && s.kind === "Class" && s.id !== rootClassId,
     );
-    const rootCst = db.cstNode(rootClassId) as any;
+    const rootCst = db.cstNode(rootClassId) as CstNodeLike | null;
     const { calledNames, shortFuncTargets } = collectCstFunctionRefs(rootCst);
     for (const fc of fileClasses) {
       if (isFunctionSym(db, fc)) {
@@ -2192,10 +2301,10 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
         const isCalled = calledNames.has(fc.name);
         if (isCalled && !isShortFuncTarget) {
           const fn = flattener.flattenFunction(fc.id, fc.name, undefined, dae);
-          if (fn.diagnostics.some((d: any) => d.severity === "error")) {
+          if (fn.diagnostics.some((d) => d.severity === "error")) {
             for (const d of fn.diagnostics) {
               if (!dae.diagnostics.some((existing) => existing.message === d.message)) {
-                (d as any).fromFunction = true;
+                (d as DaeDiagnosticWithOrigin).fromFunction = true;
                 dae.diagnostics.push(d);
               }
             }
@@ -2205,17 +2314,17 @@ export function generateFunctions(flattener: any, rootClassId: SymbolId, dae: DA
           }
         }
       } else {
-        const childFuncs = (db.childrenOf(fc.id) ?? []).filter((c: any) => c.kind === "Class" && isFunctionSym(db, c));
+        const childFuncs = (db.childrenOf(fc.id) ?? []).filter((c) => c.kind === "Class" && isFunctionSym(db, c));
         for (const cf of childFuncs) {
           const qualName = `${fc.name}.${cf.name}`;
           const isQualCalled = calledNames.has(qualName);
           if (isQualCalled && !dae.functions.has(qualName)) {
-            const fn = flattener.flattenFunction(cf.id, qualName, undefined, dae);
+            const fn = flattener.flattenFunction(cf.id, qualName, undefined, dae) as FlattenedFunctionDae;
             if (
-              !fn.diagnostics.some((d: any) => d.severity === "error") &&
+              !fn.diagnostics.some((d) => d.severity === "error") &&
               !(fn.externalDecl && fn.externalDecl.includes('"builtin"'))
             ) {
-              (fn as any).wasCalled = true;
+              fn.wasCalled = true;
               dae.addFunction(qualName, fn);
             }
           }
@@ -2287,7 +2396,7 @@ function collectCstFunctionRefs(rootCst: CstNodeLike | null | undefined): {
         (c) => c.type === "class_prefixes" && tokenizeCommentStrippedWords(c.text ?? "").includes("function"),
       )
     ) {
-      const shortSpec = getShortClassSpecifierNode(node);
+      const shortSpec = getShortClassSpecifierNode(node as Parameters<typeof getShortClassSpecifierNode>[0]);
       if (shortSpec) {
         const typeSpec =
           Cst.ShortClassSpecifier.typeSpecifier(shortSpec as SyntaxNode) ??
@@ -2321,11 +2430,17 @@ function collectCstFunctionRefs(rootCst: CstNodeLike | null | undefined): {
   return { calledNames, shortFuncTargets, referencedPaths };
 }
 
-export function generateExternalObjectFunctions(flattener: any, dae: DAEBuilder, rootClassId?: SymbolId): void {
+export function generateExternalObjectFunctions(
+  flattener: ModelicaFlattener,
+  dae: DAEBuilder,
+  rootClassId?: SymbolId,
+): void {
+  const rt = flattener as FlattenerWithFnRuntime;
+  const daeFn = dae as FlattenedFunctionDae;
   const db: QueryDB = flattener.db;
   // In WASM mode, ExternalObject components are lowered as Integer without customType;
   // discover them from the class hierarchy, restore customType, and register usedExternalObjects.
-  const rootId = (rootClassId ?? flattener.state?.rootClassId ?? (dae as any).rootClassId) as SymbolId | undefined;
+  const rootId = rootClassId ?? rt.state?.rootClassId ?? daeFn.rootClassId;
   const isExtObjClass = (sym: SymbolEntry): boolean =>
     db.childrenOf(sym.id).some((c) => c.kind === "Extends" && c.name === "ExternalObject");
   if (rootId) {
@@ -2341,15 +2456,16 @@ export function generateExternalObjectFunctions(flattener: any, dae: DAEBuilder,
           : (db.childrenOf(clsId) || []).filter((s) => s && s.kind === "Component");
       for (const comp of comps) {
         const cInst = db.query<ComponentInstanceData>("componentInstance", comp.id);
-        const typeSpec = cInst?.typeSpecifier ?? (comp.metadata as any)?.typeSpecifier;
+        const typeSpec = cInst?.typeSpecifier ?? (comp.metadata as SymbolMetaLike | undefined)?.typeSpecifier;
         if (!typeSpec) continue;
         const cleanType = typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec;
-        const rawTarget = db.query<any>("classInstance", comp.id);
+        const rawTarget = db.query<SymbolId | SymbolEntry | null>("classInstance", comp.id);
         let target: SymbolEntry | null =
           typeof rawTarget === "number" ? (db.symbol(rawTarget) ?? null) : (rawTarget ?? null);
         if (!target) {
           const res =
-            (comp.parentId ? db.query<any>("resolveName", comp.parentId) : null) ?? db.query<any>("resolveName", clsId);
+            (comp.parentId ? db.query<NameResolverFn | null>("resolveName", comp.parentId) : null) ??
+            db.query<NameResolverFn | null>("resolveName", clsId);
           target = res?.(typeSpec) ?? res?.(cleanType) ?? db.byName(cleanType).find((e) => e.kind === "Class") ?? null;
         }
         if (!target || target.kind !== "Class") continue;
@@ -2372,7 +2488,9 @@ export function generateExternalObjectFunctions(flattener: any, dae: DAEBuilder,
             if (bindId >= 0 && dae.getExprKind(bindId) === ExprKind.Call) {
               const callee = dae.interner.resolve(dae.getExprData1(bindId));
               if (callee === qual || callee === target.name) {
-                const setData1 = (dae.exports as any)?.dae_setExprData1;
+                const setData1 = (
+                  dae.exports as { dae_setExprData1?: (ptr: number, id: number, val: number) => void } | undefined
+                )?.dae_setExprData1;
                 if (typeof setData1 === "function") {
                   setData1(dae.ptr, bindId, dae.interner.intern(`${qual}.constructor`));
                 }
@@ -2433,19 +2551,20 @@ export function propagateImpureFunctions(dae: DAEBuilder): void {
   while (changed) {
     changed = false;
     for (const fn of dae.functions.values()) {
+      const fnTyped = fn as FlattenedFunctionDae;
       for (let i = 0; i < fn.exprCount; i++) {
         if (fn.getExprKind(i) === ExprKind.Call) {
           const calledName = fn.interner.resolve(fn.getExprData1(i));
           if (calledName) {
-            const targetFn =
-              dae.getFunction(calledName) ??
-              (calledName.includes(".") ? dae.getFunction(calledName.split(".").pop()!) : undefined);
+            const targetFn = (dae.getFunction(calledName) ??
+              (calledName.includes(".") ? dae.getFunction(calledName.split(".").pop()!) : undefined)) as
+              FlattenedFunctionDae | undefined;
             if (targetFn?.isImpure && !fn.isImpure) {
               fn.isImpure = true;
               changed = true;
             }
-            if ((targetFn as any)?.isExplicitImpure && !(fn as any).isExplicitImpure) {
-              (fn as any).isExplicitImpure = true;
+            if (targetFn?.isExplicitImpure && !fnTyped.isExplicitImpure) {
+              fnTyped.isExplicitImpure = true;
               changed = true;
             }
           }

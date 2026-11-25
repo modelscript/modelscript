@@ -1,0 +1,11 @@
+{
+  "id": "cyme-03-unbalanced-regulator-capbank",
+  "lang": "cyme",
+  "subFormats": ["sxst"],
+  "difficulty": 3,
+  "title": "Unbalanced Feeder with Step-Voltage Regulator & Cap Bank",
+  "description": "Asymmetrically loaded 12.47 kV rural feeder incorporating an inline voltage regulator section and reactive compensation across single-phase and three-phase laterals.",
+  "category": "Distribution Power Systems",
+  "tags": ["cyme", "unbalanced", "voltage-regulator", "capacitor", "power-flow"],
+  "activeFile": "unbalanced_vreg.sxst"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "melcor-04-sbo-vessel-relief-spray",
+  "lang": "melcor",
+  "subFormats": ["melcor2"],
+  "difficulty": 4,
+  "title": "Station Blackout Vessel Pressure Relief and Spray",
+  "description": "Multi-volume PWR station blackout accident sequence with primary RCS vessel, pressurizer, containment volume, relief valves, and wall condensation.",
+  "category": "Nuclear Severe Accident Analysis",
+  "tags": ["melcor", "sbo", "pwr", "relief-valve", "severe-accident"],
+  "activeFile": "sbo_relief.mel"
+}

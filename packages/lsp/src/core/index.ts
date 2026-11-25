@@ -2,7 +2,7 @@
 
 export { LanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
 export {
-  PLAYGROUND_SEMANTIC_TOKEN_TYPES,
+  ANSATZ_SEMANTIC_TOKEN_TYPES,
   buildLanguagePluginFromModule,
   createLspRuntime,
   type BuildLanguagePluginOptions,

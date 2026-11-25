@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document version="5.1">
+  <Model name="SkyhookActiveController">
+    <SpecificationCode><![CDATA[
+      parameters
+        real c_sky = 1800.0 {N*s/m};
+      ports
+        power p;
+      equations
+        p.e = c_sky * p.f;
+    ]]></SpecificationCode>
+  </Model>
+</Document>

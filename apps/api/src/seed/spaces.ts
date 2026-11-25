@@ -1131,7 +1131,7 @@ end AntiSluggingTopsideChoke;
       name: "Islanded Microgrid Dynamics Lab",
       tagline: "BESS + Solar PV islanded microgrid stability under 100% renewable penetration.",
       description:
-        "Personal research playground for testing droop control, seamless islanding transitions, and black-start coordination with battery inverters.",
+        "Personal research ansatz for testing droop control, seamless islanding transitions, and black-start coordination with battery inverters.",
       domainPreset: "power_rf_grid",
       creatorUsername: "marcus_chen",
       avatarUrl: "https://images.unsplash.com/photo-1509391365360-2e959784a276?auto=format&fit=crop&w=256&q=80",

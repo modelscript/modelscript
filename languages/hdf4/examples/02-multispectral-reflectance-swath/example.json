@@ -1,0 +1,11 @@
+{
+  "id": "hdf4-02-multispectral-reflectance-swath",
+  "lang": "hdf4",
+  "subFormats": ["ddl"],
+  "difficulty": 2,
+  "title": "Multispectral 3-Band Satellite Reflectance Swath",
+  "description": "Three-band (Red, NIR, SWIR) calibrated surface reflectance HDF4 SDS cube grouped inside an EOS Swath Vgroup for vegetation NDVI analysis.",
+  "category": "Remote Sensing",
+  "tags": ["hdf4", "multispectral", "reflectance", "ndvi", "vgroup"],
+  "activeFile": "multispectral_swath.hdf"
+}

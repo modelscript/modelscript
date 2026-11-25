@@ -1,0 +1,11 @@
+{
+  "id": "trasys-03-cubesat-external-space",
+  "lang": "trasys",
+  "subFormats": ["trasys", "orbit"],
+  "difficulty": 3,
+  "title": "CubeSat 6-Surface External Space View Factors",
+  "description": "Six-surface 3U CubeSat external thermal radiation model in a 420 km ISS-inclination low-Earth orbit computing solar, albedo, and planetary IR heating.",
+  "category": "Spacecraft Radiation Analysis",
+  "tags": ["trasys", "cubesat", "leo", "orbital-heating"],
+  "activeFile": "cubesat_6face.tra"
+}

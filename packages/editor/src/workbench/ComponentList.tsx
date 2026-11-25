@@ -246,7 +246,7 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
   const validComponents = components.filter((c) => {
     if (!c.id || c.id.startsWith("__diagram_") || c.id.startsWith("solder_dot_")) return false;
     // Exclude synthetic junction dots or nodes without properties
-    if (!c.properties || (c as any).shape === "circle") return false;
+    if (!c.properties || (c as unknown as { shape?: string }).shape === "circle") return false;
     const kind = c.properties?.classKind?.toLowerCase();
     // Exclude Modelica connectors from the top-level components list
     if (kind && kind.includes("connector")) return false;
@@ -283,7 +283,7 @@ const ComponentList = React.memo(function ComponentList(props: ComponentListProp
         const displayName =
           component.properties?.name ||
           component.properties?.description ||
-          (component as any).data?.label ||
+          (component as unknown as { data?: { label?: string } }).data?.label ||
           component.id;
         const badgeStyle = getKindBadgeStyle(rawKind, true);
         const rawClassName = component.properties?.className || "";

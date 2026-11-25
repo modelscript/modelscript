@@ -1,14 +1,52 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import type { PostItem } from "../../types/api";
 import type { NotebookCell, TutorialDifficulty } from "../../util/notebook";
 import type { SpatialPin } from "../artifacts/spatial-pin";
+import type { NestedQuoteData } from "./ComposeQuoteAndPin";
+
+export interface ComposePostRef {
+  id?: number | string | null | undefined;
+  username?: string | null | undefined;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  author_username?: string | null | undefined;
+  author_display_name?: string | null | undefined;
+  content?: string | null | undefined;
+  created_at?: string | null | undefined;
+  author?:
+    | {
+        username?: string | null | undefined;
+        display_name?: string | null | undefined;
+        displayName?: string | null | undefined;
+        avatar_url?: string | null | undefined;
+      }
+    | null
+    | undefined;
+  user?:
+    | {
+        username?: string | null | undefined;
+        avatar_url?: string | null | undefined;
+      }
+    | null
+    | undefined;
+  quote_post?: NestedQuoteData | null | undefined;
+  quotePost?: NestedQuoteData | null | undefined;
+  quote_post_id?: number | string | null | undefined;
+  quotePostId?: number | string | null | undefined;
+}
+
+export interface CreatedPostItem extends PostItem {
+  author?: { username?: string | null | undefined } | null | undefined;
+  content_warning?: string | null | undefined;
+}
 
 export interface ComposeBoxProps {
-  onPostCreated?: ((post: any) => void) | undefined;
+  onPostCreated?: ((post: CreatedPostItem) => void) | undefined;
   editPostId?: string | number | null | undefined;
   forkedFromArtifactId?: number | string | null | undefined;
-  quotePost?: any;
-  replyToPost?: any;
+  quotePost?: ComposePostRef | null | undefined;
+  replyToPost?: ComposePostRef | null | undefined;
   placeholder?: string | undefined;
   minRows?: number | undefined;
   autoFocus?: boolean | undefined;

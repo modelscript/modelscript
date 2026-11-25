@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SpaceSystem name="LunarGateway_PPE" xmlns="http://www.omg.org/spec/XTCE/20180204">
+  <TelemetryMetaData>
+    <ParameterSet>
+      <Parameter name="SolarArrayPowerKw" parameterTypeRef="Float32Type" units="kW" />
+      <Parameter name="SepThrusterCurrentA" parameterTypeRef="Float32Type" units="A" />
+      <Parameter name="XenonTankPressureBar" parameterTypeRef="Float32Type" units="bar" />
+      <Parameter name="HaloCabinPressureKpa" parameterTypeRef="Float32Type" units="kPa" />
+    </ParameterSet>
+    <ContainerSet>
+      <SequenceContainer name="GatewayHealthTelemetry">
+        <EntryList>
+          <ParameterRefEntry parameterRef="SolarArrayPowerKw" />
+          <ParameterRefEntry parameterRef="SepThrusterCurrentA" />
+          <ParameterRefEntry parameterRef="XenonTankPressureBar" />
+          <ParameterRefEntry parameterRef="HaloCabinPressureKpa" />
+        </EntryList>
+      </SequenceContainer>
+    </ContainerSet>
+  </TelemetryMetaData>
+  <CommandMetaData>
+    <MetaCommand name="ExecuteOrbitMaintenanceBurn">
+      <ArgumentList>
+        <Argument name="BurnDurationSec" argumentTypeRef="uint32" />
+        <Argument name="ThrustLevelPct" argumentTypeRef="uint16" />
+      </ArgumentList>
+    </MetaCommand>
+  </CommandMetaData>
+</SpaceSystem>

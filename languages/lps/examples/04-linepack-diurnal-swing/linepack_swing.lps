@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineStudio id="linepack_swing" title="Linepack Transient Diurnal Demand Swing" simulationType="TGNET">
+  <Nodes>
+    <Node name="Basin_Supply" type="SUPPLY" elevation="45m" pressure="78.0bar" flow="165.0" />
+    <Node name="Loop_Split" type="JUNCTION" elevation="52m" />
+    <Node name="Loop_Merge" type="JUNCTION" elevation="48m" />
+    <Node name="Mid_CS_Suction" type="JUNCTION" elevation="48m" />
+    <Node name="Mid_CS_Discharge" type="JUNCTION" elevation="48m" />
+    <Node name="Peak_Market_Hub" type="DELIVERY" elevation="20m" minDeliveryPressure="42.0bar" flow="165.0" />
+  </Nodes>
+  <Pipes>
+    <Pipe name="Inlet_Header" from="Basin_Supply" to="Loop_Split" length="45.0km" diameter="36inch" roughness="0.000045m" maop="100.0bar" />
+    <Pipe name="Loop_North" from="Loop_Split" to="Loop_Merge" length="75.0km" diameter="30inch" roughness="0.000045m" maop="100.0bar" />
+    <Pipe name="Loop_South" from="Loop_Split" to="Loop_Merge" length="75.0km" diameter="24inch" roughness="0.000045m" maop="100.0bar" />
+    <Pipe name="Station_Tie" from="Loop_Merge" to="Mid_CS_Suction" length="5.0km" diameter="36inch" roughness="0.000045m" maop="100.0bar" />
+    <Pipe name="Delivery_Main" from="Mid_CS_Discharge" to="Peak_Market_Hub" length="95.0km" diameter="36inch" roughness="0.000045m" maop="100.0bar" />
+  </Pipes>
+  <Compressors>
+    <Compressor name="Midpoint_Booster" from="Mid_CS_Suction" to="Mid_CS_Discharge" type="CENTRIFUGAL" power="24000000" maxRatio="1.7" efficiency="0.85" mode="DISCHARGE_PRESSURE" setpoint="86.0bar" status="RUNNING" />
+  </Compressors>
+  <GasComposition ch4="0.92" c2h6="0.042" c3h8="0.014" co2="0.010" n2="0.014" h2="0.03" ghv="38.7" />
+  <SimulationControls startTime="0" endTime="86400" timeStep="120" eos="AGA8" steadyStateFirst="true" />
+</PipelineStudio>

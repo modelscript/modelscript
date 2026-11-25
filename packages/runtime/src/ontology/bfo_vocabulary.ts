@@ -89,8 +89,18 @@ export function getBfoIofCoreAxioms(): OWL2Axiom[] {
     { type: "ClassDeclaration", iri: BFO.SpecificallyDependentContinuant, sourceLang: "bfo" },
     { type: "ClassDeclaration", iri: BFO.GenericallyDependentContinuant, sourceLang: "bfo" },
     { type: "SubClassOf", subClassIri: BFO.IndependentContinuant, superClassIri: BFO.Continuant, sourceLang: "bfo" },
-    { type: "SubClassOf", subClassIri: BFO.SpecificallyDependentContinuant, superClassIri: BFO.Continuant, sourceLang: "bfo" },
-    { type: "SubClassOf", subClassIri: BFO.GenericallyDependentContinuant, superClassIri: BFO.Continuant, sourceLang: "bfo" },
+    {
+      type: "SubClassOf",
+      subClassIri: BFO.SpecificallyDependentContinuant,
+      superClassIri: BFO.Continuant,
+      sourceLang: "bfo",
+    },
+    {
+      type: "SubClassOf",
+      subClassIri: BFO.GenericallyDependentContinuant,
+      superClassIri: BFO.Continuant,
+      sourceLang: "bfo",
+    },
 
     // BFO Axiom 2: Disjointness among Continuant categories
     {
@@ -104,8 +114,18 @@ export function getBfoIofCoreAxioms(): OWL2Axiom[] {
     { type: "ClassDeclaration", iri: BFO.ImmaterialEntity, sourceLang: "bfo" },
     { type: "ClassDeclaration", iri: BFO.Site, sourceLang: "bfo" },
     { type: "ClassDeclaration", iri: BFO.SpatialRegion, sourceLang: "bfo" },
-    { type: "SubClassOf", subClassIri: BFO.MaterialEntity, superClassIri: BFO.IndependentContinuant, sourceLang: "bfo" },
-    { type: "SubClassOf", subClassIri: BFO.ImmaterialEntity, superClassIri: BFO.IndependentContinuant, sourceLang: "bfo" },
+    {
+      type: "SubClassOf",
+      subClassIri: BFO.MaterialEntity,
+      superClassIri: BFO.IndependentContinuant,
+      sourceLang: "bfo",
+    },
+    {
+      type: "SubClassOf",
+      subClassIri: BFO.ImmaterialEntity,
+      superClassIri: BFO.IndependentContinuant,
+      sourceLang: "bfo",
+    },
     { type: "SubClassOf", subClassIri: BFO.Site, superClassIri: BFO.ImmaterialEntity, sourceLang: "bfo" },
     { type: "SubClassOf", subClassIri: BFO.SpatialRegion, superClassIri: BFO.ImmaterialEntity, sourceLang: "bfo" },
 
@@ -121,8 +141,18 @@ export function getBfoIofCoreAxioms(): OWL2Axiom[] {
     { type: "ClassDeclaration", iri: BFO.Role, sourceLang: "bfo" },
     { type: "ClassDeclaration", iri: BFO.Disposition, sourceLang: "bfo" },
     { type: "ClassDeclaration", iri: BFO.Function, sourceLang: "bfo" },
-    { type: "SubClassOf", subClassIri: BFO.Quality, superClassIri: BFO.SpecificallyDependentContinuant, sourceLang: "bfo" },
-    { type: "SubClassOf", subClassIri: BFO.RealizableEntity, superClassIri: BFO.SpecificallyDependentContinuant, sourceLang: "bfo" },
+    {
+      type: "SubClassOf",
+      subClassIri: BFO.Quality,
+      superClassIri: BFO.SpecificallyDependentContinuant,
+      sourceLang: "bfo",
+    },
+    {
+      type: "SubClassOf",
+      subClassIri: BFO.RealizableEntity,
+      superClassIri: BFO.SpecificallyDependentContinuant,
+      sourceLang: "bfo",
+    },
     { type: "SubClassOf", subClassIri: BFO.Role, superClassIri: BFO.RealizableEntity, sourceLang: "bfo" },
     { type: "SubClassOf", subClassIri: BFO.Disposition, superClassIri: BFO.RealizableEntity, sourceLang: "bfo" },
     { type: "SubClassOf", subClassIri: BFO.Function, superClassIri: BFO.RealizableEntity, sourceLang: "bfo" },
@@ -172,11 +202,26 @@ export function getBfoIofCoreAxioms(): OWL2Axiom[] {
     // 8. IOF Specifications & Requirements
     { type: "ClassDeclaration", iri: IOF.DesignSpecification, sourceLang: "iof" },
     { type: "ClassDeclaration", iri: IOF.RequirementSpecification, sourceLang: "iof" },
-    { type: "SubClassOf", subClassIri: IOF.DesignSpecification, superClassIri: BFO.GenericallyDependentContinuant, sourceLang: "iof" },
-    { type: "SubClassOf", subClassIri: IOF.RequirementSpecification, superClassIri: BFO.GenericallyDependentContinuant, sourceLang: "iof" },
+    {
+      type: "SubClassOf",
+      subClassIri: IOF.DesignSpecification,
+      superClassIri: BFO.GenericallyDependentContinuant,
+      sourceLang: "iof",
+    },
+    {
+      type: "SubClassOf",
+      subClassIri: IOF.RequirementSpecification,
+      superClassIri: BFO.GenericallyDependentContinuant,
+      sourceLang: "iof",
+    },
 
     // 9. Object Properties
-    { type: "ObjectPropertyDeclaration", iri: RELATIONS.connected_to, sourceLang: "iof", characteristics: ["Symmetric"] },
+    {
+      type: "ObjectPropertyDeclaration",
+      iri: RELATIONS.connected_to,
+      sourceLang: "iof",
+      characteristics: ["Symmetric"],
+    },
     { type: "ObjectPropertyDeclaration", iri: RELATIONS.has_part, sourceLang: "ro", characteristics: ["Transitive"] },
     { type: "ObjectPropertyDeclaration", iri: RELATIONS.part_of, sourceLang: "ro", characteristics: ["Transitive"] },
     { type: "ObjectPropertyDeclaration", iri: RELATIONS.bearer_of, sourceLang: "ro" },

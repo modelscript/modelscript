@@ -1,0 +1,36 @@
+! SIMO / RIFLEX Card Deck: Four-Column Semi-Submersible 8-Line Spread Mooring
+SYS 350.0 1025.0 9.81
+BODY semisub_hull NorthSea_Semi 28500000 29200 0.0 0.0 -14.5 34.0 36.0 42.0 5.2 5.8
+
+FAIRLEAD fl_1 semisub_hull  35.0  35.0 -16.0
+FAIRLEAD fl_2 semisub_hull  35.0  32.0 -16.0
+FAIRLEAD fl_3 semisub_hull -35.0  35.0 -16.0
+FAIRLEAD fl_4 semisub_hull -35.0  32.0 -16.0
+FAIRLEAD fl_5 semisub_hull -35.0 -35.0 -16.0
+FAIRLEAD fl_6 semisub_hull -35.0 -32.0 -16.0
+FAIRLEAD fl_7 semisub_hull  35.0 -35.0 -16.0
+FAIRLEAD fl_8 semisub_hull  35.0 -32.0 -16.0
+
+CRS r4_chain 0.142 415.0 3520.0 1.45e9 1.2e5 2.05e7 1.2 2.0
+
+LINE line_1 catenary fl_1  820.0  780.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+LINE line_2 catenary fl_2  860.0  740.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+LINE line_3 catenary fl_3 -820.0  780.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+LINE line_4 catenary fl_4 -860.0  740.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+LINE line_5 catenary fl_5 -820.0 -780.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+LINE line_6 catenary fl_6 -860.0 -740.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+LINE line_7 catenary fl_7  820.0 -780.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+LINE line_8 catenary fl_8  860.0 -740.0 -350.0
+SEGM r4_chain 1250.0 2.05e7
+
+WAVE JONSWAP 9.5 13.8 3.3 30.0
+WIND 24.0 30.0
+CURR 1.1 15.0
+TIME 0.05 3600.0

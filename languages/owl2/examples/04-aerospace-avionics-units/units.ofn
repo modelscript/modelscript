@@ -1,0 +1,23 @@
+Prefix(: = <http://modelscript.org/ont/units#>)
+Prefix(owl: = <http://www.w3.org/2002/07/owl#>)
+Prefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)
+
+Ontology(<http://modelscript.org/ont/units>
+  Declaration(Class(:QuantityKind))
+  Declaration(Class(:Unit))
+  Declaration(Class(:SIUnit))
+  Declaration(ObjectProperty(:hasUnit))
+  Declaration(DataProperty(:numericValue))
+  Declaration(NamedIndividual(:Volt))
+  Declaration(NamedIndividual(:Hertz))
+  Declaration(NamedIndividual(:Kilogram))
+
+  SubClassOf(:SIUnit :Unit)
+  ObjectPropertyDomain(:hasUnit :QuantityKind)
+  ObjectPropertyRange(:hasUnit :Unit)
+  DataPropertyRange(:numericValue xsd:double)
+
+  ClassAssertion(:SIUnit :Volt)
+  ClassAssertion(:SIUnit :Hertz)
+  ClassAssertion(:SIUnit :Kilogram)
+)

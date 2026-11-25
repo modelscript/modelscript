@@ -152,9 +152,12 @@ export const IucrCifPanel: React.FC<LanguagePanelProps> = ({
                 XYZ
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "iucr-cif", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton
+                variant="primary"
+                onClick={() => host.openInAnsatzEditor?.(code, dialect || "iucr-cif", title)}
+              >
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

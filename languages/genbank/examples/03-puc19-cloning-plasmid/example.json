@@ -1,0 +1,11 @@
+{
+  "id": "genbank-03-puc19-cloning-plasmid",
+  "lang": "genbank",
+  "subFormats": ["genbank"],
+  "difficulty": 3,
+  "title": "pUC19-Style Cloning Plasmid (ori, ampR, lacZ)",
+  "description": "Circular E. coli cloning vector carrying a pMB1 origin of replication, ampicillin resistance CDS, lac promoter, and lacZ-alpha blue-white screening reporter.",
+  "category": "Molecular Cloning",
+  "tags": ["genbank", "plasmid", "puc19", "cloning"],
+  "activeFile": "puc19_mini.gb"
+}

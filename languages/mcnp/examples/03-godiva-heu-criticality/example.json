@@ -1,0 +1,11 @@
+{
+  "id": "mcnp-03-godiva-heu-criticality",
+  "lang": "mcnp",
+  "subFormats": ["mcnp6", "criticality"],
+  "difficulty": 3,
+  "title": "Godiva Bare HEU Sphere Criticality Benchmark",
+  "description": "ICSBEP HEU-MET-FAST-001 Godiva bare highly enriched uranium metal sphere KCODE eigenvalue criticality benchmark with fast energy spectrum tally.",
+  "category": "Nuclear Reactor Physics",
+  "tags": ["mcnp", "criticality", "kcode", "godiva", "benchmark"],
+  "activeFile": "godiva.mcnp"
+}

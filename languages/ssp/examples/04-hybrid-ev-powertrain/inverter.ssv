@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  version="1.0"
+                  name="InverterParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="f_pwm_hz"><ssv:Real value="12000.0" /></ssv:Parameter>
+    <ssv:Parameter name="eta_inv"><ssv:Real value="0.985" /></ssv:Parameter>
+    <ssv:Parameter name="i_max_a"><ssv:Real value="450.0" /></ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>

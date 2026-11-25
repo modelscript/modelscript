@@ -36,6 +36,7 @@ export const ObjPanel: React.FC<LanguagePanelProps> = ({
   dialect,
   colorMode,
   mode,
+  projectFiles,
   viewConfig,
   isFullScreen = false,
   host,
@@ -80,12 +81,28 @@ export const ObjPanel: React.FC<LanguagePanelProps> = ({
       const metrics = computeMeshMetrics(obj);
       const lints = lintObj(obj);
 
-      // Build resolved material palette from standard engineering materials for any matching usemtl
+      // Parse companion .mtl files from multi-file workspace first, then fall back to standard engineering materials
+      const workspaceMats = new Map<string, MtlMaterial>();
+      if (projectFiles) {
+        for (const [fname, ftext] of Object.entries(projectFiles)) {
+          if (fname.toLowerCase().endsWith(".mtl") && ftext.trim()) {
+            try {
+              const parsedMtl = parseMtl(ftext);
+              for (const [mName, mVal] of parsedMtl.materials.entries()) {
+                workspaceMats.set(mName, mVal);
+              }
+            } catch {
+              // ignore malformed companion mtl
+            }
+          }
+        }
+      }
+
       const resolvedMats = new Map<string, MtlMaterial>();
       for (const u of obj.usedMaterials) {
-        const stdMat = defaultMtlMap.get(u.name);
-        if (stdMat) {
-          resolvedMats.set(u.name, stdMat);
+        const mat = workspaceMats.get(u.name) ?? defaultMtlMap.get(u.name);
+        if (mat) {
+          resolvedMats.set(u.name, mat);
         }
       }
       if (resolvedMats.size > 0) {
@@ -112,7 +129,7 @@ export const ObjPanel: React.FC<LanguagePanelProps> = ({
         error: err instanceof Error ? err.message : String(err),
       };
     }
-  }, [code, defaultMtlMap]);
+  }, [code, projectFiles, defaultMtlMap]);
 
   const title =
     (typeof viewConfig?.["title"] === "string" && viewConfig["title"]) ||
@@ -186,9 +203,9 @@ export const ObjPanel: React.FC<LanguagePanelProps> = ({
                 Export STL
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "obj", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "obj", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

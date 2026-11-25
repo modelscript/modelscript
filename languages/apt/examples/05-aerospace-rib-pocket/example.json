@@ -1,0 +1,11 @@
+{
+  "id": "apt-05-aerospace-rib-pocket",
+  "lang": "apt",
+  "subFormats": ["apt"],
+  "difficulty": 5,
+  "title": "Aerospace Wing Rib Pocket with Multi-Pass Depth Cuts",
+  "description": "Multi-pass roughing and finishing APT program for a monolithic 7075-T6 aluminum wing rib pocket featuring tapered spar walls, corner blend fillets, and stepped Z-level planes.",
+  "category": "CAD/CAM & CNC",
+  "tags": ["apt", "aerospace", "rib-pocket", "multi-pass"],
+  "activeFile": "wing_rib_pocket.apt"
+}

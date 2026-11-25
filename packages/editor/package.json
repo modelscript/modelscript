@@ -1,9 +1,10 @@
 {
   "name": "@modelscript/editor",
   "version": "0.1.0",
-  "description": "Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for ModelScript web, embed, and single-language playground environments",
+  "description": "Host-agnostic Ansatz Editor core, LSP transport abstraction, and host context adapter for ModelScript web, embed, and single-language environments",
   "keywords": [
     "modelscript",
+    "ansatz",
     "editor",
     "lsp",
     "workbench",
@@ -34,7 +35,7 @@
       "types": "./dist/host.d.ts",
       "default": "./dist/host.js"
     },
-    "./workbench": "./src/workbench/Morsel.tsx",
+    "./workbench": "./src/workbench/AnsatzEditor.tsx",
     "./workbench/*": "./src/workbench/*",
     "./internal/*": "./src/internal/*"
   },
@@ -47,7 +48,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rimraf dist tsconfig.tsbuildinfo",
-    "lint": "eslint src --no-warn-ignored",
+    "lint": "eslint src tests --no-warn-ignored",
+    "test": "node ../../scripts/ci/test-runner.js --tsconfig tsconfig.json",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

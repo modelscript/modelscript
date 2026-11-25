@@ -32,7 +32,12 @@ import {
   type SubsystemSummary,
 } from "../cad-viewer/assembly-visibility.js";
 import { CalloutLabels3D, type CalloutPin3D } from "../cad-viewer/CalloutLabels3D.js";
-import { getCachedHeroPbrTextures } from "../cad-viewer/HeroCadMaterials.js";
+import {
+  getCachedHeroPbrTextures,
+  HERO_ARM_DETAIL_NORMAL_SCALE,
+  HERO_BRUSHED_NORMAL_SCALE,
+  HERO_DETAIL_NORMAL_SCALE,
+} from "../cad-viewer/HeroCadMaterials.js";
 import { JetPlumeRenderer } from "../cad-viewer/JetPlumeRenderer.js";
 import type { RotundaCaeOverlay, RotundaRenderStyle } from "./types.js";
 
@@ -440,11 +445,11 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
     const wheelMesh = wheelsMeshRef.current;
     if (!segMesh || !wheelMesh) return;
 
-    const whiteShell = new THREE.Color("#eef2f6");
-    const orangeAccent = new THREE.Color("#f97316");
+    const whiteShell = new THREE.Color("#edf1f5");
+    const orangeAccent = new THREE.Color("#eb6a1e");
     const detachTint = new THREE.Color("#38bdf8");
-    const wheelCrimson = new THREE.Color("#9f1239");
-    const wheelDark = new THREE.Color("#334155");
+    const wheelCrimson = new THREE.Color("#9e2c44");
+    const wheelDark = new THREE.Color("#434a54");
 
     let segIdx = 0;
     let wheelIdx = 0;
@@ -669,13 +674,16 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
         <group name="subsystem-mantle" position={[0, mantleLiftY, 0]}>
           <mesh position={[0, 0.095, 0]} castShadow={!isInXr} receiveShadow={!isInXr}>
             <sphereGeometry args={[0.142, 32, 24]} />
-            <meshStandardMaterial
-              color={feaHighlight ? "#f59e0b" : thermalHighlight ? "#ec4899" : "#f1f5f9"}
-              metalness={0.08}
-              roughness={0.22}
+            <meshPhysicalMaterial
+              color={feaHighlight ? "#f59e0b" : thermalHighlight ? "#ec4899" : "#edf1f5"}
+              metalness={0.04}
+              roughness={0.3}
+              clearcoat={0.35}
+              clearcoatRoughness={0.22}
               normalMap={pbrMaps.detailNormal}
-              normalScale={new THREE.Vector2(0.18, 0.18)}
+              normalScale={HERO_DETAIL_NORMAL_SCALE}
               roughnessMap={pbrMaps.detailRoughness}
+              envMapIntensity={1.0}
               wireframe={isWire}
               transparent={mantleTransparent}
               opacity={mantleOpacity}
@@ -686,12 +694,16 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
           {/* Equatorial dark anodized structural flange */}
           <mesh position={[0, 0.015, 0]} rotation={[Math.PI / 2, 0, 0]}>
             <torusGeometry args={[0.143, 0.014, 12, 36]} />
-            <meshStandardMaterial
-              color="#1e293b"
-              metalness={0.85}
-              roughness={0.28}
+            <meshPhysicalMaterial
+              color="#636c78"
+              metalness={0.93}
+              roughness={0.34}
+              anisotropy={0.3}
+              anisotropyRotation={Math.PI / 2}
               normalMap={pbrMaps.normal}
-              normalScale={new THREE.Vector2(0.06, 0.04)}
+              normalScale={HERO_BRUSHED_NORMAL_SCALE}
+              roughnessMap={pbrMaps.roughness}
+              envMapIntensity={1.24}
               wireframe={isWire}
               transparent={mantleTransparent}
               opacity={mantleTransparent ? Math.min(0.45, mantleOpacity + 0.15) : 1}
@@ -701,12 +713,15 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
           {/* Safety-orange telemetry beacon hatch */}
           <mesh position={[0.052, 0.175, 0.088]} rotation={[0.45, 0.45, 0]}>
             <boxGeometry args={[0.032, 0.01, 0.032]} />
-            <meshStandardMaterial
-              color="#f97316"
-              metalness={0.14}
-              roughness={0.22}
-              emissive="#ea580c"
-              emissiveIntensity={0.28}
+            <meshPhysicalMaterial
+              color="#eb6a1e"
+              metalness={0.06}
+              roughness={0.28}
+              clearcoat={0.4}
+              clearcoatRoughness={0.18}
+              emissive="#c2410c"
+              emissiveIntensity={0.18}
+              envMapIntensity={1.0}
               wireframe={isWire}
               transparent={mantleTransparent}
               opacity={mantleOpacity}
@@ -723,10 +738,16 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
             <group key={idx} position={[xOff, 0, 0]} rotation={[0, xOff < 0 ? -0.26 : 0.26, 0]}>
               <mesh rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.042, 0.046, 0.032, 24]} />
-                <meshStandardMaterial
-                  color="#1e293b"
-                  metalness={0.84}
-                  roughness={0.26}
+                <meshPhysicalMaterial
+                  color="#606975"
+                  metalness={0.94}
+                  roughness={0.32}
+                  anisotropy={0.32}
+                  anisotropyRotation={Math.PI / 2}
+                  normalMap={pbrMaps.normal}
+                  normalScale={HERO_BRUSHED_NORMAL_SCALE}
+                  roughnessMap={pbrMaps.roughness}
+                  envMapIntensity={1.24}
                   wireframe={isWire}
                   transparent={isGhost || opticPres.ghosted}
                   opacity={isGhost ? ghostOpacity : opticPres.opacity}
@@ -735,12 +756,15 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
               </mesh>
               <mesh position={[0, 0, 0.017]}>
                 <torusGeometry args={[0.036, 0.0045, 10, 28]} />
-                <meshStandardMaterial
-                  color="#f97316"
-                  metalness={0.15}
-                  roughness={0.2}
-                  emissive="#f97316"
-                  emissiveIntensity={0.22}
+                <meshPhysicalMaterial
+                  color="#eb6a1e"
+                  metalness={0.08}
+                  roughness={0.26}
+                  clearcoat={0.42}
+                  clearcoatRoughness={0.18}
+                  emissive="#c2410c"
+                  emissiveIntensity={0.16}
+                  envMapIntensity={1.0}
                   wireframe={isWire}
                   transparent={isGhost || opticPres.ghosted}
                   opacity={isGhost ? ghostOpacity : opticPres.opacity}
@@ -749,12 +773,17 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
               </mesh>
               <mesh position={[0, 0, 0.015]} rotation={[Math.PI / 2, 0, 0]}>
                 <cylinderGeometry args={[0.028, 0.028, 0.012, 20]} />
-                <meshStandardMaterial
-                  color="#0f172a"
-                  metalness={0.3}
-                  roughness={0.05}
-                  emissive="#0284c7"
-                  emissiveIntensity={0.32}
+                <meshPhysicalMaterial
+                  color="#1b2e46"
+                  metalness={0.12}
+                  roughness={0.06}
+                  clearcoat={0.94}
+                  clearcoatRoughness={0.04}
+                  iridescence={0.36}
+                  iridescenceIOR={1.48}
+                  emissive="#0c4a6e"
+                  emissiveIntensity={0.22}
+                  envMapIntensity={1.32}
                   wireframe={isWire}
                   transparent={isGhost || opticPres.ghosted}
                   opacity={isGhost ? ghostOpacity : opticPres.opacity}
@@ -772,39 +801,57 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
           {/* Cylinder manifold block */}
           <mesh position={[0, 0.038, 0]}>
             <cylinderGeometry args={[0.064, 0.064, 0.054, 18]} />
-            <meshStandardMaterial
-              color={thermalHighlight ? "#f97316" : "#475569"}
-              metalness={0.86}
-              roughness={0.28}
+            <meshPhysicalMaterial
+              color={thermalHighlight ? "#f97316" : "#b9bcbf"}
+              metalness={0.95}
+              roughness={0.31}
+              anisotropy={0.32}
+              anisotropyRotation={Math.PI / 2}
+              normalMap={pbrMaps.normal}
+              normalScale={HERO_BRUSHED_NORMAL_SCALE}
+              roughnessMap={pbrMaps.roughness}
+              envMapIntensity={1.28}
               wireframe={isWire}
               transparent={isGhost || pumpPres.ghosted}
-              opacity={isGhost ? ghostOpacity : pumpPres.ghosted ? pumpPres.opacity : 0.92}
+              opacity={isGhost ? ghostOpacity : pumpPres.ghosted ? pumpPres.opacity : 0.94}
               clippingPlanes={isGhost ? [] : clippingPlanes}
             />
           </mesh>
           {/* Rotating central drive shaft */}
           <mesh ref={pumpShaftRef} position={[0, 0.01, 0]}>
             <cylinderGeometry args={[0.013, 0.013, 0.145, 14]} />
-            <meshStandardMaterial
-              color="#cbd5e1"
-              metalness={0.94}
-              roughness={0.16}
+            <meshPhysicalMaterial
+              color="#d6d9dc"
+              metalness={0.98}
+              roughness={0.22}
+              anisotropy={0.38}
+              anisotropyRotation={Math.PI / 2}
+              normalMap={pbrMaps.normal}
+              normalScale={HERO_BRUSHED_NORMAL_SCALE}
+              roughnessMap={pbrMaps.roughness}
+              envMapIntensity={1.35}
               wireframe={isWire}
               transparent={isGhost || pumpPres.ghosted}
               opacity={isGhost ? ghostOpacity : pumpPres.opacity}
               clippingPlanes={isGhost ? [] : clippingPlanes}
             />
           </mesh>
-          {/* Tilted wobbling swashplate cam disc */}
+          {/* Tilted wobbling swashplate cam disc (machined bronze/brass slipper plate) */}
           <group ref={swashplateGroupRef} position={[0, -0.02, 0]}>
             <mesh>
               <cylinderGeometry args={[0.056, 0.056, 0.011, 20]} />
-              <meshStandardMaterial
-                color="#10b981"
-                metalness={0.82}
-                roughness={0.22}
-                emissive={thermalHighlight ? "#f59e0b" : "#065f46"}
-                emissiveIntensity={0.28}
+              <meshPhysicalMaterial
+                color={thermalHighlight ? "#f59e0b" : "#d4b26a"}
+                metalness={0.95}
+                roughness={0.28}
+                anisotropy={0.32}
+                anisotropyRotation={Math.PI / 2}
+                normalMap={pbrMaps.normal}
+                normalScale={HERO_BRUSHED_NORMAL_SCALE}
+                roughnessMap={pbrMaps.roughness}
+                emissive={thermalHighlight ? "#b45309" : "#000000"}
+                emissiveIntensity={thermalHighlight ? 0.25 : 0}
+                envMapIntensity={1.3}
                 wireframe={isWire}
                 transparent={isGhost || pumpPres.ghosted}
                 opacity={isGhost ? ghostOpacity : pumpPres.opacity}
@@ -818,10 +865,13 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
             args={[geometries.pistonGeo, undefined, OCTOPUS_PISTON_COUNT]}
             frustumCulled={false}
           >
-            <meshStandardMaterial
-              color={thermalHighlight ? "#fb923c" : "#e2e8f0"}
-              metalness={0.92}
-              roughness={0.16}
+            <meshPhysicalMaterial
+              color={thermalHighlight ? "#fb923c" : "#d6d9dc"}
+              metalness={0.96}
+              roughness={0.24}
+              anisotropy={0.34}
+              anisotropyRotation={Math.PI / 2}
+              envMapIntensity={1.32}
               wireframe={isWire}
               transparent={isGhost || pumpPres.ghosted}
               opacity={isGhost ? ghostOpacity : pumpPres.opacity}
@@ -841,12 +891,15 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
             receiveShadow={!isInXr}
             frustumCulled={false}
           >
-            <meshStandardMaterial
+            <meshPhysicalMaterial
               color="#ffffff"
-              metalness={0.12}
-              roughness={0.24}
+              metalness={0.05}
+              roughness={0.3}
+              clearcoat={0.35}
+              clearcoatRoughness={0.22}
               normalMap={pbrMaps.detailNormal}
-              normalScale={new THREE.Vector2(0.14, 0.14)}
+              normalScale={HERO_ARM_DETAIL_NORMAL_SCALE}
+              envMapIntensity={1.0}
               wireframe={isWire}
               transparent={isGhost || isXray || armsPres.ghosted}
               opacity={isGhost ? ghostOpacity : isXray ? 0.34 : armsPres.opacity}
@@ -859,10 +912,13 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
             args={[geometries.collarGeo, undefined, OCTOPUS_TOTAL_SEGMENTS]}
             frustumCulled={false}
           >
-            <meshStandardMaterial
-              color={feaHighlight ? "#ef4444" : "#1e293b"}
-              metalness={0.86}
-              roughness={0.28}
+            <meshPhysicalMaterial
+              color={feaHighlight ? "#ef4444" : "#646d7a"}
+              metalness={0.93}
+              roughness={0.34}
+              anisotropy={0.26}
+              anisotropyRotation={Math.PI / 2}
+              envMapIntensity={1.22}
               wireframe={isWire}
               transparent={isGhost || isXray || armsPres.ghosted}
               opacity={isGhost ? ghostOpacity : isXray ? 0.35 : armsPres.opacity}
@@ -875,10 +931,12 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
             args={[geometries.wheelGeo, undefined, OCTOPUS_TOTAL_WHEELS]}
             frustumCulled={false}
           >
-            <meshStandardMaterial
+            <meshPhysicalMaterial
               color="#ffffff"
-              metalness={0.25}
-              roughness={0.62}
+              metalness={0.0}
+              roughness={0.84}
+              clearcoat={0}
+              envMapIntensity={0.78}
               wireframe={isWire}
               transparent={isGhost || isXray || armsPres.ghosted}
               opacity={isGhost ? ghostOpacity : isXray ? 0.34 : armsPres.opacity}
@@ -893,10 +951,16 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
         <group name="subsystem-siphon" position={[0, 0.012, -0.142 - effectiveExplode * 0.1]}>
           <mesh rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.028, 0.042, 0.072, 20]} />
-            <meshStandardMaterial
-              color={cfdHighlight ? "#06b6d4" : "#334155"}
-              metalness={0.82}
-              roughness={0.26}
+            <meshPhysicalMaterial
+              color={cfdHighlight ? "#06b6d4" : "#aeb6c0"}
+              metalness={0.94}
+              roughness={0.31}
+              anisotropy={0.32}
+              anisotropyRotation={Math.PI / 2}
+              normalMap={pbrMaps.normal}
+              normalScale={HERO_BRUSHED_NORMAL_SCALE}
+              roughnessMap={pbrMaps.roughness}
+              envMapIntensity={1.26}
               wireframe={isWire}
               transparent={isGhost || siphonPres.ghosted}
               opacity={isGhost ? ghostOpacity : siphonPres.opacity}
@@ -905,12 +969,15 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
           </mesh>
           <mesh position={[0, 0, -0.036]}>
             <torusGeometry args={[0.028, 0.004, 8, 20]} />
-            <meshStandardMaterial
-              color="#06b6d4"
-              metalness={0.5}
-              roughness={0.2}
+            <meshPhysicalMaterial
+              color="#22b8cf"
+              metalness={0.18}
+              roughness={0.24}
+              clearcoat={0.4}
+              clearcoatRoughness={0.18}
               emissive="#0ea5e9"
-              emissiveIntensity={0.45}
+              emissiveIntensity={0.35}
+              envMapIntensity={1.05}
               wireframe={isWire}
               transparent={isGhost || siphonPres.ghosted}
               opacity={isGhost ? ghostOpacity : siphonPres.opacity}
@@ -940,10 +1007,13 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
         <group name="subsystem-beak" position={[0, -0.088 - effectiveExplode * 0.08, 0.01]}>
           <mesh position={[0, 0.01, 0]}>
             <cylinderGeometry args={[0.044, 0.03, 0.024, 16]} />
-            <meshStandardMaterial
-              color="#1e293b"
-              metalness={0.84}
-              roughness={0.3}
+            <meshPhysicalMaterial
+              color="#68717d"
+              metalness={0.93}
+              roughness={0.34}
+              anisotropy={0.28}
+              anisotropyRotation={Math.PI / 2}
+              envMapIntensity={1.22}
               wireframe={isWire}
               transparent={isGhost || beakPres.ghosted}
               opacity={isGhost ? ghostOpacity : beakPres.opacity}
@@ -953,10 +1023,13 @@ export const OctopusShowcaseAssembly: React.FC<OctopusShowcaseAssemblyProps> = (
           {([-0.016, 0.016] as const).map((xOff, idx) => (
             <mesh key={idx} position={[xOff, -0.014, 0]} rotation={[0, 0, xOff < 0 ? 0.35 : -0.35]}>
               <coneGeometry args={[0.012, 0.036, 8]} />
-              <meshStandardMaterial
-                color="#a855f7"
-                metalness={0.76}
-                roughness={0.28}
+              <meshPhysicalMaterial
+                color="#8d6bb8"
+                metalness={0.92}
+                roughness={0.3}
+                anisotropy={0.26}
+                anisotropyRotation={Math.PI / 2}
+                envMapIntensity={1.22}
                 wireframe={isWire}
                 transparent={isGhost || beakPres.ghosted}
                 opacity={isGhost ? ghostOpacity : beakPres.opacity}

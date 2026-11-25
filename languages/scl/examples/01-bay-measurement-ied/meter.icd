@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="METER_BAY_ICD" version="1.0" revision="1.0" toolID="Ansatz"/>
+  <IED name="METER_01" desc="Feeder Power Quality Meter" type="PM-8000" manufacturer="Ansatz">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="MEAS">
+          <LN0 lnClass="LLN0" lnType="LLN0_Type" inst="">
+            <DataSet name="DS_MEAS">
+              <FCDA ldInst="MEAS" lnClass="MMXU" lnInst="1" doName="TotW" daName="mag.f" fc="MX"/>
+              <FCDA ldInst="MEAS" lnClass="MMXU" lnInst="1" doName="Hz" daName="mag.f" fc="MX"/>
+            </DataSet>
+          </LN0>
+          <LN lnClass="LPHD" inst="1" lnType="LPHD_Type"/>
+          <LN lnClass="MMXU" inst="1" lnType="MMXU_Type"/>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>

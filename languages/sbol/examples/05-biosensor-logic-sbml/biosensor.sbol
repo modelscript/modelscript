@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#" xml:base="http://modelscript.org/sbol/biosensor#">
+  <sbol:Sequence displayId="seq_sensor_tu" encoding="IUPAC_DNA">
+    <sbol:elements>TTGACAAAGAGGAGAAATGAGCAAAGGAGAAGAACTTTTCACTGGAGTTTAAAGGTTTTTT</sbol:elements>
+  </sbol:Sequence>
+
+  <sbol:Component displayId="pArs" name="Arsenite-Responsive Promoter" role="SO:0000167"/>
+  <sbol:Component displayId="rbs_bio" name="Tuned Biosensor RBS" role="SO:0000139"/>
+  <sbol:Component displayId="ArsR" name="Arsenite-Sensing Repressor" role="SO:0000316" initialConcentration="3.0" basalRate="0.05" maxExpressionRate="10.0" degradationRate="0.8"/>
+  <sbol:Component displayId="GFP_out" name="Fluorescent Biosensor Output" role="SO:0000316" initialConcentration="0.1" basalRate="0.04" maxExpressionRate="16.0" degradationRate="0.5"/>
+  <sbol:Component displayId="term_bio" name="Double Terminator" role="SO:0000141"/>
+
+  <sbol:Component displayId="tu_biosensor" name="Arsenite Biosensor Unit" role="SO:0000804" hasSequence="seq_sensor_tu">
+    <sbol:SubComponent displayId="sub_pArs" instanceOf="pArs" start="1" end="6"/>
+    <sbol:SubComponent displayId="sub_rbs" instanceOf="rbs_bio" start="7" end="16"/>
+    <sbol:SubComponent displayId="sub_gfp" instanceOf="GFP_out" start="17" end="52"/>
+    <sbol:SubComponent displayId="sub_term" instanceOf="term_bio" start="53" end="61"/>
+  </sbol:Component>
+
+  <sbol:Interaction displayId="rep_ArsR_GFP" type="SBO:0000169" K="1.5" n="2.0" alpha="16.0">
+    <sbol:Participation participant="ArsR" role="SBO:0000020"/>
+    <sbol:Participation participant="GFP_out" role="SBO:0000642"/>
+  </sbol:Interaction>
+</rdf:RDF>

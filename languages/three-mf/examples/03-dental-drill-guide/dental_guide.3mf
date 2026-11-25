@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:medical="http://schemas.modelscript.org/3mf/medical/2026/01">
+  <metadata name="Title">Maxillary_Dental_Implant_Drill_Guide</metadata>
+  <metadata name="Designer">Prosthodontics Digital Lab</metadata>
+  <resources>
+    <basematerials id="30">
+      <base name="Dental SG" displaycolor="#E8C66A"/>
+    </basematerials>
+    <object id="1" name="MaxillaSurgicalTemplate" type="model" pid="30" pindex="0" wallThickness="2.5">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="42.0" y="0" z="0"/>
+          <vertex x="42.0" y="18.0" z="0"/>
+          <vertex x="0" y="18.0" z="0"/>
+          <vertex x="0" y="0" z="8.0"/>
+          <vertex x="42.0" y="0" z="8.0"/>
+          <vertex x="42.0" y="18.0" z="8.0"/>
+          <vertex x="0" y="18.0" z="8.0"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1"/>
+          <triangle v1="0" v2="3" v3="2"/>
+          <triangle v1="4" v2="5" v3="6"/>
+          <triangle v1="4" v2="6" v3="7"/>
+          <triangle v1="0" v2="1" v3="5"/>
+          <triangle v1="0" v2="5" v3="4"/>
+          <triangle v1="3" v2="6" v3="2"/>
+          <triangle v1="3" v2="7" v3="6"/>
+          <triangle v1="0" v2="4" v3="7"/>
+          <triangle v1="0" v2="7" v3="3"/>
+          <triangle v1="1" v2="2" v3="6"/>
+          <triangle v1="1" v2="6" v3="5"/>
+        </triangles>
+      </mesh>
+      <medical:SurgicalGuide patientId="PT-DENT-402" anatomicalSite="Maxilla_Tooth14_16" wallThickness="2.5" material="Dental SG" sterilization="Autoclave_121C">
+        <medical:DrillSleeve id="ImplantSite14" entry="12 9 8" axis="0 0 -1" innerDiameter="3.2" outerDiameter="6.0" wallThickness="1.4" length="9.0"/>
+        <medical:DrillSleeve id="ImplantSite16" entry="30 9 8" axis="0.05 0 -0.9987" innerDiameter="3.5" outerDiameter="6.3" wallThickness="1.4" length="9.0"/>
+      </medical:SurgicalGuide>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1" transform="1 0 0 0 1 0 0 0 1 5 5 0" partnumber="DENT-SG-1416"/>
+  </build>
+</model>

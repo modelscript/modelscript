@@ -1,0 +1,12 @@
+{
+  "id": "c-01-clamped-pid-controller",
+  "lang": "c",
+  "subFormats": ["c99"],
+  "difficulty": 1,
+  "title": "Clamped Discrete PID Controller with Anti-Windup",
+  "description": "Deterministic fixed-step discrete-time PID control law in C99 featuring derivative filtering, output saturation clamping, and conditional integrator anti-windup.",
+  "category": "Embedded Control",
+  "tags": ["c", "pid", "anti-windup", "embedded-control"],
+  "activeFile": "pid.c",
+  "isDefaultStarter": true
+}

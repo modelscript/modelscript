@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmSubstat" loc_name="Plant_HV_Sub">
+    <desc>Industrial 110/20 kV Intake Substation</desc>
+  </DataObject>
+  <DataObject class="ElmTerm" loc_name="HV_Intake_110">
+    <uknom>110.0</uknom>
+    <fnom>50.0</fnom>
+    <substat>Plant_HV_Sub</substat>
+  </DataObject>
+  <DataObject class="ElmTerm" loc_name="MV_Main_20">
+    <uknom>20.0</uknom>
+    <fnom>50.0</fnom>
+    <substat>Plant_HV_Sub</substat>
+  </DataObject>
+  <DataObject class="ElmTerm" loc_name="MV_Furnace_20">
+    <uknom>20.0</uknom>
+    <fnom>50.0</fnom>
+  </DataObject>
+  <DataObject class="ElmTerm" loc_name="MV_Compressor_20">
+    <uknom>20.0</uknom>
+    <fnom>50.0</fnom>
+  </DataObject>
+  <DataObject class="TypTr2" loc_name="Trafo_110_20_63MVA">
+    <strn>63.0</strn>
+    <utrn_h>110.0</utrn_h>
+    <utrn_l>20.0</utrn_l>
+    <ukrr>11.5</ukrr>
+    <pkr>210.0</pkr>
+    <vecgrp>Dyn11</vecgrp>
+  </DataObject>
+  <DataObject class="ElmTr2" loc_name="T1_Main">
+    <bushv>HV_Intake_110</bushv>
+    <buslv>MV_Main_20</buslv>
+    <typ_id>Trafo_110_20_63MVA</typ_id>
+  </DataObject>
+  <DataObject class="TypLne" loc_name="XLPE_20kV_240">
+    <uline>20.0</uline>
+    <r1>0.125</r1>
+    <x1>0.110</x1>
+    <b1>94.0</b1>
+    <snom>14.0</snom>
+    <inom>0.41</inom>
+  </DataObject>
+  <DataObject class="ElmLne" loc_name="Cable_Furnace">
+    <bus1>MV_Main_20</bus1>
+    <bus2>MV_Furnace_20</bus2>
+    <dline>1.8</dline>
+    <typ_id>XLPE_20kV_240</typ_id>
+  </DataObject>
+  <DataObject class="ElmLne" loc_name="Cable_Compressor">
+    <bus1>MV_Main_20</bus1>
+    <bus2>MV_Compressor_20</bus2>
+    <dline>2.4</dline>
+    <typ_id>XLPE_20kV_240</typ_id>
+  </DataObject>
+  <DataObject class="TypSym" loc_name="Utility_Grid_Type">
+    <snom>250.0</snom>
+    <unom>110.0</unom>
+    <cosn>0.90</cosn>
+    <H>6.0</H>
+  </DataObject>
+  <DataObject class="ElmSym" loc_name="Utility_Infeed">
+    <bus1>HV_Intake_110</bus1>
+    <pgini>32.0</pgini>
+    <qgini>11.0</qgini>
+    <usetp>1.03</usetp>
+    <typ_id>Utility_Grid_Type</typ_id>
+  </DataObject>
+  <DataObject class="ElmLod" loc_name="ArcFurnace_Load">
+    <bus1>MV_Furnace_20</bus1>
+    <plini>18.5</plini>
+    <qlini>6.8</qlini>
+  </DataObject>
+  <DataObject class="ElmLod" loc_name="Compressor_Drive">
+    <bus1>MV_Compressor_20</bus1>
+    <plini>12.5</plini>
+    <qlini>3.9</qlini>
+  </DataObject>
+</PowerFactory>

@@ -1,0 +1,14 @@
+pmu GenPlant_345kV idcode=410 fnom=60 rate=60
+phasor V1_345 V format=polar scale=1.0 mag=346500 ang=-6.2
+phasor I1_GEN I format=polar scale=1.0 mag=1085 ang=-11.8
+analog UNIT_MW units=MW scale=1.0 init=650.0
+analog RESERVE_MW units=MW scale=1.0 init=180.0
+digital GEN_52G_TRIP
+digital UFLS_ARMED
+frame 2026-11-17T22:15:00.000Z 60.000 0.000
+frame 2026-11-17T22:15:00.500Z 59.890 -0.220
+frame 2026-11-17T22:15:01.000Z 59.795 -0.175
+frame 2026-11-17T22:15:02.000Z 59.685 -0.085
+frame 2026-11-17T22:15:03.500Z 59.640 -0.012
+frame 2026-11-17T22:15:05.000Z 59.665 0.025
+frame 2026-11-17T22:15:08.000Z 59.780 0.038

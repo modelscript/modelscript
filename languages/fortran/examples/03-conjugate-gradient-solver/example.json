@@ -1,0 +1,11 @@
+{
+  "id": "fortran-03-conjugate-gradient-solver",
+  "lang": "fortran",
+  "subFormats": ["fortran90"],
+  "difficulty": 3,
+  "title": "Symmetric Positive-Definite Conjugate Gradient Solver",
+  "description": "Matrix-free Krylov subspace Conjugate Gradient solver for a 1D discrete Poisson tridiagonal linear system with residual norm convergence check.",
+  "category": "Numerical Linear Algebra",
+  "tags": ["fortran", "conjugate-gradient", "krylov", "linear-solver"],
+  "activeFile": "cg_solver.f90"
+}

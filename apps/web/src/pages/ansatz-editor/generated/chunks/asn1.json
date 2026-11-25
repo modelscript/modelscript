@@ -1,0 +1,85 @@
+[
+  {
+    "id": "asn1-01-sensor-telemetry-packet",
+    "lang": "asn1",
+    "subFormats": ["x680"],
+    "difficulty": 1,
+    "title": "Industrial Sensor Telemetry Packet Schema",
+    "description": "Clean ASN.1 X.680 module defining an industrial temperature and pressure telemetry packet using SEQUENCE, constrained INTEGER, REAL, and PrintableString.",
+    "category": "Industrial Telemetry",
+    "tags": ["asn1", "x680", "telemetry", "sequence", "iot"],
+    "activeFile": "sensor_telemetry.asn",
+    "fileNames": ["sensor_telemetry.asn"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "-- Industrial SCADA Sensor Telemetry Packet (ASN.1 X.680)\nIndustrialTelemetry { iso(1) org(3) dod(6) internet(1) private(4) enterprise(1) 55001 }\nDEFINITIONS AUTOMATIC TAGS ::= BEGIN\n\nSensorReading ::= SEQUENCE {\n  sensorId      INTEGER (1..65535),\n  location      PrintableString (SIZE (1..32)),\n  timestampSec  INTEGER (0..4294967295),\n  temperatureK  REAL,\n  pressurePa    REAL,\n  valid         BOOLEAN\n}\n\ntelemetryOid OBJECT IDENTIFIER ::= { 1 3 6 1 4 1 55001 1 }\n\nEND\n"
+  },
+  {
+    "id": "asn1-02-autonomy-heartbeat-faults",
+    "lang": "asn1",
+    "subFormats": ["x680"],
+    "difficulty": 2,
+    "title": "Autonomous Vehicle Heartbeat & Safety Fault Schema",
+    "description": "ASN.1 schema encoding autonomous vehicle health heartbeats with ENUMERATED operating modes, BIT STRING subsystem fault flags, and tagged optional diagnostics.",
+    "category": "Autonomous Systems",
+    "tags": ["asn1", "enumerated", "bit-string", "autonomy", "safety"],
+    "activeFile": "autonomy_heartbeat.asn",
+    "fileNames": ["autonomy_heartbeat.asn"],
+    "fileCount": 1,
+    "code": "-- Autonomous Vehicle Health Heartbeat & Safety Fault Flags\nAutonomyHealth DEFINITIONS EXPLICIT TAGS ::= BEGIN\n\nDriveMode ::= ENUMERATED {\n  manual(0),\n  supervised(1),\n  autonomous(2),\n  minimalRiskManeuver(3),\n  emergencyStop(4)\n}\n\nFaultFlags ::= BIT STRING {\n  lidarDegraded(0),\n  radarTimeout(1),\n  gnssLost(2),\n  brakeActuatorFault(3),\n  steerActuatorFault(4),\n  thermalDerating(5)\n} (SIZE (8))\n\nHeartbeatFrame ::= SEQUENCE {\n  vehicleId     [0] IA5String (SIZE (4..16)),\n  sequenceNum   [1] INTEGER (0..4294967295),\n  mode          [2] DriveMode,\n  faults        [3] FaultFlags,\n  batteryPct    [4] INTEGER (0..100),\n  note          [5] UTF8String (SIZE (1..64)) OPTIONAL\n}\n\nEND\n"
+  },
+  {
+    "id": "asn1-03-snmpv1-pdu-imports",
+    "lang": "asn1",
+    "subFormats": ["x680", "snmp"],
+    "difficulty": 3,
+    "title": "SNMPv1 Protocol Data Unit Importing RFC 1155 SMI",
+    "description": "Multi-module ASN.1 network management specification pairing RFC 1157 SNMPv1 Message/PDU definitions with a companion RFC1155-SMI module exporting ObjectName and ObjectSyntax.",
+    "category": "Network Management",
+    "tags": ["asn1", "snmp", "smi", "imports", "multi-file"],
+    "activeFile": "snmpv1.asn",
+    "fileNames": ["snmpv1.asn", "rfc1155_smi.asn"],
+    "fileCount": 2,
+    "code": "-- RFC 1157 SNMPv1 Message & PDU Subset\nRFC1157-SNMP { iso(1) org(3) dod(6) internet(1) mgmt(2) }\nDEFINITIONS IMPLICIT TAGS ::= BEGIN\n\nEXPORTS Message, PDUs;\nIMPORTS ObjectName, ObjectSyntax FROM RFC1155-SMI;\n\nMessage ::= SEQUENCE {\n  version    INTEGER { version-1(0) },\n  community  OCTET STRING (SIZE (1..64)),\n  data       PDUs\n}\n\nPDUs ::= CHOICE {\n  get-request      [0] GetRequest-PDU,\n  get-next-request [1] GetNextRequest-PDU,\n  get-response     [2] GetResponse-PDU\n}\n\nGetRequest-PDU ::= SEQUENCE {\n  request-id         INTEGER (-2147483648..2147483647),\n  error-status       ENUMERATED { noError(0), tooBig(1), noSuchName(2), badValue(3), readOnly(4) },\n  error-index        INTEGER (0..255) DEFAULT 0,\n  variable-bindings  SEQUENCE (SIZE (0..32)) OF VarBind\n}\n\nGetNextRequest-PDU ::= GetRequest-PDU\nGetResponse-PDU ::= GetRequest-PDU\n\nVarBind ::= SEQUENCE {\n  name   ObjectName,\n  value  ObjectSyntax\n}\n\nEND\n",
+    "files": {
+      "snmpv1.asn": "-- RFC 1157 SNMPv1 Message & PDU Subset\nRFC1157-SNMP { iso(1) org(3) dod(6) internet(1) mgmt(2) }\nDEFINITIONS IMPLICIT TAGS ::= BEGIN\n\nEXPORTS Message, PDUs;\nIMPORTS ObjectName, ObjectSyntax FROM RFC1155-SMI;\n\nMessage ::= SEQUENCE {\n  version    INTEGER { version-1(0) },\n  community  OCTET STRING (SIZE (1..64)),\n  data       PDUs\n}\n\nPDUs ::= CHOICE {\n  get-request      [0] GetRequest-PDU,\n  get-next-request [1] GetNextRequest-PDU,\n  get-response     [2] GetResponse-PDU\n}\n\nGetRequest-PDU ::= SEQUENCE {\n  request-id         INTEGER (-2147483648..2147483647),\n  error-status       ENUMERATED { noError(0), tooBig(1), noSuchName(2), badValue(3), readOnly(4) },\n  error-index        INTEGER (0..255) DEFAULT 0,\n  variable-bindings  SEQUENCE (SIZE (0..32)) OF VarBind\n}\n\nGetNextRequest-PDU ::= GetRequest-PDU\nGetResponse-PDU ::= GetRequest-PDU\n\nVarBind ::= SEQUENCE {\n  name   ObjectName,\n  value  ObjectSyntax\n}\n\nEND\n",
+      "rfc1155_smi.asn": "-- RFC 1155 Structure of Management Information (SMI) Subset\nRFC1155-SMI { iso(1) org(3) dod(6) internet(1) mgmt(2) 1 }\nDEFINITIONS EXPLICIT TAGS ::= BEGIN\n\nEXPORTS ObjectName, ObjectSyntax, NetworkAddress, Counter, Gauge, TimeTicks;\n\nObjectName ::= OBJECT IDENTIFIER\n\nNetworkAddress ::= CHOICE {\n  internet [0] OCTET STRING (SIZE (4))\n}\n\nCounter ::= INTEGER (0..4294967295)\nGauge ::= INTEGER (0..4294967295)\nTimeTicks ::= INTEGER (0..4294967295)\n\nObjectSyntax ::= CHOICE {\n  number    [0] INTEGER,\n  string    [1] OCTET STRING,\n  object    [2] OBJECT IDENTIFIER,\n  empty     [3] NULL,\n  counter   [4] Counter,\n  timeticks [5] TimeTicks\n}\n\nEND\n"
+    }
+  },
+  {
+    "id": "asn1-04-x509-digital-certificate",
+    "lang": "asn1",
+    "subFormats": ["x680", "x509"],
+    "difficulty": 4,
+    "title": "X.509 v3 Digital Certificate & PKI Algorithm Identifiers",
+    "description": "Multi-module ASN.1 PKI schema modeling an X.509 v3 Certificate, TBSCertificate, Validity, and SubjectPublicKeyInfo importing AlgorithmIdentifier from a companion module.",
+    "category": "Cryptography & PKI",
+    "tags": ["asn1", "x509", "pki", "certificate", "multi-file"],
+    "activeFile": "x509_cert.asn",
+    "fileNames": ["x509_cert.asn", "alg_ids.asn"],
+    "fileCount": 2,
+    "code": "-- RFC 5280 X.509 v3 Digital Certificate Subset\nPKIX1ExplicitSubset { iso(1) identified-organization(3) dod(6) internet(1) security(5) mechanisms(5) pkix(7) id-mod(0) 18 }\nDEFINITIONS EXPLICIT TAGS ::= BEGIN\n\nEXPORTS Certificate, TBSCertificate;\nIMPORTS AlgorithmIdentifier FROM PKIX-AlgorithmIdentifiers;\n\nCertificate ::= SEQUENCE {\n  tbsCertificate      TBSCertificate,\n  signatureAlgorithm  AlgorithmIdentifier,\n  signatureValue      BIT STRING\n}\n\nTBSCertificate ::= SEQUENCE {\n  version               [0] INTEGER { v1(0), v2(1), v3(2) } DEFAULT 0,\n  serialNumber          INTEGER (1..2147483647),\n  signature             AlgorithmIdentifier,\n  issuer                DistinguishedName,\n  validity              Validity,\n  subject               DistinguishedName,\n  subjectPublicKeyInfo  SubjectPublicKeyInfo\n}\n\nDistinguishedName ::= SEQUENCE {\n  countryName       [0] PrintableString (SIZE (2)),\n  organizationName  [1] UTF8String (SIZE (1..64)),\n  commonName        [2] UTF8String (SIZE (1..64))\n}\n\nValidity ::= SEQUENCE {\n  notBefore  IA5String (SIZE (13..15)),\n  notAfter   IA5String (SIZE (13..15))\n}\n\nSubjectPublicKeyInfo ::= SEQUENCE {\n  algorithm         AlgorithmIdentifier,\n  subjectPublicKey  BIT STRING\n}\n\nEND\n",
+    "files": {
+      "x509_cert.asn": "-- RFC 5280 X.509 v3 Digital Certificate Subset\nPKIX1ExplicitSubset { iso(1) identified-organization(3) dod(6) internet(1) security(5) mechanisms(5) pkix(7) id-mod(0) 18 }\nDEFINITIONS EXPLICIT TAGS ::= BEGIN\n\nEXPORTS Certificate, TBSCertificate;\nIMPORTS AlgorithmIdentifier FROM PKIX-AlgorithmIdentifiers;\n\nCertificate ::= SEQUENCE {\n  tbsCertificate      TBSCertificate,\n  signatureAlgorithm  AlgorithmIdentifier,\n  signatureValue      BIT STRING\n}\n\nTBSCertificate ::= SEQUENCE {\n  version               [0] INTEGER { v1(0), v2(1), v3(2) } DEFAULT 0,\n  serialNumber          INTEGER (1..2147483647),\n  signature             AlgorithmIdentifier,\n  issuer                DistinguishedName,\n  validity              Validity,\n  subject               DistinguishedName,\n  subjectPublicKeyInfo  SubjectPublicKeyInfo\n}\n\nDistinguishedName ::= SEQUENCE {\n  countryName       [0] PrintableString (SIZE (2)),\n  organizationName  [1] UTF8String (SIZE (1..64)),\n  commonName        [2] UTF8String (SIZE (1..64))\n}\n\nValidity ::= SEQUENCE {\n  notBefore  IA5String (SIZE (13..15)),\n  notAfter   IA5String (SIZE (13..15))\n}\n\nSubjectPublicKeyInfo ::= SEQUENCE {\n  algorithm         AlgorithmIdentifier,\n  subjectPublicKey  BIT STRING\n}\n\nEND\n",
+      "alg_ids.asn": "-- PKIX Cryptographic Algorithm Identifiers Module\nPKIX-AlgorithmIdentifiers { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) 1 }\nDEFINITIONS EXPLICIT TAGS ::= BEGIN\n\nEXPORTS AlgorithmIdentifier;\n\nAlgorithmIdentifier ::= SEQUENCE {\n  algorithm   OBJECT IDENTIFIER,\n  parameters  NULL OPTIONAL\n}\n\nsha256WithRSAEncryption OBJECT IDENTIFIER ::= { 1 2 840 113549 1 1 11 }\necdsaWithSHA256 OBJECT IDENTIFIER ::= { 1 2 840 10045 4 3 2 }\n\nEND\n"
+    }
+  },
+  {
+    "id": "asn1-05-v2x-j2735-basic-safety-message",
+    "lang": "asn1",
+    "subFormats": ["x680", "v2x"],
+    "difficulty": 5,
+    "title": "SAE J2735 V2X Basic Safety Message (BSM) Schema",
+    "description": "Multi-module automotive V2X C-V2X / DSRC ASN.1 schema defining the SAE J2735 BasicSafetyMessage (BSMcoreData + safety extensions) importing shared kinematic primitives from J2735-Common.",
+    "category": "Connected & Autonomous Vehicles",
+    "tags": ["asn1", "v2x", "j2735", "bsm", "automotive", "multi-file"],
+    "activeFile": "j2735_bsm.asn",
+    "fileNames": ["j2735_bsm.asn", "j2735_common.asn"],
+    "fileCount": 2,
+    "code": "-- SAE J2735 V2X Basic Safety Message (BSM) Subset\nJ2735-BasicSafetyMessage { iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprise(1) 48001 }\nDEFINITIONS AUTOMATIC TAGS ::= BEGIN\n\nEXPORTS BasicSafetyMessage, BSMcoreData;\nIMPORTS Latitude, Longitude, Elevation, Speed, Heading, AccelerationSet4Way, BrakeSystemStatus, VehicleSize FROM J2735-Common;\n\nBasicSafetyMessage ::= SEQUENCE {\n  coreData     BSMcoreData,\n  partII       SEQUENCE (SIZE (1..8)) OF BSMpartIIExtension OPTIONAL\n}\n\nBSMcoreData ::= SEQUENCE {\n  msgCnt        INTEGER (0..127),\n  id            OCTET STRING (SIZE (4)),\n  secMark       INTEGER (0..65535),\n  lat           Latitude,\n  long          Longitude,\n  elev          Elevation,\n  speed         Speed,\n  heading       Heading,\n  angle         INTEGER (-126..127),\n  accelSet      AccelerationSet4Way,\n  brakes        BrakeSystemStatus,\n  size          VehicleSize\n}\n\nBSMpartIIExtension ::= CHOICE {\n  vehicleSafetyExt   [0] VehicleSafetyExtensions,\n  specialVehicleExt  [1] SpecialVehicleExtensions\n}\n\nVehicleSafetyExtensions ::= SEQUENCE {\n  hardBraking    BOOLEAN,\n  hazardLights   BOOLEAN,\n  pathRadiusCm   INTEGER (-32767..32767)\n}\n\nSpecialVehicleExtensions ::= SEQUENCE {\n  sirenActive    BOOLEAN,\n  lightBarInUse  BOOLEAN\n}\n\nEND\n",
+    "files": {
+      "j2735_bsm.asn": "-- SAE J2735 V2X Basic Safety Message (BSM) Subset\nJ2735-BasicSafetyMessage { iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprise(1) 48001 }\nDEFINITIONS AUTOMATIC TAGS ::= BEGIN\n\nEXPORTS BasicSafetyMessage, BSMcoreData;\nIMPORTS Latitude, Longitude, Elevation, Speed, Heading, AccelerationSet4Way, BrakeSystemStatus, VehicleSize FROM J2735-Common;\n\nBasicSafetyMessage ::= SEQUENCE {\n  coreData     BSMcoreData,\n  partII       SEQUENCE (SIZE (1..8)) OF BSMpartIIExtension OPTIONAL\n}\n\nBSMcoreData ::= SEQUENCE {\n  msgCnt        INTEGER (0..127),\n  id            OCTET STRING (SIZE (4)),\n  secMark       INTEGER (0..65535),\n  lat           Latitude,\n  long          Longitude,\n  elev          Elevation,\n  speed         Speed,\n  heading       Heading,\n  angle         INTEGER (-126..127),\n  accelSet      AccelerationSet4Way,\n  brakes        BrakeSystemStatus,\n  size          VehicleSize\n}\n\nBSMpartIIExtension ::= CHOICE {\n  vehicleSafetyExt   [0] VehicleSafetyExtensions,\n  specialVehicleExt  [1] SpecialVehicleExtensions\n}\n\nVehicleSafetyExtensions ::= SEQUENCE {\n  hardBraking    BOOLEAN,\n  hazardLights   BOOLEAN,\n  pathRadiusCm   INTEGER (-32767..32767)\n}\n\nSpecialVehicleExtensions ::= SEQUENCE {\n  sirenActive    BOOLEAN,\n  lightBarInUse  BOOLEAN\n}\n\nEND\n",
+      "j2735_common.asn": "-- SAE J2735 Shared Kinematic & Vehicle Primitive Types\nJ2735-Common { iso(1) identified-organization(3) dod(6) internet(1) private(4) enterprise(1) 48001 1 }\nDEFINITIONS AUTOMATIC TAGS ::= BEGIN\n\nEXPORTS Latitude, Longitude, Elevation, Speed, Heading, AccelerationSet4Way, BrakeSystemStatus, VehicleSize;\n\nLatitude ::= INTEGER (-900000000..900000001)\nLongitude ::= INTEGER (-1799999999..1800000001)\nElevation ::= INTEGER (-4096..61439)\nSpeed ::= INTEGER (0..8191)\nHeading ::= INTEGER (0..28800)\n\nAccelerationSet4Way ::= SEQUENCE {\n  longAccel  INTEGER (-2000..2001),\n  latAccel   INTEGER (-2000..2001),\n  vertAccel  INTEGER (-127..127),\n  yawRate    INTEGER (-32767..32767)\n}\n\nBrakeSystemStatus ::= SEQUENCE {\n  wheelBrakes  BIT STRING { unavailable(0), leftFront(1), leftRear(2), rightFront(3), rightRear(4) } (SIZE (5)),\n  traction     ENUMERATED { unavailable(0), off(1), on(2), engaged(3) },\n  abs          ENUMERATED { unavailable(0), off(1), on(2), engaged(3) },\n  scs          ENUMERATED { unavailable(0), off(1), on(2), engaged(3) }\n}\n\nVehicleSize ::= SEQUENCE {\n  widthCm   INTEGER (0..1023),\n  lengthCm  INTEGER (0..4095)\n}\n\nEND\n"
+    }
+  }
+]

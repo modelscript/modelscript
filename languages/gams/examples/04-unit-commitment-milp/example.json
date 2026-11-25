@@ -1,0 +1,11 @@
+{
+  "id": "gams-04-unit-commitment-milp",
+  "lang": "gams",
+  "subFormats": ["gams", "mip"],
+  "difficulty": 4,
+  "title": "Thermal Power Plant Unit Commitment MILP",
+  "description": "Multi-period mixed-integer unit commitment scheduling three thermal generators over a 4-hour load profile with minimum/maximum output limits and companion data include.",
+  "category": "Power Systems Optimization",
+  "tags": ["gams", "mip", "unit-commitment", "power-grid", "multi-file"],
+  "activeFile": "uc.gms"
+}

@@ -1,0 +1,30 @@
+solid quadruped_chassis
+  facet normal 0 0 1
+    outer loop
+      vertex -0.26 -0.12 0.06
+      vertex  0.26 -0.12 0.06
+      vertex  0.26  0.12 0.06
+    endloop
+  endfacet
+  facet normal 0 0 1
+    outer loop
+      vertex -0.26 -0.12 0.06
+      vertex  0.26  0.12 0.06
+      vertex -0.26  0.12 0.06
+    endloop
+  endfacet
+  facet normal 0 0 -1
+    outer loop
+      vertex -0.26 -0.12 -0.06
+      vertex  0.26  0.12 -0.06
+      vertex  0.26 -0.12 -0.06
+    endloop
+  endfacet
+  facet normal 0 0 -1
+    outer loop
+      vertex -0.26 -0.12 -0.06
+      vertex -0.26  0.12 -0.06
+      vertex  0.26  0.12 -0.06
+    endloop
+  endfacet
+endsolid quadruped_chassis

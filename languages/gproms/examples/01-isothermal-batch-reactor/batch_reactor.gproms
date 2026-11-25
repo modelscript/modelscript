@@ -1,0 +1,34 @@
+DECLARE
+  TYPE
+    Concentration = 1.0 : 0.0 : 100.0 UNIT = "mol/L"
+    ReactionRate  = 0.0 : -1000.0 : 1000.0 UNIT = "mol/(L*s)"
+  END
+END
+
+MODEL IsothermalBatchReactor
+  PARAMETER
+    k AS REAL DEFAULT 0.25
+
+  VARIABLE
+    C_A AS Concentration
+    C_B AS Concentration
+    r   AS ReactionRate
+
+  EQUATION
+    r = k * C_A ;
+    $C_A = -r ;
+    $C_B = r ;
+END
+
+PROCESS BatchSimulation
+  UNIT
+    B101 AS IsothermalBatchReactor
+  SET
+    B101.k := 0.25 ;
+  INITIAL
+    B101.C_A := 5.0 ;
+    B101.C_B := 0.0 ;
+  SOLUTIONPARAMETERS
+    ReportingInterval := 0.1 ;
+    TotalTime := 20.0 ;
+END

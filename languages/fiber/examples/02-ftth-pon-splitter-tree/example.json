@@ -1,0 +1,11 @@
+{
+  "id": "fiber-02-ftth-pon-splitter-tree",
+  "lang": "fiber",
+  "subFormats": ["geojson"],
+  "difficulty": 2,
+  "title": "FTTH Neighborhood PON Splitter Tree",
+  "description": "GeoJSON FTTH passive optical network feeder-to-distribution tree with a central office OLT, neighborhood FDH splice closure, and two customer drops.",
+  "category": "FTTH / GPON",
+  "tags": ["fiber", "ftth", "pon", "splitter", "geojson"],
+  "activeFile": "ftth_pon.geojson"
+}

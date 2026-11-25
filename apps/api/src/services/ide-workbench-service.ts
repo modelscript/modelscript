@@ -121,7 +121,7 @@ export function patchWebviewPreHtml(html: string): string {
 }
 
 /**
- * Renders the VS Code Web workbench HTML document configured with the ModelScript IDE extension,
+ * Renders the VS Code Web workbench HTML document configured with the Ansatz Studio extension,
  * `github-fs` virtual filesystem provider, Open VSX gallery, and hash-based workspace routing.
  */
 export function renderWorkbenchHtml(
@@ -135,7 +135,7 @@ export function renderWorkbenchHtml(
   if (!template) {
     return {
       status: 503,
-      html: `<!DOCTYPE html><html><head><title>ModelScript IDE Unavailable</title></head><body style="background:#0d1117;color:#c9d1d9;font-family:system-ui,sans-serif;padding:32px;"><h2>VS Code Web workbench template not found</h2><p>Run <code>npm run download-vscode --workspace=@modelscript/ide &amp;&amp; npm run build-extension --workspace=@modelscript/ide</code> to initialize the local IDE bundle.</p></body></html>`,
+      html: `<!DOCTYPE html><html><head><title>Ansatz Studio Unavailable</title></head><body style="background:#0d1117;color:#c9d1d9;font-family:system-ui,sans-serif;padding:32px;"><h2>VS Code Web workbench template not found</h2><p>Run <code>npm run download-vscode --workspace=@modelscript/ide &amp;&amp; npm run build-extension --workspace=@modelscript/ide</code> to initialize the local IDE bundle.</p></body></html>`,
     };
   }
 
@@ -350,7 +350,7 @@ export function renderWorkbenchHtml(
           try {
             sessionStorage.setItem('modelscript.initialAnchor', anchorParam);
             localStorage.setItem('modelscript.initialAnchor', anchorParam);
-          } catch (e) {}
+          } catch (e) { /* Storage may be unavailable in sandboxed iframes */ }
         }
       }
       if (template.startsWith('artifact-') || /^\\d+$/.test(template)) {
@@ -365,7 +365,7 @@ export function renderWorkbenchHtml(
             var parsed = JSON.parse(cached);
             if (parsed && parsed.title) cachedTitle = parsed.title;
           }
-        } catch (e) {}
+        } catch (e) { /* Ignore unreadable or malformed cached scratch metadata */ }
         document.title = (cachedTitle || ('Workspace #' + artId)) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
       } else if (template.startsWith('package-')) {
         document.title = 'Package ' + template.slice(8) + (anchorParam ? ' (' + anchorParam + ')' : '') + ' — Studio';
@@ -402,7 +402,7 @@ export function renderWorkbenchHtml(
           sessionStorage.setItem('modelscript.user', JSON.stringify(data.user));
           localStorage.setItem('modelscript.user', JSON.stringify(data.user));
         }
-      } catch (e) {}
+      } catch (e) { /* Storage may be unavailable in sandboxed iframes */ }
     }
     if (data.type === 'MODELSCRIPT_MOUNT_ARTIFACT' && data.artifactId) {
       try {
@@ -413,7 +413,7 @@ export function renderWorkbenchHtml(
         if (data.title) {
           document.title = data.title + ' — Studio';
         }
-      } catch (e) {}
+      } catch (e) { /* Storage may be unavailable in sandboxed iframes */ }
     }
   }
 
@@ -423,7 +423,7 @@ export function renderWorkbenchHtml(
         var refUrl = new URL(document.referrer);
         if (checkOriginAllowed(refUrl.origin)) return refUrl.origin;
       }
-    } catch (e) {}
+    } catch (e) { /* Invalid referrer URL; fall back to window origin */ }
     return window.location.origin;
   }
 
@@ -462,7 +462,7 @@ export function renderWorkbenchHtml(
       ) {
         return true;
       }
-    } catch (e) {}
+    } catch (e) { /* Malformed origin URL; treat as disallowed */ }
     return false;
   }
 
@@ -474,7 +474,7 @@ export function renderWorkbenchHtml(
     if (window.opener && !window.opener.closed) {
       window.opener.postMessage({ type: 'MODELSCRIPT_READY' }, targetOrigin);
     }
-  } catch (e) {}
+  } catch (e) { /* Cross-origin parent/opener postMessage is best-effort */ }
 
   if (typeof BroadcastChannel !== 'undefined') {
     try {
@@ -483,7 +483,7 @@ export function renderWorkbenchHtml(
         handleIncomingBridgeData(ev.data);
       });
       bridgeChannel.postMessage({ type: 'MODELSCRIPT_READY' });
-    } catch (e) {}
+    } catch (e) { /* BroadcastChannel may be blocked in restricted contexts */ }
   }
 
   window.addEventListener('message', function(ev) {
@@ -519,12 +519,12 @@ export function renderWorkbenchHtml(
                 for (var k = 0; k < iframe.contentWindow.frames.length; k++) {
                   iframe.contentWindow.frames[k].postMessage(msg, '*');
                 }
-              } catch (e2) {}
+              } catch (e2) { /* Cross-origin nested iframe access denied */ }
             }
           }
         }
       }
-    } catch (err) {}
+    } catch (err) { /* Best-effort drag forwarding to webviews */ }
   }
 
   window.addEventListener('dragover', function(e) {
@@ -544,7 +544,7 @@ export function renderWorkbenchHtml(
         extra.iconSvg = e.dataTransfer.getData('application/vnd.modelscript.iconsvg');
         extra.json = e.dataTransfer.getData('application/json');
       }
-    } catch (mErr) {}
+    } catch (mErr) { /* Ignore inaccessible drag-and-drop MIME payloads */ }
     forwardToWebviews('workbenchDrop', e.clientX, e.clientY, extra);
   }, true);
 
@@ -558,10 +558,10 @@ export function renderWorkbenchHtml(
             for (var k = 0; k < iframes[i].contentWindow.frames.length; k++) {
               iframes[i].contentWindow.frames[k].postMessage({ type: 'dragEnd' }, '*');
             }
-          } catch (e2) {}
+          } catch (e2) { /* Cross-origin nested iframe access denied */ }
         }
       }
-    } catch (err) {}
+    } catch (err) { /* Best-effort dragEnd broadcast to webviews */ }
   }, true);
 })();
 </script>`;

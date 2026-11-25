@@ -1,0 +1,12 @@
+{
+  "id": "fortran-01-rk4-damped-oscillator",
+  "lang": "fortran",
+  "subFormats": ["fortran90"],
+  "difficulty": 1,
+  "title": "RK4 Damped Harmonic Oscillator",
+  "description": "Fourth-order Runge-Kutta (RK4) numerical integrator in Fortran 90 solving a viscously damped mechanical mass-spring-damper oscillator with energy tracking.",
+  "category": "Scientific Computing",
+  "tags": ["fortran", "rk4", "ode", "oscillator"],
+  "activeFile": "oscillator.f90",
+  "isDefaultStarter": true
+}

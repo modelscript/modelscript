@@ -1049,7 +1049,7 @@ function SceneContents({
   assemblyVisibility = null,
 }: SceneContentsProps) {
   const { gl, scene, camera, size } = useThree();
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
   const framedSignatureRef = useRef<string>("");
   const sweepPhaseRef = useRef(0);
 
@@ -1285,7 +1285,11 @@ function SceneContents({
           dampingFactor={0.1}
           autoRotate={Boolean(autoTurntable)}
           autoRotateSpeed={1.6}
-          touches={touchScrollPassThrough ? { ONE: undefined as any, TWO: THREE.TOUCH.DOLLY_PAN } : undefined}
+          touches={
+            touchScrollPassThrough
+              ? { ONE: undefined as unknown as THREE.TOUCH, TWO: THREE.TOUCH.DOLLY_PAN }
+              : undefined
+          }
         />
       )}
 
@@ -1751,8 +1755,8 @@ export default function CadViewer({
         animationController.seek(detail.time);
       }
     };
-    window.addEventListener("morsel:time-scrub", handleTimeScrub);
-    return () => window.removeEventListener("morsel:time-scrub", handleTimeScrub);
+    window.addEventListener("ansatz:time-scrub", handleTimeScrub);
+    return () => window.removeEventListener("ansatz:time-scrub", handleTimeScrub);
   }, [animationController]);
 
   if (error) {

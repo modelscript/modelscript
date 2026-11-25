@@ -1,0 +1,11 @@
+{
+  "id": "phreeqc-03-acid-mine-drainage-titration",
+  "lang": "phreeqc",
+  "subFormats": ["phreeqc"],
+  "difficulty": 3,
+  "title": "Acid Mine Drainage Neutralization with Limestone Titration",
+  "description": "Remediation of acidic iron- and sulfate-rich mine drainage (pH 2.8) via stepwise CaCO3 limestone addition and gypsum/ferrihydrite mineral precipitation.",
+  "category": "Environmental Geochemistry",
+  "tags": ["phreeqc", "acid-mine-drainage", "titration", "remediation"],
+  "activeFile": "amd_titration.pqi"
+}

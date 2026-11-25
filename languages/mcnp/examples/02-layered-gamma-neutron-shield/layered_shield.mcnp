@@ -1,0 +1,25 @@
+Lead and Borated Polyethylene Layered Gamma-Neutron Shield
+C Block 1: Cell Cards
+1 0        -1 2 -3 4 -5 6 IMP:N=1 IMP:P=1 $ Source air cavity
+2 1 -0.95  -7 1 -3 4 -5 6 IMP:N=1 IMP:P=1 $ 20 cm Polyethylene neutron shield
+3 2 -11.35 -8 7 -3 4 -5 6 IMP:N=1 IMP:P=1 $ 10 cm Lead gamma shield
+4 0         8:-2:3:-4:5:-6 IMP:N=0 IMP:P=0 $ External graveyard
+
+C Block 2: Surface Cards
+1 PX 10.0  $ Front of polyethylene slab
+2 PX 0.0   $ Source cavity back plane
+3 PY 50.0  $ Top Y boundary
+4 PY -50.0 $ Bottom Y boundary
+5 PZ 50.0  $ Top Z boundary
+6 PZ -50.0 $ Bottom Z boundary
+7 PX 30.0  $ Polyethylene-Lead interface
+8 PX 40.0  $ Outer shield exit face
+
+C Block 3: Data Cards
+MODE N P
+M1 6000.80c 1.0 1001.80c 2.0
+M2 82206.80c 0.241 82207.80c 0.221 82208.80c 0.524
+SDEF POS=2.0 0.0 0.0 VEC=1 0 0 DIR=1 ERG=2.5 PAR=N
+F2:N 8
+F2:P 8
+NPS 20000

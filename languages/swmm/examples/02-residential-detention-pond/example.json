@@ -1,0 +1,11 @@
+{
+  "id": "swmm-02-residential-detention-pond",
+  "lang": "swmm",
+  "subFormats": ["swmm"],
+  "difficulty": 2,
+  "title": "Branched Residential Drainage with Detention Pond",
+  "description": "Two-branch residential storm sewer network discharging into an inline stormwater detention storage basin to attenuate peak runoff before the receiving outfall.",
+  "category": "Urban Stormwater Hydraulics",
+  "tags": ["swmm", "detention-pond", "storage", "branched-sewer"],
+  "activeFile": "detention_pond.swmm"
+}

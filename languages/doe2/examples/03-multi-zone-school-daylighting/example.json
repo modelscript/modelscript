@@ -1,0 +1,11 @@
+{
+  "id": "doe2-03-multi-zone-school-daylighting",
+  "lang": "doe2",
+  "subFormats": ["inp"],
+  "difficulty": 3,
+  "title": "Multi-Zone School Building with Daylighting and Economizer",
+  "description": "Three-zone educational wing (South Classrooms, North Classrooms, Gymnasium) with low-E daylighting clerestory glazing, roof assembly, and packaged multizone air-side economizer HVAC.",
+  "category": "Building Energy Simulation",
+  "tags": ["doe2", "multi-zone", "daylighting", "school"],
+  "activeFile": "school.inp"
+}

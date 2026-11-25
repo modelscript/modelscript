@@ -1,0 +1,11 @@
+{
+  "id": "dnp3-04-recloser-freeze-counters",
+  "lang": "dnp3",
+  "subFormats": ["dnp3"],
+  "difficulty": 4,
+  "title": "Distributed Feeder Recloser Telemetry & Freeze Counters",
+  "description": "JSON DNP3 outstation profile for an automated 12.47 kV distribution recloser featuring three-phase fault current telemetry, hot-line tag interlocks, and interval freeze energy counters.",
+  "category": "Power Systems SCADA",
+  "tags": ["dnp3", "recloser", "distribution-automation", "counters", "json"],
+  "activeFile": "recloser_telemetry.dnp3"
+}

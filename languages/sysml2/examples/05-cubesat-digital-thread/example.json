@@ -1,0 +1,11 @@
+{
+  "id": "sysml2-05-cubesat-digital-thread",
+  "lang": "sysml2",
+  "subFormats": ["sysml", "kerml"],
+  "difficulty": 5,
+  "title": "6U CubeSat Mission Digital Thread",
+  "description": "Four-file SysML v2 and KerML space mission architecture integrating KerML quantity types, LEO orbital requirements, EPS power budget constraints, and spacecraft bus structure.",
+  "category": "Space Systems",
+  "tags": ["sysml2", "kerml", "cubesat", "digital-thread", "multi-file"],
+  "activeFile": "Spacecraft.sysml"
+}

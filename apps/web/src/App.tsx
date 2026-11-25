@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { MorselLoadingScreen } from "@modelscript/editor/workbench/MorselLoadingScreen";
+import { AnsatzEditorLoadingScreen } from "@modelscript/editor/workbench/AnsatzEditorLoadingScreen";
 import { BaseStyles, ThemeProvider } from "@primer/react";
 import React, { Suspense } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -41,7 +41,7 @@ if (typeof window !== "undefined") {
   });
 }
 
-function lazyWithRetry<T extends React.ComponentType<any>>(
+function lazyWithRetry<T extends React.ComponentType<never>>(
   importer: () => Promise<{ default: T }>,
 ): React.LazyExoticComponent<T> {
   return React.lazy(async () => {
@@ -77,7 +77,7 @@ const AboutAccountPage = lazyWithRetry(() => import("./pages/AboutAccountPage"))
 const AdminPage = lazyWithRetry(() => import("./pages/AdminPage"));
 const BookmarksPage = lazyWithRetry(() => import("./pages/BookmarksPage"));
 const EditProfilePage = lazyWithRetry(() => import("./pages/EditProfilePage"));
-const EmbedPlaygroundPage = lazyWithRetry(() => import("./pages/EmbedPlaygroundPage"));
+const EmbedAnsatzEditorPage = lazyWithRetry(() => import("./pages/EmbedAnsatzEditorPage"));
 const ExplorePage = lazyWithRetry(() => import("./pages/ExplorePage"));
 const FeedsPage = lazyWithRetry(() => import("./pages/FeedsPage"));
 const FollowersPage = lazyWithRetry(() => import("./pages/FollowersPage"));
@@ -92,7 +92,7 @@ const NotFoundPage = lazyWithRetry(() => import("./pages/NotFoundPage"));
 const NotificationsPage = lazyWithRetry(() => import("./pages/NotificationsPage"));
 const OAuthCallbackPage = lazyWithRetry(() => import("./pages/OAuthCallbackPage"));
 const PackageDetailPage = lazyWithRetry(() => import("./pages/PackageDetailPage"));
-const PlaygroundPage = lazyWithRetry(() => import("./pages/PlaygroundPage"));
+const AnsatzEditorPage = lazyWithRetry(() => import("./pages/AnsatzEditorPage"));
 const PostActivityPage = lazyWithRetry(() => import("./pages/PostActivityPage"));
 const PostDetailPage = lazyWithRetry(() => import("./pages/PostDetailPage"));
 const ProfilePage = lazyWithRetry(() => import("./pages/ProfilePage"));
@@ -119,8 +119,8 @@ const SpaceChatPage = lazyWithRetry(() => import("./pages/SpaceChatPage"));
 const SpacePage = lazyWithRetry(() => import("./pages/SpacePage"));
 const SpacesExplorePage = lazyWithRetry(() => import("./pages/SpacesExplorePage"));
 
-function isMorselRoute(pathname: string): boolean {
-  return /^\/(?:embed\/)?(?:editor|morsel|sketch|playground)(?:\/|$)/.test(pathname);
+function isAnsatzRoute(pathname: string): boolean {
+  return /^\/(?:embed\/)?(?:editor|ansatz|sketch|ansatz)(?:\/|$)/.test(pathname);
 }
 
 /**
@@ -132,8 +132,8 @@ function PageLoadingFallback() {
   const location = useLocation();
   const { theme } = useTheme();
 
-  if (isMorselRoute(location.pathname)) {
-    return <MorselLoadingScreen colorMode={theme === "dark" ? "dark" : "light"} />;
+  if (isAnsatzRoute(location.pathname)) {
+    return <AnsatzEditorLoadingScreen colorMode={theme === "dark" ? "dark" : "light"} />;
   }
 
   return (
@@ -631,24 +631,18 @@ function App() {
                     <Route path="/verify-email" element={<VerifyEmailPage />} />
                     <Route path="/reset-password" element={<ResetPasswordPage />} />
                     <Route path="/render-artifact/:id" element={<RenderArtifactPage />} />
-                    <Route path="/embed/editor" element={<EmbedPlaygroundPage />} />
-                    <Route path="/embed/morsel" element={<PreserveParamsNavigate to="/embed/editor" />} />
-                    <Route path="/embed/sketch" element={<PreserveParamsNavigate to="/embed/editor" />} />
-                    <Route path="/embed/playground" element={<PreserveParamsNavigate to="/embed/editor" />} />
-                    <Route path="/editor" element={<PlaygroundPage />} />
-                    <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
-                    <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
-                    <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
+                    <Route path="/embed/editor" element={<EmbedAnsatzEditorPage />} />
+                    <Route path="/embed/ansatz" element={<PreserveParamsNavigate to="/embed/editor" />} />
+                    <Route path="/editor" element={<AnsatzEditorPage />} />
+                    <Route path="/ansatz" element={<PreserveParamsNavigate to="/editor" />} />
                     <Route path="/canvas" element={<SpatialCanvasPage />} />
                     <Route path="/canvas/:boardId" element={<SpatialCanvasPage />} />
                     <Route path="/solutions/:username/:slug" element={<SolutionPage />} />
 
                     {/* Social shell routes */}
                     <Route element={<AppShell />}>
-                      <Route path="/editor" element={<PlaygroundPage />} />
-                      <Route path="/morsel" element={<PreserveParamsNavigate to="/editor" />} />
-                      <Route path="/sketch" element={<PreserveParamsNavigate to="/editor" />} />
-                      <Route path="/playground" element={<PreserveParamsNavigate to="/editor" />} />
+                      <Route path="/editor" element={<AnsatzEditorPage />} />
+                      <Route path="/ansatz" element={<PreserveParamsNavigate to="/editor" />} />
                       <Route
                         path="/home"
                         element={

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Sketch / Playground Single-File Library Filtering & Lazy Loading", () => {
+describe("Sketch / Ansatz Single-File Library Filtering & Lazy Loading", () => {
   it("lsp-worker scopes projectDependencies based on initialLanguageId", () => {
     const lspWorkerFile = path.resolve(__dirname, "../../../packages/editor/src/workbench/util/lsp-worker.ts");
     const content = fs.readFileSync(lspWorkerFile, "utf-8");
@@ -39,13 +39,13 @@ describe("Sketch / Playground Single-File Library Filtering & Lazy Loading", () 
     );
   });
 
-  it("MorselLeftSidebar receives dialect as language prop", () => {
-    const morselFile = path.resolve(__dirname, "../../../packages/editor/src/workbench/Morsel.tsx");
-    const content = fs.readFileSync(morselFile, "utf-8");
+  it("AnsatzLeftSidebar receives dialect as language prop", () => {
+    const ansatzFile = path.resolve(__dirname, "../../../packages/editor/src/workbench/AnsatzEditor.tsx");
+    const content = fs.readFileSync(ansatzFile, "utf-8");
 
     assert.ok(
       content.includes("language={dialect}"),
-      "Morsel.tsx must pass dialect as language prop to MorselLeftSidebar",
+      "Ansatz.tsx must pass dialect as language prop to AnsatzLeftSidebar",
     );
   });
 

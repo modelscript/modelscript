@@ -1,0 +1,77 @@
+[
+  {
+    "id": "ocpp-01-boot-heartbeat-station",
+    "lang": "ocpp",
+    "subFormats": ["ocpp"],
+    "difficulty": 1,
+    "title": "Single-EVSE Workplace Charger Configuration",
+    "description": "Minimal OCPP 2.0.1 single-connector Level 2 AC workplace charging station with active EV charging session parameters.",
+    "category": "EV Charging Infrastructure",
+    "tags": ["ocpp", "evse", "workplace", "ac-charging"],
+    "activeFile": "workplace_evse.ocpp",
+    "fileNames": ["workplace_evse.ocpp"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "station \"Workplace_L2_01\" {\n  model: \"Wallbox-Pro-22\"\n  vendor: \"ChargePoint\"\n  gridLimitKW: 22.0\n\n  evse 1 {\n    connector 1 {\n      type: \"Type2\"\n      maxPowerKW: 22.0\n      currentSession: {\n        transactionId: \"TX-WP-1001\"\n        evBatteryCapacityKWh: 64.0\n        currentSoC: 0.35\n        targetSoC: 0.80\n        departureMinutes: 180\n      }\n    }\n  }\n}\n"
+  },
+  {
+    "id": "ocpp-02-rfid-dcfc-transaction",
+    "lang": "ocpp",
+    "subFormats": ["ocpp"],
+    "difficulty": 2,
+    "title": "Dual-Port Highway DC Fast Charger Session",
+    "description": "180 kW dual-EVSE CCS2 highway DC fast charging station with two concurrent EV transactions sharing the station grid connection limit.",
+    "category": "DC Fast Charging",
+    "tags": ["ocpp", "dcfc", "ccs2", "transaction"],
+    "activeFile": "highway_dcfc.ocpp",
+    "fileNames": ["highway_dcfc.ocpp"],
+    "fileCount": 1,
+    "code": "station \"Highway_DCFC_North\" {\n  model: \"Terra-240\"\n  vendor: \"ABB\"\n  gridLimitKW: 240.0\n\n  evse 1 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 120.0\n      currentSession: {\n        transactionId: \"TX-HWY-2001\"\n        evBatteryCapacityKWh: 82.0\n        currentSoC: 0.15\n        targetSoC: 0.80\n        departureMinutes: 35\n      }\n    }\n  }\n\n  evse 2 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 120.0\n      currentSession: {\n        transactionId: \"TX-HWY-2002\"\n        evBatteryCapacityKWh: 98.0\n        currentSoC: 0.25\n        targetSoC: 0.85\n        departureMinutes: 45\n      }\n    }\n  }\n}\n"
+  },
+  {
+    "id": "ocpp-03-smart-charging-profile",
+    "lang": "ocpp",
+    "subFormats": ["ocpp.json"],
+    "difficulty": 3,
+    "title": "Smart Charging Profile (SetChargingProfile JSON-RPC)",
+    "description": "OCPP 2.0.1 SetChargingProfile JSON-RPC payload defining a multi-period time-of-use power ramp schedule for a depot DC fast charger.",
+    "category": "Smart Charging",
+    "tags": ["ocpp", "json-rpc", "smart-charging", "tou"],
+    "activeFile": "smart_profile.ocpp.json",
+    "fileNames": ["smart_profile.ocpp.json"],
+    "fileCount": 1,
+    "code": "{\n  \"chargingStationId\": \"Depot_DCFC_Smart03\",\n  \"evseId\": 1,\n  \"connectorId\": 1,\n  \"transactionId\": \"TX-SMART-3001\",\n  \"chargingProfile\": {\n    \"chargingProfileId\": 301,\n    \"stackLevel\": 2,\n    \"chargingProfilePurpose\": \"TxProfile\",\n    \"chargingProfileKind\": \"Absolute\",\n    \"chargingSchedule\": {\n      \"chargingScheduleId\": 601,\n      \"chargingRateUnit\": \"kW\",\n      \"duration\": 7200,\n      \"chargingSchedulePeriod\": [\n        {\n          \"startPeriod\": 0,\n          \"limit\": 150.0,\n          \"numberPhases\": 3\n        },\n        {\n          \"startPeriod\": 1800,\n          \"limit\": 90.0,\n          \"numberPhases\": 3\n        },\n        {\n          \"startPeriod\": 3600,\n          \"limit\": 60.0,\n          \"numberPhases\": 3\n        },\n        {\n          \"startPeriod\": 5400,\n          \"limit\": 120.0,\n          \"numberPhases\": 3\n        }\n      ]\n    }\n  }\n}\n"
+  },
+  {
+    "id": "ocpp-04-iso15118-plug-and-charge",
+    "lang": "ocpp",
+    "subFormats": ["ocpp.json"],
+    "difficulty": 4,
+    "title": "ISO 15118 Plug & Charge Megawatt Hub Schedule",
+    "description": "OCPP 2.0.1 JSON-RPC charging profile for an ISO 15118-20 high-power commercial electric truck charging bay with stepped grid curtailment limits.",
+    "category": "Commercial Fleet Charging",
+    "tags": ["ocpp", "iso15118", "plug-and-charge", "heavy-duty"],
+    "activeFile": "pnc_megawatt.ocpp.json",
+    "fileNames": ["pnc_megawatt.ocpp.json"],
+    "fileCount": 1,
+    "code": "{\n  \"chargingStationId\": \"Freight_MCS_Hub_04\",\n  \"evseId\": 2,\n  \"connectorId\": 1,\n  \"transactionId\": \"TX-PNC-4008\",\n  \"iso15118CertificateHash\": \"sha256:9f86d081884c7d659a2feaa0c55ad015\",\n  \"chargingProfile\": {\n    \"chargingProfileId\": 404,\n    \"stackLevel\": 3,\n    \"chargingProfilePurpose\": \"TxDefaultProfile\",\n    \"chargingProfileKind\": \"Relative\",\n    \"chargingSchedule\": {\n      \"chargingScheduleId\": 704,\n      \"chargingRateUnit\": \"kW\",\n      \"duration\": 5400,\n      \"chargingSchedulePeriod\": [\n        {\n          \"startPeriod\": 0,\n          \"limit\": 350.0,\n          \"numberPhases\": 3\n        },\n        {\n          \"startPeriod\": 1200,\n          \"limit\": 280.0,\n          \"numberPhases\": 3\n        },\n        {\n          \"startPeriod\": 2700,\n          \"limit\": 180.0,\n          \"numberPhases\": 3\n        },\n        {\n          \"startPeriod\": 4200,\n          \"limit\": 95.0,\n          \"numberPhases\": 3\n        }\n      ]\n    }\n  }\n}\n"
+  },
+  {
+    "id": "ocpp-05-fleet-depot-load-balancing",
+    "lang": "ocpp",
+    "subFormats": ["ocpp", "ocpp.json"],
+    "difficulty": 5,
+    "title": "Electric Bus Fleet Depot Load-Balancing Scenario",
+    "description": "Multi-file OCPP 2.0.1 fleet depot workspace combining 4-bay bus depot station topology with companion CSMS smart charging schedules.",
+    "category": "Fleet Depot Management",
+    "tags": ["ocpp", "fleet-depot", "load-balancing", "multi-file"],
+    "activeFile": "station_config.ocpp",
+    "fileNames": ["station_config.ocpp", "smart_profiles.ocpp.json"],
+    "fileCount": 2,
+    "code": "station \"Metro_Bus_Depot_East\" {\n  model: \"HVC-450-Depot\"\n  vendor: \"ABB\"\n  gridLimitKW: 450.0\n\n  evse 1 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 150.0\n      currentSession: {\n        transactionId: \"TX-BUS-501\"\n        evBatteryCapacityKWh: 420.0\n        currentSoC: 0.22\n        targetSoC: 0.92\n        departureMinutes: 240\n      }\n    }\n  }\n\n  evse 2 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 150.0\n      currentSession: {\n        transactionId: \"TX-BUS-502\"\n        evBatteryCapacityKWh: 420.0\n        currentSoC: 0.30\n        targetSoC: 0.90\n        departureMinutes: 210\n      }\n    }\n  }\n\n  evse 3 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 150.0\n      currentSession: {\n        transactionId: \"TX-BUS-503\"\n        evBatteryCapacityKWh: 350.0\n        currentSoC: 0.18\n        targetSoC: 0.85\n        departureMinutes: 180\n      }\n    }\n  }\n}\n",
+    "files": {
+      "station_config.ocpp": "station \"Metro_Bus_Depot_East\" {\n  model: \"HVC-450-Depot\"\n  vendor: \"ABB\"\n  gridLimitKW: 450.0\n\n  evse 1 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 150.0\n      currentSession: {\n        transactionId: \"TX-BUS-501\"\n        evBatteryCapacityKWh: 420.0\n        currentSoC: 0.22\n        targetSoC: 0.92\n        departureMinutes: 240\n      }\n    }\n  }\n\n  evse 2 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 150.0\n      currentSession: {\n        transactionId: \"TX-BUS-502\"\n        evBatteryCapacityKWh: 420.0\n        currentSoC: 0.30\n        targetSoC: 0.90\n        departureMinutes: 210\n      }\n    }\n  }\n\n  evse 3 {\n    connector 1 {\n      type: \"CCS2\"\n      maxPowerKW: 150.0\n      currentSession: {\n        transactionId: \"TX-BUS-503\"\n        evBatteryCapacityKWh: 350.0\n        currentSoC: 0.18\n        targetSoC: 0.85\n        departureMinutes: 180\n      }\n    }\n  }\n}\n",
+      "smart_profiles.ocpp.json": "{\n  \"chargingStationId\": \"Metro_Bus_Depot_East\",\n  \"evseId\": 1,\n  \"connectorId\": 1,\n  \"transactionId\": \"TX-BUS-501\",\n  \"chargingProfile\": {\n    \"chargingProfileId\": 501,\n    \"stackLevel\": 1,\n    \"chargingProfilePurpose\": \"ChargingStationMaxProfile\",\n    \"chargingSchedule\": {\n      \"chargingScheduleId\": 801,\n      \"chargingRateUnit\": \"kW\",\n      \"duration\": 14400,\n      \"chargingSchedulePeriod\": [\n        {\n          \"startPeriod\": 0,\n          \"limit\": 240.0,\n          \"numberPhases\": 3\n        },\n        {\n          \"startPeriod\": 7200,\n          \"limit\": 360.0,\n          \"numberPhases\": 3\n        }\n      ]\n    }\n  }\n}\n"
+    }
+  }
+]

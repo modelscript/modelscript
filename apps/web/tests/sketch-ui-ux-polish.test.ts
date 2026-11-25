@@ -6,11 +6,11 @@ import path from "node:path";
 import { describe, it } from "node:test";
 
 describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspector", () => {
-  const navbarPath = path.resolve(import.meta.dirname, "../src/pages/playground/components/PlaygroundNavbar.tsx");
-  const stylesPath = path.resolve(import.meta.dirname, "../src/pages/playground/styles.ts");
+  const navbarPath = path.resolve(import.meta.dirname, "../src/pages/ansatz-editor/components/AnsatzEditorNavbar.tsx");
+  const stylesPath = path.resolve(import.meta.dirname, "../src/pages/ansatz-editor/styles.ts");
   const propertiesPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Properties.tsx");
 
-  it("verifies Playground styles provide responsive icon-only collapse without abruptly hiding workbench view switcher", () => {
+  it("verifies Ansatz styles provide responsive icon-only collapse without abruptly hiding workbench view switcher", () => {
     const stylesContent = fs.readFileSync(stylesPath, "utf-8");
 
     // Must have responsive collapse (1440px active-only text, 1100px icon-only)
@@ -33,7 +33,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
     const subHeaderPath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselViewSubHeader.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzViewSubHeader.tsx",
     );
     assert.ok(
       fs.readFileSync(subHeaderPath, "utf-8").includes("aria-label={tab.label}"),
@@ -46,11 +46,11 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
   });
 
-  it("verifies PlaygroundNavbar uses design tokens for primary run CTA, fork badges, and title editing", () => {
+  it("verifies AnsatzEditorNavbar uses design tokens for primary run CTA, fork badges, and title editing", () => {
     const navbarContent = fs.readFileSync(navbarPath, "utf-8");
     const sidebarPath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselLeftSidebar.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzLeftSidebar.tsx",
     );
     const sidebarContent = fs.readFileSync(sidebarPath, "utf-8");
 
@@ -117,29 +117,29 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
   });
 
-  it("verifies PlaygroundPage wraps MorselEditor in ErrorBoundary with local storage draft recovery fallback", () => {
-    const pagePath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
+  it("verifies AnsatzEditorPage wraps AnsatzEditor in ErrorBoundary with local storage draft recovery fallback", () => {
+    const pagePath = path.resolve(import.meta.dirname, "../src/pages/AnsatzEditorPage.tsx");
     const pageContent = fs.readFileSync(pagePath, "utf-8");
 
     assert.ok(
       pageContent.includes("<ErrorBoundary") &&
         (pageContent.includes('name="Ansatz"') ||
           pageContent.includes('name="Ansatz Editor"') ||
-          pageContent.includes('name="Morsel Editor"') ||
+          pageContent.includes('name="Ansatz Editor"') ||
           pageContent.includes('name="Ansatz Sketch Editor"')),
-      "PlaygroundPage must wrap MorselEditor in ErrorBoundary with name 'Ansatz'",
+      "AnsatzEditorPage must wrap AnsatzEditor in ErrorBoundary with name 'Ansatz'",
     );
     assert.ok(
-      (pageContent.includes("ansatz_morsel_draft") || pageContent.includes("ansatz_sketch_draft")) &&
+      (pageContent.includes("ansatz_ansatz_draft") || pageContent.includes("ansatz_sketch_draft")) &&
         pageContent.includes("Recover Draft & Reload"),
       "ErrorBoundary fallback must offer Recover Draft & Reload from local storage draft",
     );
   });
 
-  it("verifies MorselVisualizerPane handles Escape key globally to deselect components and close inspector", () => {
+  it("verifies AnsatzVisualizerPane handles Escape key globally to deselect components and close inspector", () => {
     const panePath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
     );
     const paneContent = fs.readFileSync(panePath, "utf-8");
 
@@ -147,7 +147,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
       paneContent.includes("selectedComponent") &&
         paneContent.includes('e.key === "Escape"') &&
         paneContent.includes("handleSelectComponent(null)"),
-      "MorselVisualizerPane must handle Escape key to deselect component and close inspector",
+      "AnsatzVisualizerPane must handle Escape key to deselect component and close inspector",
     );
   });
 
@@ -205,10 +205,10 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
   });
 
-  it("verifies MorselVisualizerPane uses design tokens for model tabs, dividers, palettes, and breadcrumbs", () => {
+  it("verifies AnsatzVisualizerPane uses design tokens for model tabs, dividers, palettes, and breadcrumbs", () => {
     const vizPath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
     );
     const vizContent = fs.readFileSync(vizPath, "utf-8");
 
@@ -223,48 +223,48 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
   });
 
-  it("verifies MorselFloatingDock and modals adopt design tokens for surfaces, borders, and dividers", () => {
+  it("verifies AnsatzFloatingDock and modals adopt design tokens for surfaces, borders, and dividers", () => {
     const dockPath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselFloatingDock.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzFloatingDock.tsx",
     );
     const galleryPath = path.resolve(
       import.meta.dirname,
-      "../src/pages/playground/components/TemplateGalleryModal.tsx",
+      "../src/pages/ansatz-editor/components/TemplateGalleryModal.tsx",
     );
     const dockContent = fs.readFileSync(dockPath, "utf-8");
     const galleryContent = fs.readFileSync(galleryPath, "utf-8");
 
     assert.ok(
       dockContent.includes("var(--ms-surface-glass") || dockContent.includes("var(--ms-border"),
-      "MorselFloatingDock must use design token surfaces and borders",
+      "AnsatzFloatingDock must use design token surfaces and borders",
     );
-    assert.ok(dockContent.includes("var(--ms-divider"), "MorselFloatingDock dividers must use --ms-divider token");
+    assert.ok(dockContent.includes("var(--ms-divider"), "AnsatzFloatingDock dividers must use --ms-divider token");
     assert.ok(
       galleryContent.includes("var(--ms-accent") && galleryContent.includes("var(--ms-bg"),
       "TemplateGalleryModal must use design tokens for brand accents and canvas backgrounds",
     );
   });
 
-  it("verifies PlaygroundPage wires desktop-grade global keyboard shortcuts (F5, Ctrl+B, Ctrl+O, Alt+1..6)", () => {
-    const pagePath = path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx");
+  it("verifies AnsatzEditorPage wires desktop-grade global keyboard shortcuts (F5, Ctrl+B, Ctrl+O, Alt+1..6)", () => {
+    const pagePath = path.resolve(import.meta.dirname, "../src/pages/AnsatzEditorPage.tsx");
     const pageContent = fs.readFileSync(pagePath, "utf-8");
 
     assert.ok(
       pageContent.includes('e.key === "F5" || (e.shiftKey && e.key === "Enter"'),
-      "PlaygroundPage must bind F5 and Shift+Enter to handleRunSimulation",
+      "AnsatzEditorPage must bind F5 and Shift+Enter to handleRunSimulation",
     );
     assert.ok(
       pageContent.includes('(e.ctrlKey || e.metaKey) && (e.key === "b" || e.key === "B")'),
-      "PlaygroundPage must bind Ctrl+B / Cmd+B to handleToggleSidebar",
+      "AnsatzEditorPage must bind Ctrl+B / Cmd+B to handleToggleSidebar",
     );
     assert.ok(
       pageContent.includes('(e.ctrlKey || e.metaKey) && (e.key === "o" || e.key === "O")'),
-      "PlaygroundPage must bind Ctrl+O / Cmd+O to open template gallery",
+      "AnsatzEditorPage must bind Ctrl+O / Cmd+O to open template gallery",
     );
     assert.ok(
       pageContent.includes("e.altKey && !e.ctrlKey && !e.metaKey"),
-      "PlaygroundPage must bind Alt+1..6 / Option+1..6 to workbench view switching",
+      "AnsatzEditorPage must bind Alt+1..6 / Option+1..6 to workbench view switching",
     );
   });
 
@@ -323,7 +323,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     const diagramPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
     const panePath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
     );
     const diagramContent = fs.readFileSync(diagramPath, "utf-8");
     const paneContent = fs.readFileSync(panePath, "utf-8");
@@ -345,42 +345,42 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
         paneContent.includes('title="Zoom Out (Ctrl+-)"') &&
         paneContent.includes('title="Zoom In (Ctrl+=)"') &&
         paneContent.includes('title="Zoom to Fit (Shift+1)"'),
-      "MorselVisualizerPane must provide zoom buttons with keyboard hints",
+      "AnsatzVisualizerPane must provide zoom buttons with keyboard hints",
     );
     assert.ok(
       paneContent.includes("50%") && paneContent.includes("100%") && paneContent.includes("200%"),
-      "MorselVisualizerPane zoom preset dropdown must include 50%, 100%, and 200% presets",
+      "AnsatzVisualizerPane zoom preset dropdown must include 50%, 100%, and 200% presets",
     );
     assert.ok(
       paneContent.includes('import DiagramEditor, { type DiagramEditorHandle } from "../Diagram"'),
-      "MorselVisualizerPane must import DiagramEditor directly so React ref forwarding is preserved",
+      "AnsatzVisualizerPane must import DiagramEditor directly so React ref forwarding is preserved",
     );
     assert.ok(
       paneContent.includes("effectiveDiagramRef?.current?.zoomTo") &&
         paneContent.includes("effectiveDiagramRef?.current?.zoomIn") &&
         paneContent.includes("effectiveDiagramRef?.current?.zoomOut") &&
         paneContent.includes("effectiveDiagramRef?.current?.zoomToFit"),
-      "MorselVisualizerPane zoom buttons and dropdown presets must invoke effectiveDiagramRef zoom methods",
+      "AnsatzVisualizerPane zoom buttons and dropdown presets must invoke effectiveDiagramRef zoom methods",
     );
     assert.ok(
-      paneContent.includes("morsel-menu-item") &&
-        paneContent.includes("morsel-toolbar-btn") &&
+      paneContent.includes("ansatz-menu-item") &&
+        paneContent.includes("ansatz-toolbar-btn") &&
         paneContent.includes("rgba(255, 255, 255, 0.08)") &&
         paneContent.includes("rgba(0, 0, 0, 0.06)"),
-      "MorselVisualizerPane zoom controls and dropdown menu must include hover background styling",
+      "AnsatzVisualizerPane zoom controls and dropdown menu must include hover background styling",
     );
-    const cssPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/morsel.css");
+    const cssPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/ansatz-editor.css");
     const cssContent = fs.readFileSync(cssPath, "utf-8");
     assert.ok(
-      cssContent.includes(".morsel-menu-item:hover") && cssContent.includes(".morsel-toolbar-btn:hover"),
-      "morsel.css must include hover background styles for menu items and toolbar buttons",
+      cssContent.includes(".ansatz-menu-item:hover") && cssContent.includes(".ansatz-toolbar-btn:hover"),
+      "ansatz-editor.css must include hover background styles for menu items and toolbar buttons",
     );
   });
 
   it("verifies Undo / Redo visual history buttons and canvas keyboard shortcut wiring", () => {
     const panePath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
     );
     const indexDiagramPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
     const paneContent = fs.readFileSync(panePath, "utf-8");
@@ -388,11 +388,11 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
 
     assert.ok(
       paneContent.includes('title="Undo (Ctrl+Z)"') && paneContent.includes('title="Redo (Ctrl+Y / Cmd+Shift+Z)"'),
-      "MorselVisualizerPane must render dedicated Undo and Redo buttons with shortcut tooltips",
+      "AnsatzVisualizerPane must render dedicated Undo and Redo buttons with shortcut tooltips",
     );
     assert.ok(
       paneContent.includes("handleUndo") && paneContent.includes("handleRedo"),
-      "MorselVisualizerPane must define handleUndo and handleRedo triggering Monaco and visualizer reload",
+      "AnsatzVisualizerPane must define handleUndo and handleRedo triggering Monaco and visualizer reload",
     );
     assert.ok(
       indexContent.includes('e.key.toLowerCase() === "z"') &&
@@ -419,7 +419,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     const diagramPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
     const panePath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
     );
 
     const alignContent = fs.readFileSync(alignPath, "utf-8");
@@ -438,7 +438,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     assert.ok(diagramContent.includes("rotateSelected:"), "DiagramEditorHandle must expose rotateSelected method");
     assert.ok(
       paneContent.includes("rotateSelected(90)") && paneContent.includes('title="Rotate 90° Clockwise (R / Shift+R)"'),
-      "MorselVisualizerPane must provide rotate 90° button in subheader",
+      "AnsatzVisualizerPane must provide rotate 90° button in subheader",
     );
   });
 
@@ -447,7 +447,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     const indexDiagramPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
     const panePath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
     );
 
     const minimapContent = fs.readFileSync(minimapPath, "utf-8");
@@ -469,7 +469,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     );
     assert.ok(
       paneContent.includes("toggleMinimapView") && paneContent.includes('title="Toggle Minimap (M)"'),
-      "MorselVisualizerPane must provide Minimap button in subheader",
+      "AnsatzVisualizerPane must provide Minimap button in subheader",
     );
   });
 
@@ -522,7 +522,7 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
     const diagramPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
     const panePath = path.resolve(
       import.meta.dirname,
-      "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+      "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
     );
 
     const indexContent = fs.readFileSync(indexDiagramPath, "utf-8");
@@ -546,11 +546,11 @@ describe("Sketch UI/UX Polish, Design Tokens & High-Precision Properties Inspect
         paneContent.includes("handleSnapToggle") &&
         paneContent.includes("Canvas Grid Style") &&
         paneContent.includes("Snap to Grid"),
-      "MorselVisualizerPane must provide canvas grid and snapping popover controls",
+      "AnsatzVisualizerPane must provide canvas grid and snapping popover controls",
     );
     assert.ok(
       paneContent.includes('return "doubleMesh";'),
-      "MorselVisualizerPane must default to doubleMesh (graph paper lines) on initial load",
+      "AnsatzVisualizerPane must default to doubleMesh (graph paper lines) on initial load",
     );
   });
 });

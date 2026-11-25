@@ -132,7 +132,8 @@ async function doLoadPrebakedMslIcons(
   // Browser / Network environment
   if (typeof fetch === "function") {
     try {
-      const globalBase = (globalThis as any).serverDistBase?.replace(/\/$/, "");
+      const rawGlobalBase = (globalThis as { serverDistBase?: unknown }).serverDistBase;
+      const globalBase = typeof rawGlobalBase === "string" ? rawGlobalBase.replace(/\/$/, "") : undefined;
       const base =
         serverDistBase &&
         (serverDistBase.startsWith("http://") ||

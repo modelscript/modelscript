@@ -1,0 +1,11 @@
+{
+  "id": "nifti-02-thoracic-ct-nrrd",
+  "lang": "nifti",
+  "subFormats": ["nrrd"],
+  "difficulty": 2,
+  "title": "NRRD Thoracic CT Volume Header with Lung Segment",
+  "description": "NRRD0004 clinical thoracic CT volumetric header specifying right-anterior-superior space directions, Hounsfield int16 voxel encoding, and 3D Slicer lung parenchyma segment metadata.",
+  "category": "Medical Imaging & Volumetric Formats",
+  "tags": ["nifti", "nrrd", "thoracic-ct", "slicer"],
+  "activeFile": "thorax_ct.nrrd"
+}

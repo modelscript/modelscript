@@ -105,8 +105,8 @@ export function isTargetVar(arena: DAEBuilder, exprId: number, targetVarIdx: num
     const argId = arena.getExprData1(exprId);
     if (arena.getExprKind(argId) === ExprKind.Name) {
       const innerNameId = arena.getExprData1(argId);
-      const interner = arena.interner as any;
-      if (interner && typeof interner.getDerStringId === "function") {
+      const interner = arena.interner as { getDerStringId?: (id: number) => number };
+      if (typeof interner.getDerStringId === "function") {
         return targetNameId === interner.getDerStringId(innerNameId);
       }
       const innerName = arena.interner.resolve(innerNameId);
@@ -816,7 +816,7 @@ export function tryOptimizeLoopWithGroebner(
  * High-level TypeScript wrapper for WASM Symbolic Isolation runtime.
  */
 export class WasmIsolationEngine {
-  constructor(readonly instance?: any) {}
+  constructor(readonly instance?: unknown) {}
 
   isolate(arena: DAEBuilder, eqIdx: number, targetVarIdx: number): number {
     return isolateSymbolicallyArena(arena, eqIdx, targetVarIdx);

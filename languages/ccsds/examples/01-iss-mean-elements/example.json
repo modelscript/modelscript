@@ -1,0 +1,12 @@
+{
+  "id": "ccsds-01-iss-mean-elements",
+  "lang": "ccsds",
+  "subFormats": ["omm"],
+  "difficulty": 1,
+  "title": "ISS Zarya Mean Orbital Elements (CCSDS OMM)",
+  "description": "CCSDS Orbit Mean-Elements Message (OMM v2.0) encoding SGP4 mean Keplerian elements, BSTAR atmospheric drag term, and spacecraft mass for the International Space Station in low Earth orbit.",
+  "category": "Orbital Mechanics",
+  "tags": ["ccsds", "omm", "sgp4", "leo", "iss"],
+  "activeFile": "iss_zarya.omm",
+  "isDefaultStarter": true
+}

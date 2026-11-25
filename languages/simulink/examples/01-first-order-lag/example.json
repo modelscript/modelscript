@@ -1,0 +1,12 @@
+{
+  "id": "simulink-01-first-order-lag",
+  "lang": "simulink",
+  "subFormats": ["mdl"],
+  "difficulty": 1,
+  "title": "Step-Driven First-Order Lag System",
+  "description": "Closed-loop first-order thermal/electrical lag plant driven by a constant step reference through an error summing junction, inverse time-constant gain, integrator state, and output scope.",
+  "category": "Control Systems",
+  "tags": ["simulink", "first-order", "feedback", "integrator"],
+  "activeFile": "first_order_lag.mdl",
+  "isDefaultStarter": true
+}

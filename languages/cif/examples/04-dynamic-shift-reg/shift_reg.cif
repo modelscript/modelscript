@@ -1,0 +1,45 @@
+( Hierarchical 2-Phase Dynamic Shift Register Stage in CIF 2.0 );
+DS 1 100/1;
+  9 PASS_GATE;
+  L CAA;
+  B 12 4 6 6;
+  L CPG;
+  B 3 12 6 6;
+  L CCA;
+  B 3 3 2 6;
+  B 3 3 10 6;
+DF;
+
+DS 2 100/1;
+  9 INV_STAGE;
+  L CWN;
+  B 16 14 8 22;
+  L CAA;
+  B 12 5 8 21;
+  B 12 5 8 8;
+  L CPG;
+  B 3 20 8 15;
+  L CMF;
+  B 16 4 8 28;
+  B 16 4 8 2;
+  W 4 12 8 12 21;
+DF;
+
+DS 3 100/1;
+  9 SHIFT_STAGE_2PH;
+  C 1 T 0 6;
+  C 2 T 14 0;
+  C 1 T 32 6;
+  C 2 T 46 0;
+  ( Metal-2 Two-Phase Clock Buses PHI1 and PHI2 );
+  L CMS;
+  W 4 0 34 62 34;
+  W 4 0 40 62 40;
+  94 PHI1 6 34 CMS;
+  94 PHI2 38 40 CMS;
+  94 DIN 0 12 CAA;
+  94 DOUT 60 15 CMF;
+DF;
+
+C 3;
+E

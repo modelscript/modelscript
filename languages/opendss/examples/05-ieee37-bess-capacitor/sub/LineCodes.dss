@@ -1,0 +1,3 @@
+! Underground & Overhead Feeder Conductor Library
+New LineCode.UG_Main nphases=3 r1=0.140 x1=0.165 r0=0.420 x0=0.510 units=km
+New LineCode.UG_Lat  nphases=3 r1=0.260 x1=0.195 r0=0.680 x0=0.620 units=km

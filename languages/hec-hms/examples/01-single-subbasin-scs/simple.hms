@@ -1,0 +1,18 @@
+Project: Simple SCS Watershed
+     Description: Single Subbasin SCS Curve Number Runoff Example
+     Version: 4.11
+     Filepath Separator: /
+     DSS File Name: simple.dss
+End:
+
+Basin: Simple_Basin
+     Filename: simple.basin
+End:
+
+Precipitation: Design_Storm
+     Filename: simple.met
+End:
+
+Control: Storm_24hr
+     Filename: simple.control
+End:

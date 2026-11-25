@@ -1,0 +1,12 @@
+{
+  "id": "cantera-05-steam-methane-reforming",
+  "lang": "cantera",
+  "subFormats": ["cantera-yaml"],
+  "difficulty": 5,
+  "title": "Catalytic Steam Methane Reforming Surface and Gas Mechanism",
+  "description": "Heterogeneous nickel-catalyzed steam methane reforming (SMR) and water-gas shift surface mechanism paired with a companion gas-phase syngas thermodynamic deck.",
+  "category": "Catalysis & Process Engineering",
+  "tags": ["cantera", "catalysis", "reforming", "syngas", "multi-file"],
+  "activeFile": "smr_surface.cantera.yaml",
+  "fileOrder": ["smr_surface.cantera.yaml", "gas_phase.cantera.yaml"]
+}

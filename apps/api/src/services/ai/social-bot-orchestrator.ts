@@ -71,7 +71,9 @@ export class SocialBotOrchestrator {
           postId: post.id,
           status: "thinking",
         });
-      } catch {}
+      } catch {
+        // Real-time bot status broadcast is best-effort
+      }
 
       const systemPrompt =
         bot.bot_system_prompt ||
@@ -211,7 +213,7 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
           } else {
             artifactViewId = this.#database.createArtifactView(
               bot.id,
-              "morsel",
+              "ansatz",
               "inline",
               JSON.stringify({
                 code: modelCode,
@@ -259,7 +261,9 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
           postId: post.id,
           status: "done",
         });
-      } catch {}
+      } catch {
+        // Real-time bot status broadcast is best-effort
+      }
 
       return { success: true, responsePostId: responsePost.id };
     } catch (err: unknown) {
@@ -273,7 +277,9 @@ Provide accurate, technically rigorous answers. Use markdown formatting and vali
           postId: job.post_id,
           status: "failed",
         });
-      } catch {}
+      } catch {
+        // Real-time bot status broadcast is best-effort
+      }
       return { success: false, error: errMsg };
     }
   }

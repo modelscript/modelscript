@@ -1,0 +1,22 @@
+{
+  "id": "gtfs-04-electric-bus-depot-charging",
+  "lang": "gtfs",
+  "subFormats": ["gtfs", "txt"],
+  "difficulty": 4,
+  "title": "Electric Bus Fleet Schedule with Depot Charging Windows",
+  "description": "Battery-electric transit bus corridor with morning and evening peak blocks, midday opportunity charging layovers, GPS route shapes, and headway frequencies.",
+  "category": "Fleet Electrification & Depot Charging",
+  "tags": ["gtfs", "electric-bus", "depot-charging", "shapes", "multi-file"],
+  "activeFile": "feed.gtfs",
+  "fileOrder": [
+    "feed.gtfs",
+    "agency.txt",
+    "stops.txt",
+    "routes.txt",
+    "trips.txt",
+    "stop_times.txt",
+    "calendar.txt",
+    "frequencies.txt",
+    "shapes.txt"
+  ]
+}

@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import { getPost } from "../../api";
-import { safeJsonParse } from "../../util/json";
+import { asRecord } from "../../util/error";
 import { getPostUrl } from "../../util/url";
 import ArtifactViewCard from "../artifacts/ArtifactViewCard";
 import Box from "../Box";
@@ -23,11 +23,13 @@ import {
   TimestampButton,
   formatFullTimestamp,
   formatRelativeTime,
+  parsePostMetadata,
+  type PostRecord,
 } from "./styles";
 
 export interface PostQuotedPostProps {
-  quotePost: any;
-  parsedQuoteAuthor?: { localUsername: string; isFederated: boolean; remoteDomain?: string } | null;
+  quotePost: PostRecord;
+  parsedQuoteAuthor?: { localUsername: string; isFederated: boolean; remoteDomain?: string | null | undefined } | null;
 }
 
 export interface NestedQuotedPostItem {
@@ -35,15 +37,14 @@ export interface NestedQuotedPostItem {
   id_str?: string | undefined;
   post_id?: string | number | undefined;
   username?: string | undefined;
-  display_name?: string | undefined;
-  avatar_url?: string | undefined;
-  account_type?: string | undefined;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  account_type?: string | null | undefined;
   content?: string | undefined;
   created_at?: string | undefined;
-  author?: { username?: string | undefined } | undefined;
-  artifact_view_id?: string | number | undefined;
+  author?: { username?: string | null | undefined } | null | undefined;
+  artifact_view_id?: string | number | null | undefined;
   artifact_view?: unknown;
-  [key: string]: unknown;
 }
 
 export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parsedQuoteAuthor }) => {
@@ -53,23 +54,19 @@ export const PostQuotedPost: React.FC<PostQuotedPostProps> = ({ quotePost, parse
   );
   const [showQuoteSigModal, setShowQuoteSigModal] = useState(false);
 
-  const quoteMeta = useMemo(() => {
-    if (!quotePost.metadata) return null;
-    if (typeof quotePost.metadata === "object") return quotePost.metadata;
-    return safeJsonParse(quotePost.metadata, null);
-  }, [quotePost.metadata]);
+  const quoteMeta = useMemo(() => parsePostMetadata(quotePost.metadata), [quotePost.metadata]);
+  const quoteProof = useMemo(() => asRecord(quoteMeta.proof), [quoteMeta]);
 
-  const quoteSigDigest =
-    (quotePost as any)?.signature ||
-    quotePost?.client_signature ||
-    quoteMeta?.client_signature ||
-    quoteMeta?.clientSignature ||
-    quoteMeta?.proof?.proofValue ||
-    quoteMeta?.proof?.signature ||
-    quoteMeta?.signature ||
-    quotePost?.metadata?.client_signature ||
-    quotePost?.metadata?.clientSignature ||
-    "";
+  const quoteSigDigest = String(
+    quotePost?.signature ||
+      quotePost?.client_signature ||
+      quoteMeta.client_signature ||
+      quoteMeta.clientSignature ||
+      quoteProof?.proofValue ||
+      quoteProof?.signature ||
+      quoteMeta.signature ||
+      "",
+  );
   const quoteHasSignature = Boolean(quoteSigDigest);
 
   useEffect(() => {

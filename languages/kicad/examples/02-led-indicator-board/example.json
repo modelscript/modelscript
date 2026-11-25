@@ -1,0 +1,11 @@
+{
+  "id": "kicad-02-led-indicator-board",
+  "lang": "kicad",
+  "subFormats": ["kicad_pcb"],
+  "difficulty": 2,
+  "title": "LED Current-Limiting Indicator Board",
+  "description": "Two-layer 5V status indicator PCB featuring a 330 Ohm current-limiting resistor, 0603 green LED, power header, and solid bottom-layer GND copper pour zone.",
+  "category": "ECAD & PCB Layout",
+  "tags": ["kicad", "pcb", "led", "copper-zone", "2-layer"],
+  "activeFile": "led_board.kicad_pcb"
+}

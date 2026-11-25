@@ -236,9 +236,9 @@ export const OlgaPanel: React.FC<LanguagePanelProps> = ({
             {mode !== "artifact" && (host.exportFile || host.onUpdateProjectFile) && (
               <PanelButton onClick={handleExportSysml}>Export SysML v2</PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "olga", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "olga", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

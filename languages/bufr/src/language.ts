@@ -26,7 +26,7 @@ export const bufrLanguage = language({
         shortTitle: "BUFR",
         selector: ["*.bufr", "*.bfr", "*.bufr.txt"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/BufrPanel.tsx",
         artifactViewTypes: ["bufr", "bfr"],
       },

@@ -61,7 +61,7 @@ test("Feature Flag System & Launch Readiness Matrix Verification", async (t) => 
     // Guest evaluation
     const guestRes = await request(app).get("/api/v1/flags").expect(200);
     assert.strictEqual(guestRes.body.modelica_simulation, true);
-    assert.strictEqual(guestRes.body.morsel_playground, true);
+    assert.strictEqual(guestRes.body.ansatz_editor, true);
     assert.strictEqual(guestRes.body.package_browser, true);
     assert.strictEqual(guestRes.body.cad_step_viewer, true);
     assert.strictEqual(guestRes.body.heavy_vscode_ide, true);

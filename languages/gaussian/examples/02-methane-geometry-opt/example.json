@@ -1,0 +1,11 @@
+{
+  "id": "gaussian-02-methane-geometry-opt",
+  "lang": "gaussian",
+  "subFormats": ["gjf"],
+  "difficulty": 2,
+  "title": "Methane DFT Geometry Optimization",
+  "description": "Hybrid DFT geometry optimization of tetrahedral methane (CH4) at the B3LYP/6-31G(d) level using symbolic Z-matrix internal coordinates with bond length and tetrahedral angle variables.",
+  "category": "Quantum Chemistry & Electronic Structure",
+  "tags": ["gaussian", "dft", "optimization", "z-matrix"],
+  "activeFile": "methane_opt.gjf"
+}

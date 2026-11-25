@@ -7,7 +7,7 @@ import { allBlockingIssues, clampStepIndex, stepIssues, visibleSteps } from "./e
 import { IssueList, SummaryChips } from "./Primitives";
 import type { AttachFlow } from "./useAttachFlow";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 const Shell = styled.section`
   display: flex;

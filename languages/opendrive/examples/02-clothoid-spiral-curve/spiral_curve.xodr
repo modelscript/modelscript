@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="6" name="Clothoid_Spiral_Curve" version="1.0" date="2026-11-24" north="500.0" south="-100.0" east="600.0" west="0.0" vendor="Ansatz"/>
+  <road name="Spiral_Curve_Mainline" length="400.00000000" id="1" junction="-1">
+    <planView>
+      <geometry s="0.00000000" x="0.00000000" y="0.00000000" hdg="0.00000000" length="150.00000000">
+        <line/>
+      </geometry>
+      <geometry s="150.00000000" x="150.00000000" y="0.00000000" hdg="0.00000000" length="100.00000000">
+        <spiral curvStart="0.00000000" curvEnd="0.00400000"/>
+      </geometry>
+      <geometry s="250.00000000" x="249.60038073" y="6.65070160" hdg="0.20000000" length="150.00000000">
+        <arc curvature="0.00400000"/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.00000000" a="20.00000000" b="0.01000000" c="0.00000000" d="0.00000000"/>
+    </elevationProfile>
+    <lateralProfile>
+      <superelevation s="0.00000000" a="0.00000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+      <superelevation s="150.00000000" a="0.00000000" b="0.00040000" c="0.00000000" d="0.00000000"/>
+      <superelevation s="250.00000000" a="0.04000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+    </lateralProfile>
+    <lanes>
+      <laneSection s="0.00000000">
+        <left>
+          <lane id="1" type="driving" level="false">
+            <width sOffset="0.00000000" a="3.75000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <width sOffset="0.00000000" a="3.75000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

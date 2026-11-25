@@ -1,0 +1,11 @@
+{
+  "id": "reqif-05-submarine-hull-digital-thread",
+  "lang": "reqif",
+  "subFormats": ["reqif", "sysml"],
+  "difficulty": 5,
+  "title": "Submarine Pressure Hull & Life-Support Digital Thread",
+  "description": "Multi-file ReqIF and SysML v2 verification bundle tracing deep-submergence hull collapse margin and O2/CO2 life-support requirements to SysML verification cases.",
+  "category": "Marine & Naval Engineering",
+  "tags": ["reqif", "sysml2", "submarine", "digital-thread", "multi-file"],
+  "activeFile": "hull_reqs.reqif"
+}

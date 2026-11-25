@@ -1,0 +1,11 @@
+{
+  "id": "obj-03-uv-textured-cylinder",
+  "lang": "obj",
+  "subFormats": ["wavefront-obj", "wavefront-mtl"],
+  "difficulty": 3,
+  "title": "UV-Mapped Textured Copper Pressure Cylinder",
+  "description": "Closed cylindrical pressure vessel mesh with cylindrical UV texture coordinates (vt), radial smooth vertex normals (vn), and a brushed copper material library.",
+  "category": "3D Surface Modeling",
+  "tags": ["obj", "mtl", "uv-mapping", "cylinder", "multi-file"],
+  "activeFile": "cylinder.obj"
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "doe2-01-single-zone-office-envelope",
+    "lang": "doe2",
+    "subFormats": ["inp"],
+    "difficulty": 1,
+    "title": "Single-Zone Office Envelope and Lighting Schedule",
+    "description": "Minimal DOE-2 BDL building loads model for a single-zone small office defining insulated masonry wall layers, double-pane glazing, fractional lighting schedule, and space geometry.",
+    "category": "Building Energy Simulation",
+    "tags": ["doe2", "bdl", "envelope", "loads"],
+    "activeFile": "office.inp",
+    "fileNames": ["office.inp"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "$ Single-Zone Small Office Envelope and Lighting Schedule\nINPUT LOADS ..\n\n\"MAT-BRICK\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.33\n  CONDUCTIVITY = 0.77\n  DENSITY = 120.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"MAT-INSUL\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.25\n  CONDUCTIVITY = 0.025\n  DENSITY = 2.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"LAY-WALL\" = LAYERS\n  MATERIAL = (\"MAT-BRICK\", \"MAT-INSUL\") ..\n\n\"CON-WALL\" = CONSTRUCTION\n  TYPE = LAYERS\n  LAYERS = \"LAY-WALL\" ..\n\n\"GLZ-DBL\" = GLASS-TYPE\n  GLASS-CONDUCTANCE = 0.45\n  SHADING-COEFF = 0.62 ..\n\n\"DS-LIGHT\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.10, 0.10, 0.10, 0.10, 0.10, 0.15, 0.40, 0.90, 0.95, 0.95, 0.95, 0.85,\n            0.90, 0.95, 0.95, 0.95, 0.90, 0.60, 0.30, 0.15, 0.10, 0.10, 0.10, 0.10) ..\n\n\"SP-OFFICE\" = SPACE\n  AREA = 1200.0\n  HEIGHT = 10.0 ..\n\n\"WALL-SOUTH\" = EXTERIOR-WALL\n  CONSTRUCTION = \"CON-WALL\"\n  AREA = 400.0 ..\n\n\"WIN-SOUTH\" = WINDOW\n  GLASS-TYPE = \"GLZ-DBL\"\n  AREA = 120.0 ..\n\nCOMPUTE LOADS ..\n\nINPUT SYSTEMS ..\n\"SYS-OFF\" = SYSTEM TYPE = PSZ ..\n\"ZN-OFFICE\" = ZONE SPACE = \"SP-OFFICE\" ..\nCOMPUTE SYSTEMS ..\n\nSTOP ..\n"
+  },
+  {
+    "id": "doe2-02-retail-packaged-rooftop-psz",
+    "lang": "doe2",
+    "subFormats": ["inp"],
+    "difficulty": 2,
+    "title": "Retail Store Packaged Rooftop DX HVAC System",
+    "description": "Two-space retail store with sales floor and back-of-house storage conditioned by a Packaged Single Zone (PSZ) rooftop DX unit with occupancy and equipment schedules.",
+    "category": "Building Energy Simulation",
+    "tags": ["doe2", "psz", "retail", "hvac"],
+    "activeFile": "retail_psz.inp",
+    "fileNames": ["retail_psz.inp"],
+    "fileCount": 1,
+    "code": "$ Retail Store with Packaged Single Zone (PSZ) Rooftop HVAC\nINPUT LOADS ..\n\n\"MAT-CMU\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.67\n  CONDUCTIVITY = 0.60\n  DENSITY = 110.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"MAT-RIGID\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.17\n  CONDUCTIVITY = 0.020\n  DENSITY = 1.8\n  SPECIFIC-HEAT = 0.29 ..\n\n\"MAT-GYP\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.05\n  CONDUCTIVITY = 0.092\n  DENSITY = 50.0\n  SPECIFIC-HEAT = 0.26 ..\n\n\"LAY-EXT\" = LAYERS\n  MATERIAL = (\"MAT-CMU\", \"MAT-RIGID\", \"MAT-GYP\") ..\n\n\"CON-EXT\" = CONSTRUCTION\n  TYPE = LAYERS\n  LAYERS = \"LAY-EXT\" ..\n\n\"GLZ-STOREFRONT\" = GLASS-TYPE\n  GLASS-CONDUCTANCE = 0.38\n  SHADING-COEFF = 0.48 ..\n\n\"DS-RETAIL-OCC\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.2, 0.5, 0.8, 0.9, 1.0,\n            1.0, 0.9, 0.9, 0.9, 1.0, 1.0, 0.8, 0.6, 0.3, 0.1, 0.0, 0.0) ..\n\n\"SP-SALES\" = SPACE\n  AREA = 4500.0\n  HEIGHT = 14.0 ..\n\n\"WALL-FRONT\" = EXTERIOR-WALL\n  CONSTRUCTION = \"CON-EXT\"\n  AREA = 1260.0 ..\n\n\"WIN-FRONT\" = WINDOW\n  GLASS-TYPE = \"GLZ-STOREFRONT\"\n  AREA = 420.0 ..\n\n\"SP-STORAGE\" = SPACE\n  AREA = 1500.0\n  HEIGHT = 14.0 ..\n\n\"WALL-REAR\" = EXTERIOR-WALL\n  CONSTRUCTION = \"CON-EXT\"\n  AREA = 700.0 ..\n\nCOMPUTE LOADS ..\n\nINPUT SYSTEMS ..\n\"RTU-1\" = SYSTEM TYPE = PSZ ..\n\"ZN-SALES\" = ZONE SPACE = \"SP-SALES\" ..\n\"ZN-STORAGE\" = ZONE SPACE = \"SP-STORAGE\" ..\nCOMPUTE SYSTEMS ..\n\nSTOP ..\n"
+  },
+  {
+    "id": "doe2-03-multi-zone-school-daylighting",
+    "lang": "doe2",
+    "subFormats": ["inp"],
+    "difficulty": 3,
+    "title": "Multi-Zone School Building with Daylighting and Economizer",
+    "description": "Three-zone educational wing (South Classrooms, North Classrooms, Gymnasium) with low-E daylighting clerestory glazing, roof assembly, and packaged multizone air-side economizer HVAC.",
+    "category": "Building Energy Simulation",
+    "tags": ["doe2", "multi-zone", "daylighting", "school"],
+    "activeFile": "school.inp",
+    "fileNames": ["school.inp"],
+    "fileCount": 1,
+    "code": "$ Multi-Zone School Wing with Daylighting Glazing and Roof Assembly\nINPUT LOADS ..\n\n\"MAT-CONC\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.50\n  CONDUCTIVITY = 0.95\n  DENSITY = 140.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"MAT-POLYISO\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.33\n  CONDUCTIVITY = 0.016\n  DENSITY = 2.0\n  SPECIFIC-HEAT = 0.38 ..\n\n\"MAT-DECK\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.08\n  CONDUCTIVITY = 0.12\n  DENSITY = 45.0\n  SPECIFIC-HEAT = 0.25 ..\n\n\"LAY-WALL\" = LAYERS MATERIAL = (\"MAT-CONC\", \"MAT-POLYISO\") ..\n\"LAY-ROOF\" = LAYERS MATERIAL = (\"MAT-POLYISO\", \"MAT-DECK\") ..\n\n\"CON-WALL\" = CONSTRUCTION TYPE = LAYERS LAYERS = \"LAY-WALL\" ..\n\"CON-ROOF\" = CONSTRUCTION TYPE = LAYERS LAYERS = \"LAY-ROOF\" ..\n\n\"GLZ-LOWE\" = GLASS-TYPE\n  GLASS-CONDUCTANCE = 0.29\n  SHADING-COEFF = 0.39 ..\n\n\"DS-SCHOOL\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.05, 0.30, 0.95, 1.0, 1.0, 1.0,\n            0.85, 1.0, 1.0, 0.90, 0.45, 0.20, 0.10, 0.05, 0.0, 0.0, 0.0, 0.0) ..\n\n\"SP-CLASS-S\" = SPACE AREA = 3600.0 HEIGHT = 11.0 ..\n\"W-CLASS-S\" = EXTERIOR-WALL CONSTRUCTION = \"CON-WALL\" AREA = 990.0 ..\n\"WIN-CLASS-S\" = WINDOW GLASS-TYPE = \"GLZ-LOWE\" AREA = 320.0 ..\n\n\"SP-CLASS-N\" = SPACE AREA = 3600.0 HEIGHT = 11.0 ..\n\"W-CLASS-N\" = EXTERIOR-WALL CONSTRUCTION = \"CON-WALL\" AREA = 990.0 ..\n\"WIN-CLASS-N\" = WINDOW GLASS-TYPE = \"GLZ-LOWE\" AREA = 280.0 ..\n\n\"SP-GYM\" = SPACE AREA = 6000.0 HEIGHT = 22.0 ..\n\"W-GYM\" = EXTERIOR-WALL CONSTRUCTION = \"CON-WALL\" AREA = 2200.0 ..\n\"RF-GYM\" = EXTERIOR-WALL CONSTRUCTION = \"CON-ROOF\" AREA = 6000.0 ..\n\nCOMPUTE LOADS ..\n\nINPUT SYSTEMS ..\n\"AHU-CLASS\" = SYSTEM TYPE = PMZS ..\n\"ZN-CLASS-S\" = ZONE SPACE = \"SP-CLASS-S\" ..\n\"ZN-CLASS-N\" = ZONE SPACE = \"SP-CLASS-N\" ..\n\"AHU-GYM\" = SYSTEM TYPE = PSZ ..\n\"ZN-GYM\" = ZONE SPACE = \"SP-GYM\" ..\nCOMPUTE SYSTEMS ..\n\nSTOP ..\n"
+  },
+  {
+    "id": "doe2-04-highrise-vav-central-plant",
+    "lang": "doe2",
+    "subFormats": ["inp"],
+    "difficulty": 4,
+    "title": "High-Rise Commercial VAV Chiller-Boiler Central Plant",
+    "description": "Core-and-perimeter commercial office tower floor modeled with curtain-wall spandrel construction, Variable Air Volume (VAVS) terminal reheat air handler, and chilled-water/hot-water central plant.",
+    "category": "Building Energy Simulation",
+    "tags": ["doe2", "vav", "central-plant", "commercial"],
+    "activeFile": "highrise_vav.inp",
+    "fileNames": ["highrise_vav.inp"],
+    "fileCount": 1,
+    "code": "$ High-Rise Commercial Office Tower: Core + 4 Perimeters, VAVS + Central Plant\nINPUT LOADS ..\n\n\"MAT-SPANDREL\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.08\n  CONDUCTIVITY = 0.50\n  DENSITY = 155.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"MAT-MINWOOL\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.35\n  CONDUCTIVITY = 0.022\n  DENSITY = 4.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"LAY-CURTAIN\" = LAYERS MATERIAL = (\"MAT-SPANDREL\", \"MAT-MINWOOL\") ..\n\"CON-CURTAIN\" = CONSTRUCTION TYPE = LAYERS LAYERS = \"LAY-CURTAIN\" ..\n\n\"GLZ-CURTAIN\" = GLASS-TYPE\n  GLASS-CONDUCTANCE = 0.26\n  SHADING-COEFF = 0.34 ..\n\n\"DS-TOWER-EQ\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.30, 0.30, 0.30, 0.30, 0.30, 0.35, 0.50, 0.80, 0.95, 1.00, 1.00, 0.95,\n            0.90, 0.95, 1.00, 1.00, 0.95, 0.80, 0.55, 0.40, 0.35, 0.30, 0.30, 0.30) ..\n\n\"SP-CORE\" = SPACE AREA = 12000.0 HEIGHT = 12.0 ..\n\"SP-PERIM-N\" = SPACE AREA = 2400.0 HEIGHT = 12.0 ..\n\"W-N\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CURTAIN\" AREA = 1920.0 ..\n\"WIN-N\" = WINDOW GLASS-TYPE = \"GLZ-CURTAIN\" AREA = 1150.0 ..\n\n\"SP-PERIM-S\" = SPACE AREA = 2400.0 HEIGHT = 12.0 ..\n\"W-S\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CURTAIN\" AREA = 1920.0 ..\n\"WIN-S\" = WINDOW GLASS-TYPE = \"GLZ-CURTAIN\" AREA = 1150.0 ..\n\n\"SP-PERIM-E\" = SPACE AREA = 1800.0 HEIGHT = 12.0 ..\n\"W-E\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CURTAIN\" AREA = 1440.0 ..\n\"WIN-E\" = WINDOW GLASS-TYPE = \"GLZ-CURTAIN\" AREA = 860.0 ..\n\n\"SP-PERIM-W\" = SPACE AREA = 1800.0 HEIGHT = 12.0 ..\n\"W-W\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CURTAIN\" AREA = 1440.0 ..\n\"WIN-W\" = WINDOW GLASS-TYPE = \"GLZ-CURTAIN\" AREA = 860.0 ..\n\nCOMPUTE LOADS ..\n\nINPUT SYSTEMS ..\n\"AHU-VAV1\" = SYSTEM TYPE = VAVS ..\n\"ZN-CORE\" = ZONE SPACE = \"SP-CORE\" ..\n\"ZN-N\" = ZONE SPACE = \"SP-PERIM-N\" ..\n\"ZN-S\" = ZONE SPACE = \"SP-PERIM-S\" ..\n\"ZN-E\" = ZONE SPACE = \"SP-PERIM-E\" ..\n\"ZN-W\" = ZONE SPACE = \"SP-PERIM-W\" ..\nCOMPUTE SYSTEMS ..\n\nINPUT PLANT ..\n\"CHILLER-1\" = PLANT-EQUIPMENT TYPE = HERM-CENT-CHLR SIZE = -999 ..\n\"BOILER-1\" = PLANT-EQUIPMENT TYPE = HW-BOILER SIZE = -999 ..\nCOMPUTE PLANT ..\n\nSTOP ..\n"
+  },
+  {
+    "id": "doe2-05-campus-thermal-plant",
+    "lang": "doe2",
+    "subFormats": ["inp", "csv"],
+    "difficulty": 5,
+    "title": "University Campus Multi-Building Thermal Plant",
+    "description": "Multi-building university campus energy model combining an Engineering Lab, Library, and Central Chiller-Boiler Plant with hourly fractional load schedules and companion design-day weather CSV data.",
+    "category": "Building Energy Simulation",
+    "tags": ["doe2", "campus", "central-plant", "multi-file"],
+    "activeFile": "campus.inp",
+    "fileNames": ["campus.inp", "weather.csv"],
+    "fileCount": 2,
+    "code": "$ University Campus Multi-Building Loads, Systems, and Central Thermal Plant\n$ Companion hourly design-day weather file: weather.csv\nINPUT LOADS ..\n\n\"MAT-PRECAST\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.50\n  CONDUCTIVITY = 0.90\n  DENSITY = 140.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"MAT-XPS\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.25\n  CONDUCTIVITY = 0.018\n  DENSITY = 2.2\n  SPECIFIC-HEAT = 0.29 ..\n\n\"MAT-ACOUSTIC\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.06\n  CONDUCTIVITY = 0.035\n  DENSITY = 18.0\n  SPECIFIC-HEAT = 0.30 ..\n\n\"LAY-CAMPUS-WALL\" = LAYERS MATERIAL = (\"MAT-PRECAST\", \"MAT-XPS\", \"MAT-ACOUSTIC\") ..\n\"CON-CAMPUS-WALL\" = CONSTRUCTION TYPE = LAYERS LAYERS = \"LAY-CAMPUS-WALL\" ..\n\n\"GLZ-TRIPLE\" = GLASS-TYPE\n  GLASS-CONDUCTANCE = 0.19\n  SHADING-COEFF = 0.30 ..\n\n\"DS-LAB\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.45, 0.45, 0.45, 0.45, 0.45, 0.50, 0.65, 0.85, 1.00, 1.00, 1.00, 1.00,\n            0.95, 1.00, 1.00, 1.00, 0.95, 0.85, 0.70, 0.60, 0.55, 0.50, 0.45, 0.45) ..\n\n\"DS-LIB\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.15, 0.40, 0.75, 0.90, 0.95, 1.00,\n            1.00, 1.00, 1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.65, 0.45, 0.20, 0.10) ..\n\n\"SP-ENG-LAB\" = SPACE AREA = 18000.0 HEIGHT = 14.0 ..\n\"W-LAB-S\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CAMPUS-WALL\" AREA = 3200.0 ..\n\"WIN-LAB-S\" = WINDOW GLASS-TYPE = \"GLZ-TRIPLE\" AREA = 960.0 ..\n\n\"SP-LIBRARY\" = SPACE AREA = 24000.0 HEIGHT = 16.0 ..\n\"W-LIB-E\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CAMPUS-WALL\" AREA = 4000.0 ..\n\"WIN-LIB-E\" = WINDOW GLASS-TYPE = \"GLZ-TRIPLE\" AREA = 1400.0 ..\n\n\"SP-LECTURE\" = SPACE AREA = 8500.0 HEIGHT = 18.0 ..\n\"W-LEC-N\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CAMPUS-WALL\" AREA = 1800.0 ..\n\"WIN-LEC-N\" = WINDOW GLASS-TYPE = \"GLZ-TRIPLE\" AREA = 360.0 ..\n\nCOMPUTE LOADS ..\n\nINPUT SYSTEMS ..\n\"AHU-LAB-100OA\" = SYSTEM TYPE = VAVS ..\n\"ZN-ENG-LAB\" = ZONE SPACE = \"SP-ENG-LAB\" ..\n\"AHU-LIB-VAV\" = SYSTEM TYPE = VAVS ..\n\"ZN-LIBRARY\" = ZONE SPACE = \"SP-LIBRARY\" ..\n\"ZN-LECTURE\" = ZONE SPACE = \"SP-LECTURE\" ..\nCOMPUTE SYSTEMS ..\n\nINPUT PLANT ..\n\"CHLR-PRIMARY\" = PLANT-EQUIPMENT TYPE = HERM-CENT-CHLR SIZE = -999 ..\n\"CHLR-BACKUP\" = PLANT-EQUIPMENT TYPE = HERM-CENT-CHLR SIZE = -999 ..\n\"BLR-CAMPUS\" = PLANT-EQUIPMENT TYPE = HW-BOILER SIZE = -999 ..\nCOMPUTE PLANT ..\n\nSTOP ..\n",
+    "files": {
+      "campus.inp": "$ University Campus Multi-Building Loads, Systems, and Central Thermal Plant\n$ Companion hourly design-day weather file: weather.csv\nINPUT LOADS ..\n\n\"MAT-PRECAST\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.50\n  CONDUCTIVITY = 0.90\n  DENSITY = 140.0\n  SPECIFIC-HEAT = 0.20 ..\n\n\"MAT-XPS\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.25\n  CONDUCTIVITY = 0.018\n  DENSITY = 2.2\n  SPECIFIC-HEAT = 0.29 ..\n\n\"MAT-ACOUSTIC\" = MATERIAL\n  TYPE = PROPERTIES\n  THICKNESS = 0.06\n  CONDUCTIVITY = 0.035\n  DENSITY = 18.0\n  SPECIFIC-HEAT = 0.30 ..\n\n\"LAY-CAMPUS-WALL\" = LAYERS MATERIAL = (\"MAT-PRECAST\", \"MAT-XPS\", \"MAT-ACOUSTIC\") ..\n\"CON-CAMPUS-WALL\" = CONSTRUCTION TYPE = LAYERS LAYERS = \"LAY-CAMPUS-WALL\" ..\n\n\"GLZ-TRIPLE\" = GLASS-TYPE\n  GLASS-CONDUCTANCE = 0.19\n  SHADING-COEFF = 0.30 ..\n\n\"DS-LAB\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.45, 0.45, 0.45, 0.45, 0.45, 0.50, 0.65, 0.85, 1.00, 1.00, 1.00, 1.00,\n            0.95, 1.00, 1.00, 1.00, 0.95, 0.85, 0.70, 0.60, 0.55, 0.50, 0.45, 0.45) ..\n\n\"DS-LIB\" = DAY-SCHEDULE\n  TYPE = FRACTION\n  VALUES = (0.10, 0.10, 0.10, 0.10, 0.10, 0.10, 0.15, 0.40, 0.75, 0.90, 0.95, 1.00,\n            1.00, 1.00, 1.00, 0.95, 0.90, 0.85, 0.80, 0.75, 0.65, 0.45, 0.20, 0.10) ..\n\n\"SP-ENG-LAB\" = SPACE AREA = 18000.0 HEIGHT = 14.0 ..\n\"W-LAB-S\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CAMPUS-WALL\" AREA = 3200.0 ..\n\"WIN-LAB-S\" = WINDOW GLASS-TYPE = \"GLZ-TRIPLE\" AREA = 960.0 ..\n\n\"SP-LIBRARY\" = SPACE AREA = 24000.0 HEIGHT = 16.0 ..\n\"W-LIB-E\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CAMPUS-WALL\" AREA = 4000.0 ..\n\"WIN-LIB-E\" = WINDOW GLASS-TYPE = \"GLZ-TRIPLE\" AREA = 1400.0 ..\n\n\"SP-LECTURE\" = SPACE AREA = 8500.0 HEIGHT = 18.0 ..\n\"W-LEC-N\" = EXTERIOR-WALL CONSTRUCTION = \"CON-CAMPUS-WALL\" AREA = 1800.0 ..\n\"WIN-LEC-N\" = WINDOW GLASS-TYPE = \"GLZ-TRIPLE\" AREA = 360.0 ..\n\nCOMPUTE LOADS ..\n\nINPUT SYSTEMS ..\n\"AHU-LAB-100OA\" = SYSTEM TYPE = VAVS ..\n\"ZN-ENG-LAB\" = ZONE SPACE = \"SP-ENG-LAB\" ..\n\"AHU-LIB-VAV\" = SYSTEM TYPE = VAVS ..\n\"ZN-LIBRARY\" = ZONE SPACE = \"SP-LIBRARY\" ..\n\"ZN-LECTURE\" = ZONE SPACE = \"SP-LECTURE\" ..\nCOMPUTE SYSTEMS ..\n\nINPUT PLANT ..\n\"CHLR-PRIMARY\" = PLANT-EQUIPMENT TYPE = HERM-CENT-CHLR SIZE = -999 ..\n\"CHLR-BACKUP\" = PLANT-EQUIPMENT TYPE = HERM-CENT-CHLR SIZE = -999 ..\n\"BLR-CAMPUS\" = PLANT-EQUIPMENT TYPE = HW-BOILER SIZE = -999 ..\nCOMPUTE PLANT ..\n\nSTOP ..\n",
+      "weather.csv": "hour,drybulb_F,wetbulb_F,solar_Btu_hr_ft2,wind_knots\n1,68.0,62.0,0.0,5.0\n4,65.5,61.0,0.0,4.5\n7,70.2,63.5,65.0,6.0\n10,81.4,69.0,210.0,8.5\n13,90.8,73.5,295.0,10.0\n16,93.2,74.0,225.0,9.5\n19,84.5,71.0,55.0,7.0\n22,74.0,66.0,0.0,5.5\n"
+    }
+  }
+]

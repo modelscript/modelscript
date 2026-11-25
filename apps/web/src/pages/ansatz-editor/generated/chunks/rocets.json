@@ -1,0 +1,77 @@
+[
+  {
+    "id": "rocets-01-monopropellant-thruster",
+    "lang": "rocets",
+    "subFormats": ["roc"],
+    "difficulty": 1,
+    "title": "Pressure-Fed Monopropellant Attitude Thruster",
+    "description": "Spacecraft pressure-fed monopropellant reaction-control thruster connecting a nitrogen-pressurized propellant tank through a solenoid thrust valve to a catalytic decomposition chamber and bell nozzle.",
+    "category": "Spacecraft Propulsion",
+    "tags": ["rocets", "monopropellant", "thruster", "pressure-fed"],
+    "activeFile": "monoprop_thruster.roc",
+    "fileNames": ["monoprop_thruster.roc"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "DECK: MonoProp_RCS_Thruster\nTITLE: \"Pressure-Fed Monopropellant Reaction Control Thruster\"\n\nCOMPONENTS:\n  PROP_TANK TYPE=TANK TITLE=\"Pressurized Propellant Tank\" X=100 Y=200\n    PARAMS: P_OUT=2.4E6, T_OUT=295.0, FLUID=MMH\n\n  PRESS_GAS TYPE=TANK TITLE=\"Helium Pressurant Tank\" X=100 Y=80\n    PARAMS: P_OUT=2.6E6, T_OUT=295.0, FLUID=HELIUM\n\n  THRUST_VALVE TYPE=VALVE TITLE=\"Solenoid Thrust Valve\" X=320 Y=200\n    PARAMS: CV=0.00045, POSITION=1.0, FLUID=MMH\n\n  CHAMBER TYPE=CHAMBER TITLE=\"Catalytic Decomposition Chamber\" X=560 Y=200\n    PARAMS: PC=1.5E6, PA=1.0E3, MR=1.0, AT=0.00018, EPS=40.0, VC=0.0004\n    S0: PC=1.5E6\n\nCONNECTIONS:\n  PROP_TANK.OUTLET -> THRUST_VALVE.INLET\n  THRUST_VALVE.OUTLET -> CHAMBER.INJ_FUEL\n  PRESS_GAS.OUTLET -> CHAMBER.INJ_OX\n"
+  },
+  {
+    "id": "rocets-02-hypergolic-oms-engine",
+    "lang": "rocets",
+    "subFormats": ["roc"],
+    "difficulty": 2,
+    "title": "Pressure-Fed Hypergolic Orbital Maneuvering Engine",
+    "description": "Bipropellant NTO/MMH pressure-fed Orbital Maneuvering System (OMS) rocket engine with separate oxidizer and fuel tanks, isolation valves, and a regeneratively cooled combustion chamber.",
+    "category": "Spacecraft Propulsion",
+    "tags": ["rocets", "hypergolic", "oms", "bipropellant"],
+    "activeFile": "oms_hypergolic.roc",
+    "fileNames": ["oms_hypergolic.roc"],
+    "fileCount": 1,
+    "code": "DECK: OMS_Hypergolic_Engine\nTITLE: \"Pressure-Fed NTO/MMH Orbital Maneuvering System Engine\"\n\nCOMPONENTS:\n  OX_TANK TYPE=TANK TITLE=\"NTO Oxidizer Tank\" X=80 Y=120\n    PARAMS: P_OUT=1.9E6, T_OUT=295.0, FLUID=NTO\n\n  FUEL_TANK TYPE=TANK TITLE=\"MMH Fuel Tank\" X=80 Y=280\n    PARAMS: P_OUT=1.9E6, T_OUT=295.0, FLUID=MMH\n\n  OX_VALVE TYPE=VALVE TITLE=\"Main Oxidizer Bipropellant Valve\" X=300 Y=120\n    PARAMS: CV=0.0022, POSITION=1.0, FLUID=NTO\n\n  FUEL_VALVE TYPE=VALVE TITLE=\"Main Fuel Bipropellant Valve\" X=300 Y=280\n    PARAMS: CV=0.0018, POSITION=1.0, FLUID=MMH\n\n  CHAMBER TYPE=CHAMBER TITLE=\"OMS Main Combustion Chamber\" X=560 Y=200\n    PARAMS: PC=0.86E6, PA=1.0E3, MR=1.65, AT=0.0185, EPS=55.0, VC=0.022\n    S0: PC=0.86E6\n\nCONNECTIONS:\n  OX_TANK.OUTLET -> OX_VALVE.INLET\n  FUEL_TANK.OUTLET -> FUEL_VALVE.INLET\n  OX_VALVE.OUTLET -> CHAMBER.INJ_OX\n  FUEL_VALVE.OUTLET -> CHAMBER.INJ_FUEL\n"
+  },
+  {
+    "id": "rocets-03-gas-generator-lox-rp1",
+    "lang": "rocets",
+    "subFormats": ["roc"],
+    "difficulty": 3,
+    "title": "Gas-Generator Cycle LOX/RP-1 Booster Engine",
+    "description": "Merlin-class open-cycle LOX/RP-1 liquid booster rocket engine with single-shaft dual-impeller turbopump, fuel-rich gas generator, turbine drive, main valves, and regeneratively cooled thrust chamber.",
+    "category": "Launch Vehicle Propulsion",
+    "tags": ["rocets", "gas-generator", "lox-rp1", "turbopump"],
+    "activeFile": "gg_booster.roc",
+    "fileNames": ["gg_booster.roc"],
+    "fileCount": 1,
+    "code": "DECK: GasGenerator_LOX_RP1_Booster\nTITLE: \"Open-Cycle Gas-Generator LOX/RP-1 Booster Engine\"\n\nCOMPONENTS:\n  LOX_TANK TYPE=TANK TITLE=\"LOX Main Tank\" X=60 Y=100\n    PARAMS: P_OUT=0.35E6, T_OUT=90.0, FLUID=LOX\n\n  RP1_TANK TYPE=TANK TITLE=\"RP-1 Kerosene Tank\" X=60 Y=300\n    PARAMS: P_OUT=0.35E6, T_OUT=290.0, FLUID=RP1\n\n  OX_PUMP TYPE=PUMP TITLE=\"LOX Centrifugal Pump\" X=240 Y=100\n    PARAMS: DELTA_P=12.5E6, ETA=0.76, RHO=1140.0, P_IN=0.35E6, P_VAP=0.10E6, NPSH_R=0.08E6, FLUID=LOX\n\n  FUEL_PUMP TYPE=PUMP TITLE=\"RP-1 Centrifugal Pump\" X=240 Y=300\n    PARAMS: DELTA_P=14.2E6, ETA=0.75, RHO=810.0, P_IN=0.35E6, P_VAP=0.01E6, NPSH_R=0.08E6, FLUID=RP1\n\n  GG_CHAMBER TYPE=CHAMBER TITLE=\"Fuel-Rich Gas Generator\" X=420 Y=420\n    PARAMS: PC=7.5E6, PA=0.101E6, MR=0.35, AT=0.006, EPS=1.0, VC=0.005\n    S0: PC=7.5E6\n\n  GG_TURBINE TYPE=TURBINE TITLE=\"Impulse Drive Turbine\" X=560 Y=420\n    PARAMS: PR=4.2, ETA=0.68, T_IN=920.0, FLUID=COMBUSTION_GAS\n\n  TP_SHAFT TYPE=SHAFT TITLE=\"Single-Shaft Turbopump\" X=390 Y=200\n    PARAMS: INERTIA=0.085, SPEED_RPM=32000.0, MAX_RPM=40000.0\n    S0: SPEED_RPM=32000.0\n\n  MAIN_OX_VALVE TYPE=VALVE TITLE=\"Main LOX Valve\" X=460 Y=100\n    PARAMS: CV=0.0085, POSITION=1.0, FLUID=LOX\n\n  MAIN_FUEL_VALVE TYPE=VALVE TITLE=\"Main RP-1 Valve\" X=460 Y=300\n    PARAMS: CV=0.0055, POSITION=1.0, FLUID=RP1\n\n  MAIN_CHAMBER TYPE=CHAMBER TITLE=\"Main Thrust Chamber\" X=700 Y=200\n    PARAMS: PC=9.7E6, PA=0.101E6, MR=2.36, AT=0.048, EPS=16.0, VC=0.038\n    S0: PC=9.7E6\n\nCONNECTIONS:\n  LOX_TANK.OUTLET -> OX_PUMP.INLET\n  RP1_TANK.OUTLET -> FUEL_PUMP.INLET\n  OX_PUMP.OUTLET -> MAIN_OX_VALVE.INLET\n  FUEL_PUMP.OUTLET -> MAIN_FUEL_VALVE.INLET\n  OX_PUMP.OUTLET -> GG_CHAMBER.INJ_OX\n  FUEL_PUMP.OUTLET -> GG_CHAMBER.INJ_FUEL\n  GG_CHAMBER.NOZZLE_OUT -> GG_TURBINE.INLET\n  MAIN_OX_VALVE.OUTLET -> MAIN_CHAMBER.INJ_OX\n  MAIN_FUEL_VALVE.OUTLET -> MAIN_CHAMBER.INJ_FUEL\n  GG_TURBINE.SHAFT_OUT -> TP_SHAFT.TURBINE_POWER\n  TP_SHAFT.PUMP_POWER -> OX_PUMP.SHAFT_IN\n  TP_SHAFT.PUMP_POWER -> FUEL_PUMP.SHAFT_IN\n"
+  },
+  {
+    "id": "rocets-04-expander-cycle-lox-lh2",
+    "lang": "rocets",
+    "subFormats": ["roc"],
+    "difficulty": 4,
+    "title": "Expander-Cycle LOX/LH2 Upper-Stage Engine",
+    "description": "RL10-class closed expander-cycle cryogenic LOX/LH2 upper-stage rocket engine where heated hydrogen from the regenerative cooling jacket drives the turbopump turbine before entering the main injector.",
+    "category": "Upper-Stage Cryogenic Propulsion",
+    "tags": ["rocets", "expander-cycle", "lox-lh2", "rl10"],
+    "activeFile": "expander_rl10.roc",
+    "fileNames": ["expander_rl10.roc"],
+    "fileCount": 1,
+    "code": "DECK: ExpanderCycle_RL10_UpperStage\nTITLE: \"Closed Expander-Cycle LOX/LH2 Upper-Stage Engine\"\n\nCOMPONENTS:\n  LOX_TANK TYPE=TANK TITLE=\"Cryogenic LOX Tank\" X=60 Y=100\n    PARAMS: P_OUT=0.28E6, T_OUT=90.0, FLUID=LOX\n\n  LH2_TANK TYPE=TANK TITLE=\"Cryogenic LH2 Tank\" X=60 Y=320\n    PARAMS: P_OUT=0.22E6, T_OUT=20.4, FLUID=LH2\n\n  LOX_PUMP TYPE=PUMP TITLE=\"LOX Boost/Main Pump\" X=240 Y=100\n    PARAMS: DELTA_P=5.8E6, ETA=0.74, RHO=1140.0, P_IN=0.28E6, P_VAP=0.10E6, NPSH_R=0.06E6, FLUID=LOX\n\n  LH2_PUMP TYPE=PUMP TITLE=\"Two-Stage LH2 Pump\" X=240 Y=320\n    PARAMS: DELTA_P=8.4E6, ETA=0.72, RHO=71.0, P_IN=0.22E6, P_VAP=0.08E6, NPSH_R=0.05E6, FLUID=LH2\n\n  COOL_VALVE TYPE=VALVE TITLE=\"Regenerative Jacket Control Valve\" X=420 Y=320\n    PARAMS: CV=0.0042, POSITION=0.92, FLUID=LH2\n\n  EXP_TURBINE TYPE=TURBINE TITLE=\"Gaseous Hydrogen Expander Turbine\" X=580 Y=320\n    PARAMS: PR=1.55, ETA=0.78, T_IN=225.0, FLUID=LH2\n\n  OX_CTRL_VALVE TYPE=VALVE TITLE=\"Main Oxidizer Control Valve\" X=440 Y=100\n    PARAMS: CV=0.0048, POSITION=0.95, FLUID=LOX\n\n  GEAR_SHAFT TYPE=SHAFT TITLE=\"Geared Turbopump Shaft\" X=400 Y=200\n    PARAMS: INERTIA=0.045, SPEED_RPM=30500.0, MAX_RPM=38000.0\n    S0: SPEED_RPM=30500.0\n\n  CHAMBER TYPE=CHAMBER TITLE=\"Regeneratively Cooled Vacuum Chamber\" X=760 Y=200\n    PARAMS: PC=4.4E6, PA=1.0E3, MR=5.88, AT=0.0155, EPS=84.0, VC=0.019\n    S0: PC=4.4E6\n\nCONNECTIONS:\n  LOX_TANK.OUTLET -> LOX_PUMP.INLET\n  LH2_TANK.OUTLET -> LH2_PUMP.INLET\n  LOX_PUMP.OUTLET -> OX_CTRL_VALVE.INLET\n  OX_CTRL_VALVE.OUTLET -> CHAMBER.INJ_OX\n  LH2_PUMP.OUTLET -> COOL_VALVE.INLET\n  COOL_VALVE.OUTLET -> EXP_TURBINE.INLET\n  EXP_TURBINE.OUTLET -> CHAMBER.INJ_FUEL\n  EXP_TURBINE.SHAFT_OUT -> GEAR_SHAFT.TURBINE_POWER\n  GEAR_SHAFT.PUMP_POWER -> LOX_PUMP.SHAFT_IN\n  GEAR_SHAFT.PUMP_POWER -> LH2_PUMP.SHAFT_IN\n"
+  },
+  {
+    "id": "rocets-05-ffsc-lox-ch4-startup",
+    "lang": "rocets",
+    "subFormats": ["roc", "csv"],
+    "difficulty": 5,
+    "title": "Full-Flow Staged-Combustion LOX/CH4 Engine Startup",
+    "description": "High-chamber-pressure Full-Flow Staged-Combustion (FFSC) methalox rocket engine with dual oxidizer-rich and fuel-rich preburners, twin independent turbopumps, and a companion transient startup valve schedule.",
+    "category": "Advanced Rocket Cycles",
+    "tags": ["rocets", "ffsc", "methalox", "staged-combustion", "multi-file"],
+    "activeFile": "ffsc_engine.roc",
+    "fileNames": ["ffsc_engine.roc", "valve_schedule.csv"],
+    "fileCount": 2,
+    "code": "DECK: FFSC_LOX_LCH4_Engine\nTITLE: \"Full-Flow Staged-Combustion LOX/LCH4 Methalox Engine\"\n\nCOMPONENTS:\n  LOX_TANK TYPE=TANK TITLE=\"Subcooled LOX Tank\" X=50 Y=100\n    PARAMS: P_OUT=0.45E6, T_OUT=82.0, FLUID=LOX\n\n  CH4_TANK TYPE=TANK TITLE=\"Subcooled LCH4 Tank\" X=50 Y=380\n    PARAMS: P_OUT=0.42E6, T_OUT=100.0, FLUID=LCH4\n\n  OX_PUMP TYPE=PUMP TITLE=\"High-Pressure LOX Turbopump\" X=220 Y=100\n    PARAMS: DELTA_P=58.0E6, ETA=0.80, RHO=1180.0, P_IN=0.45E6, P_VAP=0.05E6, NPSH_R=0.10E6, FLUID=LOX\n\n  CH4_PUMP TYPE=PUMP TITLE=\"High-Pressure LCH4 Turbopump\" X=220 Y=380\n    PARAMS: DELTA_P=62.0E6, ETA=0.79, RHO=440.0, P_IN=0.42E6, P_VAP=0.06E6, NPSH_R=0.10E6, FLUID=LCH4\n\n  OX_VALVE TYPE=VALVE TITLE=\"Ox-Rich Preburner Throttle Valve\" X=380 Y=100\n    PARAMS: CV=0.0095, POSITION=0.95, FLUID=LOX\n\n  CH4_VALVE TYPE=VALVE TITLE=\"Fuel-Rich Preburner Throttle Valve\" X=380 Y=380\n    PARAMS: CV=0.0072, POSITION=0.95, FLUID=LCH4\n\n  OX_PREBURNER TYPE=CHAMBER TITLE=\"Oxidizer-Rich Preburner\" X=540 Y=100\n    PARAMS: PC=52.0E6, PA=25.0E6, MR=6.5, AT=0.025, EPS=1.0, VC=0.015\n    S0: PC=52.0E6\n\n  FUEL_PREBURNER TYPE=CHAMBER TITLE=\"Fuel-Rich Preburner\" X=540 Y=380\n    PARAMS: PC=52.0E6, PA=25.0E6, MR=0.85, AT=0.022, EPS=1.0, VC=0.014\n    S0: PC=52.0E6\n\n  OX_TURBINE TYPE=TURBINE TITLE=\"Ox-Rich Drive Turbine\" X=700 Y=100\n    PARAMS: PR=1.52, ETA=0.81, T_IN=780.0, FLUID=COMBUSTION_GAS\n\n  FUEL_TURBINE TYPE=TURBINE TITLE=\"Fuel-Rich Drive Turbine\" X=700 Y=380\n    PARAMS: PR=1.52, ETA=0.80, T_IN=860.0, FLUID=COMBUSTION_GAS\n\n  OX_SHAFT TYPE=SHAFT TITLE=\"LOX Turbopump Shaft\" X=460 Y=190\n    PARAMS: INERTIA=0.11, SPEED_RPM=28500.0, MAX_RPM=36000.0\n    S0: SPEED_RPM=28500.0\n\n  FUEL_SHAFT TYPE=SHAFT TITLE=\"LCH4 Turbopump Shaft\" X=460 Y=290\n    PARAMS: INERTIA=0.095, SPEED_RPM=34500.0, MAX_RPM=42000.0\n    S0: SPEED_RPM=34500.0\n\n  MAIN_CHAMBER TYPE=CHAMBER TITLE=\"300-bar FFSC Main Thrust Chamber\" X=880 Y=240\n    PARAMS: PC=30.0E6, PA=0.101E6, MR=3.55, AT=0.042, EPS=35.0, VC=0.048\n    S0: PC=30.0E6\n\nCONNECTIONS:\n  LOX_TANK.OUTLET -> OX_PUMP.INLET\n  CH4_TANK.OUTLET -> CH4_PUMP.INLET\n  OX_PUMP.OUTLET -> OX_VALVE.INLET\n  CH4_PUMP.OUTLET -> CH4_VALVE.INLET\n  OX_VALVE.OUTLET -> OX_PREBURNER.INJ_OX\n  CH4_VALVE.OUTLET -> OX_PREBURNER.INJ_FUEL\n  OX_VALVE.OUTLET -> FUEL_PREBURNER.INJ_OX\n  CH4_VALVE.OUTLET -> FUEL_PREBURNER.INJ_FUEL\n  OX_PREBURNER.NOZZLE_OUT -> OX_TURBINE.INLET\n  FUEL_PREBURNER.NOZZLE_OUT -> FUEL_TURBINE.INLET\n  OX_TURBINE.OUTLET -> MAIN_CHAMBER.INJ_OX\n  FUEL_TURBINE.OUTLET -> MAIN_CHAMBER.INJ_FUEL\n  OX_TURBINE.SHAFT_OUT -> OX_SHAFT.TURBINE_POWER\n  OX_SHAFT.PUMP_POWER -> OX_PUMP.SHAFT_IN\n  FUEL_TURBINE.SHAFT_OUT -> FUEL_SHAFT.TURBINE_POWER\n  FUEL_SHAFT.PUMP_POWER -> CH4_PUMP.SHAFT_IN\n",
+    "files": {
+      "ffsc_engine.roc": "DECK: FFSC_LOX_LCH4_Engine\nTITLE: \"Full-Flow Staged-Combustion LOX/LCH4 Methalox Engine\"\n\nCOMPONENTS:\n  LOX_TANK TYPE=TANK TITLE=\"Subcooled LOX Tank\" X=50 Y=100\n    PARAMS: P_OUT=0.45E6, T_OUT=82.0, FLUID=LOX\n\n  CH4_TANK TYPE=TANK TITLE=\"Subcooled LCH4 Tank\" X=50 Y=380\n    PARAMS: P_OUT=0.42E6, T_OUT=100.0, FLUID=LCH4\n\n  OX_PUMP TYPE=PUMP TITLE=\"High-Pressure LOX Turbopump\" X=220 Y=100\n    PARAMS: DELTA_P=58.0E6, ETA=0.80, RHO=1180.0, P_IN=0.45E6, P_VAP=0.05E6, NPSH_R=0.10E6, FLUID=LOX\n\n  CH4_PUMP TYPE=PUMP TITLE=\"High-Pressure LCH4 Turbopump\" X=220 Y=380\n    PARAMS: DELTA_P=62.0E6, ETA=0.79, RHO=440.0, P_IN=0.42E6, P_VAP=0.06E6, NPSH_R=0.10E6, FLUID=LCH4\n\n  OX_VALVE TYPE=VALVE TITLE=\"Ox-Rich Preburner Throttle Valve\" X=380 Y=100\n    PARAMS: CV=0.0095, POSITION=0.95, FLUID=LOX\n\n  CH4_VALVE TYPE=VALVE TITLE=\"Fuel-Rich Preburner Throttle Valve\" X=380 Y=380\n    PARAMS: CV=0.0072, POSITION=0.95, FLUID=LCH4\n\n  OX_PREBURNER TYPE=CHAMBER TITLE=\"Oxidizer-Rich Preburner\" X=540 Y=100\n    PARAMS: PC=52.0E6, PA=25.0E6, MR=6.5, AT=0.025, EPS=1.0, VC=0.015\n    S0: PC=52.0E6\n\n  FUEL_PREBURNER TYPE=CHAMBER TITLE=\"Fuel-Rich Preburner\" X=540 Y=380\n    PARAMS: PC=52.0E6, PA=25.0E6, MR=0.85, AT=0.022, EPS=1.0, VC=0.014\n    S0: PC=52.0E6\n\n  OX_TURBINE TYPE=TURBINE TITLE=\"Ox-Rich Drive Turbine\" X=700 Y=100\n    PARAMS: PR=1.52, ETA=0.81, T_IN=780.0, FLUID=COMBUSTION_GAS\n\n  FUEL_TURBINE TYPE=TURBINE TITLE=\"Fuel-Rich Drive Turbine\" X=700 Y=380\n    PARAMS: PR=1.52, ETA=0.80, T_IN=860.0, FLUID=COMBUSTION_GAS\n\n  OX_SHAFT TYPE=SHAFT TITLE=\"LOX Turbopump Shaft\" X=460 Y=190\n    PARAMS: INERTIA=0.11, SPEED_RPM=28500.0, MAX_RPM=36000.0\n    S0: SPEED_RPM=28500.0\n\n  FUEL_SHAFT TYPE=SHAFT TITLE=\"LCH4 Turbopump Shaft\" X=460 Y=290\n    PARAMS: INERTIA=0.095, SPEED_RPM=34500.0, MAX_RPM=42000.0\n    S0: SPEED_RPM=34500.0\n\n  MAIN_CHAMBER TYPE=CHAMBER TITLE=\"300-bar FFSC Main Thrust Chamber\" X=880 Y=240\n    PARAMS: PC=30.0E6, PA=0.101E6, MR=3.55, AT=0.042, EPS=35.0, VC=0.048\n    S0: PC=30.0E6\n\nCONNECTIONS:\n  LOX_TANK.OUTLET -> OX_PUMP.INLET\n  CH4_TANK.OUTLET -> CH4_PUMP.INLET\n  OX_PUMP.OUTLET -> OX_VALVE.INLET\n  CH4_PUMP.OUTLET -> CH4_VALVE.INLET\n  OX_VALVE.OUTLET -> OX_PREBURNER.INJ_OX\n  CH4_VALVE.OUTLET -> OX_PREBURNER.INJ_FUEL\n  OX_VALVE.OUTLET -> FUEL_PREBURNER.INJ_OX\n  CH4_VALVE.OUTLET -> FUEL_PREBURNER.INJ_FUEL\n  OX_PREBURNER.NOZZLE_OUT -> OX_TURBINE.INLET\n  FUEL_PREBURNER.NOZZLE_OUT -> FUEL_TURBINE.INLET\n  OX_TURBINE.OUTLET -> MAIN_CHAMBER.INJ_OX\n  FUEL_TURBINE.OUTLET -> MAIN_CHAMBER.INJ_FUEL\n  OX_TURBINE.SHAFT_OUT -> OX_SHAFT.TURBINE_POWER\n  OX_SHAFT.PUMP_POWER -> OX_PUMP.SHAFT_IN\n  FUEL_TURBINE.SHAFT_OUT -> FUEL_SHAFT.TURBINE_POWER\n  FUEL_SHAFT.PUMP_POWER -> CH4_PUMP.SHAFT_IN\n",
+      "valve_schedule.csv": "Time_s,OX_VALVE_Pos,CH4_VALVE_Pos,Target_Pc_MPa\n0.00,0.15,0.10,1.2\n0.25,0.35,0.30,5.8\n0.50,0.60,0.58,14.5\n1.00,0.85,0.85,24.8\n1.50,0.95,0.95,30.0\n2.50,0.95,0.95,30.0\n"
+    }
+  }
+]

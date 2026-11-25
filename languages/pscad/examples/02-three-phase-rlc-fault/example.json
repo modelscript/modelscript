@@ -1,0 +1,11 @@
+{
+  "id": "pscad-02-three-phase-rlc-fault",
+  "lang": "pscad",
+  "subFormats": ["pscx"],
+  "difficulty": 2,
+  "title": "Three-Phase RLC Fault & Breaker Clearing",
+  "description": "230 kV three-phase transmission corridor experiencing a bolted three-phase-to-ground fault cleared after 5 cycles by a high-voltage circuit breaker.",
+  "category": "Electromagnetic Transients",
+  "tags": ["pscad", "fault-clearing", "breaker", "three-phase"],
+  "activeFile": "three_phase_fault.pscx"
+}

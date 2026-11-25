@@ -473,8 +473,8 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
           setActiveTableId(null);
           setCsvData(parsed.headers.length > 0 ? [parsed.headers, ...parsed.rows] : parsed.rows);
         }
-      } catch (err: any) {
-        setError(err.message || "Failed to parse tabular format");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to parse tabular format");
       }
     },
     [dialect, viewConfig?.format, effectiveDelimiter, viewConfig?.hasHeader, activeTableId],
@@ -539,7 +539,7 @@ export const CsvViewer: React.FC<CsvViewerProps> = ({
 
   useEffect(() => {
     if (!loading && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      (window as unknown as { __ARTIFACT_READY?: boolean }).__ARTIFACT_READY = true;
     }
   }, [loading, csvData]);
 

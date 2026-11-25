@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DNP3DeviceProfile xmlns="http://www.dnp.org/DNP3/DeviceProfile/2010" id="SUBSTATION_A_OUTSTATION">
+  <DeviceIdentity>
+    <Vendor>Schweitzer Engineering Laboratories</Vendor>
+    <DeviceName>SEL-3555 Substation North RTAC</DeviceName>
+    <Version>3.5.0</Version>
+  </DeviceIdentity>
+  <CommunicationSettings>
+    <OutstationAddress>501</OutstationAddress>
+    <MasterAddress>1</MasterAddress>
+  </CommunicationSettings>
+  <DNP3PointList>
+    <BinaryInputs>
+      <BinaryInput index="0" name="GEN1_CB_CLOSED" class="1" normalState="1"/>
+      <BinaryInput index="1" name="TIE_NORTH_CB_CLOSED" class="1" normalState="1"/>
+    </BinaryInputs>
+    <BinaryOutputs>
+      <BinaryOutput index="0" name="TIE_NORTH_TRIP"/>
+    </BinaryOutputs>
+    <AnalogInputs>
+      <AnalogInput index="0" name="GEN1_OUTPUT_MW" class="2" deadband="1.0" mult="0.1" offset="0.0" units="MW" min="0" max="350"/>
+      <AnalogInput index="1" name="NORTH_BUS_KV" class="2" deadband="0.5" mult="0.01" offset="0.0" units="kV" min="210" max="250"/>
+    </AnalogInputs>
+    <AnalogOutputs>
+      <AnalogOutput index="0" name="GEN1_AGC_SETPOINT_MW" units="MW" min="0" max="350"/>
+    </AnalogOutputs>
+    <Counters>
+      <Counter index="0" name="GEN1_MWH_EXPORT" class="3" units="MWh"/>
+    </Counters>
+  </DNP3PointList>
+</DNP3DeviceProfile>

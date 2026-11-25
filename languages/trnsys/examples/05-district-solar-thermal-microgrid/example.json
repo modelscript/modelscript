@@ -1,0 +1,11 @@
+{
+  "id": "trnsys-05-district-solar-thermal-microgrid",
+  "lang": "trnsys",
+  "subFormats": ["dck", "csv"],
+  "difficulty": 5,
+  "title": "District Solar-Plus-Thermal-Storage Microgrid",
+  "description": "Integrated district heating solar-thermal microgrid combining a collector field (Type 1), differential controller (Type 2), circulation pump (Type 3), stratified central storage (Type 4), forcing schedule (Type 14), building cluster load (Type 56), and companion weather and demand CSV datasets.",
+  "category": "Building & Solar Thermal",
+  "tags": ["trnsys", "district-heating", "microgrid", "multi-file"],
+  "activeFile": "district.dck"
+}

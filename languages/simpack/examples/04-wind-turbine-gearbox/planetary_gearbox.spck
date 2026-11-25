@@ -1,0 +1,42 @@
+<simpack_model name="WindTurbinePlanetaryGearbox">
+  <!-- Bodies with physically consistent positive-definite inertia tensors -->
+  <body id="housing" name="GearboxHousing" mass="4200.0" ixx="2800.0" iyy="2200.0" izz="2200.0" />
+  <body id="carrier" name="PlanetCarrier" mass="1850.0" ixx="920.0" iyy="580.0" izz="580.0" />
+  <body id="sun_gear" name="SunGear" mass="260.0" ixx="42.0" iyy="28.0" izz="28.0" />
+  <body id="planet_1" name="PlanetGear1" mass="310.0" ixx="55.0" iyy="36.0" izz="36.0" />
+  <body id="planet_2" name="PlanetGear2" mass="310.0" ixx="55.0" iyy="36.0" izz="36.0" />
+  <body id="planet_3" name="PlanetGear3" mass="310.0" ixx="55.0" iyy="36.0" izz="36.0" />
+
+  <!-- Ground & Housing Mount Markers -->
+  <marker id="m_nacelle_left" body="$inertial" x="0.0" y="0.95" z="-0.60" />
+  <marker id="m_nacelle_right" body="$inertial" x="0.0" y="-0.95" z="-0.60" />
+  <marker id="m_housing_left" body="housing" x="0.0" y="0.95" z="-0.60" />
+  <marker id="m_housing_right" body="housing" x="0.0" y="-0.95" z="-0.60" />
+  <marker id="m_housing_axis" body="housing" x="0.0" y="0.0" z="0.0" />
+
+  <!-- Carrier & Sun Markers -->
+  <marker id="m_carrier_axis" body="carrier" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_carrier_pin1" body="carrier" x="0.0" y="0.52" z="0.0" />
+  <marker id="m_carrier_pin2" body="carrier" x="0.0" y="-0.26" z="0.4503" />
+  <marker id="m_carrier_pin3" body="carrier" x="0.0" y="-0.26" z="-0.4503" />
+  <marker id="m_sun_axis" body="sun_gear" x="0.0" y="0.0" z="0.0" />
+
+  <!-- Planet Gear Center Markers -->
+  <marker id="m_p1_center" body="planet_1" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_p2_center" body="planet_2" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_p3_center" body="planet_3" x="0.0" y="0.0" z="0.0" />
+
+  <!-- Revolute Bearing Joints: 6 bodies (36 DOF), 5 revolute (25) => 11 DOF -->
+  <joint id="j_carrier_brg" type="revolute" from="m_housing_axis" to="m_carrier_axis" />
+  <joint id="j_sun_brg" type="revolute" from="m_housing_axis" to="m_sun_axis" />
+  <joint id="j_planet1_brg" type="revolute" from="m_carrier_pin1" to="m_p1_center" />
+  <joint id="j_planet2_brg" type="revolute" from="m_carrier_pin2" to="m_p2_center" />
+  <joint id="j_planet3_brg" type="revolute" from="m_carrier_pin3" to="m_p3_center" />
+
+  <!-- Elastomeric Torque-Arm Mounts & Gear Mesh Stiffness -->
+  <spring id="torque_arm_l" from="m_nacelle_left" to="m_housing_left" kx="2.5e7" ky="2.5e7" kz="4.5e7" cx="1.8e4" cy="1.8e4" cz="2.5e4" />
+  <spring id="torque_arm_r" from="m_nacelle_right" to="m_housing_right" kx="2.5e7" ky="2.5e7" kz="4.5e7" cx="1.8e4" cy="1.8e4" cz="2.5e4" />
+  <spring id="mesh_sun_p1" from="m_sun_axis" to="m_p1_center" kx="1.2e8" ky="1.2e8" kz="1.2e8" cx="4.5e3" cy="4.5e3" cz="4.5e3" />
+  <spring id="mesh_sun_p2" from="m_sun_axis" to="m_p2_center" kx="1.2e8" ky="1.2e8" kz="1.2e8" cx="4.5e3" cy="4.5e3" cz="4.5e3" />
+  <spring id="mesh_sun_p3" from="m_sun_axis" to="m_p3_center" kx="1.2e8" ky="1.2e8" kz="1.2e8" cx="4.5e3" cy="4.5e3" cz="4.5e3" />
+</simpack_model>

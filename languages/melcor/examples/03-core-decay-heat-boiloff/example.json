@@ -1,0 +1,11 @@
+{
+  "id": "melcor-03-core-decay-heat-boiloff",
+  "lang": "melcor",
+  "subFormats": ["melcor2"],
+  "difficulty": 3,
+  "title": "Core Heat Structure Decay Heat and Boil-Off",
+  "description": "Reactor pressure vessel core boil-off driven by tabular ANS decay heat power curve with Zircaloy oxidation model and steam relief to containment.",
+  "category": "Nuclear Severe Accident Analysis",
+  "tags": ["melcor", "core", "decay-heat", "boil-off", "oxidation"],
+  "activeFile": "core_boiloff.mel"
+}

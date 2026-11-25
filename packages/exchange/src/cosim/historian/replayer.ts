@@ -6,7 +6,7 @@
  * Reads historical telemetry data from TimescaleDB and re-publishes it
  * to MQTT topics at the original (or scaled) playback speed.
  *
- * Used for replaying recorded co-simulation sessions in Morsel or the IDE.
+ * Used for replaying recorded co-simulation sessions in Ansatz or the IDE.
  */
 
 import type { Pool } from "pg";

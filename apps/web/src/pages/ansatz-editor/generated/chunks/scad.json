@@ -1,0 +1,79 @@
+[
+  {
+    "id": "scad-01-flanged-shaft-hub",
+    "lang": "scad",
+    "subFormats": ["scad"],
+    "difficulty": 1,
+    "title": "Parametric Flanged Shaft Hub",
+    "description": "Parametric OpenSCAD mechanical shaft hub with circular mounting flange, central bore, and radial M5 bolt pattern.",
+    "category": "Parametric CAD",
+    "tags": ["scad", "openscad", "hub", "flange", "parametric"],
+    "activeFile": "flanged_hub.scad",
+    "fileNames": ["flanged_hub.scad"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "// Parametric Flanged Shaft Hub (mm)\n$fn = 48;\n\nflange_r = 32;\nflange_h = 6;\nboss_r = 16;\nboss_h = 18;\nbore_r = 8;\nbolt_circle_r = 24;\nbolt_hole_r = 2.6;\nbolt_count = 6;\n\nmodule flanged_hub() {\n  difference() {\n    union() {\n      cylinder(r = flange_r, h = flange_h);\n      cylinder(r = boss_r, h = boss_h);\n    }\n    translate([0, 0, -1])\n      cylinder(r = bore_r, h = boss_h + 2);\n    for (i = [0 : bolt_count - 1]) {\n      angle = i * 360 / bolt_count;\n      rotate([0, 0, angle])\n        translate([bolt_circle_r, 0, -1])\n          cylinder(r = bolt_hole_r, h = flange_h + 2);\n    }\n  }\n}\n\nflanged_hub();\n"
+  },
+  {
+    "id": "scad-02-involute-spur-gear",
+    "lang": "scad",
+    "subFormats": ["scad"],
+    "difficulty": 2,
+    "title": "Parametric Involute Spur Gear Generator",
+    "description": "Metric module spur gear generator in OpenSCAD computing pitch diameter, addendum/dedendum radii, radially arrayed tooth profiles, and keyed shaft bore.",
+    "category": "Power Transmission CAD",
+    "tags": ["scad", "gear", "spur-gear", "parametric", "mechanical"],
+    "activeFile": "spur_gear.scad",
+    "fileNames": ["spur_gear.scad"],
+    "fileCount": 1,
+    "code": "// Parametric Metric Spur Gear Generator (mm)\n$fn = 36;\n\nmodule_m = 2.0;\nteeth = 24;\nface_width = 10.0;\nbore_dia = 10.0;\nkeyway_w = 3.0;\nkeyway_d = 1.5;\n\nfunction pitch_radius(m, z) = (m * z) / 2.0;\nfunction root_radius(m, z) = pitch_radius(m, z) - 1.25 * m;\n\nmodule spur_gear(m = 2.0, z = 24, width = 10.0, bore = 10.0) {\n  r_pitch = pitch_radius(m, z);\n  r_root = root_radius(m, z);\n  tooth_h = 2.25 * m;\n  tooth_w = 1.45 * m;\n\n  difference() {\n    union() {\n      cylinder(r = r_root, h = width);\n      for (i = [0 : z - 1]) {\n        rotate([0, 0, i * 360 / z])\n          translate([r_root - 0.3, -tooth_w / 2, 0])\n            cube([tooth_h + 0.3, tooth_w, width]);\n      }\n    }\n    translate([0, 0, -1])\n      cylinder(r = bore / 2, h = width + 2);\n    translate([bore / 2 - 0.5, -keyway_w / 2, -1])\n      cube([keyway_d + 0.5, keyway_w, width + 2]);\n  }\n}\n\nspur_gear(m = module_m, z = teeth, width = face_width, bore = bore_dia);\n"
+  },
+  {
+    "id": "scad-03-finned-heatsink-enclosure",
+    "lang": "scad",
+    "subFormats": ["scad"],
+    "difficulty": 3,
+    "title": "Finned Power-Electronics Heatsink Enclosure",
+    "description": "Extruded aluminum power-inverter housing combining an internal PCB cavity, corner mounting bosses, and a parametric array of external cooling fins.",
+    "category": "Thermal Packaging CAD",
+    "tags": ["scad", "heatsink", "enclosure", "thermal", "electronics"],
+    "activeFile": "heatsink_enclosure.scad",
+    "fileNames": ["heatsink_enclosure.scad"],
+    "fileCount": 1,
+    "code": "// Finned Power-Electronics Heatsink Enclosure (mm)\n$fn = 32;\n\nbox_len = 120;\nbox_wid = 80;\nbox_h = 34;\nwall_t = 4;\nfin_count = 11;\nfin_t = 2.5;\nfin_h = 12;\nboss_r = 4.5;\nscrew_r = 1.7;\n\nfunction fin_pitch(total_w, n, t) = (total_w - t) / (n - 1);\n\nmodule heatsink_enclosure() {\n  pitch = fin_pitch(box_wid, fin_count, fin_t);\n  difference() {\n    union() {\n      cube([box_len, box_wid, box_h]);\n      for (i = [0 : fin_count - 1]) {\n        translate([0, i * pitch, box_h])\n          cube([box_len, fin_t, fin_h]);\n      }\n    }\n    translate([wall_t, wall_t, -1])\n      cube([box_len - 2 * wall_t, box_wid - 2 * wall_t, box_h - wall_t + 1]);\n  }\n\n  for (x = [wall_t + boss_r, box_len - wall_t - boss_r]) {\n    for (y = [wall_t + boss_r, box_wid - wall_t - boss_r]) {\n      difference() {\n        translate([x, y, 0])\n          cylinder(r = boss_r, h = box_h - wall_t);\n        translate([x, y, -1])\n          cylinder(r = screw_r, h = box_h);\n      }\n    }\n  }\n}\n\nheatsink_enclosure();\n"
+  },
+  {
+    "id": "scad-04-articulated-robotic-arm",
+    "lang": "scad",
+    "subFormats": ["scad"],
+    "difficulty": 4,
+    "title": "Articulated 3-DOF Robotic Arm Assembly",
+    "description": "Kinematic OpenSCAD 3-DOF industrial robotic manipulator assembly with rotating pedestal, articulated shoulder and elbow links, and parallel gripper jaw.",
+    "category": "Robotics CAD",
+    "tags": ["scad", "robotics", "manipulator", "kinematics", "assembly"],
+    "activeFile": "robotic_arm.scad",
+    "fileNames": ["robotic_arm.scad"],
+    "fileCount": 1,
+    "code": "// Articulated 3-DOF Industrial Robotic Arm (mm)\n$fn = 36;\n\nbase_angle = 25;\nshoulder_angle = 35;\nelbow_angle = -45;\nlink1_len = 160;\nlink2_len = 130;\n\nmodule arm_link(length, width, thickness) {\n  difference() {\n    union() {\n      cylinder(r = width / 2, h = thickness);\n      translate([0, -width / 2, 0])\n        cube([length, width, thickness]);\n      translate([length, 0, 0])\n        cylinder(r = width / 2, h = thickness);\n    }\n    translate([0, 0, -1])\n      cylinder(r = width * 0.25, h = thickness + 2);\n    translate([length, 0, -1])\n      cylinder(r = width * 0.25, h = thickness + 2);\n  }\n}\n\nmodule parallel_gripper() {\n  cube([28, 36, 16], center = true);\n  translate([24, 12, 0])\n    cube([26, 6, 12], center = true);\n  translate([24, -12, 0])\n    cube([26, 6, 12], center = true);\n}\n\nmodule robot_arm() {\n  cylinder(r = 55, h = 20);\n  translate([0, 0, 20])\n    rotate([0, 0, base_angle]) {\n      cylinder(r = 32, h = 45);\n      translate([0, 0, 45])\n        rotate([90, -shoulder_angle, 0]) {\n          arm_link(link1_len, 32, 22);\n          translate([link1_len, 0, 22])\n            rotate([0, 0, elbow_angle]) {\n              arm_link(link2_len, 26, 18);\n              translate([link2_len + 14, 0, 9])\n                parallel_gripper();\n            }\n        }\n    }\n}\n\nrobot_arm();\n"
+  },
+  {
+    "id": "scad-05-planetary-gearbox-assembly",
+    "lang": "scad",
+    "subFormats": ["scad"],
+    "difficulty": 5,
+    "title": "Modular Planetary Gearbox Assembly",
+    "description": "Four-file OpenSCAD planetary gearbox assembly using include and use directives to compose shared gear parameters, sun and planet spur gears, and an outer ring housing.",
+    "category": "Multi-File Mechanical CAD",
+    "tags": ["scad", "planetary-gearbox", "include", "use", "multi-file"],
+    "activeFile": "assembly.scad",
+    "fileNames": ["assembly.scad", "housing.scad", "involute_gear.scad", "params.scad"],
+    "fileCount": 4,
+    "code": "// Modular Planetary Gearbox Top-Level Assembly\ninclude <params.scad>\nuse <involute_gear.scad>\nuse <housing.scad>\n\n// Sun gear at center\nparametric_gear(m = gear_module, z = sun_teeth, width = gear_width, bore_r = 4.0);\n\n// Three orbiting planet gears\nfor (p = [0 : planet_count - 1]) {\n  rotate([0, 0, p * 360 / planet_count])\n    translate([carrier_orbit_r, 0, 0])\n      parametric_gear(m = gear_module, z = planet_teeth, width = gear_width, bore_r = 3.0);\n}\n\n// Outer ring housing\ntranslate([0, 0, -2])\n  gearbox_housing(outer_r = housing_outer_r, inner_r = gear_module * ring_teeth / 2.0 + 1.0, height = gear_width + 4.0);\n",
+    "files": {
+      "assembly.scad": "// Modular Planetary Gearbox Top-Level Assembly\ninclude <params.scad>\nuse <involute_gear.scad>\nuse <housing.scad>\n\n// Sun gear at center\nparametric_gear(m = gear_module, z = sun_teeth, width = gear_width, bore_r = 4.0);\n\n// Three orbiting planet gears\nfor (p = [0 : planet_count - 1]) {\n  rotate([0, 0, p * 360 / planet_count])\n    translate([carrier_orbit_r, 0, 0])\n      parametric_gear(m = gear_module, z = planet_teeth, width = gear_width, bore_r = 3.0);\n}\n\n// Outer ring housing\ntranslate([0, 0, -2])\n  gearbox_housing(outer_r = housing_outer_r, inner_r = gear_module * ring_teeth / 2.0 + 1.0, height = gear_width + 4.0);\n",
+      "housing.scad": "// Outer ring gear housing module\nmodule gearbox_housing(outer_r = 40.0, inner_r = 31.0, height = 16.0) {\n  difference() {\n    cylinder(r = outer_r, h = height, $fn = 48);\n    translate([0, 0, -1])\n      cylinder(r = inner_r, h = height + 2, $fn = 48);\n    for (k = [0 : 5]) {\n      rotate([0, 0, k * 60])\n        translate([outer_r - 4.5, 0, -1])\n          cylinder(r = 2.1, h = height + 2, $fn = 18);\n    }\n  }\n}\n",
+      "involute_gear.scad": "// Reusable spur gear library module\nmodule parametric_gear(m = 1.5, z = 16, width = 12.0, bore_r = 4.0) {\n  r_root = (m * z) / 2.0 - 1.15 * m;\n  tooth_h = 2.15 * m;\n  tooth_w = 1.4 * m;\n\n  difference() {\n    union() {\n      cylinder(r = r_root, h = width, $fn = 36);\n      for (i = [0 : z - 1]) {\n        rotate([0, 0, i * 360 / z])\n          translate([r_root - 0.2, -tooth_w / 2, 0])\n            cube([tooth_h + 0.2, tooth_w, width]);\n      }\n    }\n    translate([0, 0, -1])\n      cylinder(r = bore_r, h = width + 2, $fn = 24);\n  }\n}\n",
+      "params.scad": "// Shared planetary gearbox design parameters (mm)\ngear_module = 1.5;\nsun_teeth = 16;\nplanet_teeth = 12;\nring_teeth = 40;\nplanet_count = 3;\ngear_width = 12.0;\ncarrier_orbit_r = gear_module * (sun_teeth + planet_teeth) / 2.0;\nhousing_outer_r = gear_module * ring_teeth / 2.0 + 10.0;\n"
+    }
+  }
+]

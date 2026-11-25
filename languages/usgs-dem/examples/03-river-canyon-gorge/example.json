@@ -1,0 +1,11 @@
+{
+  "id": "usgs-dem-03-river-canyon-gorge",
+  "lang": "usgs-dem",
+  "subFormats": ["free-format"],
+  "difficulty": 3,
+  "title": "River Canyon Gorge & Watershed Divide",
+  "description": "6x6 USGS DEM capturing a deeply incised V-shaped river gorge descending along the longitudinal channel axis with steep canyon walls.",
+  "category": "Hydrology & Geomorphology",
+  "tags": ["usgs-dem", "canyon", "watershed", "fluvial"],
+  "activeFile": "royal_gorge.dem"
+}

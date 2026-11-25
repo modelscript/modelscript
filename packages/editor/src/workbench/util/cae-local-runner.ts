@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Browser-local WASM / WebGPU CAE study runner for Morsel, FeaDeckViewer, and CfdConfigViewer.
+ * Browser-local WASM / WebGPU CAE study runner for Ansatz, FeaDeckViewer, and CfdConfigViewer.
  * Executes @modelscript/simulate's FeaSolver (Tet4/Tet10) and WebGPULbmRunner (D3Q19 LBM)
  * directly in the browser and streams residuals, solver logs, and VTK field buffers.
  */

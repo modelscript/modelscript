@@ -97,12 +97,34 @@ export function computeOptimalAllocation(options = {}) {
 
 function buildWorkspaceTestProjectMap() {
   const map = new Map();
-  const rootPkgPath = path.join(repoRoot, "package.json");
-  let patterns = ["packages/*", "languages/*", "apps/*", "ee"];
+  const pnpmWorkspacePath = path.join(repoRoot, "pnpm-workspace.yaml");
+  let patterns = ["apps/*", "apps/ide/github-fs", "ee", "packages/*", "packages/examples/*", "languages/*"];
   try {
-    const rootPkg = JSON.parse(fs.readFileSync(rootPkgPath, "utf8"));
-    if (Array.isArray(rootPkg.workspaces)) {
-      patterns = rootPkg.workspaces;
+    if (fs.existsSync(pnpmWorkspacePath)) {
+      const yaml = fs.readFileSync(pnpmWorkspacePath, "utf8");
+      const parsed = [];
+      let inPackages = false;
+      for (const rawLine of yaml.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (line === "packages:") {
+          inPackages = true;
+          continue;
+        }
+        if (inPackages) {
+          if (line.startsWith("-")) {
+            const entry = line
+              .replace(/^-\s*/, "")
+              .replace(/^["']|["']$/g, "")
+              .trim();
+            if (entry) parsed.push(entry);
+          } else if (line && !line.startsWith("#")) {
+            break;
+          }
+        }
+      }
+      if (parsed.length > 0) {
+        patterns = parsed;
+      }
     }
   } catch {}
 
@@ -323,7 +345,9 @@ export function runCoordinator(argv = process.argv.slice(2)) {
               .map((f) => f.trim())
               .filter(Boolean);
             const infraChanged = files.some((f) =>
-              /^(?:scripts\/test-coordinator|scripts\/test-runner|scripts\/asc-cache|scripts\/node-test-ctrf)/.test(f),
+              /^(?:\.github\/workflows\/|scripts\/(?:(?:ci|build)\/)?(?:test-coordinator|test-runner|asc-cache|node-test-ctrf))/.test(
+                f,
+              ),
             );
             if (infraChanged) {
               console.log(

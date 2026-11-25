@@ -1,0 +1,11 @@
+{
+  "id": "doe2-02-retail-packaged-rooftop-psz",
+  "lang": "doe2",
+  "subFormats": ["inp"],
+  "difficulty": 2,
+  "title": "Retail Store Packaged Rooftop DX HVAC System",
+  "description": "Two-space retail store with sales floor and back-of-house storage conditioned by a Packaged Single Zone (PSZ) rooftop DX unit with occupancy and equipment schedules.",
+  "category": "Building Energy Simulation",
+  "tags": ["doe2", "psz", "retail", "hvac"],
+  "activeFile": "retail_psz.inp"
+}

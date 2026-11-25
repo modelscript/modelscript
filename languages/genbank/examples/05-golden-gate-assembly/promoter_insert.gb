@@ -1,0 +1,13 @@
+LOCUS       pGG_Promoter              57 bp    ds-DNA  linear   SYN 24-NOV-2026
+DEFINITION  Golden Gate Level-0 constitutive promoter insert with BsaI sites.
+ACCESSION   pGG_Promoter
+VERSION     pGG_Promoter.1
+KEYWORDS    Golden Gate; promoter; MoClo.
+SOURCE      synthetic DNA construct
+  ORGANISM  Escherichia coli
+FEATURES             Location/Qualifiers
+     promoter        12..46
+                     /label="J23100_core"
+ORIGIN
+        1 ggtctcagga gttgacagct agctcagtcc taggtataat gctagcaatg tgagacc
+//

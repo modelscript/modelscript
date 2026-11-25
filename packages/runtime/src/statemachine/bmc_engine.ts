@@ -14,14 +14,14 @@ export interface ActivitySafetyInvariant {
   /** Maximum token capacity for any node or edge (Bounded Buffer / No Overflow) */
   maxTokenCapacity?: number | undefined;
   /** Custom invariant predicate on marking and data state */
-  predicate?: ((marking: SerializedMarking, variables: Record<string, any>) => boolean) | undefined;
+  predicate?: ((marking: SerializedMarking, variables: Record<string, unknown>) => boolean) | undefined;
 }
 
 export interface BmcCounterexampleTrace {
   stepIndex: number;
   firedNodes: string[];
   marking: SerializedMarking;
-  variables: Record<string, any>;
+  variables: Record<string, unknown>;
 }
 
 export interface BmcResult {
@@ -57,7 +57,7 @@ export class ActivityBmcEngine {
    */
   private checkInvariant(
     marking: SerializedMarking,
-    variables: Record<string, any>,
+    variables: Record<string, unknown>,
     firedNodeIds: NodeId[],
     invariant: ActivitySafetyInvariant,
   ): { holds: boolean; reason?: string | undefined } {

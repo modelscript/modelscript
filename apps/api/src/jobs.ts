@@ -205,10 +205,14 @@ export class JobQueue extends EventEmitter {
             if (!child.killed) {
               try {
                 child.kill("SIGKILL");
-              } catch {}
+              } catch {
+                // Child process may have already exited
+              }
             }
           }, 1000).unref();
-        } catch {}
+        } catch {
+          // Child process may have already exited
+        }
       }
       this.#runningChildProcesses.clear();
     }
@@ -355,12 +359,16 @@ export class JobQueue extends EventEmitter {
         this.appendLog(key, `[JobQueue] Job execution timed out after ${totalDurationSecs}s.`);
         try {
           child.kill("SIGTERM");
-        } catch {}
+        } catch {
+          // Child process may have already exited
+        }
         const sigkillTimer = setTimeout(() => {
           if (!child.killed) {
             try {
               child.kill("SIGKILL");
-            } catch {}
+            } catch {
+              // Child process may have already exited
+            }
           }
         }, 5000);
         sigkillTimer.unref();
@@ -409,12 +417,16 @@ export class JobQueue extends EventEmitter {
           this.appendLog(key, `[JobQueue] Job stalled: no progress or logs received for ${secs}s.`);
           try {
             child.kill("SIGTERM");
-          } catch {}
+          } catch {
+            // Child process may have already exited
+          }
           const sigkillTimer = setTimeout(() => {
             if (!child.killed) {
               try {
                 child.kill("SIGKILL");
-              } catch {}
+              } catch {
+                // Child process may have already exited
+              }
             }
           }, 5000);
           sigkillTimer.unref();

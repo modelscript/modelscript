@@ -1,0 +1,10 @@
+stage_m,discharge_cms,flood_status
+0.50,12.5,normal
+1.00,42.0,normal
+1.50,92.0,normal
+2.00,165.0,action
+2.50,262.0,action
+3.00,385.0,minor_flood
+3.50,535.0,moderate_flood
+4.00,715.0,major_flood
+4.50,925.0,major_flood

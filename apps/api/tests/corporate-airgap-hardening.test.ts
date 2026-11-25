@@ -229,7 +229,7 @@ describe("Corporate Air-Gapped Tier Security Hardening vs Flagship & Federated T
     }
   });
 
-  it("4. Requires authentication for morsel creation, post oEmbed unfurling, and OpenGraph cards in tier2_corporate while keeping tier3_flagship public", async () => {
+  it("4. Requires authentication for ansatz creation, post oEmbed unfurling, and OpenGraph cards in tier2_corporate while keeping tier3_flagship public", async () => {
     const corp = createTempDb("corp-embed");
     const flagship = createTempDb("flagship-embed");
     try {
@@ -249,22 +249,22 @@ describe("Corporate Air-Gapped Tier Security Hardening vs Flagship & Federated T
       setAuthDatabase(corp.db);
       const corpApp = createApp({ database: corp.db });
 
-      // 1. Unauthenticated morsel creation is blocked on tier2_corporate
-      const unauthMorsel = await request(corpApp)
-        .post("/api/v1/morsels")
+      // 1. Unauthenticated ansatz creation is blocked on tier2_corporate
+      const unauthAnsatz = await request(corpApp)
+        .post("/api/v1/ansatz-snippets")
         .send({ code: "model Relay end Relay;", dialect: "modelica", title: "Relay" });
-      assert.equal(unauthMorsel.status, 401);
+      assert.equal(unauthAnsatz.status, 401);
 
-      // Authenticated morsel creation succeeds and GET sets Cache-Control: private, no-store
-      const authMorsel = await request(corpApp)
-        .post("/api/v1/morsels")
+      // Authenticated ansatz creation succeeds and GET sets Cache-Control: private, no-store
+      const authAnsatz = await request(corpApp)
+        .post("/api/v1/ansatz-snippets")
         .set("Authorization", `Bearer ${corpToken}`)
         .send({ code: "model Relay end Relay;", dialect: "modelica", title: "Relay" });
-      assert.equal(authMorsel.status, 201);
+      assert.equal(authAnsatz.status, 201);
 
-      const getMorsel = await request(corpApp).get(`/api/v1/morsels/${authMorsel.body.id}`);
-      assert.equal(getMorsel.status, 200);
-      assert.equal(getMorsel.headers["cache-control"], "private, no-store");
+      const getAnsatz = await request(corpApp).get(`/api/v1/ansatz-snippets/${authAnsatz.body.id}`);
+      assert.equal(getAnsatz.status, 200);
+      assert.equal(getAnsatz.headers["cache-control"], "private, no-store");
 
       // 2. Unauthenticated oEmbed post unfurling is blocked on tier2_corporate
       const postUrl = `https://intranet.corp.internal/p/${corpPost.id}`;
@@ -293,7 +293,7 @@ describe("Corporate Air-Gapped Tier Security Hardening vs Flagship & Federated T
       assert.equal(authCard.status, 200);
       assert.equal(authCard.headers["cache-control"], "private, no-store");
 
-      // 4. On tier3_flagship, unauthenticated morsels, oEmbed, and OpenGraph cards work seamlessly
+      // 4. On tier3_flagship, unauthenticated ansatzs, oEmbed, and OpenGraph cards work seamlessly
       await seedInitialAdmin(flagship.db, {
         username: "flagship_author",
         email: "author@ansatz.social",
@@ -304,10 +304,10 @@ describe("Corporate Air-Gapped Tier Security Hardening vs Flagship & Federated T
       setAuthDatabase(flagship.db);
       const flagshipApp = createApp({ database: flagship.db });
 
-      const pubMorsel = await request(flagshipApp)
-        .post("/api/v1/morsels")
+      const pubAnsatz = await request(flagshipApp)
+        .post("/api/v1/ansatz-snippets")
         .send({ code: "model Pendulum end Pendulum;", dialect: "modelica", title: "Pendulum" });
-      assert.equal(pubMorsel.status, 201);
+      assert.equal(pubAnsatz.status, 201);
 
       const pubOembed = await request(flagshipApp).get(
         `/api/v1/oembed?url=${encodeURIComponent(`https://ansatz.social/p/${flagPost.id}`)}`,

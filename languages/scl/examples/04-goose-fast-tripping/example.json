@@ -1,0 +1,11 @@
+{
+  "id": "scl-04-goose-fast-tripping",
+  "lang": "scl",
+  "subFormats": ["scd", "icd"],
+  "difficulty": 4,
+  "title": "GOOSE Fast-Tripping Protection & Breaker Failure Scheme",
+  "description": "Multi-IED IEC 61850 substation automation workspace demonstrating cross-IED GOOSE trip publishing and ExtRef subscription between protection and BCU relays.",
+  "category": "IEC 61850 GOOSE Protection",
+  "tags": ["scl", "goose", "extref", "breaker-failure", "multi-file"],
+  "activeFile": "goose_substation.scd"
+}

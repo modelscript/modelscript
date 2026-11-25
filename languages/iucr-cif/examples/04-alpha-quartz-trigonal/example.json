@@ -1,0 +1,11 @@
+{
+  "id": "iucr-cif-04-alpha-quartz-trigonal",
+  "lang": "iucr-cif",
+  "subFormats": ["cif-1.1"],
+  "difficulty": 4,
+  "title": "Alpha-Quartz Trigonal Crystal Structure (P3_2 2 1)",
+  "description": "Non-orthogonal trigonal crystal system for piezoelectric alpha-quartz (SiO2, gamma = 120 deg, space group P3_2 2 1 #154) with 6-fold screw-axis symmetry operations.",
+  "category": "Mineralogical Crystallography",
+  "tags": ["iucr-cif", "quartz", "trigonal", "piezoelectric", "sio2"],
+  "activeFile": "alpha_quartz.cif"
+}

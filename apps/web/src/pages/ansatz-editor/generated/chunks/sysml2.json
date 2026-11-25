@@ -1,0 +1,84 @@
+[
+  {
+    "id": "sysml2-01-uav-airframe-parts",
+    "lang": "sysml2",
+    "subFormats": ["sysml"],
+    "difficulty": 1,
+    "title": "UAV Airframe Structural Decomposition",
+    "description": "SysML v2 structural part definitions for a fixed-wing unmanned aerial vehicle airframe including fuselage, wing assembly, tailplane, and mass attributes.",
+    "category": "Systems Architecture",
+    "tags": ["sysml2", "uav", "airframe", "parts", "structure"],
+    "activeFile": "Airframe.sysml",
+    "fileNames": ["Airframe.sysml"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "package UAVAirframe {\n  attribute def Real;\n\n  port def StructuralMount {\n    attribute loadLimitN : Real;\n  }\n\n  part def WingAssembly {\n    attribute wingspanM : Real = 3.2;\n    attribute wingAreaM2 : Real = 0.96;\n    attribute massKg : Real = 2.4;\n    port rootMount : StructuralMount;\n  }\n\n  part def Fuselage {\n    attribute lengthM : Real = 1.85;\n    attribute massKg : Real = 3.1;\n    port wingAttach : StructuralMount;\n    port tailAttach : StructuralMount;\n  }\n\n  part def Tailplane {\n    attribute massKg : Real = 0.85;\n    port boomMount : StructuralMount;\n  }\n\n  part def FixedWingUAV {\n    attribute maxTakeoffMassKg : Real = 12.0;\n    part fuselage : Fuselage;\n    part wing : WingAssembly;\n    part tail : Tailplane;\n    connection wingJoint connect fuselage.wingAttach to wing.rootMount;\n    connection tailJoint connect fuselage.tailAttach to tail.boomMount;\n  }\n}\n"
+  },
+  {
+    "id": "sysml2-02-kerml-quantities-library",
+    "lang": "sysml2",
+    "subFormats": ["kerml"],
+    "difficulty": 2,
+    "title": "KerML Core Quantities & Semantic Type Library",
+    "description": "Kernel Modeling Language (KerML) foundational datatype hierarchy defining SI physical quantities, scalar units, and derived mechanical and electrical types.",
+    "category": "Core Semantics",
+    "tags": ["sysml2", "kerml", "quantities", "units", "types"],
+    "activeFile": "Quantities.kerml",
+    "fileNames": ["Quantities.kerml"],
+    "fileCount": 1,
+    "code": "package CoreQuantities {\n  abstract attribute def ScalarValue;\n  attribute def Real :> ScalarValue;\n  attribute def Length :> Real;\n  attribute def Mass :> Real;\n  attribute def Time :> Real;\n  attribute def Temperature :> Real;\n  attribute def Velocity :> Real;\n  attribute def Force :> Real;\n  attribute def Power :> Real;\n  attribute def Voltage :> Real;\n  attribute def Current :> Real;\n\n  part def PhysicalElement {\n    attribute mass : Mass;\n    attribute ambientTemp : Temperature;\n  }\n\n  part def ElectromechanicalDevice :> PhysicalElement {\n    attribute ratedVoltage : Voltage;\n    attribute ratedCurrent : Current;\n    attribute ratedPower : Power;\n  }\n}\n"
+  },
+  {
+    "id": "sysml2-03-autonomous-braking-behavior",
+    "lang": "sysml2",
+    "subFormats": ["sysml"],
+    "difficulty": 3,
+    "title": "Autonomous Emergency Braking State & Action Flows",
+    "description": "Behavioral SysML v2 model of an automotive AEB subsystem combining sensor fusion actions, hydraulic pressure ports, and braking operating states.",
+    "category": "Automotive Safety",
+    "tags": ["sysml2", "aeb", "state-machine", "actions", "automotive"],
+    "activeFile": "Braking.sysml",
+    "fileNames": ["Braking.sysml"],
+    "fileCount": 1,
+    "code": "package AutonomousBraking {\n  attribute def Real;\n\n  port def RadarTrackPort {\n    attribute timeToCollisionS : Real;\n    attribute relativeSpeedMps : Real;\n  }\n\n  port def HydraulicCommandPort {\n    attribute targetDecelMps2 : Real;\n    attribute linePressureBar : Real;\n  }\n\n  action def SenseObstacle {\n    attribute rangeM : Real;\n    attribute ttcS : Real;\n  }\n\n  action def ComputeDeceleration {\n    attribute decelCmdMps2 : Real;\n  }\n\n  state def AebControllerStates {\n    state Standby;\n    state Warning;\n    state PartialBraking;\n    state FullEmergencyBraking;\n  }\n\n  part def RadarSensor {\n    port trackOut : RadarTrackPort;\n  }\n\n  part def BrakeActuator {\n    attribute maxPressureBar : Real = 180.0;\n    port cmdIn : HydraulicCommandPort;\n  }\n\n  part def AebController {\n    attribute warningTtcS : Real = 2.4;\n    attribute emergencyTtcS : Real = 1.1;\n    port trackIn : RadarTrackPort;\n    port brakeOut : HydraulicCommandPort;\n  }\n\n  part def AebSystem {\n    part radar : RadarSensor;\n    part ecu : AebController;\n    part actuator : BrakeActuator;\n    connection sensorLink connect radar.trackOut to ecu.trackIn;\n    connection brakeLink connect ecu.brakeOut to actuator.cmdIn;\n  }\n}\n"
+  },
+  {
+    "id": "sysml2-04-ev-thermal-requirements",
+    "lang": "sysml2",
+    "subFormats": ["sysml"],
+    "difficulty": 4,
+    "title": "EV Thermal Management Requirements & Allocation",
+    "description": "Multi-file SysML v2 model linking battery pack thermal requirements, coolant loop architecture, and verification test cases across three packages.",
+    "category": "Systems Engineering",
+    "tags": ["sysml2", "requirements", "ev-thermal", "verification", "multi-file"],
+    "activeFile": "Architecture.sysml",
+    "fileNames": ["Architecture.sysml", "Requirements.sysml", "Verification.sysml"],
+    "fileCount": 3,
+    "code": "package EVThermalArchitecture {\n  attribute def Real;\n\n  port def CoolantPort {\n    attribute flowRateLpm : Real;\n    attribute tempC : Real;\n  }\n\n  part def CoolantPump {\n    attribute ratedFlowLpm : Real = 16.0;\n    attribute powerW : Real = 140.0;\n    port inlet : CoolantPort;\n    port outlet : CoolantPort;\n  }\n\n  part def ColdPlate {\n    attribute thermalResistanceKW : Real = 0.015;\n    attribute peakCellTempC : Real = 48.5;\n    port inlet : CoolantPort;\n    port outlet : CoolantPort;\n  }\n\n  part def Chiller {\n    attribute heatRejectionW : Real = 6500.0;\n    port inlet : CoolantPort;\n    port outlet : CoolantPort;\n  }\n\n  part def ThermalLoop {\n    part pump : CoolantPump;\n    part plate : ColdPlate;\n    part chiller : Chiller;\n    connection c1 connect pump.outlet to plate.inlet;\n    connection c2 connect plate.outlet to chiller.inlet;\n    connection c3 connect chiller.outlet to pump.inlet;\n  }\n}\n",
+    "files": {
+      "Architecture.sysml": "package EVThermalArchitecture {\n  attribute def Real;\n\n  port def CoolantPort {\n    attribute flowRateLpm : Real;\n    attribute tempC : Real;\n  }\n\n  part def CoolantPump {\n    attribute ratedFlowLpm : Real = 16.0;\n    attribute powerW : Real = 140.0;\n    port inlet : CoolantPort;\n    port outlet : CoolantPort;\n  }\n\n  part def ColdPlate {\n    attribute thermalResistanceKW : Real = 0.015;\n    attribute peakCellTempC : Real = 48.5;\n    port inlet : CoolantPort;\n    port outlet : CoolantPort;\n  }\n\n  part def Chiller {\n    attribute heatRejectionW : Real = 6500.0;\n    port inlet : CoolantPort;\n    port outlet : CoolantPort;\n  }\n\n  part def ThermalLoop {\n    part pump : CoolantPump;\n    part plate : ColdPlate;\n    part chiller : Chiller;\n    connection c1 connect pump.outlet to plate.inlet;\n    connection c2 connect plate.outlet to chiller.inlet;\n    connection c3 connect chiller.outlet to pump.inlet;\n  }\n}\n",
+      "Requirements.sysml": "package EVThermalRequirements {\n  attribute def Real;\n\n  requirement def MaxCellTempRequirement {\n    attribute maxAllowedTempC : Real = 55.0;\n    attribute peakAmbientTempC : Real = 45.0;\n  }\n\n  requirement def CoolantFlowRequirement {\n    attribute minFlowRateLpm : Real = 12.0;\n    attribute maxPressureDropKPa : Real = 65.0;\n  }\n}\n",
+      "Verification.sysml": "package EVThermalVerification {\n  attribute def Real;\n\n  verification def FastChargeThermalTest {\n    attribute chargeRateC : Real = 3.0;\n    attribute ambientTempC : Real = 40.0;\n    attribute measuredMaxCellTempC : Real = 51.2;\n  }\n\n  verification def PumpHeadLossTest {\n    attribute measuredFlowLpm : Real = 15.4;\n    attribute measuredDropKPa : Real = 54.0;\n  }\n}\n"
+    }
+  },
+  {
+    "id": "sysml2-05-cubesat-digital-thread",
+    "lang": "sysml2",
+    "subFormats": ["sysml", "kerml"],
+    "difficulty": 5,
+    "title": "6U CubeSat Mission Digital Thread",
+    "description": "Four-file SysML v2 and KerML space mission architecture integrating KerML quantity types, LEO orbital requirements, EPS power budget constraints, and spacecraft bus structure.",
+    "category": "Space Systems",
+    "tags": ["sysml2", "kerml", "cubesat", "digital-thread", "multi-file"],
+    "activeFile": "Spacecraft.sysml",
+    "fileNames": ["Spacecraft.sysml", "KermlTypes.kerml", "OrbitReqs.sysml", "PowerBudget.sysml"],
+    "fileCount": 4,
+    "code": "package CubeSatSpacecraft {\n  attribute def Real;\n\n  port def PowerRail {\n    attribute voltageV : Real;\n    attribute powerW : Real;\n  }\n\n  port def DataBus {\n    attribute throughputMbps : Real;\n  }\n\n  part def SolarEPS {\n    attribute massKg : Real = 1.45;\n    port railOut : PowerRail;\n  }\n\n  part def OnBoardComputer {\n    attribute massKg : Real = 0.35;\n    port railIn : PowerRail;\n    port payloadBus : DataBus;\n  }\n\n  part def OpticalPayload {\n    attribute massKg : Real = 2.8;\n    attribute peakPowerW : Real = 18.0;\n    port railIn : PowerRail;\n    port dataOut : DataBus;\n  }\n\n  part def SixUCubeSat {\n    attribute dryMassKg : Real = 8.9;\n    part eps : SolarEPS;\n    part obc : OnBoardComputer;\n    part payload : OpticalPayload;\n    connection pwrObc connect eps.railOut to obc.railIn;\n    connection pwrPayload connect eps.railOut to payload.railIn;\n    connection imgLink connect payload.dataOut to obc.payloadBus;\n  }\n}\n",
+    "files": {
+      "Spacecraft.sysml": "package CubeSatSpacecraft {\n  attribute def Real;\n\n  port def PowerRail {\n    attribute voltageV : Real;\n    attribute powerW : Real;\n  }\n\n  port def DataBus {\n    attribute throughputMbps : Real;\n  }\n\n  part def SolarEPS {\n    attribute massKg : Real = 1.45;\n    port railOut : PowerRail;\n  }\n\n  part def OnBoardComputer {\n    attribute massKg : Real = 0.35;\n    port railIn : PowerRail;\n    port payloadBus : DataBus;\n  }\n\n  part def OpticalPayload {\n    attribute massKg : Real = 2.8;\n    attribute peakPowerW : Real = 18.0;\n    port railIn : PowerRail;\n    port dataOut : DataBus;\n  }\n\n  part def SixUCubeSat {\n    attribute dryMassKg : Real = 8.9;\n    part eps : SolarEPS;\n    part obc : OnBoardComputer;\n    part payload : OpticalPayload;\n    connection pwrObc connect eps.railOut to obc.railIn;\n    connection pwrPayload connect eps.railOut to payload.railIn;\n    connection imgLink connect payload.dataOut to obc.payloadBus;\n  }\n}\n",
+      "KermlTypes.kerml": "package CubeSatKermlTypes {\n  abstract attribute def Quantity;\n  attribute def Real :> Quantity;\n  attribute def MassKg :> Real;\n  attribute def PowerW :> Real;\n  attribute def AltitudeKm :> Real;\n  attribute def DataRateMbps :> Real;\n}\n",
+      "OrbitReqs.sysml": "package CubeSatOrbitReqs {\n  attribute def Real;\n\n  requirement def SunSynchronousOrbitReq {\n    attribute nominalAltitudeKm : Real = 550.0;\n    attribute inclinationDeg : Real = 97.6;\n    attribute missionLifeYears : Real = 3.0;\n  }\n\n  requirement def DownlinkBudgetReq {\n    attribute minDataRateMbps : Real = 25.0;\n    attribute linkMarginDb : Real = 6.0;\n  }\n}\n",
+      "PowerBudget.sysml": "package CubeSatPowerBudget {\n  attribute def Real;\n\n  constraint def PositivePowerMargin {\n    attribute solarGenW : Real;\n    attribute busLoadW : Real;\n    attribute payloadLoadW : Real;\n    solarGenW >= busLoadW + payloadLoadW;\n  }\n\n  part def ElectricalPowerSubsystem {\n    attribute solarArrayPeakW : Real = 42.0;\n    attribute batteryCapacityWh : Real = 84.0;\n    attribute busVoltageV : Real = 12.0;\n  }\n}\n"
+    }
+  }
+]

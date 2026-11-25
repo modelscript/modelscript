@@ -1,0 +1,15 @@
+! Multi-Module Distribution Feeder with BESS & Capacitor Bank
+Clear
+
+New Circuit.SmartFeeder37 basekv=115.0 pu=1.03 phases=3 bus1=SourceBus
+
+New Transformer.MainSub phases=3 windings=2 buses=[SourceBus, Bus701] kvs=[115, 12.47] kvas=[15000, 15000] %loadloss=0.4 xhl=6.5
+
+Redirect sub/LineCodes.dss
+Redirect sub/Lines.dss
+Redirect sub/Loads.dss
+Redirect sub/BESS.dss
+
+Set VoltageBases = [115, 12.47]
+CalcVoltageBases
+Solve

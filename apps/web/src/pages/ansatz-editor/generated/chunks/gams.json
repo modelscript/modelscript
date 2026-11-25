@@ -1,0 +1,82 @@
+[
+  {
+    "id": "gams-01-dantzig-transportation-lp",
+    "lang": "gams",
+    "subFormats": ["gams", "lp"],
+    "difficulty": 1,
+    "title": "Dantzig Transportation Problem LP (TRNSPORT)",
+    "description": "Classic George Dantzig (1963) two-plant, three-market linear transportation optimization minimizing total freight cost subject to supply and demand.",
+    "category": "Mathematical Optimization",
+    "tags": ["gams", "lp", "transportation", "dantzig"],
+    "activeFile": "trnsport.gms",
+    "fileNames": ["trnsport.gms"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "$title A Transportation Problem (TRNSPORT)\n* Classic Dantzig (1963) least-cost shipping LP\n\nSets\n  i   canning plants   / seattle, san-diego /\n  j   markets          / new-york, chicago, topeka / ;\n\nParameters\n  a(i)  capacity of plant i in cases\n    / seattle    350\n      san-diego  600 /\n  b(j)  demand at market j in cases\n    / new-york   325\n      chicago    300\n      topeka     275 / ;\n\nTable d(i,j)  distance in thousands of miles\n                  new-york  chicago  topeka\n  seattle            2.5      1.7     1.8\n  san-diego          2.5      1.8     1.4 ;\n\nScalar f  freight in dollars per case per thousand miles / 90 / ;\nParameter c(i,j)  transport cost in thousands of dollars per case ;\nc(i,j) = f * d(i,j) / 1000 ;\n\nVariables\n  x(i,j)  shipment quantities in cases\n  z       total transportation costs in thousands of dollars ;\nPositive Variable x ;\n\nEquations\n  cost        define objective function\n  supply(i)   observe supply limit at plant i\n  demand(j)   satisfy demand at market j ;\n\ncost..        z  =e=  sum((i,j), c(i,j)*x(i,j)) ;\nsupply(i)..   sum(j, x(i,j))  =l=  a(i) ;\ndemand(j)..   sum(i, x(i,j))  =g=  b(j) ;\n\nModel transport / all / ;\nSolve transport using lp minimizing z ;\nDisplay x.l, x.m, z.l ;\n"
+  },
+  {
+    "id": "gams-02-diet-nutrition-lp",
+    "lang": "gams",
+    "subFormats": ["gams", "lp"],
+    "difficulty": 2,
+    "title": "Diet and Nutrition Cost-Minimization LP",
+    "description": "Minimum-cost daily ration formulation selecting food servings to satisfy minimum calorie, protein, and calcium requirements with upper sodium limits.",
+    "category": "Mathematical Optimization",
+    "tags": ["gams", "lp", "diet-problem", "nutrition"],
+    "activeFile": "diet.gms",
+    "fileNames": ["diet.gms"],
+    "fileCount": 1,
+    "code": "$title Diet and Nutrition Cost-Minimization LP\nSets\n  f  foods     / oats, chicken, eggs, milk, beans /\n  n  nutrients / calories, protein, calcium / ;\n\nParameters\n  price(f)  cost per serving in USD\n    / oats     0.35\n      chicken  2.40\n      eggs     0.55\n      milk     0.65\n      beans    0.45 /\n  nmin(n)   minimum daily requirement\n    / calories 2000\n      protein  55\n      calcium  800 /\n  maxsrv(f) maximum servings per day\n    / oats     4\n      chicken  3\n      eggs     3\n      milk     5\n      beans    4 / ;\n\nTable nut(f,n)  nutrient content per serving\n             calories  protein  calcium\n  oats          300       10       40\n  chicken       280       32       15\n  eggs          160       13       55\n  milk          150        8      300\n  beans         260       15       80 ;\n\nVariables\n  x(f)   servings of food f\n  total  total daily food cost (USD) ;\nPositive Variable x ;\n\nx.up(f) = maxsrv(f) ;\n\nEquations\n  obj       total diet cost\n  req(n)    minimum daily nutrient requirement ;\n\nobj..     total =e= sum(f, price(f)*x(f)) ;\nreq(n)..  sum(f, nut(f,n)*x(f)) =g= nmin(n) ;\n\nModel diet / all / ;\nSolve diet using lp minimizing total ;\nDisplay x.l, total.l ;\n"
+  },
+  {
+    "id": "gams-03-refinery-blending-lp",
+    "lang": "gams",
+    "subFormats": ["gams", "lp", "blending"],
+    "difficulty": 3,
+    "title": "Blended Refinery Crude Processing LP",
+    "description": "Petroleum refinery crude-oil purchasing and gasoline/diesel/jet-fuel blending LP maximizing net operating profit subject to distillation yields and market caps.",
+    "category": "Process Systems Optimization",
+    "tags": ["gams", "lp", "refinery", "blending"],
+    "activeFile": "refinery.gms",
+    "fileNames": ["refinery.gms"],
+    "fileCount": 1,
+    "code": "$title Petroleum Refinery Crude Processing and Blending LP\nSets\n  cr  crude oils       / wti, brent, heavy /\n  pr  refined products / gasoline, diesel, jetfuel / ;\n\nParameters\n  crCost(cr)  crude purchase and refining cost USD per bbl\n    / wti    74.0\n      brent  78.5\n      heavy  66.0 /\n  crCap(cr)   crude availability in kbbl per day\n    / wti    120\n      brent  100\n      heavy   80 /\n  prPrice(pr) product selling price USD per bbl\n    / gasoline 98.0\n      diesel   94.0\n      jetfuel  96.0 /\n  prMax(pr)   market demand ceiling in kbbl per day\n    / gasoline 110\n      diesel    95\n      jetfuel   65 / ;\n\nTable yield(cr,pr)  fractional distillation yield\n             gasoline  diesel  jetfuel\n  wti          0.45     0.30    0.20\n  brent        0.40     0.35    0.20\n  heavy        0.25     0.40    0.22 ;\n\nScalar distCap  total atmospheric distillation capacity in kbbl per day / 220 / ;\n\nVariables\n  run(cr)   crude processed in kbbl per day\n  sell(pr)  product sold in kbbl per day\n  profit    net daily operating margin in kUSD per day ;\nPositive Variables run, sell ;\n\nrun.up(cr)  = crCap(cr) ;\nsell.up(pr) = prMax(pr) ;\n\nEquations\n  obj        maximize net margin\n  cduCap     crude distillation unit capacity\n  matBal(pr) product material balance ;\n\nobj..        profit =e= sum(pr, prPrice(pr)*sell(pr)) - sum(cr, crCost(cr)*run(cr)) ;\ncduCap..     sum(cr, run(cr)) =l= distCap ;\nmatBal(pr).. sell(pr) =l= sum(cr, yield(cr,pr)*run(cr)) ;\n\nModel refinery / all / ;\nSolve refinery using lp maximizing profit ;\nDisplay run.l, sell.l, profit.l ;\n"
+  },
+  {
+    "id": "gams-04-unit-commitment-milp",
+    "lang": "gams",
+    "subFormats": ["gams", "mip"],
+    "difficulty": 4,
+    "title": "Thermal Power Plant Unit Commitment MILP",
+    "description": "Multi-period mixed-integer unit commitment scheduling three thermal generators over a 4-hour load profile with minimum/maximum output limits and companion data include.",
+    "category": "Power Systems Optimization",
+    "tags": ["gams", "mip", "unit-commitment", "power-grid", "multi-file"],
+    "activeFile": "uc.gms",
+    "fileNames": ["uc.gms", "gen_data.inc"],
+    "fileCount": 2,
+    "code": "$title Thermal Power Plant Unit Commitment MILP\n$include gen_data.inc\n\nSets\n  g  thermal generators / g1, g2, g3 /\n  t  time periods       / t1*t4 / ;\n\nParameters\n  pmin(g)   minimum generation in MW         / g1 50,  g2 30,  g3 20 /\n  pmax(g)   maximum generation in MW         / g1 200, g2 150, g3 100 /\n  varC(g)   variable fuel cost USD per MWh   / g1 28,  g2 36,  g3 48 /\n  fixC(g)   no-load commitment USD per hr    / g1 400, g2 280, g3 180 /\n  load(t)   hourly system demand in MW       / t1 180, t2 290, t3 340, t4 240 / ;\n\nVariables\n  p(g,t)    power dispatch in MW\n  u(g,t)    unit commitment binary status\n  z         total operating cost in USD ;\nPositive Variable p ;\nBinary Variable u ;\n\nEquations\n  cost          total commitment and dispatch cost\n  balance(t)    system power balance\n  minOut(g,t)   generator minimum stable output\n  maxOut(g,t)   generator maximum capacity ;\n\ncost..         z =e= sum((g,t), fixC(g)*u(g,t) + varC(g)*p(g,t)) ;\nbalance(t)..   sum(g, p(g,t)) =g= load(t) ;\nminOut(g,t)..  p(g,t) =g= pmin(g)*u(g,t) ;\nmaxOut(g,t)..  p(g,t) =l= pmax(g)*u(g,t) ;\n\nModel unit_commit / all / ;\nSolve unit_commit using mip minimizing z ;\nDisplay u.l, p.l, z.l ;\n",
+    "files": {
+      "uc.gms": "$title Thermal Power Plant Unit Commitment MILP\n$include gen_data.inc\n\nSets\n  g  thermal generators / g1, g2, g3 /\n  t  time periods       / t1*t4 / ;\n\nParameters\n  pmin(g)   minimum generation in MW         / g1 50,  g2 30,  g3 20 /\n  pmax(g)   maximum generation in MW         / g1 200, g2 150, g3 100 /\n  varC(g)   variable fuel cost USD per MWh   / g1 28,  g2 36,  g3 48 /\n  fixC(g)   no-load commitment USD per hr    / g1 400, g2 280, g3 180 /\n  load(t)   hourly system demand in MW       / t1 180, t2 290, t3 340, t4 240 / ;\n\nVariables\n  p(g,t)    power dispatch in MW\n  u(g,t)    unit commitment binary status\n  z         total operating cost in USD ;\nPositive Variable p ;\nBinary Variable u ;\n\nEquations\n  cost          total commitment and dispatch cost\n  balance(t)    system power balance\n  minOut(g,t)   generator minimum stable output\n  maxOut(g,t)   generator maximum capacity ;\n\ncost..         z =e= sum((g,t), fixC(g)*u(g,t) + varC(g)*p(g,t)) ;\nbalance(t)..   sum(g, p(g,t)) =g= load(t) ;\nminOut(g,t)..  p(g,t) =g= pmin(g)*u(g,t) ;\nmaxOut(g,t)..  p(g,t) =l= pmax(g)*u(g,t) ;\n\nModel unit_commit / all / ;\nSolve unit_commit using mip minimizing z ;\nDisplay u.l, p.l, z.l ;\n",
+      "gen_data.inc": "* Companion Generator Fleet Technical Specification Archive\n* g1: Combined-Cycle Gas Turbine (50-200 MW, $28/MWh, $400/h no-load)\n* g2: Coal/Steam Mid-Merit Unit  (30-150 MW, $36/MWh, $280/h no-load)\n* g3: Fast-Start Peaker Turbine  (20-100 MW, $48/MWh, $180/h no-load)\n"
+    }
+  },
+  {
+    "id": "gams-05-energy-transition-expansion",
+    "lang": "gams",
+    "subFormats": ["gams", "lp", "energy-systems"],
+    "difficulty": 5,
+    "title": "Multi-Region Energy Transition Capacity Expansion",
+    "description": "Two-region electricity generation capacity expansion planning across solar, wind, nuclear, and gas with inter-regional transmission and carbon cap.",
+    "category": "Energy Systems Planning",
+    "tags": ["gams", "capacity-expansion", "decarbonization", "multi-file"],
+    "activeFile": "energy_sys.gms",
+    "fileNames": ["energy_sys.gms", "demand.inc", "regions.inc"],
+    "fileCount": 3,
+    "code": "$title Multi-Region Energy Transition Capacity Expansion Model\n$include regions.inc\n$include demand.inc\n\nSets\n  r    regions       / north, south /\n  tech technologies  / solar, wind, nuclear, gas / ;\n\nParameters\n  capCost(tech)  annualized investment cost in kUSD per MW yr\n    / solar    75\n      wind     95\n      nuclear 320\n      gas      85 /\n  opCost(tech)   variable O and M plus fuel cost USD per MWh\n    / solar     0\n      wind      0\n      nuclear  10\n      gas      45 /\n  emRate(tech)   CO2 emissions intensity in tCO2 per MWh\n    / solar    0.0\n      wind     0.0\n      nuclear  0.0\n      gas      0.40 /\n  demand(r)      regional annual energy demand in GWh\n    / north 42000\n      south 56000 / ;\n\nTable cf(r,tech)  annual capacity factor\n           solar  wind  nuclear  gas\n  north    0.16   0.38   0.90   0.85\n  south    0.26   0.28   0.90   0.85 ;\n\nScalar\n  hrs      hours per year / 8760 /\n  co2Cap   system CO2 emissions budget in MtCO2 / 12.0 / ;\n\nVariables\n  cap(r,tech)  installed capacity in MW\n  gen(r,tech)  annual generation in GWh\n  totalCost    total annualized system cost in MUSD ;\nPositive Variables cap, gen ;\n\nEquations\n  obj            total annualized investment and dispatch cost\n  demBal(r)      regional demand satisfaction\n  capLim(r,tech) capacity factor generation limit\n  co2Lim         system-wide decarbonization cap ;\n\nobj..            totalCost =e= sum((r,tech), capCost(tech)*cap(r,tech)/1000 + opCost(tech)*gen(r,tech)/1000) ;\ndemBal(r)..      sum(tech, gen(r,tech)) =g= demand(r) ;\ncapLim(r,tech).. gen(r,tech) =l= cf(r,tech)*hrs*cap(r,tech)/1000 ;\nco2Lim..         sum((r,tech), emRate(tech)*gen(r,tech)/1000) =l= co2Cap ;\n\nModel expansion / all / ;\nSolve expansion using lp minimizing totalCost ;\nDisplay cap.l, gen.l, totalCost.l ;\n",
+    "files": {
+      "energy_sys.gms": "$title Multi-Region Energy Transition Capacity Expansion Model\n$include regions.inc\n$include demand.inc\n\nSets\n  r    regions       / north, south /\n  tech technologies  / solar, wind, nuclear, gas / ;\n\nParameters\n  capCost(tech)  annualized investment cost in kUSD per MW yr\n    / solar    75\n      wind     95\n      nuclear 320\n      gas      85 /\n  opCost(tech)   variable O and M plus fuel cost USD per MWh\n    / solar     0\n      wind      0\n      nuclear  10\n      gas      45 /\n  emRate(tech)   CO2 emissions intensity in tCO2 per MWh\n    / solar    0.0\n      wind     0.0\n      nuclear  0.0\n      gas      0.40 /\n  demand(r)      regional annual energy demand in GWh\n    / north 42000\n      south 56000 / ;\n\nTable cf(r,tech)  annual capacity factor\n           solar  wind  nuclear  gas\n  north    0.16   0.38   0.90   0.85\n  south    0.26   0.28   0.90   0.85 ;\n\nScalar\n  hrs      hours per year / 8760 /\n  co2Cap   system CO2 emissions budget in MtCO2 / 12.0 / ;\n\nVariables\n  cap(r,tech)  installed capacity in MW\n  gen(r,tech)  annual generation in GWh\n  totalCost    total annualized system cost in MUSD ;\nPositive Variables cap, gen ;\n\nEquations\n  obj            total annualized investment and dispatch cost\n  demBal(r)      regional demand satisfaction\n  capLim(r,tech) capacity factor generation limit\n  co2Lim         system-wide decarbonization cap ;\n\nobj..            totalCost =e= sum((r,tech), capCost(tech)*cap(r,tech)/1000 + opCost(tech)*gen(r,tech)/1000) ;\ndemBal(r)..      sum(tech, gen(r,tech)) =g= demand(r) ;\ncapLim(r,tech).. gen(r,tech) =l= cf(r,tech)*hrs*cap(r,tech)/1000 ;\nco2Lim..         sum((r,tech), emRate(tech)*gen(r,tech)/1000) =l= co2Cap ;\n\nModel expansion / all / ;\nSolve expansion using lp minimizing totalCost ;\nDisplay cap.l, gen.l, totalCost.l ;\n",
+      "demand.inc": "* Companion Regional Annual Electricity Demand Forecast (2035 Target)\n* north: 42,000 GWh/yr (industrial + heating electrification)\n* south: 56,000 GWh/yr (cooling + data center load growth)\n",
+      "regions.inc": "* Companion Regional Resource Availability Notes\n* north: High wind corridor (CF=0.38), lower solar insolation (CF=0.16)\n* south: High solar insolation (CF=0.26), moderate wind resource (CF=0.28)\n"
+    }
+  }
+]

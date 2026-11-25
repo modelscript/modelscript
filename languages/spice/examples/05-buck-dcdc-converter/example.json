@@ -1,0 +1,11 @@
+{
+  "id": "spice-05-buck-dcdc-converter",
+  "lang": "spice",
+  "subFormats": ["sp", "lib", "sub"],
+  "difficulty": 5,
+  "title": "Synchronous Buck DC-DC Switching Converter",
+  "description": "48V-to-12V 100 kHz buck DC-DC power converter with power MOSFET model, freewheeling Schottky diode, LC output filter, and companion library files.",
+  "category": "Switched-Mode Power Supplies",
+  "tags": ["spice", "buck-converter", "mosfet", "smps", "multi-file"],
+  "activeFile": "buck_conv.sp"
+}

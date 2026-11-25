@@ -73,7 +73,9 @@ function classKindToIcon(kind: string): vscode.ThemeIcon {
     if (kind.startsWith("symbol-") || kind === "circuit-board" || kind === "package") {
       try {
         return new vscode.ThemeIcon(kind);
-      } catch {}
+      } catch {
+        // Unknown codicon identifier falls back to default icon
+      }
     }
   }
   return new vscode.ThemeIcon("circuit-board");

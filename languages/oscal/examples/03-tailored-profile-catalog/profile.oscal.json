@@ -1,0 +1,21 @@
+{
+  "profile": {
+    "uuid": "33333333-3333-4333-8333-333333333302",
+    "metadata": {
+      "title": "Microgrid Tailored Security Baseline Profile",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "imports": [
+      {
+        "href": "./catalog.oscal.json",
+        "include-controls": [
+          {
+            "with-ids": ["ac-3", "au-2", "sc-7"]
+          }
+        ]
+      }
+    ]
+  }
+}

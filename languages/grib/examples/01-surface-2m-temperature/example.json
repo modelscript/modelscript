@@ -1,0 +1,12 @@
+{
+  "id": "grib-01-surface-2m-temperature",
+  "lang": "grib",
+  "subFormats": ["grib1"],
+  "difficulty": 1,
+  "title": "Surface 2m Air Temperature Regular Lat-Lon Grid",
+  "description": "Single-message WMO GRIB1 descriptor representing a 3x2 regular latitude-longitude surface 2-meter air temperature analysis in Kelvin.",
+  "category": "Numerical Weather Prediction",
+  "tags": ["grib", "grib1", "temperature", "surface", "nwp"],
+  "activeFile": "surface_tmp_2m.grb",
+  "isDefaultStarter": true
+}

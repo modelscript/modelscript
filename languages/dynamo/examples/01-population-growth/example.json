@@ -1,0 +1,12 @@
+{
+  "id": "dynamo-01-population-growth",
+  "lang": "dynamo",
+  "subFormats": ["dyn"],
+  "difficulty": 1,
+  "title": "Exponential Population Growth and Carrying Capacity",
+  "description": "Classic MIT DYNAMO logistic population model with crowding-dependent birth rate lookup table (TABHL) and carrying capacity feedback.",
+  "category": "System Dynamics",
+  "tags": ["dynamo", "population", "logistic", "tabhl"],
+  "activeFile": "population_growth.dyn",
+  "isDefaultStarter": true
+}

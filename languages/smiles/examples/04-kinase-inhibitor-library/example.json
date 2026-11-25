@@ -1,0 +1,11 @@
+{
+  "id": "smiles-04-kinase-inhibitor-library",
+  "lang": "smiles",
+  "subFormats": ["smiles"],
+  "difficulty": 4,
+  "title": "Lipinski Rule-of-5 Kinase Inhibitor Screening Library",
+  "description": "Heterocyclic ATP-competitive kinase inhibitor scaffolds (quinazolines, aminopyrimidines, indolinones) for ADMET and Lipinski Rule-of-5 profiling.",
+  "category": "Drug Discovery",
+  "tags": ["smiles", "kinase-inhibitors", "lipinski", "admet"],
+  "activeFile": "kinase_inhibitors.smi"
+}

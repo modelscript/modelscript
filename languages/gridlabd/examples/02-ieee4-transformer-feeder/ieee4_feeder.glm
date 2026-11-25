@@ -1,0 +1,85 @@
+// IEEE 4-Node Distribution Transformer Test Feeder
+clock {
+  timezone EST+5EDT;
+  starttime '2026-01-01 00:00:00';
+  stoptime '2026-01-01 06:00:00';
+}
+
+module powerflow {
+  solver_method NR;
+}
+
+object overhead_line_conductor:100 {
+  name cond_336;
+  resistance 0.306;
+}
+
+object line_configuration:300 {
+  name lc_300;
+  conductor_A cond_336;
+  z11 0.4576+1.0780j;
+}
+
+object transformer_configuration:400 {
+  name xfmr_cfg_400;
+  connect_type WYE_WYE;
+  power_rating 6000 kVA;
+  primary_voltage 12470 V;
+  secondary_voltage 4160 V;
+  resistance 0.01;
+  reactance 0.06;
+}
+
+object node {
+  name node_1;
+  phases ABCN;
+  bustype SWING;
+  nominal_voltage 7200 V;
+}
+
+object node {
+  name node_2;
+  phases ABCN;
+  nominal_voltage 7200 V;
+}
+
+object node {
+  name node_3;
+  phases ABCN;
+  nominal_voltage 2400 V;
+}
+
+object load {
+  name node_4;
+  phases ABCN;
+  nominal_voltage 2400 V;
+  constant_power_A 1800+871.78j kVA;
+  constant_power_B 1800+871.78j kVA;
+  constant_power_C 1800+871.78j kVA;
+}
+
+object overhead_line {
+  name line_1_2;
+  phases ABCN;
+  from node_1;
+  to node_2;
+  length 2000 ft;
+  configuration lc_300;
+}
+
+object transformer {
+  name xfmr_2_3;
+  phases ABCN;
+  from node_2;
+  to node_3;
+  configuration xfmr_cfg_400;
+}
+
+object overhead_line {
+  name line_3_4;
+  phases ABCN;
+  from node_3;
+  to node_4;
+  length 2500 ft;
+  configuration lc_300;
+}

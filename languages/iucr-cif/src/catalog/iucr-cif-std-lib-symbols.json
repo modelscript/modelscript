@@ -1,0 +1,541 @@
+[
+  {
+    "name": "_cell",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:_cell",
+    "exports": [
+      "a",
+      "b",
+      "c",
+      "alpha",
+      "beta",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Unit Cell Category (_cell)",
+      "category": "CIF Core Dictionary",
+      "domain": "materials",
+      "description": "IUCr CIF Core Dictionary _cell category defining lattice lengths (a, b, c) and interaxial angles (alpha, beta, gamma).",
+      "provenance": "IUCr CIF Core Dictionary 2.4.5 (_cell)",
+      "aliases": [
+        "CELL",
+        "UNIT_CELL"
+      ],
+      "parameters": [
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 5.431,
+          "unit": "Å",
+          "description": "_cell_length_a"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 5.431,
+          "unit": "Å",
+          "description": "_cell_length_b"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 5.431,
+          "unit": "Å",
+          "description": "_cell_length_c"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "_cell_angle_alpha"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "_cell_angle_beta"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "_cell_angle_gamma"
+        }
+      ],
+      "wasmKernel": "_cell",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "_symmetry",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:_symmetry",
+    "exports": [
+      "itNumber",
+      "opCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Space-Group Symmetry Category (_symmetry)",
+      "category": "CIF Core Dictionary",
+      "domain": "materials",
+      "description": "IUCr CIF Core Dictionary _symmetry / _space_group category defining International Tables number and Wyckoff equivalent positions.",
+      "provenance": "IUCr CIF Core Dictionary 2.4.5 (_symmetry); International Tables Vol. A",
+      "aliases": [
+        "SYMMETRY",
+        "SPACE_GROUP"
+      ],
+      "parameters": [
+        {
+          "key": "itNumber",
+          "type": "real",
+          "defaultValue": 227,
+          "unit": "1",
+          "description": "_symmetry_Int_Tables_number"
+        },
+        {
+          "key": "opCount",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "1",
+          "description": "Number of symmetry equivalent positions"
+        }
+      ],
+      "wasmKernel": "_symmetry",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "_atom_site",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:_atom_site",
+    "exports": [
+      "fractX",
+      "fractY",
+      "fractZ",
+      "occupancy",
+      "bIso"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Atomic Site Category (_atom_site)",
+      "category": "CIF Core Dictionary",
+      "domain": "materials",
+      "description": "IUCr CIF Core Dictionary _atom_site category defining fractional coordinates, occupancy, and isotropic displacement parameters.",
+      "provenance": "IUCr CIF Core Dictionary 2.4.5 (_atom_site)",
+      "aliases": [
+        "ATOM_SITE",
+        "ATOMS"
+      ],
+      "parameters": [
+        {
+          "key": "fractX",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "_atom_site_fract_x"
+        },
+        {
+          "key": "fractY",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "_atom_site_fract_y"
+        },
+        {
+          "key": "fractZ",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "_atom_site_fract_z"
+        },
+        {
+          "key": "occupancy",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "_atom_site_occupancy"
+        },
+        {
+          "key": "bIso",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "Å²",
+          "description": "_atom_site_B_iso_or_equiv"
+        }
+      ],
+      "wasmKernel": "_atom_site",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "_diffrn",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:_diffrn",
+    "exports": [
+      "wavelength",
+      "twoThetaMin",
+      "twoThetaMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Diffraction Measurement Category (_diffrn)",
+      "category": "CIF Core Dictionary",
+      "domain": "materials",
+      "description": "IUCr CIF Core Dictionary _diffrn category defining X-ray radiation wavelength (Cu-Kα 1.5406 Å) and Bragg geometry.",
+      "provenance": "IUCr CIF Core Dictionary 2.4.5 (_diffrn)",
+      "aliases": [
+        "DIFFRN",
+        "XRD"
+      ],
+      "parameters": [
+        {
+          "key": "wavelength",
+          "type": "real",
+          "defaultValue": 1.5406,
+          "unit": "Å",
+          "description": "_diffrn_radiation_wavelength (Cu-Kα1)"
+        },
+        {
+          "key": "twoThetaMin",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "deg",
+          "description": "Minimum diffraction angle 2θ"
+        },
+        {
+          "key": "twoThetaMax",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Maximum diffraction angle 2θ"
+        }
+      ],
+      "wasmKernel": "_diffrn",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "SILICON_FD3M",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:SILICON_FD3M",
+    "exports": [
+      "a",
+      "b",
+      "c",
+      "alpha",
+      "beta",
+      "gamma",
+      "wavelength"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Silicon (Diamond Cubic Fd-3m)",
+      "category": "Canonical Crystals",
+      "domain": "materials",
+      "description": "NIST SRM 640 Silicon diamond cubic crystal (Fd-3m, a = 5.4310 Å, Z = 8, Si-Si = 2.3517 Å, (111) 2θ = 28.44°).",
+      "provenance": "NIST SRM 640 / International Tables Vol. A #227",
+      "aliases": [
+        "SI",
+        "SILICON",
+        "DIAMOND_CUBIC"
+      ],
+      "parameters": [
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 5.431,
+          "unit": "Å",
+          "description": "Cubic lattice parameter a"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 5.431,
+          "unit": "Å",
+          "description": "Cubic lattice parameter b"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 5.431,
+          "unit": "Å",
+          "description": "Cubic lattice parameter c"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle alpha"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle beta"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle gamma"
+        },
+        {
+          "key": "wavelength",
+          "type": "real",
+          "defaultValue": 1.5406,
+          "unit": "Å",
+          "description": "Cu-Kα1 wavelength"
+        }
+      ],
+      "wasmKernel": "SILICON_FD3M",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "NACL_FM3M",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:NACL_FM3M",
+    "exports": [
+      "a",
+      "b",
+      "c",
+      "alpha",
+      "beta",
+      "gamma",
+      "wavelength"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NaCl Rock Salt (Fm-3m)",
+      "category": "Canonical Crystals",
+      "domain": "materials",
+      "description": "Halite (NaCl) cubic rock-salt structure (Fm-3m, a = 5.6402 Å, Z = 4, Na-Cl = 2.8201 Å).",
+      "provenance": "Wyckoff Crystal Structures / International Tables Vol. A #225",
+      "aliases": [
+        "NACL",
+        "HALITE",
+        "ROCK_SALT"
+      ],
+      "parameters": [
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 5.6402,
+          "unit": "Å",
+          "description": "Cubic lattice parameter a"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 5.6402,
+          "unit": "Å",
+          "description": "Cubic lattice parameter b"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 5.6402,
+          "unit": "Å",
+          "description": "Cubic lattice parameter c"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle alpha"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle beta"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle gamma"
+        },
+        {
+          "key": "wavelength",
+          "type": "real",
+          "defaultValue": 1.5406,
+          "unit": "Å",
+          "description": "Cu-Kα1 wavelength"
+        }
+      ],
+      "wasmKernel": "NACL_FM3M",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "ALPHA_QUARTZ",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:ALPHA_QUARTZ",
+    "exports": [
+      "a",
+      "b",
+      "c",
+      "alpha",
+      "beta",
+      "gamma",
+      "wavelength"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "alpha-Quartz (SiO2, P3_1 2 1)",
+      "category": "Canonical Crystals",
+      "domain": "materials",
+      "description": "Low-temperature trigonal alpha-Quartz (SiO2, P3_1 2 1, a = 4.9134 Å, c = 5.4052 Å, γ = 120°, Z = 3).",
+      "provenance": "Levien, Prewitt & Weidner (1980) Am. Mineral. 65, 920",
+      "aliases": [
+        "QUARTZ",
+        "SIO2",
+        "A_QUARTZ"
+      ],
+      "parameters": [
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 4.9134,
+          "unit": "Å",
+          "description": "Hexagonal/trigonal lattice parameter a"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 4.9134,
+          "unit": "Å",
+          "description": "Hexagonal/trigonal lattice parameter b"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 5.4052,
+          "unit": "Å",
+          "description": "Hexagonal/trigonal lattice parameter c"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle alpha"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle beta"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "deg",
+          "description": "Cell angle gamma"
+        },
+        {
+          "key": "wavelength",
+          "type": "real",
+          "defaultValue": 1.5406,
+          "unit": "Å",
+          "description": "Cu-Kα1 wavelength"
+        }
+      ],
+      "wasmKernel": "ALPHA_QUARTZ",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "FCC_COPPER",
+    "kind": "cif_schema",
+    "namePath": "iucr-cif:FCC_COPPER",
+    "exports": [
+      "a",
+      "b",
+      "c",
+      "alpha",
+      "beta",
+      "gamma",
+      "wavelength"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FCC Copper (Cu, Fm-3m)",
+      "category": "Canonical Crystals",
+      "domain": "materials",
+      "description": "Face-centered cubic Copper (Fm-3m, a = 3.6149 Å, Z = 4, Cu-Cu = 2.5561 Å, ρ = 8.93 g/cm³).",
+      "provenance": "Swanson & Tatge (1953) NBS Circular 539",
+      "aliases": [
+        "CU",
+        "COPPER"
+      ],
+      "parameters": [
+        {
+          "key": "a",
+          "type": "real",
+          "defaultValue": 3.6149,
+          "unit": "Å",
+          "description": "Cubic lattice parameter a"
+        },
+        {
+          "key": "b",
+          "type": "real",
+          "defaultValue": 3.6149,
+          "unit": "Å",
+          "description": "Cubic lattice parameter b"
+        },
+        {
+          "key": "c",
+          "type": "real",
+          "defaultValue": 3.6149,
+          "unit": "Å",
+          "description": "Cubic lattice parameter c"
+        },
+        {
+          "key": "alpha",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle alpha"
+        },
+        {
+          "key": "beta",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle beta"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Cell angle gamma"
+        },
+        {
+          "key": "wavelength",
+          "type": "real",
+          "defaultValue": 1.5406,
+          "unit": "Å",
+          "description": "Cu-Kα1 wavelength"
+        }
+      ],
+      "wasmKernel": "FCC_COPPER",
+      "archetypeId": 13
+    }
+  }
+]

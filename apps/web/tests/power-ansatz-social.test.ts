@@ -7,7 +7,7 @@ import { describe, it } from "node:test";
 
 import { extractShortPostSlides, isPowerFlowCode, isWaveformCode } from "../src/components/post/PostArtifactSlider.js";
 
-describe("Power Engineering Integration for Ansatz Social", () => {
+describe("Power Engineering Integration for Ansatz Network", () => {
   describe("1. Language Detection & Post Slide Lifting", () => {
     it("identifies powerflow language identifiers", () => {
       assert.strictEqual(isPowerFlowCode("psse"), true);

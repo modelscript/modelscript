@@ -1,0 +1,15 @@
+-- PKIX Cryptographic Algorithm Identifiers Module
+PKIX-AlgorithmIdentifiers { iso(1) member-body(2) us(840) rsadsi(113549) pkcs(1) 1 }
+DEFINITIONS EXPLICIT TAGS ::= BEGIN
+
+EXPORTS AlgorithmIdentifier;
+
+AlgorithmIdentifier ::= SEQUENCE {
+  algorithm   OBJECT IDENTIFIER,
+  parameters  NULL OPTIONAL
+}
+
+sha256WithRSAEncryption OBJECT IDENTIFIER ::= { 1 2 840 113549 1 1 11 }
+ecdsaWithSHA256 OBJECT IDENTIFIER ::= { 1 2 840 10045 4 3 2 }
+
+END

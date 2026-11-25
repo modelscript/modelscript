@@ -1,0 +1,11 @@
+{
+  "id": "aspen-03-ammonia-synthesis-loop",
+  "lang": "aspen",
+  "subFormats": ["in"],
+  "difficulty": 3,
+  "title": "Ammonia Synthesis Loop with Recycle & Purge",
+  "description": "High-pressure Haber-Bosch ammonia synthesis flowsheet combining fresh syngas makeup, stoichiometric catalytic converter, cryogenic product flash, and purge splitter with tear-stream convergence.",
+  "category": "Chemical Process Simulation",
+  "tags": ["aspen", "rstoic", "recycle-loop", "ammonia"],
+  "activeFile": "ammonia_loop.in"
+}

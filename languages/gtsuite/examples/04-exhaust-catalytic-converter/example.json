@@ -1,0 +1,11 @@
+{
+  "id": "gtsuite-04-exhaust-catalytic-converter",
+  "lang": "gtsuite",
+  "subFormats": ["gtm"],
+  "difficulty": 4,
+  "title": "Exhaust Aftertreatment Catalytic Converter Model",
+  "description": "Engine exhaust aftertreatment line featuring exhaust manifold collector, close-coupled three-way catalytic converter (TWC) brick volume, underfloor resonator, and acoustic tailpipe.",
+  "category": "Exhaust Aftertreatment",
+  "tags": ["aftertreatment", "catalyst", "exhaust", "thermal"],
+  "activeFile": "exhaust_cat.gtm"
+}

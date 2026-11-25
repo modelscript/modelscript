@@ -68,15 +68,18 @@ export function CadBindingPickerModal({
 
     if (component.dynamicBindings && component.dynamicBindings.length > 0) {
       setBindings(
-        component.dynamicBindings.map((b) => ({
-          property: b.property as DynamicBindingConfig["property"],
-          index: b.index,
-          variable: b.variable,
-          unit: (b as any).unit,
-          scale: (b as any).scale,
-          offset: (b as any).offset,
-          format: (b as any).format,
-        })),
+        component.dynamicBindings.map((b) => {
+          const ext = b as Partial<DynamicBindingConfig>;
+          return {
+            property: b.property as DynamicBindingConfig["property"],
+            index: b.index,
+            variable: b.variable,
+            unit: ext.unit,
+            scale: ext.scale,
+            offset: ext.offset,
+            format: ext.format,
+          };
+        }),
       );
     } else {
       // Default initial binding recommendation for multi-body components
@@ -296,7 +299,7 @@ export function CadBindingPickerModal({
                           handleUpdateBinding(idx, {
                             property: prop as DynamicBindingConfig["property"],
                             index: opt?.index ?? 0,
-                            format: opt?.format as any,
+                            format: opt?.format as DynamicBindingConfig["format"],
                             unit: opt?.defaultUnit,
                           });
                         }

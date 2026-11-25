@@ -1,0 +1,929 @@
+[
+  {
+    "namePath": "oneliner:OC_IEEE_MI",
+    "aliases": [
+      "IEEE_Moderately_Inverse",
+      "U1",
+      "IEEE_MI",
+      "51_IEEE_MI"
+    ],
+    "label": "IEEE Moderately Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_IEEE_MI</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_IEEE_VI",
+    "aliases": [
+      "IEEE_Very_Inverse",
+      "U2",
+      "IEEE_VI",
+      "51_IEEE_VI"
+    ],
+    "label": "IEEE Very Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_IEEE_VI</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_IEEE_EI",
+    "aliases": [
+      "IEEE_Extremely_Inverse",
+      "U3",
+      "IEEE_EI",
+      "51_IEEE_EI"
+    ],
+    "label": "IEEE Extremely Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_IEEE_EI</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_IEC_SI",
+    "aliases": [
+      "IEC_Standard_Inverse",
+      "IEC_Normal_Inverse",
+      "C1",
+      "51_IEC_SI"
+    ],
+    "label": "IEC Standard Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_IEC_SI</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_IEC_VI",
+    "aliases": [
+      "IEC_Very_Inverse",
+      "C2",
+      "51_IEC_VI"
+    ],
+    "label": "IEC Very Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_IEC_VI</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_IEC_EI",
+    "aliases": [
+      "IEC_Extremely_Inverse",
+      "C3",
+      "51_IEC_EI"
+    ],
+    "label": "IEC Extremely Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_IEC_EI</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_IEC_LTI",
+    "aliases": [
+      "IEC_Long_Time_Inverse",
+      "C4",
+      "51_IEC_LTI"
+    ],
+    "label": "IEC Long-Time Inverse Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_IEC_LTI</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_US_CO8",
+    "aliases": [
+      "US_CO8",
+      "CO8",
+      "CO-8"
+    ],
+    "label": "US CO-8 Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_US_CO8</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_US_IAC53",
+    "aliases": [
+      "US_IAC53",
+      "IAC53",
+      "IAC-53"
+    ],
+    "label": "US IAC53 Very Inverse Time-Overcurrent Relay (51)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">51</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_US_IAC53</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:OC_INST_50",
+    "aliases": [
+      "ANSI_50",
+      "50P",
+      "50G",
+      "INST50"
+    ],
+    "label": "Instantaneous Overcurrent Relay (50)",
+    "category": "Overcurrent Relay",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d1d\" stroke=\"#f87171\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#f87171\">50</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#f87171\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_INST_50</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIST_MHO_Z1",
+    "aliases": [
+      "21_MHO_Z1",
+      "MHO_Z1",
+      "Z1_MHO"
+    ],
+    "label": "Zone 1 Mho Distance Relay (21)",
+    "category": "Distance & Differential",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e2f4d\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">21</text><circle cx=\"64\" cy=\"16\" r=\"8\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-dasharray=\"2 1\"/><line x1=\"56\" y1=\"24\" x2=\"72\" y2=\"8\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIST_MHO_Z1</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIST_MHO_Z2",
+    "aliases": [
+      "21_MHO_Z2",
+      "MHO_Z2",
+      "Z2_MHO"
+    ],
+    "label": "Zone 2 Mho Distance Relay (21)",
+    "category": "Distance & Differential",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e2f4d\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">21</text><circle cx=\"64\" cy=\"16\" r=\"8\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-dasharray=\"2 1\"/><line x1=\"56\" y1=\"24\" x2=\"72\" y2=\"8\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIST_MHO_Z2</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIST_QUAD_Z1",
+    "aliases": [
+      "21_QUAD_Z1",
+      "QUAD_Z1",
+      "Z1_QUAD"
+    ],
+    "label": "Zone 1 Quadrilateral Distance Relay (21)",
+    "category": "Distance & Differential",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e2f4d\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">21</text><circle cx=\"64\" cy=\"16\" r=\"8\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-dasharray=\"2 1\"/><line x1=\"56\" y1=\"24\" x2=\"72\" y2=\"8\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIST_QUAD_Z1</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIST_QUAD_Z2",
+    "aliases": [
+      "21_QUAD_Z2",
+      "QUAD_Z2",
+      "Z2_QUAD"
+    ],
+    "label": "Zone 2 Quadrilateral Distance Relay (21)",
+    "category": "Distance & Differential",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e2f4d\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">21</text><circle cx=\"64\" cy=\"16\" r=\"8\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-dasharray=\"2 1\"/><line x1=\"56\" y1=\"24\" x2=\"72\" y2=\"8\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIST_QUAD_Z2</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIFF_87L",
+    "aliases": [
+      "87L",
+      "LINE_DIFF"
+    ],
+    "label": "Line Current Differential Relay (87L)",
+    "category": "Distance & Differential",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e2f4d\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">87L</text><circle cx=\"64\" cy=\"16\" r=\"8\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-dasharray=\"2 1\"/><line x1=\"56\" y1=\"24\" x2=\"72\" y2=\"8\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIFF_87L</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIFF_87T",
+    "aliases": [
+      "87T",
+      "XFMR_DIFF"
+    ],
+    "label": "Transformer Percentage Differential Relay (87T)",
+    "category": "Distance & Differential",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e2f4d\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">87T</text><circle cx=\"64\" cy=\"16\" r=\"8\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-dasharray=\"2 1\"/><line x1=\"56\" y1=\"24\" x2=\"72\" y2=\"8\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIFF_87T</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIFF_87B",
+    "aliases": [
+      "87B",
+      "BUS_DIFF"
+    ],
+    "label": "Busbar Percentage Differential Relay (87B)",
+    "category": "Distance & Differential",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e2f4d\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">87B</text><circle cx=\"64\" cy=\"16\" r=\"8\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.3\" stroke-dasharray=\"2 1\"/><line x1=\"56\" y1=\"24\" x2=\"72\" y2=\"8\" stroke=\"#60a5fa\" stroke-width=\"1.2\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIFF_87B</text></svg>",
+    "ports": [
+      {
+        "name": "ct_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "pt_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIR_67P",
+    "aliases": [
+      "67P",
+      "67_PHASE"
+    ],
+    "label": "Phase Directional Overcurrent Relay (67P)",
+    "category": "Directional / Recloser / Fuse",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#fbbf24\">67P</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIR_67P</text></svg>",
+    "ports": [
+      {
+        "name": "line_in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "line_out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:DIR_67G",
+    "aliases": [
+      "67G",
+      "67N",
+      "67_GROUND"
+    ],
+    "label": "Ground Directional Overcurrent Relay (67G)",
+    "category": "Directional / Recloser / Fuse",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#fbbf24\">67G</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIR_67G</text></svg>",
+    "ports": [
+      {
+        "name": "line_in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "line_out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:RECLOSER_79",
+    "aliases": [
+      "79",
+      "AUTO_RECLOSER"
+    ],
+    "label": "Automatic Circuit Recloser (79)",
+    "category": "Directional / Recloser / Fuse",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#fbbf24\">79</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">RECLOSER_79</text></svg>",
+    "ports": [
+      {
+        "name": "line_in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "line_out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:FUSE_K_LINK",
+    "aliases": [
+      "K_LINK",
+      "FUSE_K",
+      "ANSI_K"
+    ],
+    "label": "IEEE Fast K-Link Expulsion Fuse",
+    "category": "Directional / Recloser / Fuse",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#fbbf24\">FUSE-K</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">FUSE_K_LINK</text></svg>",
+    "ports": [
+      {
+        "name": "line_in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "line_out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:FUSE_T_LINK",
+    "aliases": [
+      "T_LINK",
+      "FUSE_T",
+      "ANSI_T"
+    ],
+    "label": "IEEE Slow T-Link Expulsion Fuse",
+    "category": "Directional / Recloser / Fuse",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#fbbf24\">FUSE-T</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">FUSE_T_LINK</text></svg>",
+    "ports": [
+      {
+        "name": "line_in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "line_out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:BREAKER_52",
+    "aliases": [
+      "52",
+      "CB_52",
+      "CIRCUIT_BREAKER"
+    ],
+    "label": "High-Voltage AC Circuit Breaker (52)",
+    "category": "Directional / Recloser / Fuse",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><circle cx=\"18\" cy=\"17\" r=\"9\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\"/><text x=\"18\" y=\"20\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7\" font-weight=\"bold\" fill=\"#fbbf24\">52</text><path d=\"M 33 23 Q 42 10 66 10\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.3\" stroke-opacity=\"0.8\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.5\" font-weight=\"bold\" fill=\"#f8fafc\">BREAKER_52</text></svg>",
+    "ports": [
+      {
+        "name": "line_in",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "line_out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:LINE_138kV_ACSR",
+    "aliases": [
+      "138kV_DRAKE",
+      "ACSR_795_138kV"
+    ],
+    "label": "138 kV ACSR 795 kcmil Drake Transmission Line",
+    "category": "Sequence Equipment",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">L138</text><path d=\"M 38 15 L 44 15 Q 47 9 50 15 Q 53 9 56 15 Q 59 9 62 15 L 68 15\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.4\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">LINE_138KV_A</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:LINE_230kV_ACSR",
+    "aliases": [
+      "230kV_BITTERN",
+      "ACSR_1272_230kV"
+    ],
+    "label": "230 kV ACSR 1272 kcmil Bittern Transmission Line",
+    "category": "Sequence Equipment",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">L230</text><path d=\"M 38 15 L 44 15 Q 47 9 50 15 Q 53 9 56 15 Q 59 9 62 15 L 68 15\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.4\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">LINE_230KV_A</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:LINE_500kV_BUNDLE",
+    "aliases": [
+      "500kV_CARDINAL",
+      "ACSR_3x954_500kV"
+    ],
+    "label": "500 kV 3-Bundle ACSR 954 kcmil Cardinal Transmission Line",
+    "category": "Sequence Equipment",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">L500</text><path d=\"M 38 15 L 44 15 Q 47 9 50 15 Q 53 9 56 15 Q 59 9 62 15 L 68 15\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.4\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">LINE_500KV_B</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:XFMR_YND1",
+    "aliases": [
+      "YNd1",
+      "WYE_DELTA_XFMR"
+    ],
+    "label": "Wye-Grounded / Delta-Lagging (YNd1) Power Transformer",
+    "category": "Sequence Equipment",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">YNd1</text><path d=\"M 38 15 L 44 15 Q 47 9 50 15 Q 53 9 56 15 Q 59 9 62 15 L 68 15\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.4\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">XFMR_YND1</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "oneliner:XFMR_YY_AUTO",
+    "aliases": [
+      "YNa0d1",
+      "AUTO_XFMR",
+      "YY_AUTO"
+    ],
+    "label": "Wye-Grounded Autotransformer with Delta Tertiary (YNa0d1)",
+    "category": "Sequence Equipment",
+    "domain": "electrical",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">AUTO</text><path d=\"M 38 15 L 44 15 Q 47 9 50 15 Q 53 9 56 15 Q 59 9 62 15 L 68 15\" fill=\"none\" stroke=\"#2dd4bf\" stroke-width=\"1.4\"/><text x=\"44\" y=\"40\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">XFMR_YY_AUTO</text></svg>",
+    "ports": [
+      {
+        "name": "bus1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "bus2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "id": "ibis-01-cmos-single-ended-driver",
+  "lang": "ibis",
+  "subFormats": ["ibs"],
+  "difficulty": 1,
+  "title": "3.3V LVCMOS Single-Ended Output Driver & Receiver",
+  "description": "Standard IBIS 3.2 component model for a 3.3V LVCMOS buffer pair with package RLC parasitics, IV pullup/pulldown tables, clamps, and ramp rates.",
+  "category": "Signal Integrity",
+  "tags": ["ibis", "lvcmos", "buffer", "signal-integrity"],
+  "activeFile": "lvcmos33.ibs",
+  "isDefaultStarter": true
+}

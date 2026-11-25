@@ -1,0 +1,11 @@
+{
+  "id": "asn1-04-x509-digital-certificate",
+  "lang": "asn1",
+  "subFormats": ["x680", "x509"],
+  "difficulty": 4,
+  "title": "X.509 v3 Digital Certificate & PKI Algorithm Identifiers",
+  "description": "Multi-module ASN.1 PKI schema modeling an X.509 v3 Certificate, TBSCertificate, Validity, and SubjectPublicKeyInfo importing AlgorithmIdentifier from a companion module.",
+  "category": "Cryptography & PKI",
+  "tags": ["asn1", "x509", "pki", "certificate", "multi-file"],
+  "activeFile": "x509_cert.asn"
+}

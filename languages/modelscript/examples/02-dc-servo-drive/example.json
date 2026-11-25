@@ -1,0 +1,11 @@
+{
+  "id": "modelscript-02-dc-servo-drive",
+  "lang": "modelscript",
+  "subFormats": ["msx"],
+  "difficulty": 2,
+  "title": "Closed-Loop DC Servo Drive",
+  "description": "Discrete-time Euler integration of an armature-controlled DC servo motor with proportional-integral speed control and voltage saturation.",
+  "category": "Control Systems",
+  "tags": ["modelscript", "servo", "pi-control", "simulation", "motor"],
+  "activeFile": "dc_servo.msx"
+}

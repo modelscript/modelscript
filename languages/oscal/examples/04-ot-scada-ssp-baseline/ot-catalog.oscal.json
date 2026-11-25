@@ -1,0 +1,24 @@
+{
+  "catalog": {
+    "uuid": "44444444-4444-4444-8444-444444444401",
+    "metadata": {
+      "title": "OT SCADA Substation Control Catalog",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "groups": [
+      {
+        "id": "ot",
+        "title": "Operational Technology Controls",
+        "controls": [
+          { "id": "ac-3", "title": "Access Enforcement" },
+          { "id": "pe-3", "title": "Physical Access Control" },
+          { "id": "sc-7", "title": "Boundary Protection" },
+          { "id": "si-4", "title": "System Monitoring" },
+          { "id": "si-7", "title": "Software, Firmware, and Information Integrity" }
+        ]
+      }
+    ]
+  }
+}

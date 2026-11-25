@@ -1,0 +1,7 @@
+! Feeder Customer Loads
+New Loadshape.DailyDemand npts=24 interval=1 mult=(file=sub/loadshape.csv)
+New Load.LD702 bus1=Bus702 phases=3 kv=12.47 kw=1400 kvar=420
+New Load.LD703 bus1=Bus703 phases=3 kv=12.47 kw=1850 kvar=580
+New Load.LD704 bus1=Bus704 phases=3 kv=12.47 kw=1600 kvar=510
+New Load.LD705 bus1=Bus705 phases=3 kv=12.47 kw=950 kvar=300
+New Load.LD706 bus1=Bus706 phases=3 kv=12.47 kw=1100 kvar=340

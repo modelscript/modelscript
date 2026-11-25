@@ -1,0 +1,11 @@
+{
+  "id": "landgem-05-regional-landfill-50yr-recovery",
+  "lang": "landgem",
+  "subFormats": ["landgem", "csv"],
+  "difficulty": 5,
+  "title": "Regional Sanitary Landfill 50-Year Gas Recovery & Waste Log",
+  "description": "Large regional sanitary landfill and dual-stage anaerobic digestion complex projecting 50-year methane recovery, NMOC emissions, and CHP power alongside an annual waste tonnage CSV log.",
+  "category": "Environmental & Biogas Engineering",
+  "tags": ["landgem", "regional-landfill", "gas-recovery", "multi-file", "chp"],
+  "activeFile": "regional.landgem"
+}

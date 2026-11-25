@@ -1,0 +1,12 @@
+{
+  "id": "sima-05-fpso-turret-riser-storm",
+  "lang": "sima",
+  "subFormats": ["sima", "csv"],
+  "difficulty": 5,
+  "title": "FPSO Turret Mooring and Flexible Riser under 100-Yr Storm",
+  "description": "Deepwater turret-moored FPSO vessel in 500 m water depth with six grouped chain-wire mooring lines, a lazy-wave flexible production riser, and a companion 100-year storm metocean scatter table.",
+  "category": "Deepwater Production",
+  "tags": ["fpso", "turret-mooring", "flexible-riser", "multi-file"],
+  "activeFile": "fpso_system.sima",
+  "fileOrder": ["fpso_system.sima", "storm_metocean.csv"]
+}

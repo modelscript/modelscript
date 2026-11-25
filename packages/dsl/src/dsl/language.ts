@@ -726,7 +726,7 @@ export interface LanguageOptions<
 
   /**
    * Declarative Cross-Host UI Panels, Stencils, Simulation Cards, and Tree Views.
-   * Consumed at build time by the VS Code extension generator and Morsel/Ansatz Vite plugin.
+   * Consumed at build time by the Ansatz Studio (VS Code) extension generator and Ansatz Editor Vite plugin.
    */
   ui?: LanguageUiConfig | undefined;
 }

@@ -1,0 +1,12 @@
+{
+  "id": "twentysim-01-mass-spring-damper",
+  "lang": "twentysim",
+  "subFormats": ["emx"],
+  "difficulty": 1,
+  "title": "Mechanical Mass-Spring-Damper Bond Graph",
+  "description": "20-sim power bond graph of a forced mechanical mass-spring-damper oscillator sharing a common velocity 1-junction with integral SCAP causality across inertial I, compliant C, and resistive R elements.",
+  "category": "Bond Graph Modeling",
+  "tags": ["twentysim", "bond-graph", "mass-spring-damper", "scap"],
+  "activeFile": "msd_bondgraph.emx",
+  "isDefaultStarter": true
+}

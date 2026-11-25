@@ -1,0 +1,12 @@
+{
+  "id": "pypsa-01-wind-gas-economic-dispatch",
+  "lang": "pypsa",
+  "subFormats": ["pypsa"],
+  "difficulty": 1,
+  "title": "2-Bus Wind & Gas Economic Dispatch",
+  "description": "Minimal 380 kV two-bus PyPSA energy system dispatching zero-marginal-cost northern wind generation alongside southern combined-cycle gas generation across an AC corridor.",
+  "category": "Energy Systems Optimization",
+  "tags": ["pypsa", "economic-dispatch", "wind", "gas", "380kv"],
+  "activeFile": "wind_gas.pypsa",
+  "isDefaultStarter": true
+}

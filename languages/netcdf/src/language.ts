@@ -25,7 +25,7 @@ export const netcdfLanguage = language({
         shortTitle: "NetCDF",
         selector: ["*.cdl", "*.nc", "*.cdf"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/NetcdfPanel.tsx",
         artifactViewTypes: ["netcdf", "cdl"],
       },

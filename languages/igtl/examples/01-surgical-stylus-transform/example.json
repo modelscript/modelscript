@@ -1,0 +1,12 @@
+{
+  "id": "igtl-01-surgical-stylus-transform",
+  "lang": "igtl",
+  "subFormats": ["igtl"],
+  "difficulty": 1,
+  "title": "Single Surgical Stylus TRANSFORM Frame Stream",
+  "description": "OpenIGTLink surgical navigation message stream transmitting a calibrated rigid-body SE(3) StylusTip-to-Stylus and Stylus-to-Tracker transform chain.",
+  "category": "Image-Guided Surgery & Navigation",
+  "tags": ["igtl", "openigtlink", "transform", "stylus"],
+  "activeFile": "stylus.igtl",
+  "isDefaultStarter": true
+}

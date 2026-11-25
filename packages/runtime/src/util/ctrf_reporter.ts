@@ -15,7 +15,7 @@ export interface CtrfTest {
   duration: number;
   message?: string | undefined;
   trace?: string | undefined;
-  extra?: Record<string, any> | undefined;
+  extra?: Record<string, unknown> | undefined;
 }
 
 export interface CtrfReport {

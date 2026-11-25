@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>Chassis</SHORT-NAME>
+      <ELEMENTS>
+        <SENDER-RECEIVER-INTERFACE>
+          <SHORT-NAME>WheelSpeedIf</SHORT-NAME>
+          <DATA-ELEMENTS>
+            <VARIABLE-DATA-PROTOTYPE>
+              <SHORT-NAME>WheelSpeedRpm</SHORT-NAME>
+            </VARIABLE-DATA-PROTOTYPE>
+          </DATA-ELEMENTS>
+        </SENDER-RECEIVER-INTERFACE>
+
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>WheelSpeedSensorSwc</SHORT-NAME>
+          <PORTS>
+            <P-PORT-PROTOTYPE>
+              <SHORT-NAME>SpeedOut</SHORT-NAME>
+              <PROVIDED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/Chassis/WheelSpeedIf</PROVIDED-INTERFACE-TREF>
+            </P-PORT-PROTOTYPE>
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>WheelSpeedSensor_IB</SHORT-NAME>
+              <RUNNABLES>
+                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>RE_SampleWheelSpeed</SHORT-NAME>
+                  <EXECUTION-TIME-WCET>0.0015</EXECUTION-TIME-WCET>
+                </RUNNABLE-ENTITY>
+              </RUNNABLES>
+              <EVENTS>
+                <TIMING-EVENT>
+                  <SHORT-NAME>TE_10ms</SHORT-NAME>
+                  <START-ON-EVENT-REF>RE_SampleWheelSpeed</START-ON-EVENT-REF>
+                  <PERIOD>0.010</PERIOD>
+                </TIMING-EVENT>
+              </EVENTS>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

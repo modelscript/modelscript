@@ -1,0 +1,33 @@
+% Digital Stopwatch with Start/Stop, Lap Freeze, and Strong Reset Preemption
+module Stopwatch:
+input TICK, START_STOP, LAP, RESET;
+output DISPLAY_TICK, LAP_FROZEN, CLEARED;
+relation START_STOP # RESET;
+
+loop
+  abort
+    [
+      loop
+        await START_STOP;
+        abort
+          every TICK do
+            emit DISPLAY_TICK
+          end
+        when START_STOP;
+        pause
+      end
+    ||
+      loop
+        await LAP;
+        abort
+          sustain LAP_FROZEN
+        when LAP;
+        pause
+      end
+    ]
+  when RESET do
+    emit CLEARED
+  end;
+  pause
+end
+end module

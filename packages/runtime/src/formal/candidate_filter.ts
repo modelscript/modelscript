@@ -26,7 +26,7 @@ export interface DesignCandidate {
   tier1Passed: boolean;
   tier2Passed: boolean;
   tier3Status?: "unverified" | "running" | "confirmed" | "refuted" | undefined;
-  tier3Witness?: any;
+  tier3Witness?: unknown;
   rank?: number | undefined;
   crowdingDistance?: number | undefined;
 }

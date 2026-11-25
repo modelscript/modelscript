@@ -1,0 +1,76 @@
+# GOES-16 Geostationary Satellite Atmospheric Motion Vector (AMV) Bulletin
+BUFR EDITION 4 NAME GOES16_AMV_IR
+TABLE_B
+  0-01-207 name="Satellite Identifier" unit="CODE" scale=0 ref=0 width=10
+  0-12-263 name="Infrared Brightness Temperature" unit="K" scale=2 ref=0 width=16
+  0-33-207 name="QI Percent Confidence" unit="%" scale=0 ref=0 width=7
+TABLE_D
+  3-25-001 = [0-01-207, 0-05-001, 0-06-001, 0-07-004, 0-11-001, 0-11-002, 0-12-263, 0-33-207] "Satellite AMV Vector"
+SECTION 0
+  LENGTH = 0
+SECTION 1
+  MASTER_TABLE = 0
+  CENTRE = 7
+  SUBCENTRE = 160
+  CATEGORY = 5
+  VERSION = 38
+  YEAR = 2026
+  MONTH = 9
+  DAY = 10
+  HOUR = 18
+  MINUTE = 0
+  SECOND = 0
+SECTION 3
+  SUBSETS = 5
+  OBSERVED = true
+  COMPRESSED = false
+  DESCRIPTORS:
+    3-25-001
+SECTION 4
+  SUBSET 1:
+    0-01-207 = 270
+    0-05-001 = 28.45000
+    0-06-001 = -76.12000
+    0-07-004 = 24500
+    0-11-001 = 242
+    0-11-002 = 34.8
+    0-12-263 = 224.30
+    0-33-207 = 94
+  SUBSET 2:
+    0-01-207 = 270
+    0-05-001 = 29.10000
+    0-06-001 = -74.85000
+    0-07-004 = 26000
+    0-11-001 = 248
+    0-11-002 = 38.2
+    0-12-263 = 227.15
+    0-33-207 = 91
+  SUBSET 3:
+    0-01-207 = 270
+    0-05-001 = 30.25000
+    0-06-001 = -73.40000
+    0-07-004 = 22000
+    0-11-001 = 251
+    0-11-002 = 44.5
+    0-12-263 = 219.80
+    0-33-207 = 96
+  SUBSET 4:
+    0-01-207 = 270
+    0-05-001 = 31.80000
+    0-06-001 = -71.90000
+    0-07-004 = 23500
+    0-11-001 = 258
+    0-11-002 = 47.1
+    0-12-263 = 221.40
+    0-33-207 = 89
+  SUBSET 5:
+    0-01-207 = 270
+    0-05-001 = 33.15000
+    0-06-001 = -70.25000
+    0-07-004 = 25000
+    0-11-001 = 263
+    0-11-002 = 51.3
+    0-12-263 = 223.95
+    0-33-207 = 92
+SECTION 5
+7777

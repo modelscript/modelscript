@@ -1,0 +1,22 @@
+import "pancreas.ant"
+import "liver.ant"
+
+model GlucoseInsulinPatient()
+  compartment plasma = 12.0;
+  species G in plasma = 95.0, I in plasma = 12.0, X in plasma = 0.0;
+  const Gb = 90.0, Ib = 10.0;
+  const Sg = 0.028, p2 = 0.025, p3 = 0.000015;
+  const k_sec = 0.4, Km_g = 140.0, n_i = 0.09, G_meal = 45.0;
+
+  J_g_uptake: G => ; (Sg + X) * G;
+  J_g_basal: => G; Sg * Gb;
+  J_i_sec: => I; k_sec * (G * G) / (Km_g * Km_g + G * G);
+  J_i_clear: I => ; n_i * I;
+  X' = -p2 * X + p3 * (I - Ib);
+
+  E_meal: at (time >= 30.0): G = G + G_meal;
+
+  G is "Plasma Glucose (mg/dL)";
+  I is "Plasma Insulin (uU/mL)";
+  X is "Remote Insulin Action";
+end

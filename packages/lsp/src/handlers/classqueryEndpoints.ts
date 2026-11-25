@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { Context } from "@modelscript/modelica";
 import { computeComponentInsert, loadPrebakedMslIcons } from "@modelscript/modelica/diagram";
 import {
   globalLibraryRegistry,
   type ClassHierarchyNode,
   type ComponentTreeNode,
+  type SymbolEntry,
   type TreeNodeInfo,
 } from "@modelscript/runtime";
 import { printArenaDAE } from "@modelscript/runtime/dae-printer";
@@ -24,6 +24,40 @@ import {
 } from "../utils/hierarchy-utils.js";
 import { findModelicaClassKeywordOffset, isAsciiUpperCode } from "../utils/lexical-utils.js";
 import { iconCache } from "./treeHandler.js";
+
+interface WorkspaceIndexFileLookupLike {
+  fileLoaders?: Map<string, unknown>;
+  ensureIndexed?: (uri: string) => void;
+  getFileUriForFQN?: (fqn: string) => string | undefined;
+}
+
+interface VirtualFsEntryLike {
+  name: string;
+  isDirectory?: (() => boolean) | boolean;
+}
+
+interface VirtualFsLike {
+  exists?: (p: string) => boolean;
+  stat?: (p: string) => { isDirectory?: () => boolean; size?: number } | null | undefined;
+  read?: (p: string) => string | undefined;
+  readdir?: (p: string) => VirtualFsEntryLike[];
+}
+
+interface ParseWalkNodeLike {
+  type?: string;
+  text?: string;
+  isMissing?: boolean;
+  hasError?: boolean | (() => boolean);
+  children?: ParseWalkNodeLike[];
+  childForFieldName?: (name: string) => ParseWalkNodeLike | null | undefined;
+}
+
+interface GlobalClassQueryFallback {
+  serverDistBase?: string;
+  sharedFs?: VirtualFsLike;
+  ModelicaClassInstance?: new (id: number, db: unknown) => unknown;
+  ModelicaComponentInstance?: new (...args: never[]) => unknown;
+}
 
 function findClassStartOffsetInCst(root: CstNodeLike, className: string): number {
   const stack: CstNodeLike[] = [root];
@@ -84,14 +118,12 @@ function resolveClassStartOffset(
   let parsedTree: CstTreeLike | null = null;
   try {
     const sc = (context.state?.sharedContext ?? context.parserService?.sharedContext) as
-      | { parse?(ext: string, text: string): CstTreeLike | null }
-      | undefined;
+      { parse?(ext: string, text: string): CstTreeLike | null } | undefined;
     if (sc && typeof sc.parse === "function") {
       parsedTree = sc.parse(uri.endsWith(".sysml") ? ".sysml" : ".mo", text);
     } else {
       const parser = context.parserService?.getParser?.(uri.endsWith(".sysml") ? "sysml2" : "modelica") as
-        | CstParserLike
-        | undefined;
+        CstParserLike | undefined;
       if (parser && typeof parser.parse === "function") {
         parsedTree = parser.parse(text) as CstTreeLike | null;
       }
@@ -152,7 +184,7 @@ function humanizeIdentifier(ident: string): string {
     .trim();
 }
 
-function inferIconEntryKind(fqn: string, hasChildren: boolean): string {
+function inferIconEntryKind(fqn: string, hasChildren: boolean): TreeNodeInfo["classKind"] {
   if (hasChildren) return "package";
   if (
     fqn.startsWith("Modelica.Blocks.") ||
@@ -175,6 +207,18 @@ function buildParentPrefixSet(keys: Iterable<string>): Set<string> {
     }
   }
   return prefixes;
+}
+
+function callFlattenArenaFromInstance(classInstance: unknown, ctx: unknown): import("@modelscript/runtime").DAEBuilder {
+  const fn = (
+    globalThis as unknown as {
+      flattenArenaFromInstance?: (inst: unknown, context?: unknown) => import("@modelscript/runtime").DAEBuilder;
+    }
+  ).flattenArenaFromInstance;
+  if (typeof fn !== "function") {
+    throw new Error("flattenArenaFromInstance is not initialized.");
+  }
+  return fn(classInstance, ctx);
 }
 
 export function registerClassQueryEndpoints(context: LspContext) {
@@ -203,7 +247,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       for (const [uri, instances] of context.workspaceManager.documentInstances) {
         for (const instance of instances) {
-          if (instance && !instance.instantiated && typeof instance.instantiate === "function") {
+          if (instance && !instance["instantiated"] && typeof instance.instantiate === "function") {
             try {
               instance.instantiate();
             } catch {
@@ -212,13 +256,14 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
 
           const rawKind = String(instance.classKind ?? instance.kind ?? "").toLowerCase();
+          const rawClassKind: unknown = instance.classKind;
           const isSimulatable =
             rawKind === "model" ||
             rawKind === "block" ||
             rawKind === "class" ||
-            instance.classKind === 0 ||
-            instance.classKind === 1 ||
-            instance.classKind === 2;
+            rawClassKind === 0 ||
+            rawClassKind === 1 ||
+            rawClassKind === 2;
           if (!isSimulatable) continue;
 
           // Check for experiment annotation
@@ -226,7 +271,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
             const docContext = context.workspaceManager.documentContexts.get(uri);
             if (!docContext) continue;
 
-            const arena = flattenArenaFromInstance(instance, docContext);
+            const arena = callFlattenArenaFromInstance(instance, docContext);
             const exp = arena.experiment;
             // Only consider classes with actual experiment data (not the default empty {})
             if (
@@ -269,7 +314,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
       const limit = params.limit ?? 60;
       try {
-        const distBase = (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
+        const distBase =
+          (globalThis as unknown as GlobalClassQueryFallback).serverDistBase ??
+          context.parserService?.getServerDistBase?.();
         await loadPrebakedMslIcons(iconCache, distBase);
       } catch {
         // Prebaked icon index optional in minimal unit-test harnesses
@@ -314,7 +361,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
             id: fqn,
             name: leaf,
             compositeName: fqn,
-            classKind: inferIconEntryKind(fqn, hasChildren) as any,
+            classKind: inferIconEntryKind(fqn, hasChildren),
             hasChildren,
             language: "modelica",
           });
@@ -363,14 +410,17 @@ export function registerClassQueryEndpoints(context: LspContext) {
     "modelscript/getComponentCatalog",
     async (): Promise<{ components: CatalogComponentInfo[] }> => {
       try {
-        const distBase = (globalThis as any).serverDistBase ?? context.parserService?.getServerDistBase?.();
+        const distBase =
+          (globalThis as unknown as GlobalClassQueryFallback).serverDistBase ??
+          context.parserService?.getServerDistBase?.();
         await loadPrebakedMslIcons(iconCache, distBase);
       } catch {
         // Prebaked icon index optional in minimal unit-test harnesses
       }
 
       // Eager-index small custom mounted packages (< 25 files) so newly installed packages appear in the gallery
-      const moIdx = context.workspaceManager?.getWorkspaceIndex?.("modelica") as any;
+      const moIdx = context.workspaceManager?.getWorkspaceIndex?.("modelica") as
+        WorkspaceIndexFileLookupLike | undefined;
       if (moIdx?.fileLoaders instanceof Map) {
         const customUris: string[] = [];
         for (const uri of moIdx.fileLoaders.keys()) {
@@ -413,7 +463,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           const rawRoot = parts[0]!;
           const packageName = ROOT_NAMESPACE_TO_PACKAGE[rawRoot] ?? rawRoot;
           const subpackage = parts.slice(1, -1).join(" · ") || packageName;
-          const kind = inferIconEntryKind(fqn, false);
+          const kind = inferIconEntryKind(fqn, false) ?? "model";
 
           byFqn.set(fqn, {
             fqn,
@@ -451,10 +501,8 @@ export function registerClassQueryEndpoints(context: LspContext) {
           const parts = fqn.split(".");
           if (parts.some((seg) => SKIP_CATALOG_SEGMENTS.has(seg))) continue;
 
-          const rawDesc =
-            typeof (entry.metadata as any)?.description === "string"
-              ? String((entry.metadata as any).description).trim()
-              : "";
+          const entryMeta = entry.metadata as Record<string, unknown> | undefined;
+          const rawDesc = typeof entryMeta?.["description"] === "string" ? entryMeta["description"].trim() : "";
           const existing = byFqn.get(fqn);
           if (existing) {
             existing.kind = kind;
@@ -472,7 +520,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
               subpackage,
               description: rawDesc || `${humanizeIdentifier(entry.name)} (${subpackage})`,
               language: entry.language || "modelica",
-              hasLiveIcon: Boolean(iconCache.get(fqn) || (entry.metadata as any)?.iconSvg),
+              hasLiveIcon: Boolean(iconCache.get(fqn) || entryMeta?.["iconSvg"]),
             });
           }
         }
@@ -497,10 +545,10 @@ export function registerClassQueryEndpoints(context: LspContext) {
         const unifiedIndex = context.workspaceManager.unifiedWorkspace.getIndex();
         const parts = params.className.split(".");
         let entries = unifiedIndex.byName.get(parts[parts.length - 1]!);
-        let entry = undefined;
+        let entry: SymbolEntry | undefined = undefined;
 
         if (entries) {
-          let builtinEntry: any = undefined;
+          let builtinEntry: SymbolEntry | undefined = undefined;
           for (const id of entries) {
             const e = unifiedIndex.symbols.get(id);
             if (e && getCompositeName(e, unifiedIndex) === params.className) {
@@ -519,11 +567,11 @@ export function registerClassQueryEndpoints(context: LspContext) {
         let uri = entry?.resourceId;
         if (!uri) {
           // Fallback: try to resolve file path via index
-          const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
-          const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2");
-          uri =
-            (moIdx as any)?.getFileUriForFQN?.(params.className) ||
-            (sysmlIdx as any)?.getFileUriForFQN?.(params.className);
+          const moIdx = context.workspaceManager.getWorkspaceIndex("modelica") as
+            WorkspaceIndexFileLookupLike | undefined;
+          const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2") as
+            WorkspaceIndexFileLookupLike | undefined;
+          uri = moIdx?.getFileUriForFQN?.(params.className) || sysmlIdx?.getFileUriForFQN?.(params.className);
         }
 
         if (!entry && uri) {
@@ -531,7 +579,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
           try {
             moIdx?.ensureIndexed?.(uri);
             context.workspaceManager.globalWorkspaceIndex?.ensureIndexed?.(uri);
-          } catch {}
+          } catch {
+            // Best-effort lazy indexing; symbol lookup below handles unindexed entries gracefully.
+          }
           const uIndex = context.workspaceManager.unifiedWorkspace.getIndex();
           const targetName = parts[parts.length - 1]!;
           const candIds = uIndex.byName.get(targetName) ?? [];
@@ -545,12 +595,10 @@ export function registerClassQueryEndpoints(context: LspContext) {
         }
 
         if (uri?.startsWith("builtin://") && entry) {
-          const classPrefix =
-            (entry.metadata as any)?.classPrefixes ?? (entry.kind === "Package" ? "package" : "model");
-          const desc = (entry.metadata as any)?.description
-            ? ` "${String((entry.metadata as any).description)
-                .replace(/\\/g, "\\\\")
-                .replace(/"/g, '\\"')}"`
+          const entryMeta = entry.metadata as Record<string, unknown> | undefined;
+          const classPrefix = String(entryMeta?.["classPrefixes"] ?? (entry.kind === "Package" ? "package" : "model"));
+          const desc = entryMeta?.["description"]
+            ? ` "${String(entryMeta["description"]).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
             : "";
           const childIds = unifiedIndex.childrenOf.get(entry.id) ?? [];
           const bodyLines: string[] = [];
@@ -630,14 +678,18 @@ export function registerClassQueryEndpoints(context: LspContext) {
     "modelscript/getClassLocation",
     (params: { className: string }): { uri: string; line: number; character: number } | null => {
       try {
-        const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
-        const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2");
+        const moIdx = context.workspaceManager.getWorkspaceIndex("modelica") as
+          WorkspaceIndexFileLookupLike | undefined;
+        const sysmlIdx = context.workspaceManager.getWorkspaceIndex("sysml2") as
+          WorkspaceIndexFileLookupLike | undefined;
+        const uwLookup = context.workspaceManager.unifiedWorkspace as unknown as
+          WorkspaceIndexFileLookupLike | undefined;
         let uri =
-          (context.workspaceManager.unifiedWorkspace as any)?.getFileUriForFQN?.(params.className) ||
-          (moIdx as any)?.getFileUriForFQN?.(params.className) ||
-          (sysmlIdx as any)?.getFileUriForFQN?.(params.className);
+          uwLookup?.getFileUriForFQN?.(params.className) ||
+          moIdx?.getFileUriForFQN?.(params.className) ||
+          sysmlIdx?.getFileUriForFQN?.(params.className);
 
-        let entry: any = undefined;
+        let entry: SymbolEntry | undefined = undefined;
         let lastName = params.className.split(".").pop() || "";
 
         // Only query unified index if uri wasn't found via fast-path
@@ -668,9 +720,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
           uri =
             entry?.resourceId ||
-            (context.workspaceManager.unifiedWorkspace as any)?.getFileUriForFQN?.(lastName) ||
-            (moIdx as any)?.getFileUriForFQN?.(lastName) ||
-            (sysmlIdx as any)?.getFileUriForFQN?.(lastName);
+            uwLookup?.getFileUriForFQN?.(lastName) ||
+            moIdx?.getFileUriForFQN?.(lastName) ||
+            sysmlIdx?.getFileUriForFQN?.(lastName);
         }
 
         if (uri) {
@@ -688,11 +740,10 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
 
           let text: string | undefined;
-          const sharedFs =
-            (context.workspaceManager as any)?.fs ??
+          const sharedFs = ((context.workspaceManager as unknown as { fs?: VirtualFsLike })?.fs ??
             context.state?.sharedContext?.fs ??
             context.parserService?.sharedContext?.fs ??
-            (globalThis as any).sharedFs;
+            (globalThis as unknown as GlobalClassQueryFallback).sharedFs) as unknown as VirtualFsLike | undefined;
           if (sharedFs) {
             let fsPath = uri.startsWith("file://") ? uri.substring(7) : uri;
             if (uri.startsWith("modelica:")) {
@@ -703,7 +754,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
               if (typeof sharedFs.read === "function") {
                 text = sharedFs.read(fsPath);
               }
-            } catch {}
+            } catch {
+              // Virtual FS entry unreadable; return location with default line/character offsets.
+            }
           }
           if (text) {
             if (startOffset === 0 && lastName) {
@@ -718,8 +771,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
           }
           return { uri, line, character };
         }
-      } catch (e: any) {
-        context.connection.console.error(`[getClassLocation] Error: ${e?.message || e}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        context.connection.console.error(`[getClassLocation] Error: ${msg}`);
       }
       return null;
     },
@@ -775,29 +829,41 @@ export function registerClassQueryEndpoints(context: LspContext) {
         const shortName = resolved.baseName || resolved.className.split(".").pop() || "component";
         let baseName = shortName.toLowerCase();
         try {
-          let droppedClass: any = null;
+          type DroppedClassLike = {
+            annotation(name: string): unknown;
+            localizedName?: string;
+            translate?: (s: string) => string;
+          };
+          let droppedClass: unknown = null;
           if (context.workspaceManager.globalModelicaQueryEngine) {
             const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
             const parts = resolved.className.split(".");
-            let currentId: any = null;
+            let currentId: number | null = null;
             for (const part of parts) {
-              const resolver = db.query<any>("resolveSimpleName", currentId);
-              const res = resolver ? resolver(part) : null;
+              const resolver: ((name: string) => { id?: number | null } | null) | undefined = db.query(
+                "resolveSimpleName",
+                currentId as unknown as number,
+              );
+              const res: { id?: number | null } | null = resolver ? resolver(part) : null;
               if (!res) {
                 currentId = null;
                 break;
               }
               currentId = res.id ?? null;
             }
-            if (currentId != null) droppedClass = new ModelicaClassInstance(currentId, db);
+            const ModelicaClassInstanceCtor = (globalThis as unknown as GlobalClassQueryFallback).ModelicaClassInstance;
+            if (currentId != null && ModelicaClassInstanceCtor) {
+              droppedClass = new ModelicaClassInstanceCtor(currentId, db);
+            }
           }
 
           if (isClassInstance(droppedClass)) {
-            const defaultName = droppedClass.annotation("defaultComponentName") as string | null;
+            const dropped = droppedClass as DroppedClassLike;
+            const defaultName = dropped.annotation("defaultComponentName") as string | null;
             if (defaultName) {
-              baseName = (droppedClass as any).translate?.(defaultName) ?? defaultName;
+              baseName = dropped.translate?.(defaultName) ?? defaultName;
             } else {
-              baseName = (droppedClass.localizedName || shortName).toLowerCase();
+              baseName = (dropped.localizedName || shortName).toLowerCase();
             }
           }
         } catch {
@@ -807,14 +873,18 @@ export function registerClassQueryEndpoints(context: LspContext) {
         // Find unique name
         let name = baseName;
         let i = 1;
-        const existingNames = new Set(Array.from<any>(classInstance.components ?? []).map((c: any) => c.name));
+        const existingNames = new Set(Array.from<{ name?: string }>(classInstance.components ?? []).map((c) => c.name));
         while (existingNames.has(name)) {
           name = `${baseName}${i}`;
           i++;
         }
 
         const resolvedTargetClass = context.workspaceManager.resolveClassInstance(params.uri, cleanClassName);
-        const componentIconCoord = (resolvedTargetClass?.annotation?.("Icon") as any)?.coordinateSystem ?? null;
+        const iconAnn = resolvedTargetClass?.annotation?.("Icon") as
+          | { coordinateSystem?: Parameters<typeof computeModelicaComponentDropEdits>[0]["componentIconCoord"] }
+          | null
+          | undefined;
+        const componentIconCoord = iconAnn?.coordinateSystem ?? null;
 
         return computeModelicaComponentDropEdits({
           docText,
@@ -822,7 +892,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
           rawClassName: cleanClassName,
           x: params.x,
           y: params.y,
-          classInstance,
+          classInstance: classInstance as unknown as Parameters<
+            typeof computeModelicaComponentDropEdits
+          >[0]["classInstance"],
           computeComponentInsert,
           unifiedIndex,
           instanceName: name,
@@ -871,7 +943,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
         const found = instances.find(
           (i) =>
             i.name === params.name ||
-            (i as any).compositeName === params.name ||
+            (i as { compositeName?: string }).compositeName === params.name ||
             params.name.endsWith("." + i.name) ||
             i.name.endsWith("." + params.name),
         );
@@ -883,7 +955,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
         const moIdx = context.workspaceManager.getWorkspaceIndex("modelica");
         if (!context.state.dependenciesReady && (moIdx?.pendingFileCount ?? 0) > 0) {
           const fullIndex = context.workspaceManager.unifiedWorkspace.getIndex();
-          injectPredefinedTypes(fullIndex);
+          const injectPredefined = (globalThis as unknown as { injectPredefinedTypes?: (idx: unknown) => void })
+            .injectPredefinedTypes;
+          injectPredefined?.(fullIndex);
           const langId = params.uri?.endsWith(".sysml") ? "sysml2" : "modelica";
           const engine = context.workspaceManager.getQueryEngine(langId);
           if (engine) {
@@ -899,7 +973,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
                 ? (instances.find(
                     (i) =>
                       i.name === params.name ||
-                      (i as any).compositeName === params.name ||
+                      (i as { compositeName?: string }).compositeName === params.name ||
                       params.name.endsWith("." + i.name) ||
                       i.name.endsWith("." + params.name),
                   ) ?? instances[0])
@@ -916,7 +990,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
           return { text: null, error: "No Modelica context found." };
         }
 
-        const arena = flattenArenaFromInstance(classInstance, docContext);
+        const arena = callFlattenArenaFromInstance(classInstance, docContext);
         return { text: printArenaDAE(arena) };
       } catch (e) {
         return { text: null, error: e instanceof Error ? (e.stack ?? e.message) : String(e) };
@@ -937,8 +1011,7 @@ export function registerClassQueryEndpoints(context: LspContext) {
       childClasses: { name: string; kind: string }[];
       error?: string | undefined;
     } | null => {
-      let ctx: Context | undefined;
-      if (params.uri) ctx = context.workspaceManager.documentContexts.get(params.uri);
+      let ctx: unknown = params.uri ? context.workspaceManager.documentContexts.get(params.uri) : undefined;
       if (!ctx) {
         for (const c of context.workspaceManager.documentContexts.values()) {
           ctx = c;
@@ -951,23 +1024,40 @@ export function registerClassQueryEndpoints(context: LspContext) {
         if (!context.workspaceManager.globalModelicaQueryEngine) return null;
         const db = context.workspaceManager.globalModelicaQueryEngine.toQueryDB();
         const parts = params.name.split(".");
-        let currentId: any = null;
+        let currentId: number | null = null;
         for (const part of parts) {
-          const resolver = db.query<any>("resolveSimpleName", currentId);
-          const res = resolver ? resolver(part) : null;
+          const resolver: ((name: string) => { id?: number | null } | null) | undefined = db.query(
+            "resolveSimpleName",
+            currentId as unknown as number,
+          );
+          const res: { id?: number | null } | null = resolver ? resolver(part) : null;
           if (!res) return null;
           currentId = res.id ?? null;
         }
         if (currentId == null) return null;
-        const ModelicaClassInstanceCtor = (globalThis as any).ModelicaClassInstance;
+        const globalFallback = globalThis as unknown as GlobalClassQueryFallback;
+        const ModelicaClassInstanceCtor = globalFallback.ModelicaClassInstance;
         const element = ModelicaClassInstanceCtor ? new ModelicaClassInstanceCtor(currentId, db) : null;
 
         if (!isClassInstance(element)) return null;
 
+        interface QueryElementChildLike {
+          name?: string;
+          classKind?: string;
+          description?: string;
+          classInstance?: { name?: string };
+        }
+        interface QueryClassElementLike {
+          classKind?: string;
+          description?: string;
+          elements: QueryElementChildLike[];
+        }
+        const clsEl = element as QueryClassElementLike;
+
         const components: { name: string; type: string; description: string }[] = [];
         const childClasses: { name: string; kind: string }[] = [];
-        const ModelicaComponentInstanceCtor = (globalThis as any).ModelicaComponentInstance;
-        for (const child of element.elements) {
+        const ModelicaComponentInstanceCtor = globalFallback.ModelicaComponentInstance;
+        for (const child of clsEl.elements) {
           if (
             (ModelicaComponentInstanceCtor && child instanceof ModelicaComponentInstanceCtor) ||
             (!isClassInstance(child) && child?.classInstance)
@@ -987,8 +1077,8 @@ export function registerClassQueryEndpoints(context: LspContext) {
 
         return {
           name: params.name,
-          kind: element.classKind ?? "class",
-          description: element.description ?? "",
+          kind: clsEl.classKind ?? "class",
+          description: clsEl.description ?? "",
           components,
           childClasses,
         };
@@ -1002,19 +1092,23 @@ export function registerClassQueryEndpoints(context: LspContext) {
   context.connection.onRequest(
     "modelscript/parse",
     (params: { code: string }): { classes: { name: string; kind: string }[]; syntaxErrors: string[] } => {
-      let ctx: Context | undefined = context.state?.sharedContext ?? context.parserService?.sharedContext;
+      type ParseContextLike = { parse?: (ext: string, code: string) => unknown };
+      let ctx: ParseContextLike | null | undefined = (context.state?.sharedContext ??
+        context.parserService?.sharedContext) as ParseContextLike | null | undefined;
       if (!ctx) {
         for (const c of context.workspaceManager.documentContexts.values()) {
-          ctx = c;
+          ctx = c as ParseContextLike;
           break;
         }
       }
-      if (!ctx) return { classes: [], syntaxErrors: ["No Modelica context available."] };
+      if (!ctx || typeof ctx.parse !== "function") {
+        return { classes: [], syntaxErrors: ["No Modelica context available."] };
+      }
 
       try {
-        const tree = ctx.parse(".mo", params.code);
+        const tree = ctx.parse(".mo", params.code) as unknown as { rootNode?: ParseWalkNodeLike };
         const errors: string[] = [];
-        const walk = (node: any) => {
+        const walk = (node: ParseWalkNodeLike | null | undefined) => {
           if (!node) return;
           if (typeof node.hasError === "function" ? !node.hasError() : node.hasError === false) return;
           if (node.isMissing || node.type === "ERROR") {
@@ -1026,17 +1120,16 @@ export function registerClassQueryEndpoints(context: LspContext) {
         walk(tree.rootNode);
 
         const classes: { name: string; kind: string }[] = [];
-        const findClassDefs = (n: any) => {
+        const findClassDefs = (n: ParseWalkNodeLike | null | undefined) => {
           if (!n) return;
           if (n.type === "class_definition" || n.type === "ClassDefinition") {
-            const spec = n.children?.find((c: any) => c.type === "class_specifier" || c.type === "ClassSpecifier") ?? n;
+            const spec = n.children?.find((c) => c.type === "class_specifier" || c.type === "ClassSpecifier") ?? n;
             const longSpec =
-              spec.children?.find((c: any) => c.type === "long_class_specifier" || c.type === "LongClassSpecifier") ??
-              spec;
+              spec.children?.find((c) => c.type === "long_class_specifier" || c.type === "LongClassSpecifier") ?? spec;
             const idNode =
-              longSpec.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier") ??
+              longSpec.children?.find((c) => c.type === "identifier" || c.type === "Identifier") ??
               n.childForFieldName?.("identifier");
-            const prefixes = n.children?.find((c: any) => c.type === "class_prefixes" || c.type === "ClassPrefixes");
+            const prefixes = n.children?.find((c) => c.type === "class_prefixes" || c.type === "ClassPrefixes");
             classes.push({
               name: idNode?.text?.trim() ?? "<anonymous>",
               kind: prefixes?.text?.trim() ?? "class",
@@ -1066,8 +1159,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
         const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
         if (found) target = found;
       }
+      if (!target) return null;
 
-      if (!target.instantiated) {
+      if (!target["instantiated"] && typeof target.instantiate === "function") {
         try {
           target.instantiate();
         } catch {
@@ -1090,8 +1184,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
         const found = instances.find((i) => i.name === params.className || i.compositeName === params.className);
         if (found) target = found;
       }
+      if (!target) return null;
 
-      if (!target.instantiated) {
+      if (!target["instantiated"] && typeof target.instantiate === "function") {
         try {
           target.instantiate();
         } catch {
@@ -1107,7 +1202,9 @@ export function registerClassQueryEndpoints(context: LspContext) {
     let uStr = raw;
     try {
       uStr = decodeURIComponent(uStr);
-    } catch {}
+    } catch {
+      // Keep raw path if URI contains malformed percent-encoding.
+    }
     // Normalize modelica://lib/..., modelica:///lib/..., modelica:/lib/...
     const m = uStr.match(/^modelica:(?:\/\/lib\/|\/{1,3})(.*)$/i);
     let p = m ? m[1]! : uStr;
@@ -1131,18 +1228,17 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return { exists: false };
       const fsPath = getVirtualFsPath(target);
-      const fs =
-        (context.workspaceManager as any)?.fs ??
+      const fs = ((context.workspaceManager as unknown as { fs?: VirtualFsLike })?.fs ??
         context.state?.sharedContext?.fs ??
         context.parserService?.sharedContext?.fs ??
-        (globalThis as any).sharedFs;
+        (globalThis as unknown as GlobalClassQueryFallback).sharedFs) as unknown as VirtualFsLike | undefined;
       if (!fs) return { exists: false };
       if (typeof fs.exists === "function" && fs.exists(fsPath)) {
         const stat = typeof fs.stat === "function" ? fs.stat(fsPath) : null;
         if (stat?.isDirectory?.()) {
           return { exists: true, isDirectory: true, size: 0 };
         }
-        const content = typeof fs.read === "function" ? fs.read(fsPath) : "";
+        const content = (typeof fs.read === "function" ? fs.read(fsPath) : "") ?? "";
         return {
           exists: true,
           isDirectory: false,
@@ -1160,21 +1256,22 @@ export function registerClassQueryEndpoints(context: LspContext) {
       const target = params?.uri || params?.path || "";
       if (!target) return [];
       const fsPath = getVirtualFsPath(target);
-      const fs =
-        (context.workspaceManager as any)?.fs ??
+      const fs = ((context.workspaceManager as unknown as { fs?: VirtualFsLike })?.fs ??
         context.state?.sharedContext?.fs ??
         context.parserService?.sharedContext?.fs ??
-        (globalThis as any).sharedFs;
+        (globalThis as unknown as GlobalClassQueryFallback).sharedFs) as unknown as VirtualFsLike | undefined;
       if (!fs || typeof fs.readdir !== "function") return [];
       try {
         const entries = fs.readdir(fsPath);
         if (Array.isArray(entries)) {
-          return entries.map((e: any) => ({
+          return entries.map((e) => ({
             name: e.name,
             isDirectory: typeof e.isDirectory === "function" ? e.isDirectory() : Boolean(e.isDirectory),
           }));
         }
-      } catch {}
+      } catch {
+        // Directory does not exist or cannot be read in virtual FS; return empty listing.
+      }
       return [];
     },
   );

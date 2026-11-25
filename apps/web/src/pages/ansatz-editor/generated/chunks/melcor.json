@@ -1,0 +1,77 @@
+[
+  {
+    "id": "melcor-01-containment-steam-blowdown",
+    "lang": "melcor",
+    "subFormats": ["melcor2"],
+    "difficulty": 1,
+    "title": "Single Containment Control Volume Steam Blowdown",
+    "description": "Single-volume pressurized containment thermal-hydraulic response with a concrete containment wall heat structure and ambient heat sink.",
+    "category": "Nuclear Severe Accident Analysis",
+    "tags": ["melcor", "containment", "blowdown", "cvh"],
+    "activeFile": "containment_blowdown.mel",
+    "fileNames": ["containment_blowdown.mel"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "! Single Containment Control Volume Steam Blowdown\nMELGEN_INPUT\nTITLE 'Single Containment Control Volume Steam Blowdown'\n\nEXEC_INPUT\n  EXEC_TSTART 0.0\n  EXEC_TEND 60.0\n  EXEC_DT 0.05 1.0 1.0e-5\n\nCVH_INPUT\n  CV_ID 'Containment_Dome' 100 NORMAL\n  CV_THR 3.5e5 410.0 0.05 0.95\n  CV_PAS 45000.0 0.0 42.0\n  CV_NCG 'N2' 0.45\n\n  CV_ID 'Environment' 900 NORMAL\n  CV_THR 1.01325e5 298.0 0.0 0.01\n  CV_PAS 1.0e9 0.0 50.0\n  CV_NCG 'N2' 0.79\n\nHS_INPUT\n  HS_ID 'Containment_Wall' 101 CYLINDRICAL\n  HS_GD 1.2 4200.0 210000.0 1.8 880.0 2400.0\n  HS_LB 100 350.0\n  HS_RB 900 15.0\n  HS_TEMP 315.0\n  HS_SRC 0.0\n\nEND\n"
+  },
+  {
+    "id": "melcor-02-two-volume-pressure-equalization",
+    "lang": "melcor",
+    "subFormats": ["melcor2"],
+    "difficulty": 2,
+    "title": "Two-Volume Compartment Pressure Equalization Flow Path",
+    "description": "High-pressure steam generator compartment venting through a rupture junction into a large containment dome with differential pressure control function.",
+    "category": "Nuclear Severe Accident Analysis",
+    "tags": ["melcor", "flow-path", "pressure-equalization", "control-function"],
+    "activeFile": "two_volume_eq.mel",
+    "fileNames": ["two_volume_eq.mel"],
+    "fileCount": 1,
+    "code": "! Two-Volume Compartment Pressure Equalization\nMELGEN_INPUT\nTITLE 'Two-Volume Compartment Pressure Equalization'\n\nEXEC_INPUT\n  EXEC_TSTART 0.0\n  EXEC_TEND 120.0\n  EXEC_DT 0.02 0.5 1.0e-5\n\nCVH_INPUT\n  CV_ID 'SG_Compartment' 100 NORMAL\n  CV_THR 4.2e5 430.0 0.1 0.9\n  CV_PAS 2500.0 0.0 18.0\n  CV_NCG 'N2' 0.20\n\n  CV_ID 'Upper_Containment' 200 NORMAL\n  CV_THR 1.05e5 310.0 0.0 0.15\n  CV_PAS 48000.0 18.0 52.0\n  CV_NCG 'N2' 0.78\n\nFL_INPUT\n  FL_ID 'Compartment_Vent' 10\n  FL_FT 100 200 15.0 20.0\n  FL_GEO 4.5 2.0 1.0\n  FL_USL 1.5 1.8\n  FL_IC 0.0\n\nHS_INPUT\n  HS_ID 'Divider_Slab' 201 RECTANGULAR\n  HS_GD 0.6 850.0 42000.0 1.6 880.0 2400.0\n  HS_LB 100 400.0\n  HS_RB 200 120.0\n  HS_TEMP 320.0\n  HS_SRC 0.0\n\nCF_INPUT\n  CF_ID 'Compartment_DP' 1 SUBTRACT\n  CF_SAI 1.0 0.0 0.0\n  CF_ARG CVH 100 P 1.0\n  CF_ARG CVH 200 P -1.0\n\nEND\n"
+  },
+  {
+    "id": "melcor-03-core-decay-heat-boiloff",
+    "lang": "melcor",
+    "subFormats": ["melcor2"],
+    "difficulty": 3,
+    "title": "Core Heat Structure Decay Heat and Boil-Off",
+    "description": "Reactor pressure vessel core boil-off driven by tabular ANS decay heat power curve with Zircaloy oxidation model and steam relief to containment.",
+    "category": "Nuclear Severe Accident Analysis",
+    "tags": ["melcor", "core", "decay-heat", "boil-off", "oxidation"],
+    "activeFile": "core_boiloff.mel",
+    "fileNames": ["core_boiloff.mel"],
+    "fileCount": 1,
+    "code": "! Core Heat Structure Decay Heat and Boil-Off\nMELGEN_INPUT\nTITLE 'PWR Core Decay Heat Boil-Off Transient'\n\nEXEC_INPUT\n  EXEC_TSTART 0.0\n  EXEC_TEND 300.0\n  EXEC_DT 0.05 1.0 1.0e-5\n\nCVH_INPUT\n  CV_ID 'Reactor_Vessel' 100 NORMAL\n  CV_THR 7.5e6 565.0 0.55 0.45\n  CV_PAS 110.0 0.0 12.5\n\n  CV_ID 'Pressurizer_Relief' 200 NORMAL\n  CV_THR 1.2e5 330.0 0.05 0.20\n  CV_PAS 42000.0 0.0 45.0\n  CV_NCG 'N2' 0.75\n\nFL_INPUT\n  FL_ID 'PORV_Discharge' 10\n  FL_FT 100 200 11.5 15.0\n  FL_GEO 0.015 3.0 1.0\n  FL_USL 2.5 2.5\n  FL_IC 0.0\n\nHS_INPUT\n  HS_ID 'RPV_Steel_Wall' 1001 CYLINDRICAL\n  HS_GD 0.22 145.0 215000.0 34.0 520.0 7850.0\n  HS_LB 100 2500.0\n  HS_RB 200 40.0\n  HS_TEMP 560.0\n  HS_SRC 0.0\n\nCOR_INPUT\n  COR_RP 4 8 2.8e9\n  COR_ZDF 88000.0 320.0 580.0 4500.0 20500.0 100\n  COR_PWR 2.8e7 2.8e9\n  COR_OX ON URBANIC_HEIDRICK 4500.0 20500.0\n\nTF_INPUT\n  TF_ID 'ANS_Decay_Curve' 10 1.0 0.0\n  TF_TAB 0.0 1.0 60.0 0.72 300.0 0.48 1800.0 0.28\n\nMP_INPUT\n  MP_ID 'UO2_Cp' 1 UO2 CP 315.0\n\nEND\n"
+  },
+  {
+    "id": "melcor-04-sbo-vessel-relief-spray",
+    "lang": "melcor",
+    "subFormats": ["melcor2"],
+    "difficulty": 4,
+    "title": "Station Blackout Vessel Pressure Relief and Spray",
+    "description": "Multi-volume PWR station blackout accident sequence with primary RCS vessel, pressurizer, containment volume, relief valves, and wall condensation.",
+    "category": "Nuclear Severe Accident Analysis",
+    "tags": ["melcor", "sbo", "pwr", "relief-valve", "severe-accident"],
+    "activeFile": "sbo_relief.mel",
+    "fileNames": ["sbo_relief.mel"],
+    "fileCount": 1,
+    "code": "! PWR Station Blackout Vessel Pressure Relief and Containment Response\nMELGEN_INPUT\nTITLE 'PWR Station Blackout Vessel Relief and Spray'\n\nEXEC_INPUT\n  EXEC_TSTART 0.0\n  EXEC_TEND 600.0\n  EXEC_DT 0.05 1.0 1.0e-5\n\nCVH_INPUT\n  CV_ID 'RCS_Core_Vessel' 100 NORMAL\n  CV_THR 1.55e7 590.0 0.50 0.50\n  CV_PAS 95.0 0.0 12.0\n\n  CV_ID 'Pressurizer' 110 NORMAL\n  CV_THR 1.55e7 618.0 0.40 0.60\n  CV_PAS 45.0 10.0 24.0\n\n  CV_ID 'Containment' 200 NORMAL\n  CV_THR 1.01325e5 312.0 0.02 0.10\n  CV_PAS 55000.0 0.0 55.0\n  CV_NCG 'N2' 0.77\n\nFL_INPUT\n  FL_ID 'Surge_Line' 10\n  FL_FT 100 110 8.5 10.5\n  FL_GEO 0.095 8.0 1.0\n  FL_USL 1.6 1.6\n  FL_IC 0.0\n\n  FL_ID 'Safety_Relief_Valve' 20\n  FL_FT 110 200 23.5 28.0\n  FL_GEO 0.025 4.0 1.0\n  FL_USL 2.2 2.8\n  FL_IC 0.0\n\nHS_INPUT\n  HS_ID 'Vessel_Shell' 1001 CYLINDRICAL\n  HS_GD 0.21 135.0 205000.0 32.0 525.0 7900.0\n  HS_LB 100 2200.0\n  HS_RB 200 45.0\n  HS_TEMP 585.0\n  HS_SRC 0.0\n\n  HS_ID 'Containment_Liner' 2001 CYLINDRICAL\n  HS_GD 0.02 5200.0 820000.0 45.0 480.0 7850.0\n  HS_LB 200 280.0\n  HS_RB 200 30.0\n  HS_TEMP 312.0\n  HS_SRC 0.0\n\nCOR_INPUT\n  COR_RP 5 10 3.2e9\n  COR_ZDF 96000.0 340.0 600.0 4800.0 22500.0 100\n  COR_PWR 3.4e7 3.2e9\n  COR_OX ON URBANIC_HEIDRICK 4800.0 22500.0\n\nCF_INPUT\n  CF_ID 'RCS_to_Containment_DP' 1 SUBTRACT\n  CF_SAI 1.0 0.0 0.0\n  CF_ARG CVH 100 P 1.0\n  CF_ARG CVH 200 P -1.0\n\nTF_INPUT\n  TF_ID 'SBO_Decay_Power' 10 1.0 0.0\n  TF_TAB 0.0 1.0 100.0 0.68 600.0 0.42 3600.0 0.21\n\nNCG_INPUT\n  NCG_ID 'H2' 1 2.01588 14307.0\n\nEND\n"
+  },
+  {
+    "id": "melcor-05-severe-accident-h2-fission",
+    "lang": "melcor",
+    "subFormats": ["melcor2", "radionuclides"],
+    "difficulty": 5,
+    "title": "Severe Accident Containment Hydrogen and Fission Product Transport",
+    "description": "Full severe accident MELCOR deck with core oxidation hydrogen generation, radionuclide aerosol release classes (Xe, Cs, Ba, I2), and companion radionuclide inventory table.",
+    "category": "Nuclear Severe Accident Analysis",
+    "tags": ["melcor", "hydrogen", "radionuclides", "rn1", "multi-file"],
+    "activeFile": "sbo_full.mel",
+    "fileNames": ["sbo_full.mel", "radionuclides.inc"],
+    "fileCount": 2,
+    "code": "! Severe Accident Containment Hydrogen and Fission Product Transport\n! Companion radionuclide inventory archive: radionuclides.inc\nMELGEN_INPUT\nTITLE 'Severe Accident Hydrogen and Fission Product Transport'\n\nEXEC_INPUT\n  EXEC_TSTART 0.0\n  EXEC_TEND 1200.0\n  EXEC_DT 0.05 1.0 1.0e-5\n\nCVH_INPUT\n  CV_ID 'RCS_Vessel' 100 NORMAL\n  CV_THR 1.55e7 595.0 0.42 0.58\n  CV_PAS 90.0 0.0 12.0\n  CV_NCG 'H2' 0.01\n\n  CV_ID 'Lower_Drywell' 200 NORMAL\n  CV_THR 1.05e5 318.0 0.02 0.12\n  CV_PAS 12000.0 0.0 18.0\n  CV_NCG 'N2' 0.78\n\n  CV_ID 'Upper_Dome' 300 NORMAL\n  CV_THR 1.01325e5 310.0 0.0 0.08\n  CV_PAS 46000.0 18.0 54.0\n  CV_NCG 'N2' 0.78\n\nFL_INPUT\n  FL_ID 'Hot_Leg_Break' 10\n  FL_FT 100 200 6.0 8.0\n  FL_GEO 0.08 2.0 1.0\n  FL_USL 1.8 2.2\n  FL_IC 0.0\n\n  FL_ID 'Drywell_to_Dome' 20\n  FL_FT 200 300 17.0 20.0\n  FL_GEO 18.0 3.0 1.0\n  FL_USL 1.2 1.4\n  FL_IC 0.0\n\nHS_INPUT\n  HS_ID 'RPV_Lower_Head' 1001 SPHERICAL\n  HS_GD 0.18 85.0 140000.0 28.0 530.0 7930.0\n  HS_LB 100 1800.0\n  HS_RB 200 60.0\n  HS_TEMP 580.0\n  HS_SRC 0.0\n\n  HS_ID 'Dome_Concrete' 3001 CYLINDRICAL\n  HS_GD 1.1 4800.0 250000.0 1.7 880.0 2400.0\n  HS_LB 300 220.0\n  HS_RB 300 12.0\n  HS_TEMP 310.0\n  HS_SRC 0.0\n\nCOR_INPUT\n  COR_RP 5 12 3.4e9\n  COR_ZDF 98000.0 350.0 610.0 5000.0 23500.0 100\n  COR_PWR 3.6e7 3.4e9\n  COR_OX ON URBANIC_HEIDRICK 5000.0 23500.0\n\nRN1_INPUT\n  RN1_CLS 1 'XE' 165.0 0.08\n  RN1_CLS 2 'CS' 135.0 0.03\n  RN1_CLS 3 'BA' 48.0 0.005\n  RN1_CLS 4 'I2' 18.5 0.04\n\nCF_INPUT\n  CF_ID 'Primary_Containment_DP' 1 SUBTRACT\n  CF_SAI 1.0 0.0 0.0\n  CF_ARG CVH 100 P 1.0\n  CF_ARG CVH 200 P -1.0\n\nTF_INPUT\n  TF_ID 'Core_Decay_Heat' 10 1.0 0.0\n  TF_TAB 0.0 1.0 120.0 0.65 600.0 0.40 1200.0 0.30\n\nMP_INPUT\n  MP_ID 'Fuel_UO2_Cp' 1 UO2 CP 310.0\n\nNCG_INPUT\n  NCG_ID 'H2' 1 2.01588 14307.0\n\nEND\n",
+    "files": {
+      "sbo_full.mel": "! Severe Accident Containment Hydrogen and Fission Product Transport\n! Companion radionuclide inventory archive: radionuclides.inc\nMELGEN_INPUT\nTITLE 'Severe Accident Hydrogen and Fission Product Transport'\n\nEXEC_INPUT\n  EXEC_TSTART 0.0\n  EXEC_TEND 1200.0\n  EXEC_DT 0.05 1.0 1.0e-5\n\nCVH_INPUT\n  CV_ID 'RCS_Vessel' 100 NORMAL\n  CV_THR 1.55e7 595.0 0.42 0.58\n  CV_PAS 90.0 0.0 12.0\n  CV_NCG 'H2' 0.01\n\n  CV_ID 'Lower_Drywell' 200 NORMAL\n  CV_THR 1.05e5 318.0 0.02 0.12\n  CV_PAS 12000.0 0.0 18.0\n  CV_NCG 'N2' 0.78\n\n  CV_ID 'Upper_Dome' 300 NORMAL\n  CV_THR 1.01325e5 310.0 0.0 0.08\n  CV_PAS 46000.0 18.0 54.0\n  CV_NCG 'N2' 0.78\n\nFL_INPUT\n  FL_ID 'Hot_Leg_Break' 10\n  FL_FT 100 200 6.0 8.0\n  FL_GEO 0.08 2.0 1.0\n  FL_USL 1.8 2.2\n  FL_IC 0.0\n\n  FL_ID 'Drywell_to_Dome' 20\n  FL_FT 200 300 17.0 20.0\n  FL_GEO 18.0 3.0 1.0\n  FL_USL 1.2 1.4\n  FL_IC 0.0\n\nHS_INPUT\n  HS_ID 'RPV_Lower_Head' 1001 SPHERICAL\n  HS_GD 0.18 85.0 140000.0 28.0 530.0 7930.0\n  HS_LB 100 1800.0\n  HS_RB 200 60.0\n  HS_TEMP 580.0\n  HS_SRC 0.0\n\n  HS_ID 'Dome_Concrete' 3001 CYLINDRICAL\n  HS_GD 1.1 4800.0 250000.0 1.7 880.0 2400.0\n  HS_LB 300 220.0\n  HS_RB 300 12.0\n  HS_TEMP 310.0\n  HS_SRC 0.0\n\nCOR_INPUT\n  COR_RP 5 12 3.4e9\n  COR_ZDF 98000.0 350.0 610.0 5000.0 23500.0 100\n  COR_PWR 3.6e7 3.4e9\n  COR_OX ON URBANIC_HEIDRICK 5000.0 23500.0\n\nRN1_INPUT\n  RN1_CLS 1 'XE' 165.0 0.08\n  RN1_CLS 2 'CS' 135.0 0.03\n  RN1_CLS 3 'BA' 48.0 0.005\n  RN1_CLS 4 'I2' 18.5 0.04\n\nCF_INPUT\n  CF_ID 'Primary_Containment_DP' 1 SUBTRACT\n  CF_SAI 1.0 0.0 0.0\n  CF_ARG CVH 100 P 1.0\n  CF_ARG CVH 200 P -1.0\n\nTF_INPUT\n  TF_ID 'Core_Decay_Heat' 10 1.0 0.0\n  TF_TAB 0.0 1.0 120.0 0.65 600.0 0.40 1200.0 0.30\n\nMP_INPUT\n  MP_ID 'Fuel_UO2_Cp' 1 UO2 CP 310.0\n\nNCG_INPUT\n  NCG_ID 'H2' 1 2.01588 14307.0\n\nEND\n",
+      "radionuclides.inc": "! Companion Radionuclide Core Inventory Reference Table (3400 MWth PWR EOC)\n! Class  Name  Initial_Mass_kg  Release_Fraction\nRN1_INPUT\n  RN1_CLS 1 'XE' 165.0 0.08\n  RN1_CLS 2 'CS' 135.0 0.03\n  RN1_CLS 3 'BA' 48.0 0.005\n  RN1_CLS 4 'I2' 18.5 0.04\n"
+    }
+  }
+]

@@ -1109,7 +1109,7 @@ Every ModelScript post (`https://modelscript.org/p/:id`) includes standard auto-
 
 ### Direct oEmbed Query
 
-Clients can query the oEmbed endpoint directly using either a post URL or a morsel permalink hash (`#m=...`):
+Clients can query the oEmbed endpoint directly using either a post URL or a ansatz permalink hash (`#m=...`):
 
 ```bash
 curl "https://api.modelscript.org/api/v1/oembed?url=https%3A%2F%2Fmodelscript.org%2F%23m%3DeJy...&maxwidth=800&format=json"
@@ -1765,11 +1765,11 @@ Native C simulation models and external FMU binaries execute within a multi-laye
 - **Clock Rollback Protection**: Monotonic timestamp checks reject system clock manipulation attempts to extend expired offline licenses.
 
 ================================================================================
-DOCUMENT: Ansatz Platform Overview
+DOCUMENT: Ansatz Network Overview
 CANONICAL URL: https://modelscript.org/ansatz/overview
 ================================================================================
 
-# Ansatz Platform Overview
+# Ansatz Network Overview
 
 **Ansatz** (`ansatz.social`) is a federated engineering network and cloud computational platform powered by **ModelScript**. It extends the local ModelScript compiler and numerical solvers into a collaborative, web-native environment for systems engineers, dynamicists, researchers, and CAE practitioners.
 
@@ -1795,7 +1795,7 @@ The monorepo maintains a clear boundary between the engine and the platform:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        Ansatz Platform (apps/)                         │
+│                        Ansatz Network (apps/)                         │
 │   • apps/web: React 19 SPA (ansatz.social, /editor, /references)       │
 │   • apps/api: Express, GraphQL, SPARQL, Git Smart HTTP, ActivityPub   │
 ├────────────────────────────────────────────────────────────────────────┤
@@ -1973,7 +1973,7 @@ graph LR
         OLGA["SLB OLGA / Aspen HYSYS"]
     end
 
-    subgraph "Ansatz Platform Architecture"
+    subgraph "Ansatz Network Architecture"
         Studio["Ansatz Studio (/studio)"]
         Editor["Ansatz (/editor)"]
         Registry["Package Registry (/packages)"]
@@ -2043,7 +2043,7 @@ CANONICAL URL: https://modelscript.org/ansatz/federation
 
 # ActivityPub Federation & Engineering Models
 
-Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/morsel#` for wire compatibility) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange reproducible artifacts, and verify cryptographic proofs across domains.
+Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/ansatz#` for wire compatibility) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange reproducible artifacts, and verify cryptographic proofs across domains.
 
 ---
 
@@ -2098,10 +2098,10 @@ When an engineer publishes an Ansatz, the instance serializes an ActivityStreams
     "https://w3id.org/security/v1",
     "https://w3id.org/security/data-integrity/v2",
     {
-      "morsel": "https://modelscript.org/ns/morsel#",
-      "dialect": "morsel:dialect",
-      "codeHash": "morsel:codeHash",
-      "daeMetrics": "morsel:daeMetrics"
+      "ansatz": "https://modelscript.org/ns/ansatz#",
+      "dialect": "ansatz:dialect",
+      "codeHash": "ansatz:codeHash",
+      "daeMetrics": "ansatz:daeMetrics"
     }
   ],
   "id": "https://ansatz.social/activities/98412",
@@ -2114,9 +2114,9 @@ When an engineer publishes an Ansatz, the instance serializes an ActivityStreams
     "attachment": [
       {
         "type": "PropertyValue",
-        "morsel:dialect": "modelica",
-        "morsel:codeHash": "sha256:8f4e2b9a1c3d...",
-        "morsel:daeMetrics": { "variables": 42, "equations": 42, "index": 1 }
+        "ansatz:dialect": "modelica",
+        "ansatz:codeHash": "sha256:8f4e2b9a1c3d...",
+        "ansatz:daeMetrics": { "variables": 42, "equations": 42, "index": 1 }
       }
     ],
     "proof": {
@@ -2679,7 +2679,7 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `@modelscript/lsp`           | `packages/lsp`           | Multi-language LSP server across all 105 documented languages, semantic tokens, hover, go-to-definition, code actions, background worker pool                                                           |
 | `@modelscript/mcp`           | `packages/mcp`           | Unified Model Context Protocol server exposing 105 core and 70+ domain-specific ModelScript compilation, simulation, verification, grid/water/telecom, and KG tools                                     |
 | `@modelscript/sdk`           | `packages/sdk`           | TypeScript and AssemblyScript SDK for authoring user-defined ModelScript capabilities, visual artifacts, and WASM kernels                                                                               |
-| `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and playground environments                                                       |
+| `@modelscript/editor`        | `packages/editor`        | Host-agnostic visual modeling & code editor core, LSP transport abstraction, and host context adapter for web, embed, and ansatz environments                                                       |
 | `@modelscript/ide-client`    | `packages/ide`           | Reusable WebAssembly IDE client components, Monaco/CodeMirror language bindings, and dockable engineering viewports with 3D verification overlays                                                       |
 | `@modelscript/react`         | `packages/react`         | ModelScript & Ansatz React SDK and widgets — engineering UI primitives, WebAssembly solver hooks, and IDE bridges                                                                                       |
 | `@modelscript/embed`         | `packages/embed`         | ModelScript & Ansatz embed client SDK — iframe bridge, Web Component custom elements, and permalink codec                                                                                               |
@@ -2688,7 +2688,7 @@ Nineteen specialized **Domain Theory Oracles**—spanning OWL2 Description Logic
 | `modelscript` (`msx`)        | `apps/cli`               | Unified command-line interface (169 commands across `flatten`, `simulate`, `verify`, `dossier`, `gatekeeper`, `ampl`, `powerfactory`, `pslf`, `fmu`, `csg`, `surrogate`, etc.)                          |
 | `@modelscript/api`           | `apps/api`               | REST, GraphQL, SPARQL, Regulatory Dossier, Grid Gatekeeper, and WebSocket simulation backend server                                                                                                     |
 | `@modelscript/docs`          | `apps/docs`              | Unified `modelscript.org` website and VitePress documentation portal                                                                                                                                    |
-| `@modelscript/ide`           | `apps/ide`               | ModelScript VS Code Web IDE with GitHub/GitLab repository integration                                                                                                                                   |
+| `@modelscript/ide`           | `apps/ide`               | Ansatz Studio (VS Code Web) with GitHub/GitLab repository integration                                                                                                                                   |
 | `@modelscript/web`           | `apps/web`               | Ansatz Web application (Ansatz browser editor, Studio, Package Registry, and social modeling platform)                                                                                                  |
 | `@modelscript/ee`            | `ee`                     | Enterprise Edition (`LicenseRef-ModelScript-Enterprise`) — Ed25519 license verification, SSO/SAML, RBAC, Slurm HPC dispatcher, Digital Twin Historian, HIL                                              |
 
@@ -2712,7 +2712,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 │ Layer 4: Enterprise Edition (ee/)                                     │
 │   • Air-gapped Ed25519 licensing, ITAR / NERC CIP, FDA 21 CFR Part 11  │
 ├────────────────────────────────────────────────────────────────────────┤
-│ Layer 3: The Ansatz Platform (apps/web, apps/api, packages/embed…)     │
+│ Layer 3: The Ansatz Network (apps/web, apps/api, packages/embed…)     │
 │   • ansatz.social, package registry, ActivityPub, Cloud HPC, billing   │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Layer 2: Developer Tooling & Surfaces (apps/cli, ide, docs, pkgs/…)    │
@@ -2734,7 +2734,7 @@ To maintain modularity and avoid circular dependencies, the codebase is structur
 - **Directories:** `apps/cli`, `apps/ide`, `apps/docs`, `packages/{ide,editor,examples}`.
 - **Rule:** User-facing toolchains, embeddable editor components, reference workspaces, and documentation. Imports from Layer 1 to expose commands (`msx`), IDE extensions, and the reference manual.
 
-### Layer 3: The Ansatz Platform
+### Layer 3: The Ansatz Network
 
 - **Directories:** `apps/web`, `apps/api`, `packages/embed`, `packages/react`, `packages/design-tokens`.
 - **Rule:** The flagship web platform (`ansatz.social`), polyglot package registry, ActivityPub federation, Slurm HPC cluster execution, and enterprise team governance.
@@ -6087,7 +6087,7 @@ The CLI parser (`apps/cli/src/main.ts`) intercepts global execution flags prior 
 | Variable                                     | Default                  | Description                                                                                                                                                                                    |
 | :------------------------------------------- | :----------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NO_COLOR`                                   | Unset                    | When set to any non-empty value, disables ANSI color sequences in terminal diagnostics, tables, and diff output.                                                                               |
-| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000`  | Base URL for the Ansatz Platform, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                  |
+| `ANSATZ_API_URL` / `MODELSCRIPT_API_URL`     | `http://localhost:3000`  | Base URL for the Ansatz Network, Package Registry, and Cloud HPC dispatch API (`~/.ansatzrc` / `~/.modelscriptrc` fallback).                                                                  |
 | `ANSATZ_API_TOKEN` / `MODELSCRIPT_API_TOKEN` | Unset                    | Bearer token (`JWT` or `ms_bot_*` service token) used for non-interactive authentication against the Registry, Cloud HPC, and Hub APIs (also accepts `ANSATZ_TOKEN` or `MODELSCRIPT_TOKEN`).   |
 | `MSX_EDITION`                                | `ee`                     | Runtime edition selector (`ee` for Enterprise Edition, `ce` for pure `AGPL-3.0-or-later` Community Edition). Setting `MSX_EDITION=ce` disables all `@modelscript/ee` commands and subsystems.  |
 | `MSX_LICENSE_KEY`                            | Unset                    | Offline Ed25519-signed Enterprise license token (`msx_lic_<payload>.<sig>`) unlocking Enterprise CLI commands (`cloud`, `hil`, `attest`, `digital-twin`, `compliance`, `oslc`, `sysmlv2-api`). |
@@ -6258,7 +6258,7 @@ The `msx` CLI registers **146 commands** organized across **169 documented engin
 | [`init-kernel`](./commands.md#init-kernel) | —       | Scaffold a SysML v2 + AssemblyScript or TypeScript capability kernel package.                                |
 | [`language`](./commands.md#language)       | `lang`  | List, dynamically register, or unregister custom language plugins in the workspace registry.                 |
 | [`lsp`](./commands.md#lsp)                 | —       | Launch the multi-language ModelScript Language Server Protocol (LSP) server over `stdio` or TCP/IPC sockets. |
-| [`playground`](./commands.md#playground)   | —       | Start a local interactive web playground server for testing grammars, CSTs, and DAE compilation.             |
+| [`ansatz`](./commands.md#ansatz)   | —       | Start a local interactive web ansatz server for testing grammars, CSTs, and DAE compilation.             |
 | [`sandbox`](./commands.md#sandbox)         | —       | Execute untrusted scripts or models inside a resource-capped, capability-isolated WebAssembly sandbox.       |
 
 ### 6. Package Registry, ALM Sync, Cloud HPC & Hub Administration
@@ -8240,21 +8240,21 @@ Options:
 
 ---
 
-### `playground`
+### `ansatz`
 
-Launches a local interactive web playground server for live grammar authoring, GLR parse tree visualization, Salsa query inspection, and DAE simulation.
+Launches a local interactive web ansatz server for live grammar authoring, GLR parse tree visualization, Salsa query inspection, and DAE simulation.
 
-### CLI Command: `playground`
+### CLI Command: `ansatz`
 Launch the dual-editor DSL workbench
 
 Options:
   - `--grammar <boolean>`: Launch the legacy dual-editor grammar-DSL workbench (default: false)
-  - `--port, -p <number>`: Dev server port (default: 5179 for language playground, 3002 for grammar workbench)
-  - `--file, -f <string>`: Initial source file to load in language playground mode
+  - `--port, -p <number>`: Dev server port (default: 5179 for language ansatz, 3002 for grammar workbench)
+  - `--file, -f <string>`: Initial source file to load in language ansatz mode
   - `--mode, -m <string>`: Initial host mode (workbench | inspector | artifact)
   - `--theme, -t <string>`: Initial color theme (dark | light)
   - `--open <boolean>`: Open browser automatically (default: false)
-  - `--morsel <boolean>`: Launch the full Morsel web editor locked to this single language (?lang=<id>&single=1) (default: false)
+  - `--ansatz <boolean>`: Launch the full Ansatz web editor locked to this single language (?lang=<id>&single=1) (default: false)
 
 ---
 
@@ -14141,7 +14141,7 @@ msx psse netlist case.raw
 
 ## 6. Custom Visual Webview Editor (`modelscript.rawEditor`)
 
-Opening any `.raw` file in the ModelScript IDE or VS Code launches the custom dual-mode editor:
+Opening any `.raw` file in the Ansatz Studio or VS Code launches the custom dual-mode editor:
 
 - **Single-Line Diagram View**: Interactive pan/zoom SVG canvas with voltage-tier color coding (345 kV red, 138 kV blue, 69 kV green), power flow overlays, and generator/transformer glyphs.
 - **High-Density Tabular Grid**: Live-filterable tables for Buses, Generators, Branches, Transformers, and Loads with search.
@@ -25072,7 +25072,7 @@ Native **Unidata NetCDF Classic v1/v2 (CDF1 / CDF2) & CDL (Common Data form Lang
 | `src/projections/`                  | Projections to CSV, NASA PLOT3D, and Modelica 3.x                                 |
 | `src/catalog/netcdf-std-schemas.ts` | Cleanroom CF-1.x & NetCDF Classic data type schemas                               |
 | `src/diagram/heatmap-svg.ts`        | Pure SVG 2D heatmap & contour slice visualizer (`renderNetcdfHeatmapSvg`)         |
-| `src/ui/NetcdfPanel.tsx`            | Interactive React viewer/editor panel for VS Code, Morsel, and Artifacts          |
+| `src/ui/NetcdfPanel.tsx`            | Interactive React viewer/editor panel for VS Code, Ansatz, and Artifacts          |
 | `src/indexing.ts`                   | Declarative `UnifiedWorkspace` symbol indexing                                    |
 | `src/lsp.ts`                        | LSP diagnostics, document symbols, hover, and completions                         |
 
@@ -26671,7 +26671,7 @@ Native **ASN.1 (ISO/ITU-T X.208 / X.680 Abstract Syntax Notation One + X.690 BER
 - **Type Dependency Graph, Wire-Size Bounds & DAE Lowering (`buildAsn1TypeGraph`, `computeWireSizeBounds`, `verifyDerRoundTrip`, `lowerAsn1ToDae`, `asn1ToDae`)**: Computes min/max BER/DER wire byte bounds and TLV overhead per type and lowers bandwidth & traffic accumulation equations directly into `@modelscript/runtime`'s `DAEBuilder`.
 - **Polyglot Projections (`asn1ToSdl`, `asn1ToC`, `asn1ToJsonSchema`)**: Projects ASN.1 modules to ITU-T Z.100 SDL-88 `NEWTYPE`, C99 `typedef struct`/`enum`/`union` headers, and JSON Schema Draft 2020-12.
 - **Cleanroom Standard Library (`@modelscript/asn1-std-lib`)**: X.680 universal tags (`0x01` BOOLEAN through `0x31` SET) and classic 1980s protocol schemas (SNMPv1 PDU, X.509 `AlgorithmIdentifier` & `Validity`, IEC 61850 GOOSE PDU) with SVG icons and AssemblyScript WASM runtime.
-- **Interactive Visualization & LSP (`renderAsn1DiagramSvg`, `renderBerTlvSvg`, `Asn1Panel`, `validateAsn1`, `getAsn1DocumentSymbols`, `getAsn1Hover`, `getAsn1Completions`)**: Pure SVG schema type-dependency graph, color-coded BER/DER TLV byte-layout breakdown, and React panel for VS Code / Morsel.
+- **Interactive Visualization & LSP (`renderAsn1DiagramSvg`, `renderBerTlvSvg`, `Asn1Panel`, `validateAsn1`, `getAsn1DocumentSymbols`, `getAsn1Hover`, `getAsn1Completions`)**: Pure SVG schema type-dependency graph, color-coded BER/DER TLV byte-layout breakdown, and React panel for VS Code / Ansatz.
 
 ---
 
@@ -31571,7 +31571,7 @@ When an engineering post or comment mentions an automated bot (`@dynamics_bot`):
    - `simulating`: The bot is running numerical integrators and preparing trajectory data.
    - `done`: The reply is posted and the UI automatically appends the completed card.
 3. **Interactive Artifact Synthesis**:
-   - `morsel`: Inline interactive Modelica code view with syntax highlighting and verification badges.
+   - `ansatz`: Inline interactive Modelica code view with syntax highlighting and verification badges.
    - `vega-plot`: Interactive Vega-Lite timeseries charts with state variable selection and trajectory zoom.
 
 ================================================================================
@@ -32282,7 +32282,7 @@ This policy applies to all trademarks, service marks, and trade names owned by M
 ### Word Marks
 
 - **ModelScript™**
-- **Ansatz™** / **Ansatz Social™**
+- **Ansatz™** / **Ansatz Network™**
 - **msx™** (the ModelScript CLI)
 
 ### Domain Names

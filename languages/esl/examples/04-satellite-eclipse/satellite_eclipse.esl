@@ -1,0 +1,38 @@
+-- ESA ESL LEO Satellite Solar Array Eclipse & Battery SOC Cycling
+STUDY LeoPowerStudy
+  PACKAGE OrbitParams
+    CONSTANT REAL: P_SOLAR = 480.0;  -- Illuminated solar array power (W)
+    CONSTANT REAL: P_LOAD = 260.0;   -- Nominal bus payload power (W)
+    CONSTANT REAL: E_CAP = 360000.0; -- Battery energy capacity (J)
+    CONSTANT REAL: ETA_CHG = 0.92;   -- Charge efficiency
+    CONSTANT REAL: OMEGA_O = 0.0011; -- Orbital angular rate (rad/s)
+  END PACKAGE OrbitParams
+
+  MODEL PowerBus
+    CONSTANT REAL: P_SOLAR = 480.0;
+    CONSTANT REAL: P_LOAD = 260.0;
+    CONSTANT REAL: E_CAP = 360000.0;
+    CONSTANT REAL: ETA_CHG = 0.92;
+    CONSTANT REAL: OMEGA_O = 0.0011;
+    REAL: phase, soc, p_net, sunlit;
+  INITIAL
+    phase = 0.0;
+    soc = 0.85;
+    sunlit = 1.0;
+  DYNAMIC
+    phase' = OMEGA_O;
+    IF sunlit > 0.5 THEN
+      p_net = ETA_CHG * (P_SOLAR - P_LOAD);
+    ELSE
+      p_net = -P_LOAD;
+    END_IF
+    soc' = p_net / E_CAP;
+    WHEN phase >= 3.8 THEN
+      sunlit := 0.0;
+    END_WHEN
+    WHEN phase >= 6.28318 THEN
+      phase := 0.0;
+      sunlit := 1.0;
+    END_WHEN
+  END MODEL PowerBus
+END STUDY LeoPowerStudy

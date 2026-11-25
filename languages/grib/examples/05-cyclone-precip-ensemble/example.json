@@ -1,0 +1,11 @@
+{
+  "id": "grib-05-cyclone-precip-ensemble",
+  "lang": "grib",
+  "subFormats": ["grib1"],
+  "difficulty": 5,
+  "title": "Multi-Forecast-Hour Cyclone Pressure & Precipitation Suite",
+  "description": "Time-sequenced GRIB1 forecast suite tracking a landfalling coastal storm across 00Z, 06Z, and 12Z with mean sea-level pressure, 10m wind, and accumulated precipitation (APCP).",
+  "category": "Numerical Weather Prediction",
+  "tags": ["grib", "forecast", "precipitation", "cyclone", "multi-message"],
+  "activeFile": "cyclone_forecast_suite.grb"
+}

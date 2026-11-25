@@ -46,6 +46,6 @@ Native **Unidata NetCDF Classic v1/v2 (CDF1 / CDF2) & CDL (Common Data form Lang
 | `src/projections/`                  | Projections to CSV, NASA PLOT3D, and Modelica 3.x                                 |
 | `src/catalog/netcdf-std-schemas.ts` | Cleanroom CF-1.x & NetCDF Classic data type schemas                               |
 | `src/diagram/heatmap-svg.ts`        | Pure SVG 2D heatmap & contour slice visualizer (`renderNetcdfHeatmapSvg`)         |
-| `src/ui/NetcdfPanel.tsx`            | Interactive React viewer/editor panel for VS Code, Morsel, and Artifacts          |
+| `src/ui/NetcdfPanel.tsx`            | Interactive React viewer/editor panel for VS Code, Ansatz, and Artifacts          |
 | `src/indexing.ts`                   | Declarative `UnifiedWorkspace` symbol indexing                                    |
 | `src/lsp.ts`                        | LSP diagnostics, document symbols, hover, and completions                         |

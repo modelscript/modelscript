@@ -1,0 +1,11 @@
+{
+  "id": "hec1-03-muskingum-channel-routing",
+  "lang": "hec1",
+  "subFormats": ["hec1"],
+  "difficulty": 3,
+  "title": "Upstream Subbasin with Muskingum Channel Routing",
+  "description": "Two-station watershed sequence generating headwater runoff via Clark unit hydrograph (UC) and routing the flood wave downstream through a 4-subreach Muskingum channel (RM) satisfying numerical stability criteria.",
+  "category": "Watershed Hydrology",
+  "tags": ["hec1", "muskingum", "channel-routing", "clark-uh"],
+  "activeFile": "muskingum_reach.hec1"
+}

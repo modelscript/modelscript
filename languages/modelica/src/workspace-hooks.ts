@@ -71,6 +71,10 @@ export function collapseSpaceTokens(text: string): string[] {
 interface WorkspaceCstNode {
   type?: string;
   text?: string;
+  startOffset?: number;
+  endOffset?: number;
+  startIndex?: number;
+  endIndex?: number;
   children?: WorkspaceCstNode[];
   tree?: { sourceCode?: string };
   childForFieldName?: (name: string) => WorkspaceCstNode | null;
@@ -164,8 +168,7 @@ export function extractWithinFromSource(
       const activeParser =
         parser ??
         (UnifiedWorkspace.getGlobalParser(".mo") as
-          | { parse: (src: string) => { rootNode?: WorkspaceCstNode | null } | null }
-          | undefined);
+          { parse: (src: string) => { rootNode?: WorkspaceCstNode | null } | null } | undefined);
       if (activeParser && typeof activeParser.parse === "function") {
         const tree = activeParser.parse(source.slice(start, i + 1));
         if (tree?.rootNode) {
@@ -244,7 +247,10 @@ function extractWithin(rootNode: WorkspaceCstNode | null | undefined): string | 
 }
 
 /** Implicit `Extends` symbol for the `class extends <Name>` form of a long class specifier. */
-function synthesizeClassExtends(node: any, hasEnclosingSymbol: boolean): SyntheticSymbolSpec[] | undefined {
+function synthesizeClassExtends(
+  node: WorkspaceCstNode,
+  hasEnclosingSymbol: boolean,
+): SyntheticSymbolSpec[] | undefined {
   if (!hasEnclosingSymbol) return undefined;
   if (node.type !== "long_class_specifier" && node.type !== "LongClassSpecifier") return undefined;
   const children = node.children || [];
@@ -253,12 +259,14 @@ function synthesizeClassExtends(node: any, hasEnclosingSymbol: boolean): Synthet
     firstChild && (firstChild.text === "extends" || firstChild.type === '"extends"' || firstChild.type === "extends");
   if (!isExtends) return undefined;
 
-  const identChild = children.find((c: any) => c.type === "identifier" || c.type === "IDENT");
+  const identChild = children.find((c: WorkspaceCstNode) => c.type === "identifier" || c.type === "IDENT");
   const extName = identChild?.text ? identChild.text.trim() : "";
   if (!extName) return undefined;
 
-  const modChild = children.find((c: any) => c.type === "class_modification" || c.type === "ClassModification");
-  const endOf = (n: any): number => n.endOffset ?? n.endIndex ?? 0;
+  const modChild = children.find(
+    (c: WorkspaceCstNode) => c.type === "class_modification" || c.type === "ClassModification",
+  );
+  const endOf = (n: WorkspaceCstNode | undefined): number => n?.endOffset ?? n?.endIndex ?? 0;
   return [
     {
       kind: "Extends",

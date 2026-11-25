@@ -1,0 +1,11 @@
+{
+  "id": "ihex-03-8086-segmented-rom",
+  "lang": "ihex",
+  "subFormats": ["i16hex"],
+  "difficulty": 3,
+  "title": "Intel 8086 Segmented ROM Image (Type 02 & Type 03)",
+  "description": "I16HEX real-mode 8086 firmware utilizing Extended Segment Address (02) at segment 0x1200 and Start Segment Address (03) CS:IP entry point.",
+  "category": "Legacy System Firmware",
+  "tags": ["ihex", "i16hex", "8086", "segmented", "rom"],
+  "activeFile": "rom8086.hex"
+}

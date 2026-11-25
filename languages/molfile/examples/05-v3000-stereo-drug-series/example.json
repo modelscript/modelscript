@@ -1,0 +1,11 @@
+{
+  "id": "molfile-05-v3000-stereo-drug-series",
+  "lang": "molfile",
+  "subFormats": ["sdf", "mol"],
+  "difficulty": 5,
+  "title": "V3000 Stereo Drug-Lead Series Multi-Record SDF",
+  "description": "Multi-record MDL V3000 Structure-Data File containing chiral (S)-L-alanine and (S)-ibuprofen stereoisomers with explicit CFG=1 wedge stereochemistry and Lipinski assay metadata tags.",
+  "category": "Cheminformatics & Molecular Structure",
+  "tags": ["molfile", "v3000", "stereochemistry", "sdf"],
+  "activeFile": "drug_leads_v3000.sdf"
+}

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  version="1.0"
+                  name="BatteryParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="v_nom"><ssv:Real value="800.0" /></ssv:Parameter>
+    <ssv:Parameter name="capacity_kwh"><ssv:Real value="82.5" /></ssv:Parameter>
+    <ssv:Parameter name="r_int"><ssv:Real value="0.045" /></ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>

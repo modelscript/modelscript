@@ -1,0 +1,10 @@
+@prefix : <http://modelscript.org/ont/faults#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+:Comp_02 rdf:type :Compressor ;
+    :monitoredBy :Temp_02 ;
+    :exhibitsAnomaly :Fault_Heat_02 .
+
+:Temp_02 rdf:type :TemperatureSensor .
+:Fault_Heat_02 rdf:type :OverheatFault .

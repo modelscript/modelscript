@@ -4,7 +4,7 @@ import { extractEmtNetlist, parsePscx } from "@modelscript/pscad";
 import { parseUrdf } from "@modelscript/urdf";
 import React, { useEffect, useMemo, useState } from "react";
 import { useEditorHost } from "../../host";
-import { DslLanguagePanelMount, hasMorselLanguagePanel, triggerBrowserFileDownload } from "../util/LanguagePanelHost";
+import { DslLanguagePanelMount, hasAnsatzLanguagePanel, triggerBrowserFileDownload } from "../util/LanguagePanelHost";
 import { BltVisualizer } from "./BltVisualizer.js";
 import { PscadLineConstantsPanel } from "./PscadLineConstantsPanel.js";
 import { PscadScriptSegmentsPanel } from "./PscadScriptSegmentsPanel.js";
@@ -26,6 +26,29 @@ import {
 import { indexLocalSymbolLines, scanModelicaStructure } from "./modelica-scanner.js";
 const CsvViewer = React.lazy(() => import("../../internal/CsvViewer").then((m) => ({ default: m.CsvViewer })));
 
+export interface PolyglotDocumentSymbol {
+  name: string;
+  detail?: string;
+  kind?: number;
+  containerName?: string;
+  range?: { start?: { line?: number } };
+  selectionRange?: { start?: { line?: number } };
+  location?: { range?: { start?: { line?: number } } };
+  children?: PolyglotDocumentSymbol[];
+}
+
+interface PolyglotVerifyReport {
+  error?: string;
+  summary?: { overallPassed?: boolean; passedStages?: number; totalStages?: number };
+  polyglotDigitalThread?: {
+    isSat?: boolean;
+    status?: string;
+    summaryText?: string;
+    suggestedEdits?: Array<{ uri?: string; startOffset?: number; endOffset?: number; newText: string }>;
+    conflicts?: Array<{ theoryName?: string; explanation?: string }>;
+  };
+}
+
 export interface PolyglotDomainPanelProps {
   dialect: string;
   code: string;
@@ -33,7 +56,7 @@ export interface PolyglotDomainPanelProps {
   isVisible?: boolean | undefined;
   documentUri?: string | undefined;
   activeClassName?: string | undefined;
-  documentSymbols?: any[] | undefined;
+  documentSymbols?: PolyglotDocumentSymbol[] | undefined;
   projectFiles?: Record<string, string> | undefined;
   activeFileName?: string | undefined;
   onUpdateProjectFile?: ((path: string, content: string) => void) | undefined;
@@ -59,7 +82,7 @@ interface TableSection {
   title: string;
   subtitle?: string;
   columns: TableColumn[];
-  rows: Record<string, any>[];
+  rows: Record<string, unknown>[];
 }
 
 interface KinematicLink {
@@ -92,8 +115,8 @@ function findLineNumber(lines: string[], pattern: string | RegExp, startFrom = 0
 // ── 1. SysML v2 & ReqIF Requirements & Architecture Parser ──────────────────
 
 function analyzeRequirementsAndSysml(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
-  const reqRows: Record<string, any>[] = [];
-  const inventoryRows: Record<string, any>[] = [];
+  const reqRows: Record<string, unknown>[] = [];
+  const inventoryRows: Record<string, unknown>[] = [];
   const satisfyMap = new Map<string, string[]>();
   const verifyMap = new Map<string, string[]>();
 
@@ -304,9 +327,9 @@ function jointDofForType(jointType: string): number {
 }
 
 function analyzeMultibody(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
-  const bodyRows: Record<string, any>[] = [];
-  const jointRows: Record<string, any>[] = [];
-  const forceRows: Record<string, any>[] = [];
+  const bodyRows: Record<string, unknown>[] = [];
+  const jointRows: Record<string, unknown>[] = [];
+  const forceRows: Record<string, unknown>[] = [];
   const kinematicChain: KinematicLink[] = [];
 
   if (dialect === "urdf" || code.includes("<robot") || code.includes("<link")) {
@@ -608,9 +631,9 @@ function analyzeMultibody(dialect: string, code: string, lines: string[]): Domai
 // ── 3. Power Systems & Circuits Parser (PSS/E, OpenDSS, PSCAD, SPICE, Verilog-A) ──
 
 function analyzePowerAndCircuits(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
-  const busRows: Record<string, any>[] = [];
-  const branchRows: Record<string, any>[] = [];
-  const genLoadRows: Record<string, any>[] = [];
+  const busRows: Record<string, unknown>[] = [];
+  const branchRows: Record<string, unknown>[] = [];
+  const genLoadRows: Record<string, unknown>[] = [];
 
   if (dialect === "spice") {
     const nodeSet = new Set<string>();
@@ -1086,9 +1109,9 @@ function analyzePowerAndCircuits(dialect: string, code: string, lines: string[])
 // ── 4. Thermo-Fluid & Process Parser (OLGA, LPS, GT-SUITE, EASY5, ROCETS, RELAP5, ASPEN, EPANET, SWMM, ECLIPSE) ──
 
 function analyzeThermoFluid(dialect: string, _code: string, lines: string[]): DomainAnalysisResult {
-  const pipeRows: Record<string, any>[] = [];
-  const boundaryRows: Record<string, any>[] = [];
-  const fluidRows: Record<string, any>[] = [];
+  const pipeRows: Record<string, unknown>[] = [];
+  const boundaryRows: Record<string, unknown>[] = [];
+  const fluidRows: Record<string, unknown>[] = [];
 
   let activeSection = "";
   for (let i = 0; i < lines.length; i++) {
@@ -1275,9 +1298,9 @@ function analyzeThermoFluid(dialect: string, _code: string, lines: string[]): Do
 // ── 5. CAE Parser (FEA, CFD, STEP, OpenSCAD) ────────────────────────────────
 
 function analyzeCae(dialect: string, code: string, lines: string[]): DomainAnalysisResult {
-  const meshRows: Record<string, any>[] = [];
-  const materialRows: Record<string, any>[] = [];
-  const bcSolverRows: Record<string, any>[] = [];
+  const meshRows: Record<string, unknown>[] = [];
+  const materialRows: Record<string, unknown>[] = [];
+  const bcSolverRows: Record<string, unknown>[] = [];
 
   if (dialect === "step" || code.trimStart().startsWith("ISO-10303-21;")) {
     const entityCounts = new Map<string, { count: number; firstLine: number; sample: string }>();
@@ -2042,17 +2065,17 @@ function analyzeGeneralModel(
   dialect: string,
   code: string,
   lines: string[],
-  documentSymbols?: any[],
+  documentSymbols?: PolyglotDocumentSymbol[],
   activeClassName?: string,
 ): DomainAnalysisResult {
-  const componentRows: Record<string, any>[] = [];
-  const equationRows: Record<string, any>[] = [];
+  const componentRows: Record<string, unknown>[] = [];
+  const equationRows: Record<string, unknown>[] = [];
   const isModelicaFamily = ["modelica", "modelscript", "mo", "msx", ""].includes(dialect);
   const scan = scanModelicaStructure(code, activeClassName);
 
   if (documentSymbols && documentSymbols.length > 0) {
-    const flattenSymbols = (syms: any[]): any[] => {
-      const res: any[] = [];
+    const flattenSymbols = (syms: PolyglotDocumentSymbol[]): PolyglotDocumentSymbol[] => {
+      const res: PolyglotDocumentSymbol[] = [];
       for (const s of syms) {
         res.push(s);
         if (Array.isArray(s.children) && s.children.length > 0) {
@@ -2215,8 +2238,8 @@ function analyzeGeneralModel(
 }
 
 function analyzePlcopenAndAutomation(dialect: string, _code: string, lines: string[]): DomainAnalysisResult {
-  const varRows: Record<string, any>[] = [];
-  const logicRows: Record<string, any>[] = [];
+  const varRows: Record<string, unknown>[] = [];
+  const logicRows: Record<string, unknown>[] = [];
   let pouCount = 0;
   let inputCount = 0;
   let outputCount = 0;
@@ -2608,10 +2631,10 @@ export const PolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = (props) =
     return null;
   }
 
-  if (hasMorselLanguagePanel(normalizedDialect)) {
+  if (hasAnsatzLanguagePanel(normalizedDialect)) {
     return (
       <DslLanguagePanelMount
-        registry="morsel"
+        registry="ansatz"
         lookupKey={normalizedDialect}
         code={debouncedCode}
         dialect={normalizedDialect}
@@ -2645,15 +2668,15 @@ const LegacyPolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
   const [bltSourceMode, setBltSourceMode] = useState<"flattened" | "source">("flattened");
   const [flattenedCode, setFlattenedCode] = useState<string | null>(null);
   const [isFlattening, setIsFlattening] = useState(false);
-  const [asyncSymbols, setAsyncSymbols] = useState<any[] | null>(null);
+  const [asyncSymbols, setAsyncSymbols] = useState<PolyglotDocumentSymbol[] | null>(null);
   const [verifyBusy, setVerifyBusy] = useState(false);
-  const [verifyReport, setVerifyReport] = useState<any | null>(null);
+  const [verifyReport, setVerifyReport] = useState<PolyglotVerifyReport | null>(null);
 
   const runPolyglotVerify = async () => {
     setVerifyBusy(true);
     try {
       const bridge = await import("../util/lsp-bridge");
-      const res = await bridge.verifyAllInLsp({ uri: documentUri, all: true });
+      const res = await bridge.verifyAllInLsp<PolyglotVerifyReport>({ uri: documentUri, all: true });
       setVerifyReport(res ?? null);
     } catch (err: unknown) {
       setVerifyReport({ error: err instanceof Error ? err.message : String(err) });
@@ -3059,7 +3082,7 @@ const LegacyPolyglotDomainPanel: React.FC<PolyglotDomainPanelProps> = ({
           {Array.isArray(verifyReport.polyglotDigitalThread?.conflicts) &&
             verifyReport.polyglotDigitalThread.conflicts.length > 0 && (
               <ul style={{ margin: 0, paddingLeft: 18 }}>
-                {verifyReport.polyglotDigitalThread.conflicts.map((c: any, idx: number) => (
+                {verifyReport.polyglotDigitalThread.conflicts.map((c, idx: number) => (
                   <li key={idx}>
                     <strong>[{c.theoryName}]</strong> {c.explanation}
                   </li>

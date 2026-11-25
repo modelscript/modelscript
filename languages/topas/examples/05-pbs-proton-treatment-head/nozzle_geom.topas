@@ -1,0 +1,16 @@
+# PBS Treatment Nozzle Geometry: Ionization Chamber & Range Shifter
+s:Ge/MonitorChamber/Type = "TsBox"
+s:Ge/MonitorChamber/Parent = "World"
+s:Ge/MonitorChamber/Material = "G4_AIR"
+d:Ge/MonitorChamber/HLX = 120.0 mm
+d:Ge/MonitorChamber/HLY = 120.0 mm
+d:Ge/MonitorChamber/HLZ = 20.0 mm
+d:Ge/MonitorChamber/TransZ = -420.0 mm
+
+s:Ge/PbsRangeShifter/Type = "TsBox"
+s:Ge/PbsRangeShifter/Parent = "World"
+s:Ge/PbsRangeShifter/Material = "G4_PMMA"
+d:Ge/PbsRangeShifter/HLX = 140.0 mm
+d:Ge/PbsRangeShifter/HLY = 140.0 mm
+d:Ge/PbsRangeShifter/HLZ = 20.0 mm
+d:Ge/PbsRangeShifter/TransZ = -120.0 mm

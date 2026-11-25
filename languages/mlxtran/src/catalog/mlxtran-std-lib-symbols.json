@@ -1,0 +1,1268 @@
+[
+  {
+    "name": "bolus_1cpt_VCl",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:bolus_1cpt_VCl",
+    "exports": [
+      "V",
+      "Cl",
+      "F",
+      "Tlag"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment IV Bolus (V, Cl)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "Linear one-compartment intravenous bolus pharmacokinetic model parameterized by central volume V and clearance Cl: Cc(t) = (D/V) * exp(-(Cl/V)*t).",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 1; Lavielle (2014) Mixed Effects Models for the Population Approach",
+      "aliases": [
+        "bolus_1cpt_Vk",
+        "iv_1cpt_VCl",
+        "pk_1cpt_bolus"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time"
+        }
+      ],
+      "wasmKernel": "bolus_1cpt_VCl",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "bolus_2cpt_VClQVp",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:bolus_2cpt_VClQVp",
+    "exports": [
+      "V",
+      "Cl",
+      "Q",
+      "Vp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Compartment IV Bolus (V, Cl, Q, Vp)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "Linear two-compartment mammillary IV bolus model with analytical bi-exponential disposition Cc(t) = D*(A*exp(-alpha*t) + B*exp(-beta*t)).",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 2; Lavielle (2014) Mixed Effects Models for the Population Approach",
+      "aliases": [
+        "bolus_2cpt_Vk12k21",
+        "iv_2cpt_VClQVp",
+        "pk_2cpt_bolus"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central compartment volume"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Elimination clearance"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "L/h",
+          "description": "Inter-compartmental clearance"
+        },
+        {
+          "key": "Vp",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Peripheral compartment volume"
+        }
+      ],
+      "wasmKernel": "bolus_2cpt_VClQVp",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "bolus_3cpt_VClQ2V2Q3V3",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:bolus_3cpt_VClQ2V2Q3V3",
+    "exports": [
+      "V",
+      "Cl",
+      "Q2",
+      "V2",
+      "Q3",
+      "V3"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3-Compartment IV Bolus (V, Cl, Q2, V2, Q3, V3)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "Linear three-compartment mammillary IV bolus model with fast and slow peripheral distribution compartments.",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 2; Gabrielsson & Weiner (2016) PK/PD Data Analysis",
+      "aliases": [
+        "bolus_3cpt",
+        "iv_3cpt"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central compartment volume"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Elimination clearance"
+        },
+        {
+          "key": "Q2",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "L/h",
+          "description": "Shallow peripheral inter-compartmental clearance"
+        },
+        {
+          "key": "V2",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Shallow peripheral compartment volume"
+        },
+        {
+          "key": "Q3",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "L/h",
+          "description": "Deep peripheral inter-compartmental clearance"
+        },
+        {
+          "key": "V3",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "L",
+          "description": "Deep peripheral compartment volume"
+        }
+      ],
+      "wasmKernel": "bolus_3cpt_VClQ2V2Q3V3",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "infusion_1cpt_VCl",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:infusion_1cpt_VCl",
+    "exports": [
+      "V",
+      "Cl",
+      "F",
+      "Tlag"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment IV Infusion (V, Cl)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "Linear one-compartment constant-rate intravenous infusion model over duration Tinf followed by first-order mono-exponential decay.",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 1; Gabrielsson & Weiner (2016) PK/PD Data Analysis",
+      "aliases": [
+        "infusion_1cpt_Vk",
+        "iv_infusion_1cpt"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Dosing lag time"
+        }
+      ],
+      "wasmKernel": "infusion_1cpt_VCl",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "oral1_1cpt_kaVCl",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:oral1_1cpt_kaVCl",
+    "exports": [
+      "ka",
+      "V",
+      "Cl",
+      "F",
+      "Tlag"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment First-Order Oral (ka, V, Cl)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "One-compartment oral absorption model with first-order absorption rate ka and analytical Bateman concentration profile.",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 1; Lavielle (2014) Mixed Effects Models for the Population Approach",
+      "aliases": [
+        "oral1_1cpt_kaVk",
+        "oral_1cpt_kaVCl",
+        "bateman_1cpt"
+      ],
+      "parameters": [
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/h",
+          "description": "First-order absorption rate constant"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Apparent central volume of distribution (V/F)"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Apparent clearance (Cl/F)"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Oral bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Absorption lag time"
+        }
+      ],
+      "wasmKernel": "oral1_1cpt_kaVCl",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "oral1_2cpt_kaVClQVp",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:oral1_2cpt_kaVClQVp",
+    "exports": [
+      "ka",
+      "V",
+      "Cl",
+      "Q",
+      "Vp",
+      "F"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2-Compartment First-Order Oral (ka, V, Cl, Q, Vp)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "Two-compartment oral absorption model with first-order absorption ka and analytical tri-exponential disposition.",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 2; Lavielle (2014) Mixed Effects Models for the Population Approach",
+      "aliases": [
+        "oral1_2cpt_kaVk12k21",
+        "oral_2cpt"
+      ],
+      "parameters": [
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/h",
+          "description": "First-order absorption rate constant"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central compartment volume"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Elimination clearance"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "L/h",
+          "description": "Inter-compartmental clearance"
+        },
+        {
+          "key": "Vp",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "L",
+          "description": "Peripheral compartment volume"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Oral bioavailability fraction"
+        }
+      ],
+      "wasmKernel": "oral1_2cpt_kaVClQVp",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "oral1_1cpt_TlagkaVCl",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:oral1_1cpt_TlagkaVCl",
+    "exports": [
+      "Tlag",
+      "ka",
+      "V",
+      "Cl",
+      "F"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment First-Order Oral with Lag Time (Tlag, ka, V, Cl)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "One-compartment first-order oral absorption model with absorption lag time Tlag prior to Bateman onset.",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 1; Lavielle (2014) Mixed Effects Models for the Population Approach",
+      "aliases": [
+        "oral1_1cpt_TlagkaVk",
+        "oral_1cpt_tlag"
+      ],
+      "parameters": [
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "h",
+          "description": "Absorption lag time"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/h",
+          "description": "First-order absorption rate constant"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Oral bioavailability fraction"
+        }
+      ],
+      "wasmKernel": "oral1_1cpt_TlagkaVCl",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "oral0_1cpt_Tk0VCl",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:oral0_1cpt_Tk0VCl",
+    "exports": [
+      "Tk0",
+      "V",
+      "Cl",
+      "F"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment Zero-Order Oral (Tk0, V, Cl)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "One-compartment oral model with constant zero-order absorption over duration Tk0 followed by first-order elimination.",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 1; Gabrielsson & Weiner (2016) PK/PD Data Analysis",
+      "aliases": [
+        "oral0_1cpt_Tk0Vk",
+        "oral_zero_order_1cpt"
+      ],
+      "parameters": [
+        {
+          "key": "Tk0",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "h",
+          "description": "Zero-order absorption duration"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "F",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Oral bioavailability fraction"
+        }
+      ],
+      "wasmKernel": "oral0_1cpt_Tk0VCl",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "michaelis_menten_1cpt",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:michaelis_menten_1cpt",
+    "exports": [
+      "V",
+      "Vm",
+      "Km"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1-Compartment Michaelis-Menten Elimination (V, Vm, Km)",
+      "category": "Structural PK",
+      "domain": "pharmacometrics",
+      "description": "One-compartment nonlinear pharmacokinetic model with saturable Michaelis-Menten elimination dC/dt = -(Vm*C)/(V*(Km + C)).",
+      "provenance": "Gibaldi & Perrier (1982) Pharmacokinetics, 2nd Ed., Ch. 7; Gabrielsson & Weiner (2016) PK/PD Data Analysis",
+      "aliases": [
+        "bolus_1cpt_VVmKm",
+        "mm_1cpt",
+        "nonlinear_pk_1cpt"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central volume of distribution"
+        },
+        {
+          "key": "Vm",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mg/h",
+          "description": "Maximum elimination rate"
+        },
+        {
+          "key": "Km",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mg/L",
+          "description": "Michaelis constant (concentration at half-maximal elimination)"
+        }
+      ],
+      "wasmKernel": "michaelis_menten_1cpt",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "pkmodel",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:pkmodel",
+    "exports": [
+      "V",
+      "Cl",
+      "ka"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: pkmodel()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "High-level Mlxtran PK macro declaring a compartmental pharmacokinetic model from canonical parameters (V, Cl, ka, Q, Vp).",
+      "provenance": "Lavielle (2014) Mixed Effects Models for the Population Approach — Mlxtran PK Macro Semantics",
+      "aliases": [
+        "PKMODEL"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Central compartment volume"
+        },
+        {
+          "key": "Cl",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "L/h",
+          "description": "Systemic clearance"
+        },
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1/h",
+          "description": "Optional first-order absorption rate (0 for IV bolus)"
+        }
+      ],
+      "wasmKernel": "pkmodel",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "depot",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:depot",
+    "exports": [
+      "ka",
+      "p",
+      "Tlag"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: depot()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "Mlxtran dosing depot macro routing administered doses to a target compartment with bioavailability p, lag time Tlag, and rate ka.",
+      "provenance": "Lavielle (2014) Mixed Effects Models for the Population Approach — Mlxtran PK Macro Semantics",
+      "aliases": [
+        "DEPOT"
+      ],
+      "parameters": [
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/h",
+          "description": "First-order release rate from depot"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Absorption lag time"
+        }
+      ],
+      "wasmKernel": "depot",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "compartment",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:compartment",
+    "exports": [
+      "V",
+      "k"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: compartment()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "Mlxtran compartment declaration macro defining amount state, distribution volume V, and concentration variable.",
+      "provenance": "Lavielle (2014) Mixed Effects Models for the Population Approach — Mlxtran PK Macro Semantics",
+      "aliases": [
+        "COMPARTMENT",
+        "cmt"
+      ],
+      "parameters": [
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "L",
+          "description": "Compartment volume"
+        },
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Default first-order exit rate constant"
+        }
+      ],
+      "wasmKernel": "compartment",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "absorption",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:absorption",
+    "exports": [
+      "ka",
+      "p",
+      "Tlag"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: absorption()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "Mlxtran absorption macro implementing first-order (ka) or zero-order (Tk0) drug input into a central compartment.",
+      "provenance": "Lavielle (2014) Mixed Effects Models for the Population Approach — Mlxtran PK Macro Semantics",
+      "aliases": [
+        "ABSORPTION"
+      ],
+      "parameters": [
+        {
+          "key": "ka",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/h",
+          "description": "First-order absorption rate constant"
+        },
+        {
+          "key": "p",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Bioavailability fraction"
+        },
+        {
+          "key": "Tlag",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Absorption lag time"
+        }
+      ],
+      "wasmKernel": "absorption",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "elimination",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:elimination",
+    "exports": [
+      "k",
+      "Vm",
+      "Km"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: elimination()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "Mlxtran elimination macro specifying linear (k = Cl/V) or saturable (Vm, Km) drug clearance from a compartment.",
+      "provenance": "Lavielle (2014) Mixed Effects Models for the Population Approach — Mlxtran PK Macro Semantics",
+      "aliases": [
+        "ELIMINATION"
+      ],
+      "parameters": [
+        {
+          "key": "k",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Linear elimination rate constant"
+        },
+        {
+          "key": "Vm",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mg/h",
+          "description": "Optional Michaelis-Menten Vmax (0 for linear)"
+        },
+        {
+          "key": "Km",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "mg/L",
+          "description": "Optional Michaelis-Menten Km"
+        }
+      ],
+      "wasmKernel": "elimination",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "peripheral",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:peripheral",
+    "exports": [
+      "k12",
+      "k21"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: peripheral()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "Mlxtran peripheral distribution macro coupling a central compartment to a peripheral compartment via micro-constants k12 and k21.",
+      "provenance": "Lavielle (2014) Mixed Effects Models for the Population Approach — Mlxtran PK Macro Semantics",
+      "aliases": [
+        "PERIPHERAL"
+      ],
+      "parameters": [
+        {
+          "key": "k12",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1/h",
+          "description": "Central-to-peripheral distribution rate constant"
+        },
+        {
+          "key": "k21",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/h",
+          "description": "Peripheral-to-central return rate constant"
+        }
+      ],
+      "wasmKernel": "peripheral",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "transfer",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:transfer",
+    "exports": [
+      "kt"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: transfer()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "Mlxtran unidirectional first-order inter-compartmental mass transfer macro with rate constant kt.",
+      "provenance": "Lavielle (2014) Mixed Effects Models for the Population Approach — Mlxtran PK Macro Semantics",
+      "aliases": [
+        "TRANSFER"
+      ],
+      "parameters": [
+        {
+          "key": "kt",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1/h",
+          "description": "First-order inter-compartmental transfer rate constant"
+        }
+      ],
+      "wasmKernel": "transfer",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "effect",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:effect",
+    "exports": [
+      "ke0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PK Macro: effect()",
+      "category": "PK Macro",
+      "domain": "pharmacometrics",
+      "description": "Mlxtran biophase effect-compartment macro describing hysteresis equilibration dCe/dt = ke0 * (Cc - Ce).",
+      "provenance": "Sheiner et al. (1979) Clin. Pharmacol. Ther.; Gabrielsson & Weiner (2016) PK/PD Data Analysis",
+      "aliases": [
+        "EFFECT",
+        "effect_cpt"
+      ],
+      "parameters": [
+        {
+          "key": "ke0",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/h",
+          "description": "Effect-site equilibration rate constant"
+        }
+      ],
+      "wasmKernel": "effect",
+      "archetypeId": 27
+    }
+  },
+  {
+    "name": "pd_emax_direct",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:pd_emax_direct",
+    "exports": [
+      "E0",
+      "Emax",
+      "EC50"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Direct Emax Pharmacodynamic Model",
+      "category": "Pharmacodynamics",
+      "domain": "pharmacometrics",
+      "description": "Hyperbolic direct-link Emax pharmacodynamic response model E(C) = E0 + (Emax * C) / (EC50 + C).",
+      "provenance": "Gabrielsson & Weiner (2016) Pharmacokinetic and Pharmacodynamic Data Analysis, 5th Ed., Ch. 3",
+      "aliases": [
+        "emax_direct",
+        "direct_emax"
+      ],
+      "parameters": [
+        {
+          "key": "E0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Baseline pharmacodynamic effect"
+        },
+        {
+          "key": "Emax",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "1",
+          "description": "Maximum drug-induced effect"
+        },
+        {
+          "key": "EC50",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mg/L",
+          "description": "Concentration producing 50% of Emax"
+        }
+      ],
+      "wasmKernel": "pd_emax_direct",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "pd_sigmoid_emax",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:pd_sigmoid_emax",
+    "exports": [
+      "E0",
+      "Emax",
+      "EC50",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sigmoid Hill Emax Pharmacodynamic Model",
+      "category": "Pharmacodynamics",
+      "domain": "pharmacometrics",
+      "description": "Sigmoid Hill direct-link Emax pharmacodynamic model E(C) = E0 + (Emax * C^gamma) / (EC50^gamma + C^gamma).",
+      "provenance": "Hill (1910); Gabrielsson & Weiner (2016) Pharmacokinetic and Pharmacodynamic Data Analysis, 5th Ed., Ch. 3",
+      "aliases": [
+        "sigmoid_emax",
+        "hill_emax",
+        "pd_hill"
+      ],
+      "parameters": [
+        {
+          "key": "E0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Baseline pharmacodynamic effect"
+        },
+        {
+          "key": "Emax",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "1",
+          "description": "Maximum drug-induced effect"
+        },
+        {
+          "key": "EC50",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mg/L",
+          "description": "Concentration producing 50% of Emax"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Hill sigmoidicity exponent"
+        }
+      ],
+      "wasmKernel": "pd_sigmoid_emax",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "pd_indirect_inh_prod",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:pd_indirect_inh_prod",
+    "exports": [
+      "kin",
+      "kout",
+      "Imax",
+      "IC50"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Indirect Response Model (Inhibition of Production)",
+      "category": "Pharmacodynamics",
+      "domain": "pharmacometrics",
+      "description": "Dayneka Type I indirect response turnover ODE inhibiting zero-order production: dR/dt = kin*(1 - Imax*C/(IC50+C)) - kout*R.",
+      "provenance": "Dayneka et al. (1993) J. Pharmacokinet. Biopharm. 21:457-478; Gabrielsson & Weiner (2016) PK/PD Data Analysis",
+      "aliases": [
+        "idr1",
+        "indirect_type1",
+        "turnover_inh_kin"
+      ],
+      "parameters": [
+        {
+          "key": "kin",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/h",
+          "description": "Zero-order production rate constant"
+        },
+        {
+          "key": "kout",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1/h",
+          "description": "First-order dissipation rate constant"
+        },
+        {
+          "key": "Imax",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Maximum fractional inhibition (0..1)"
+        },
+        {
+          "key": "IC50",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mg/L",
+          "description": "Concentration producing 50% of Imax"
+        }
+      ],
+      "wasmKernel": "pd_indirect_inh_prod",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "pd_indirect_stim_loss",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:pd_indirect_stim_loss",
+    "exports": [
+      "kin",
+      "kout",
+      "Smax",
+      "SC50"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Indirect Response Model (Stimulation of Loss)",
+      "category": "Pharmacodynamics",
+      "domain": "pharmacometrics",
+      "description": "Dayneka Type IV indirect response turnover ODE stimulating first-order loss: dR/dt = kin - kout*(1 + Smax*C/(SC50+C))*R.",
+      "provenance": "Dayneka et al. (1993) J. Pharmacokinet. Biopharm. 21:457-478; Gabrielsson & Weiner (2016) PK/PD Data Analysis",
+      "aliases": [
+        "idr4",
+        "indirect_type4",
+        "turnover_stim_kout"
+      ],
+      "parameters": [
+        {
+          "key": "kin",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1/h",
+          "description": "Zero-order production rate constant"
+        },
+        {
+          "key": "kout",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1/h",
+          "description": "First-order dissipation rate constant"
+        },
+        {
+          "key": "Smax",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Maximum fractional stimulation of loss"
+        },
+        {
+          "key": "SC50",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mg/L",
+          "description": "Concentration producing 50% of Smax"
+        }
+      ],
+      "wasmKernel": "pd_indirect_stim_loss",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "tmdd_qss",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:tmdd_qss",
+    "exports": [
+      "kel",
+      "kint",
+      "ksyn",
+      "kdeg",
+      "Kss",
+      "V"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TMDD Quasi-Steady-State (QSS) Approximation",
+      "category": "TMDD",
+      "domain": "pharmacometrics",
+      "description": "Target-Mediated Drug Disposition quasi-steady-state model coupling free drug, free target, and internalized drug-target complex via Kss.",
+      "provenance": "Mager & Krzyzanski (2005) Pharm. Res. 22:1589-1596; Gibiansky et al. (2008) J. Pharmacokinet. Pharmacodyn. 35:573-591",
+      "aliases": [
+        "tmdd_quasi_steady_state",
+        "tmdd_qe",
+        "mager_tmdd_qss"
+      ],
+      "parameters": [
+        {
+          "key": "kel",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "1/d",
+          "description": "Linear free-drug elimination rate constant"
+        },
+        {
+          "key": "kint",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1/d",
+          "description": "Drug-target complex internalization rate constant"
+        },
+        {
+          "key": "ksyn",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "nM/d",
+          "description": "Zero-order target synthesis rate"
+        },
+        {
+          "key": "kdeg",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/d",
+          "description": "First-order free-target degradation rate"
+        },
+        {
+          "key": "Kss",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "nM",
+          "description": "Quasi-steady-state dissociation constant (Kd + kint/kon)"
+        },
+        {
+          "key": "V",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "L",
+          "description": "Central distribution volume"
+        }
+      ],
+      "wasmKernel": "tmdd_qss",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "tgi_simeoni",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:tgi_simeoni",
+    "exports": [
+      "lambda0",
+      "lambda1",
+      "k1",
+      "k2",
+      "w0",
+      "psi"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simeoni Tumor Growth Inhibition (TGI) Model",
+      "category": "Tumor Growth",
+      "domain": "pharmacometrics",
+      "description": "Simeoni 4-compartment tumor growth inhibition model with exponential-to-linear unperturbed growth and 3 damaged-cell transit compartments.",
+      "provenance": "Simeoni et al. (2004) Cancer Res. 64(3):1094-1101",
+      "aliases": [
+        "simeoni_tgi",
+        "tumor_simeoni"
+      ],
+      "parameters": [
+        {
+          "key": "lambda0",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1/d",
+          "description": "Exponential tumor growth rate constant"
+        },
+        {
+          "key": "lambda1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "g/d",
+          "description": "Linear tumor growth rate constant"
+        },
+        {
+          "key": "k1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/d",
+          "description": "Damaged-cell transit rate constant"
+        },
+        {
+          "key": "k2",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "L/(mg*d)",
+          "description": "Drug antitumor potency constant"
+        },
+        {
+          "key": "w0",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "g",
+          "description": "Initial tumor weight at t = 0"
+        },
+        {
+          "key": "psi",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "1",
+          "description": "Sharpness exponent switching exponential to linear growth"
+        }
+      ],
+      "wasmKernel": "tgi_simeoni",
+      "archetypeId": 35
+    }
+  },
+  {
+    "name": "tgi_exponential",
+    "kind": "mlxtran_model",
+    "namePath": "mlxtran:tgi_exponential",
+    "exports": [
+      "kg",
+      "kd",
+      "w0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Exponential Tumor Growth & Log-Kill Model",
+      "category": "Tumor Growth",
+      "domain": "pharmacometrics",
+      "description": "First-order exponential tumor growth with linear concentration-driven cell kill: dW/dt = (kg - kd * C) * W.",
+      "provenance": "Gabrielsson & Weiner (2016) PK/PD Data Analysis; Simeoni et al. (2004) Cancer Res. 64(3):1094-1101",
+      "aliases": [
+        "tumor_exponential",
+        "tgi_exp"
+      ],
+      "parameters": [
+        {
+          "key": "kg",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/d",
+          "description": "Exponential tumor growth rate constant"
+        },
+        {
+          "key": "kd",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "L/(mg*d)",
+          "description": "Drug-induced cell kill rate constant"
+        },
+        {
+          "key": "w0",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "g",
+          "description": "Initial tumor weight at t = 0"
+        }
+      ],
+      "wasmKernel": "tgi_exponential",
+      "archetypeId": 36
+    }
+  }
+]

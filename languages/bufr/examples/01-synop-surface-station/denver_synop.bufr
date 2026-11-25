@@ -1,0 +1,44 @@
+# WMO BUFR Edition 4 SYNOP Surface Land Station Report (Denver, CO)
+BUFR EDITION 4 NAME DENVER_SYNOP
+SECTION 0
+  LENGTH = 0
+SECTION 1
+  MASTER_TABLE = 0
+  CENTRE = 7
+  SUBCENTRE = 0
+  CATEGORY = 0
+  VERSION = 38
+  YEAR = 2026
+  MONTH = 7
+  DAY = 15
+  HOUR = 12
+  MINUTE = 0
+  SECOND = 0
+SECTION 3
+  SUBSETS = 1
+  OBSERVED = true
+  COMPRESSED = false
+  DESCRIPTORS:
+    3-07-080
+SECTION 4
+  SUBSET 1:
+    0-01-001 = 72
+    0-01-002 = 469
+    0-04-001 = 2026
+    0-04-002 = 7
+    0-04-003 = 15
+    0-04-004 = 12
+    0-04-005 = 0
+    0-05-001 = 39.85610
+    0-06-001 = -104.67370
+    0-07-001 = 1655
+    0-10-004 = 83850
+    0-10-051 = 101420
+    0-12-101 = 292.15
+    0-12-103 = 282.65
+    0-13-003 = 54
+    0-11-001 = 195
+    0-11-002 = 4.6
+    0-13-011 = 0.0
+SECTION 5
+7777

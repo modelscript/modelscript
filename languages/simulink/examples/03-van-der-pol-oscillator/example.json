@@ -1,0 +1,11 @@
+{
+  "id": "simulink-03-van-der-pol-oscillator",
+  "lang": "simulink",
+  "subFormats": ["mdl"],
+  "difficulty": 3,
+  "title": "Van der Pol Nonlinear Oscillator",
+  "description": "Second-order Van der Pol relaxation oscillator implemented with dual state integrators, nonlinear quadratic damping multiplier, and phase-plane output scopes.",
+  "category": "Nonlinear Dynamics",
+  "tags": ["simulink", "van-der-pol", "nonlinear", "limit-cycle"],
+  "activeFile": "van_der_pol.mdl"
+}

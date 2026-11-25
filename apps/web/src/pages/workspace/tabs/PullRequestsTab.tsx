@@ -62,6 +62,14 @@ interface NormalizedPrDiffFile {
   patch: string;
 }
 
+interface DiffContentFields {
+  old_content?: unknown;
+  base_content?: unknown;
+  new_content?: unknown;
+  head_content?: unknown;
+  ancestor_content?: unknown;
+}
+
 function getDiffFilesForPr(mr: GitlabMergeRequest): NormalizedPrDiffFile[] {
   if (Array.isArray(mr.diff_files) && mr.diff_files.length > 0) {
     return mr.diff_files.map((df) => {
@@ -76,9 +84,10 @@ function getDiffFilesForPr(mr: GitlabMergeRequest): NormalizedPrDiffFile[] {
         typeof df.deletions === "number"
           ? df.deletions
           : lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
-      const old_content = (df as any).old_content ?? (df as any).base_content;
-      const new_content = (df as any).new_content ?? (df as any).head_content;
-      const ancestor_content = (df as any).ancestor_content;
+      const extra = df as typeof df & DiffContentFields;
+      const old_content = extra.old_content ?? extra.base_content;
+      const new_content = extra.new_content ?? extra.head_content;
+      const ancestor_content = extra.ancestor_content;
       return {
         path,
         old_path: df.old_path,
@@ -106,9 +115,10 @@ function getDiffFilesForPr(mr: GitlabMergeRequest): NormalizedPrDiffFile[] {
         typeof ch.deletions === "number"
           ? ch.deletions
           : lines.filter((l) => l.startsWith("-") && !l.startsWith("---")).length;
-      const old_content = (ch as any).old_content ?? (ch as any).base_content;
-      const new_content = (ch as any).new_content ?? (ch as any).head_content;
-      const ancestor_content = (ch as any).ancestor_content;
+      const extra = ch as typeof ch & DiffContentFields;
+      const old_content = extra.old_content ?? extra.base_content;
+      const new_content = extra.new_content ?? extra.head_content;
+      const ancestor_content = extra.ancestor_content;
       return {
         path,
         old_path: ch.old_path,

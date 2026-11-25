@@ -192,7 +192,31 @@ export function countRootsInRange(seq: UnivariatePoly[], a: number, b: number): 
   return signVariations(seq, a) - signVariations(seq, b);
 }
 
-let g_sturmWasm: Record<string, any> | null = null;
+export interface SturmWasmExports {
+  memory: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  sturm_build_sequence?: (
+    inCoeffPtr: number,
+    sqDeg: number,
+    degPtr: number,
+    coeffPtr: number,
+    strideBytes: number,
+    maxSeq: number,
+  ) => number;
+  sturm_isolate_roots?: (
+    seqCount: number,
+    degPtr: number,
+    coeffPtr: number,
+    strideBytes: number,
+    lo: number,
+    hi: number,
+    eps: number,
+    outRootsPtr: number,
+    maxRoots: number,
+  ) => number;
+}
+
+let g_sturmWasm: SturmWasmExports | null = null;
 let g_sturmWasmMem: {
   inCoeffPtr: number;
   degPtr: number;
@@ -202,15 +226,15 @@ let g_sturmWasmMem: {
   maxSeq: number;
 } | null = null;
 
-export function setSturmWasmExports(wasmExports: Record<string, any> | null): void {
+export function setSturmWasmExports(wasmExports: SturmWasmExports | null): void {
   g_sturmWasm = wasmExports;
 }
 
-export function isolateRealRootsWasm(p: UnivariatePoly, wasmExports: Record<string, any>, eps = 1e-7): number[] | null {
+export function isolateRealRootsWasm(p: UnivariatePoly, wasmExports: SturmWasmExports, eps = 1e-7): number[] | null {
   if (
-    typeof wasmExports["sturm_build_sequence"] !== "function" ||
-    typeof wasmExports["sturm_isolate_roots"] !== "function" ||
-    typeof wasmExports["__new"] !== "function"
+    typeof wasmExports.sturm_build_sequence !== "function" ||
+    typeof wasmExports.sturm_isolate_roots !== "function" ||
+    typeof wasmExports.__new !== "function"
   ) {
     return null;
   }
@@ -232,14 +256,14 @@ export function isolateRealRootsWasm(p: UnivariatePoly, wasmExports: Record<stri
   const maxRoots = sqDeg;
   const rootsBytes = maxRoots * 8;
 
-  const mem = wasmExports["memory"] as WebAssembly.Memory;
+  const mem = wasmExports.memory;
 
   let scratch = g_sturmWasmMem;
   if (!scratch || g_sturmWasm !== wasmExports || scratch.maxSeq < maxSeq) {
-    const inCoeffPtr = wasmExports["__new"]((sqDeg + 1) * 8, 0);
-    const degPtr = wasmExports["__new"](degreesBytes, 0);
-    const coeffPtr = wasmExports["__new"](totalCoeffBytes, 0);
-    const outRootsPtr = wasmExports["__new"](rootsBytes, 0);
+    const inCoeffPtr = wasmExports.__new((sqDeg + 1) * 8, 0);
+    const degPtr = wasmExports.__new(degreesBytes, 0);
+    const coeffPtr = wasmExports.__new(totalCoeffBytes, 0);
+    const outRootsPtr = wasmExports.__new(rootsBytes, 0);
     scratch = {
       inCoeffPtr,
       degPtr,
@@ -257,7 +281,7 @@ export function isolateRealRootsWasm(p: UnivariatePoly, wasmExports: Record<stri
     inView[i] = sq.coeffs[i]!;
   }
 
-  const seqCount = wasmExports["sturm_build_sequence"](
+  const seqCount = wasmExports.sturm_build_sequence(
     scratch.inCoeffPtr,
     sqDeg,
     scratch.degPtr,
@@ -270,7 +294,7 @@ export function isolateRealRootsWasm(p: UnivariatePoly, wasmExports: Record<stri
 
   const B = sq.cauchyRootBound() + 1;
 
-  const foundRoots = wasmExports["sturm_isolate_roots"](
+  const foundRoots = wasmExports.sturm_isolate_roots(
     seqCount,
     scratch.degPtr,
     scratch.coeffPtr,
@@ -292,7 +316,7 @@ export function isolateRealRootsWasm(p: UnivariatePoly, wasmExports: Record<stri
  * Isolates all distinct real roots of a polynomial via Sturm bisection.
  * Uses accelerated in-WASM root isolation when available.
  */
-export function isolateRealRoots(p: UnivariatePoly, eps = 1e-7, wasmExports?: Record<string, any>): number[] {
+export function isolateRealRoots(p: UnivariatePoly, eps = 1e-7, wasmExports?: SturmWasmExports): number[] {
   const wasm = wasmExports ?? g_sturmWasm;
   if (wasm) {
     const wasmResult = isolateRealRootsWasm(p, wasm, eps);

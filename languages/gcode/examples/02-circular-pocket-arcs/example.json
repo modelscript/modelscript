@@ -1,0 +1,11 @@
+{
+  "id": "gcode-02-circular-pocket-arcs",
+  "lang": "gcode",
+  "subFormats": ["iso-6983", "fanuc"],
+  "difficulty": 2,
+  "title": "Circular Pocket and Arc Interpolation (G02/G03)",
+  "description": "Two-pass spiral circular pocket milling program demonstrating exact I/J arc interpolation with G03 counterclockwise lead-in and full-circle finish pass.",
+  "category": "CNC Machining & CAM",
+  "tags": ["gcode", "circular-pocket", "g02", "g03"],
+  "activeFile": "circular_pocket.nc"
+}

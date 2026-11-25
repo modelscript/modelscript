@@ -1,0 +1,11 @@
+{
+  "id": "simpack-04-wind-turbine-gearbox",
+  "lang": "simpack",
+  "subFormats": ["spck"],
+  "difficulty": 4,
+  "title": "Wind Turbine Planetary Gearbox Drivetrain",
+  "description": "5 MW offshore wind turbine planetary gearbox stage with planet carrier, three planet gears, sun gear, and ring housing supported by compliant bearings and valid positive-definite inertia tensors.",
+  "category": "Powertrain & Drivetrain",
+  "tags": ["wind-turbine", "planetary-gearbox", "drivetrain", "mbd"],
+  "activeFile": "planetary_gearbox.spck"
+}

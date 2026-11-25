@@ -5,7 +5,7 @@ description: W3C ActivityPub decentralized federation protocol, reproducible Eng
 
 # ActivityPub Federation & Engineering Models
 
-Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/morsel#` for wire compatibility) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange reproducible artifacts, and verify cryptographic proofs across domains.
+Ansatz implements the **W3C ActivityPub** standard (Server-to-Server and Client-to-Server) extended with an engineering namespace (`https://modelscript.org/ns/ansatz#` for wire compatibility) to enable decentralized collaboration across research labs, universities, and enterprise engineering hubs. Rather than confining models, simulations, and peer reviews to a single centralized silo, independent Ansatz instances federate, exchange reproducible artifacts, and verify cryptographic proofs across domains.
 
 ---
 
@@ -60,10 +60,10 @@ When an engineer publishes an Ansatz, the instance serializes an ActivityStreams
     "https://w3id.org/security/v1",
     "https://w3id.org/security/data-integrity/v2",
     {
-      "morsel": "https://modelscript.org/ns/morsel#",
-      "dialect": "morsel:dialect",
-      "codeHash": "morsel:codeHash",
-      "daeMetrics": "morsel:daeMetrics"
+      "ansatz": "https://modelscript.org/ns/ansatz#",
+      "dialect": "ansatz:dialect",
+      "codeHash": "ansatz:codeHash",
+      "daeMetrics": "ansatz:daeMetrics"
     }
   ],
   "id": "https://ansatz.social/activities/98412",
@@ -76,9 +76,9 @@ When an engineer publishes an Ansatz, the instance serializes an ActivityStreams
     "attachment": [
       {
         "type": "PropertyValue",
-        "morsel:dialect": "modelica",
-        "morsel:codeHash": "sha256:8f4e2b9a1c3d...",
-        "morsel:daeMetrics": { "variables": 42, "equations": 42, "index": 1 }
+        "ansatz:dialect": "modelica",
+        "ansatz:codeHash": "sha256:8f4e2b9a1c3d...",
+        "ansatz:daeMetrics": { "variables": 42, "equations": 42, "index": 1 }
       }
     ],
     "proof": {

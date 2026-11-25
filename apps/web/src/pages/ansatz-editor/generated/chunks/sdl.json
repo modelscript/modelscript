@@ -1,0 +1,73 @@
+[
+  {
+    "id": "sdl-01-ping-pong-protocol",
+    "lang": "sdl",
+    "subFormats": ["sdl"],
+    "difficulty": 1,
+    "title": "Ping-Pong Request-Response Protocol",
+    "description": "Two-block CCITT SDL-88 request-response protocol with bidirectional channel, signal routes, retransmission timer, and responder echo process.",
+    "category": "Communication Protocols",
+    "tags": ["sdl", "ping-pong", "protocol", "timer"],
+    "activeFile": "ping_pong.sdl",
+    "fileNames": ["ping_pong.sdl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "/* CCITT SDL-88 Ping-Pong Request-Response Protocol */\nSYSTEM PingPongProtocol;\n  SIGNAL Ping, Pong;\n  CHANNEL C_Link\n    FROM ClientBlock TO ServerBlock WITH Ping;\n    FROM ServerBlock TO ClientBlock WITH Pong;\n  ENDCHANNEL C_Link;\n\n  BLOCK ClientBlock;\n    SIGNALROUTE SR_Client\n      FROM Client TO ENV WITH Ping;\n      FROM ENV TO Client WITH Pong;\n    CONNECT C_Link AND SR_Client;\n\n    PROCESS Client(1, 1);\n      TIMER T_Retry;\n      START;\n        OUTPUT Ping VIA SR_Client;\n        SET(NOW + 2.0, T_Retry);\n        NEXTSTATE WaitPong;\n      STATE WaitPong;\n        INPUT Pong;\n          RESET(T_Retry);\n          OUTPUT Ping VIA SR_Client;\n          SET(NOW + 2.0, T_Retry);\n          NEXTSTATE WaitPong;\n        INPUT T_Retry;\n          OUTPUT Ping VIA SR_Client;\n          SET(NOW + 2.0, T_Retry);\n          NEXTSTATE WaitPong;\n      ENDSTATE WaitPong;\n    ENDPROCESS Client;\n  ENDBLOCK ClientBlock;\n\n  BLOCK ServerBlock;\n    SIGNALROUTE SR_Server\n      FROM ENV TO Server WITH Ping;\n      FROM Server TO ENV WITH Pong;\n    CONNECT C_Link AND SR_Server;\n\n    PROCESS Server(1, 1);\n      START;\n        NEXTSTATE Ready;\n      STATE Ready;\n        INPUT Ping;\n          OUTPUT Pong VIA SR_Server;\n          NEXTSTATE Ready;\n      ENDSTATE Ready;\n    ENDPROCESS Server;\n  ENDBLOCK ServerBlock;\nENDSYSTEM PingPongProtocol;\n"
+  },
+  {
+    "id": "sdl-02-alternating-bit",
+    "lang": "sdl",
+    "subFormats": ["sdl"],
+    "difficulty": 2,
+    "title": "Alternating-Bit Reliable Data Link Protocol",
+    "description": "Reliable stop-and-wait Alternating-Bit Protocol (ABP) in SDL-88 featuring 1-bit sequence numbering, timeout retransmission, and duplicate frame filtering via DECISION.",
+    "category": "Data Link Protocols",
+    "tags": ["sdl", "abp", "retransmission", "decision"],
+    "activeFile": "abp.sdl",
+    "fileNames": ["abp.sdl"],
+    "fileCount": 1,
+    "code": "/* SDL-88 Alternating-Bit Reliable Data Link Protocol */\nSYSTEM AlternatingBitProtocol;\n  SIGNAL DataReq(Integer), Frame(Integer, Integer), Ack(Integer), DataInd(Integer);\n  CHANNEL C_Data\n    FROM SenderBlock TO ReceiverBlock WITH Frame;\n    FROM ReceiverBlock TO SenderBlock WITH Ack;\n  ENDCHANNEL C_Data;\n\n  BLOCK SenderBlock;\n    SIGNALROUTE SR_S\n      FROM Sender TO ENV WITH Frame;\n      FROM ENV TO Sender WITH Ack;\n    CONNECT C_Data AND SR_S;\n\n    PROCESS Sender(1, 1);\n      DCL seq Integer := 0;\n      DCL payload Integer := 0;\n      TIMER T_Retx;\n\n      START;\n        TASK seq := 0;\n        NEXTSTATE Idle;\n\n      STATE Idle;\n        INPUT DataReq(payload);\n          OUTPUT Frame(payload, seq) VIA SR_S;\n          SET(NOW + 1.5, T_Retx);\n          NEXTSTATE WaitAck;\n      ENDSTATE Idle;\n\n      STATE WaitAck;\n        INPUT Ack(seq);\n          RESET(T_Retx);\n          TASK seq := 1 - seq;\n          NEXTSTATE Idle;\n        INPUT T_Retx;\n          OUTPUT Frame(payload, seq) VIA SR_S;\n          SET(NOW + 1.5, T_Retx);\n          NEXTSTATE -;\n      ENDSTATE WaitAck;\n    ENDPROCESS Sender;\n  ENDBLOCK SenderBlock;\n\n  BLOCK ReceiverBlock;\n    SIGNALROUTE SR_R\n      FROM ENV TO Receiver WITH Frame;\n      FROM Receiver TO ENV WITH Ack;\n    CONNECT C_Data AND SR_R;\n\n    PROCESS Receiver(1, 1);\n      DCL expected Integer := 0;\n      DCL rxPayload Integer := 0;\n      DCL rxSeq Integer := 0;\n\n      START;\n        NEXTSTATE Ready;\n\n      STATE Ready;\n        INPUT Frame(rxPayload, rxSeq);\n          DECISION rxSeq = expected;\n            (TRUE):\n              OUTPUT DataInd(rxPayload) TO ENV;\n              OUTPUT Ack(rxSeq) VIA SR_R;\n              TASK expected := 1 - expected;\n              NEXTSTATE Ready;\n            ELSE:\n              OUTPUT Ack(rxSeq) VIA SR_R;\n              NEXTSTATE -;\n          ENDDECISION;\n      ENDSTATE Ready;\n    ENDPROCESS Receiver;\n  ENDBLOCK ReceiverBlock;\nENDSYSTEM AlternatingBitProtocol;\n"
+  },
+  {
+    "id": "sdl-03-vending-machine",
+    "lang": "sdl",
+    "subFormats": ["sdl"],
+    "difficulty": 3,
+    "title": "Vending Machine Coin and Dispense FSM",
+    "description": "SDL-88 state machine for an automated beverage dispenser tracking accumulated coin credit, item selection validation, change refund, and dispense timeout recovery.",
+    "category": "Embedded Control",
+    "tags": ["sdl", "vending-machine", "fsm", "decision"],
+    "activeFile": "vending.sdl",
+    "fileNames": ["vending.sdl"],
+    "fileCount": 1,
+    "code": "/* SDL-88 Automated Vending Machine Coin & Dispense Controller */\nSYSTEM VendingMachine;\n  SIGNAL Coin(Integer), SelectItem(Integer), Cancel, Dispense(Integer), Refund(Integer), VendDone;\n\n  BLOCK ControllerBlock;\n    PROCESS Dispenser(1, 1);\n      DCL credit Integer := 0;\n      DCL coinVal Integer := 0;\n      DCL itemCode Integer := 0;\n      DCL price Integer := 100;\n      TIMER T_Vend;\n\n      START;\n        TASK credit := 0;\n        NEXTSTATE Idle;\n\n      STATE Idle;\n        INPUT Coin(coinVal);\n          TASK credit := credit + coinVal;\n          NEXTSTATE Accepting;\n      ENDSTATE Idle;\n\n      STATE Accepting;\n        INPUT Coin(coinVal);\n          TASK credit := credit + coinVal;\n          NEXTSTATE Accepting;\n        INPUT SelectItem(itemCode);\n          DECISION credit >= price;\n            (TRUE):\n              TASK credit := credit - price;\n              OUTPUT Dispense(itemCode) TO ENV;\n              SET(NOW + 5.0, T_Vend);\n              NEXTSTATE Dispensing;\n            ELSE:\n              NEXTSTATE Accepting;\n          ENDDECISION;\n        INPUT Cancel;\n          OUTPUT Refund(credit) TO ENV;\n          TASK credit := 0;\n          NEXTSTATE Idle;\n      ENDSTATE Accepting;\n\n      STATE Dispensing;\n        INPUT VendDone;\n          RESET(T_Vend);\n          DECISION credit > 0;\n            (TRUE):\n              OUTPUT Refund(credit) TO ENV;\n              TASK credit := 0;\n              NEXTSTATE Idle;\n            ELSE:\n              NEXTSTATE Idle;\n          ENDDECISION;\n        INPUT T_Vend;\n          OUTPUT Refund(credit) TO ENV;\n          TASK credit := 0;\n          NEXTSTATE Idle;\n      ENDSTATE Dispensing;\n    ENDPROCESS Dispenser;\n  ENDBLOCK ControllerBlock;\nENDSYSTEM VendingMachine;\n"
+  },
+  {
+    "id": "sdl-04-telecom-call-setup",
+    "lang": "sdl",
+    "subFormats": ["sdl"],
+    "difficulty": 4,
+    "title": "Telecom Call Setup and Teardown Signaling",
+    "description": "ISDN/Q.931-inspired telecom call-control signaling between originating and terminating switch exchanges using SETUP, ALERT, CONNECT, and RELEASE handshakes with ring-timeout supervision.",
+    "category": "Telecommunications Signaling",
+    "tags": ["sdl", "telecom", "q931", "signaling", "call-control"],
+    "activeFile": "call_signaling.sdl",
+    "fileNames": ["call_signaling.sdl"],
+    "fileCount": 1,
+    "code": "/* SDL-88 Telecom Call Setup, Alerting, Active Speech & Teardown Signaling */\nSYSTEM TelecomCallControl;\n  SIGNAL DialReq(Integer), Setup(Integer), Alert, Connect, ConnectAck, Hangup, Release, ReleaseComp;\n\n  CHANNEL C_Trunk\n    FROM OrigExchange TO TermExchange WITH Setup, ConnectAck, Release;\n    FROM TermExchange TO OrigExchange WITH Alert, Connect, ReleaseComp;\n  ENDCHANNEL C_Trunk;\n\n  BLOCK OrigExchange;\n    SIGNALROUTE SR_Orig\n      FROM CallerFSM TO ENV WITH Setup, ConnectAck, Release;\n      FROM ENV TO CallerFSM WITH Alert, Connect, ReleaseComp;\n    CONNECT C_Trunk AND SR_Orig;\n\n    PROCESS CallerFSM(1, 1);\n      DCL destNum Integer := 0;\n      TIMER T_NoAnswer;\n\n      START;\n        NEXTSTATE NullState;\n\n      STATE NullState;\n        INPUT DialReq(destNum);\n          OUTPUT Setup(destNum) VIA SR_Orig;\n          SET(NOW + 30.0, T_NoAnswer);\n          NEXTSTATE CallProceeding;\n      ENDSTATE NullState;\n\n      STATE CallProceeding;\n        INPUT Alert;\n          NEXTSTATE Ringing;\n        INPUT T_NoAnswer;\n          OUTPUT Release VIA SR_Orig;\n          NEXTSTATE Releasing;\n      ENDSTATE CallProceeding;\n\n      STATE Ringing;\n        INPUT Connect;\n          RESET(T_NoAnswer);\n          OUTPUT ConnectAck VIA SR_Orig;\n          NEXTSTATE ActiveCall;\n        INPUT Hangup;\n          RESET(T_NoAnswer);\n          OUTPUT Release VIA SR_Orig;\n          NEXTSTATE Releasing;\n        INPUT T_NoAnswer;\n          OUTPUT Release VIA SR_Orig;\n          NEXTSTATE Releasing;\n      ENDSTATE Ringing;\n\n      STATE ActiveCall;\n        INPUT Hangup;\n          OUTPUT Release VIA SR_Orig;\n          NEXTSTATE Releasing;\n      ENDSTATE ActiveCall;\n\n      STATE Releasing;\n        INPUT ReleaseComp;\n          NEXTSTATE NullState;\n      ENDSTATE Releasing;\n    ENDPROCESS CallerFSM;\n  ENDBLOCK OrigExchange;\n\n  BLOCK TermExchange;\n    SIGNALROUTE SR_Term\n      FROM ENV TO CalleeFSM WITH Setup, ConnectAck, Release;\n      FROM CalleeFSM TO ENV WITH Alert, Connect, ReleaseComp;\n    CONNECT C_Trunk AND SR_Term;\n\n    PROCESS CalleeFSM(1, 1);\n      DCL calledId Integer := 0;\n      TIMER T_Ring;\n\n      START;\n        NEXTSTATE Idle;\n\n      STATE Idle;\n        INPUT Setup(calledId);\n          OUTPUT Alert VIA SR_Term;\n          SET(NOW + 3.0, T_Ring);\n          NEXTSTATE Alerting;\n      ENDSTATE Idle;\n\n      STATE Alerting;\n        INPUT T_Ring;\n          OUTPUT Connect VIA SR_Term;\n          NEXTSTATE WaitAck;\n        INPUT Release;\n          RESET(T_Ring);\n          OUTPUT ReleaseComp VIA SR_Term;\n          NEXTSTATE Idle;\n      ENDSTATE Alerting;\n\n      STATE WaitAck;\n        INPUT ConnectAck;\n          NEXTSTATE Connected;\n        INPUT Release;\n          OUTPUT ReleaseComp VIA SR_Term;\n          NEXTSTATE Idle;\n      ENDSTATE WaitAck;\n\n      STATE Connected;\n        INPUT Release;\n          OUTPUT ReleaseComp VIA SR_Term;\n          NEXTSTATE Idle;\n      ENDSTATE Connected;\n    ENDPROCESS CalleeFSM;\n  ENDBLOCK TermExchange;\nENDSYSTEM TelecomCallControl;\n"
+  },
+  {
+    "id": "sdl-05-safety-plc-interlock",
+    "lang": "sdl",
+    "subFormats": ["sdl"],
+    "difficulty": 5,
+    "title": "Multi-Block Industrial Safety PLC Interlock Architecture",
+    "description": "Three-block IEC 61508 industrial process safety interlock architecture in SDL-88 coordinating pressure/temperature sensor monitoring, safety PLC voting logic, and emergency shutdown valve actuation.",
+    "category": "Industrial Safety & PLC",
+    "tags": ["sdl", "safety-plc", "interlock", "esd", "multi-block"],
+    "activeFile": "safety_plc.sdl",
+    "fileNames": ["safety_plc.sdl"],
+    "fileCount": 1,
+    "code": "/* SDL-88 Multi-Block Industrial Safety PLC Emergency Shutdown Interlock */\nSYSTEM SafetyPlcInterlock;\n  SIGNAL SensorSample(Integer), HighAlarm, ResetReq, TripCmd, OpenCmd, ValveClosed, ValveOpen;\n\n  CHANNEL C_SensToPlc\n    FROM SensorBlock TO LogicSolverBlock WITH HighAlarm;\n  ENDCHANNEL C_SensToPlc;\n\n  CHANNEL C_PlcToValve\n    FROM LogicSolverBlock TO ActuatorBlock WITH TripCmd, OpenCmd;\n    FROM ActuatorBlock TO LogicSolverBlock WITH ValveClosed, ValveOpen;\n  ENDCHANNEL C_PlcToValve;\n\n  BLOCK SensorBlock;\n    SIGNALROUTE SR_Sens\n      FROM PressureMonitor TO ENV WITH HighAlarm;\n    CONNECT C_SensToPlc AND SR_Sens;\n\n    PROCESS PressureMonitor(1, 1);\n      DCL pressure Integer := 0;\n      DCL tripLimit Integer := 120;\n\n      START;\n        NEXTSTATE Monitoring;\n\n      STATE Monitoring;\n        INPUT SensorSample(pressure);\n          DECISION pressure >= tripLimit;\n            (TRUE):\n              OUTPUT HighAlarm VIA SR_Sens;\n              NEXTSTATE Monitoring;\n            ELSE:\n              NEXTSTATE Monitoring;\n          ENDDECISION;\n      ENDSTATE Monitoring;\n    ENDPROCESS PressureMonitor;\n  ENDBLOCK SensorBlock;\n\n  BLOCK LogicSolverBlock;\n    SIGNALROUTE SR_FromSens\n      FROM ENV TO SafetySolver WITH HighAlarm;\n    CONNECT C_SensToPlc AND SR_FromSens;\n\n    SIGNALROUTE SR_ToValve\n      FROM SafetySolver TO ENV WITH TripCmd, OpenCmd;\n      FROM ENV TO SafetySolver WITH ValveClosed, ValveOpen;\n    CONNECT C_PlcToValve AND SR_ToValve;\n\n    PROCESS SafetySolver(1, 1);\n      TIMER T_Stroke;\n\n      START;\n        NEXTSTATE NormalRun;\n\n      STATE NormalRun;\n        INPUT HighAlarm;\n          OUTPUT TripCmd VIA SR_ToValve;\n          SET(NOW + 2.0, T_Stroke);\n          NEXTSTATE Tripping;\n      ENDSTATE NormalRun;\n\n      STATE Tripping;\n        INPUT ValveClosed;\n          RESET(T_Stroke);\n          NEXTSTATE SafeShutdown;\n        INPUT T_Stroke;\n          OUTPUT TripCmd VIA SR_ToValve;\n          NEXTSTATE SafeShutdown;\n      ENDSTATE Tripping;\n\n      STATE SafeShutdown;\n        INPUT ResetReq;\n          OUTPUT OpenCmd VIA SR_ToValve;\n          NEXTSTATE Restarting;\n      ENDSTATE SafeShutdown;\n\n      STATE Restarting;\n        INPUT ValveOpen;\n          NEXTSTATE NormalRun;\n        INPUT HighAlarm;\n          OUTPUT TripCmd VIA SR_ToValve;\n          SET(NOW + 2.0, T_Stroke);\n          NEXTSTATE Tripping;\n      ENDSTATE Restarting;\n    ENDPROCESS SafetySolver;\n  ENDBLOCK LogicSolverBlock;\n\n  BLOCK ActuatorBlock;\n    SIGNALROUTE SR_Valve\n      FROM ENV TO EsdValve WITH TripCmd, OpenCmd;\n      FROM EsdValve TO ENV WITH ValveClosed, ValveOpen;\n    CONNECT C_PlcToValve AND SR_Valve;\n\n    PROCESS EsdValve(1, 1);\n      START;\n        NEXTSTATE OpenPos;\n\n      STATE OpenPos;\n        INPUT TripCmd;\n          OUTPUT ValveClosed VIA SR_Valve;\n          NEXTSTATE ClosedPos;\n      ENDSTATE OpenPos;\n\n      STATE ClosedPos;\n        INPUT OpenCmd;\n          OUTPUT ValveOpen VIA SR_Valve;\n          NEXTSTATE OpenPos;\n      ENDSTATE ClosedPos;\n    ENDPROCESS EsdValve;\n  ENDBLOCK ActuatorBlock;\nENDSYSTEM SafetyPlcInterlock;\n"
+  }
+]

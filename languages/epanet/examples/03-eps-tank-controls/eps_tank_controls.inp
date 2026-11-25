@@ -1,0 +1,60 @@
+[TITLE]
+Extended-Period 24-Hour Tank Fill/Drain with Automated Pump Controls
+
+[JUNCTIONS]
+;ID              Elev         Demand       Pattern
+ J10             20           0            ;
+ J11             35           18           Pat1
+ J12             32           24           Pat1
+ J13             28           20           Pat1
+ J14             30           15           Pat1
+
+[RESERVOIRS]
+;ID              Head         Pattern
+ LakeSource      25           ;
+
+[TANKS]
+;ID              Elev         InitLvl      MinLvl       MaxLvl       Diam         MinVol       VolCurve
+ MainTank        68           10           3            18           18.0         0            ;
+
+[PIPES]
+;ID              Node1        Node2        Length       Diam         Roughness    MinorLoss    Status
+ P10             J10          J11          900          350          125          0            OPEN
+ P11             J11          J12          750          300          120          0            OPEN
+ P12             J12          J13          680          250          120          0            OPEN
+ P13             J11          J14          820          250          120          0            OPEN
+ P14             J14          J13          700          200          115          0            OPEN
+ P15             J10          MainTank     450          350          125          0            OPEN
+
+[PUMPS]
+;ID              Node1        Node2        Parameters
+ BoostPump       LakeSource   J10          HEAD PumpH1
+
+[CURVES]
+;ID              X-Value      Y-Value
+ PumpH1          0            80
+ PumpH1          50           72
+ PumpH1          100          54
+
+[PATTERNS]
+;ID              Multipliers
+ Pat1            0.55  0.50  0.65  1.15  1.40  1.25
+ Pat1            1.05  1.00  1.10  1.35  1.20  0.75
+
+[CONTROLS]
+ LINK BoostPump OPEN IF NODE MainTank BELOW 6.0
+ LINK BoostPump CLOSED IF NODE MainTank ABOVE 16.0
+
+[TIMES]
+ Duration             24:00
+ Hydraulic Timestep   1:00
+ Pattern Timestep     2:00
+ Report Timestep      1:00
+
+[OPTIONS]
+ Units                LPS
+ Headloss             H-W
+ Accuracy             0.001
+ Trials               40
+
+[END]

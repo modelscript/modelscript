@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="cell.aml" SchemaVersion="2.15">
+  <ExternalReference Path="AutomationMLBaseRoleClassLib.aml" Alias="BaseRoles" />
+  <InstanceHierarchy Name="MotorAssemblyCell">
+    <Version>2.0.0</Version>
+    <InternalElement Name="StatorHousing" ID="prod-stator-01">
+      <Attribute Name="massKg" AttributeDataType="xs:double" Unit="kg">
+        <Value>4.2</Value>
+      </Attribute>
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Product" />
+    </InternalElement>
+    <InternalElement Name="PressFitProcess" ID="proc-press-01">
+      <Attribute Name="cycleTimeSec" AttributeDataType="xs:double" Unit="s">
+        <Value>6.5</Value>
+      </Attribute>
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Process" />
+    </InternalElement>
+    <InternalElement Name="ServoPressStation" ID="res-press-01">
+      <Attribute Name="maxForceKN" AttributeDataType="xs:double" Unit="kN">
+        <Value>50.0</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>2.5</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>1.0</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="pressStart" ID="res-press-01-start" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="forceActual" ID="res-press-01-force" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="REAL" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+    <InternalElement Name="CellController" ID="res-plc-01">
+      <ExternalInterface Name="cmdPress" ID="res-plc-01-cmd" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="forceFeedback" ID="res-plc-01-fb" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="REAL" />
+      <InternalLink Name="PressTrigger" RefPartnerSideA="res-plc-01:cmdPress" RefPartnerSideB="res-press-01:pressStart" />
+      <InternalLink Name="ForceMonitor" RefPartnerSideA="res-press-01:forceActual" RefPartnerSideB="res-plc-01:forceFeedback" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+  </InstanceHierarchy>
+</CAEXFile>

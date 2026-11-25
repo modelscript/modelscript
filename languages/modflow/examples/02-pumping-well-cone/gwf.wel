@@ -1,0 +1,4 @@
+# Central Municipal Production Well (-1200 m3/day)
+BEGIN WEL6
+  1 5 5 -1200.0
+END WEL6

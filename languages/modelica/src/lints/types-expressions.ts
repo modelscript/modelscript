@@ -34,6 +34,7 @@ import {
   TYPE_REAL,
   TYPE_STRING,
   TYPE_UNKNOWN,
+  type ModelicaGrammarSymbols,
 } from "./helpers.js";
 
 /**
@@ -66,7 +67,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       }
       return `Type mismatch in binding or modification expression '${target.text}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Resolve the primitive base type of the enclosing component clause
       let expectedType: u16 = TYPE_UNKNOWN;
       for (const anc of db.ast.getAncestors(node)) {
@@ -158,7 +159,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 3002,
     message: (target) => `Type mismatch in binding or modification expression '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Skip modifications inside graphical/documentation annotations
       for (const anc of db.ast.getAncestors(node)) {
         const t = db.ast.getType(anc);
@@ -421,7 +422,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 3009,
     message: (target) => `Array index '${target.text}' has invalid type: expected Integer or Boolean.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Infer subscript expression type and ensure it is Integer, Boolean, or Enumeration
       const idxType = inferExprType(db, node, $);
       if (idxType != TYPE_UNKNOWN && idxType != TYPE_INTEGER && idxType != 2 /* Boolean */) {
@@ -440,7 +441,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 4003,
     message: (target) =>
       `Array shape mismatch: declared dimension does not match initializer element count in '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // 1. Find array_subscripts declared directly on declaration or enclosing component_clause
       const subNode = getDeclaredArraySubscripts(db, node, $);
       if (subNode == 0) return;
@@ -536,7 +537,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 3018,
     message: (target) => `Array element type mismatch in '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       let arrayArgs: u32 = 0;
       for (const args of db.ast.getDescendants(node, $.array_arguments)) {
         arrayArgs = args;
@@ -667,7 +668,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       }
       return `Type mismatch in equation ${eqText} of type ${lName} = ${rName}.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Extract LHS and RHS expression nodes around the '=' token
       let lhs = db.ast.getFirstChild(node);
       if (lhs == 0) return;
@@ -741,7 +742,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const vName = vIdx >= 0 && vIdx < typeNames.length ? typeNames[vIdx] : "Unknown";
       return `Type mismatch in assignment in ${target.text} of ${tName} := ${vName}`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Infer LHS target and RHS value types and verify assignment compatibility
       const target = db.ast.getChildByFieldId(node, "target");
       const value = db.ast.getChildByFieldId(node, "value");
@@ -769,7 +770,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5008,
     message: (node, idNode) =>
       `Trying to assign to constant component ${idNode && idNode.text ? idNode.text : node.text}.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Extract the root target identifier and check if its declaration has the `constant` prefix
       const target = db.ast.getChildByFieldId(node, "target");
       if (target == 0) return;
@@ -818,7 +819,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 5009,
     message: (node, idNode) =>
       `Trying to assign to input component ${idNode && idNode.text ? idNode.text : node.text}.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Verify the statement is inside a `function` and check if the target carries `input`
       const target = db.ast.getChildByFieldId(node, "target");
       if (target == 0) return;
@@ -870,7 +871,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const fText = fnName && fnName.text ? fnName.text : "inStream";
       return `Operand '${aText}' to operator '${fText}' is not a stream variable.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Match calls to `inStream(...)` or `actualStream(...)` and check the argument's `stream` prefix
       if (!db.ast.textEquals(node, "inStream") && !db.ast.textEquals(node, "actualStream")) {
         return;
@@ -946,7 +947,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const shapeStr = d1 && d2 ? `${tName}[${d1}, ${d2}]` : tName;
       return `Iterator ${vName}, has type ${shapeStr}, but expected a 1D array expression.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Inspect each `for_index` range for nested 2D array constructors
       if ($.for_index == 0) return;
       for (const forIdx of db.ast.getDescendants(node, $.for_index)) {
@@ -1030,7 +1031,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "warning",
     code: 3010,
     message: (target) => `Unit mismatch in equation '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Fast-path: skip unit inference if no component in the enclosing class declares a unit
       let classNode: u32 = getEnclosingClass(db, node, $);
       if (classNode == 0 || !hasUnitInClass(db, classNode, $)) return;
@@ -1074,7 +1075,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "warning",
     code: 3022,
     message: (target) => `Unit mismatch in component binding '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Retrieve declared unit on the component and compare against the binding expression's unit
       const compUnit = getComponentUnit(db, node, $);
       if (compUnit == null) return;
@@ -1168,7 +1169,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const dSz = dimSize ? String(dimSize) : "?";
       return `Subscript '${idxText}' for dimension ${dIdx} (size = ${dSz}) of ${arrName} is out of bounds.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if ($.array_subscripts == 0 || $.subscript == 0) return;
       if ($.if_equation != 0) {
         for (const anc of db.ast.getAncestors(node)) {
@@ -1318,7 +1319,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
       const uVal = upperNode && upperNode.text ? upperNode.text : "max";
       return `Contradictory bounds for parameter '${pName}': lower bound '${lVal}' exceeds upper bound '${uVal}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Must be parameter variability
       let isParam = false;
       for (const anc of db.ast.getAncestors(node)) {
@@ -1406,7 +1407,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     code: 3023,
     message: (target, opNode) =>
       `Comparing Real expressions in '${target.text}' with '${opNode ? opNode.text : "=="}' outside a function is discouraged per Modelica specification §3.5.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       let opTok: u32 = 0;
       let left: u32 = db.ast.getChildByFieldId(node, "left");
       let right: u32 = db.ast.getChildByFieldId(node, "right");
@@ -1476,7 +1477,7 @@ export const modelicaTypeLints: Record<string, CompilerLint> = {
     severity: "warning",
     code: 5051,
     message: (target) => `Argument '${target.text}' of 'der(...)' must have type Real.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (!db.ast.startsWith(node, "der")) return;
       let fc = db.ast.getFirstChild(node);
       while (fc != 0 && db.ast.getFirstChild(fc) != 0) {

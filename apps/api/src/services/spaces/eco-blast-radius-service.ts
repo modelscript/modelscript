@@ -112,7 +112,9 @@ export function computeEcoBlastRadius(opts: {
           }
         }
       }
-    } catch {}
+    } catch {
+      // Fall back to default blast-radius entries if repository scan fails
+    }
   }
 
   // Fallbacks if repository is empty or has no cross-references yet

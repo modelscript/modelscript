@@ -1,0 +1,520 @@
+[
+  {
+    "name": "Type1",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type1",
+    "exports": [
+      "area",
+      "cp",
+      "frTauAlpha",
+      "frUl",
+      "frUl2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 1 — Flat-Plate Solar Collector",
+      "category": "Solar Thermal",
+      "domain": "thermal",
+      "description": "Hottel-Whillier-Bliss quadratic efficiency flat-plate solar thermal collector.",
+      "provenance": "Duffie & Beckman, Solar Engineering of Thermal Processes (4th ed.); TRNSYS Mathematical Reference",
+      "aliases": [
+        "TYPE1",
+        "TYPE 1",
+        "SOLAR_COLLECTOR",
+        "COLLECTOR"
+      ],
+      "parameters": [
+        {
+          "key": "area",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "m2",
+          "description": "Collector aperture area"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 4.19,
+          "unit": "kJ/(kg.K)",
+          "description": "Fluid specific heat capacity"
+        },
+        {
+          "key": "frTauAlpha",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "-",
+          "description": "Intercept efficiency FR*(tau*alpha)_n"
+        },
+        {
+          "key": "frUl",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kJ/(h.m2.K)",
+          "description": "Linear thermal loss coefficient FR*UL"
+        },
+        {
+          "key": "frUl2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kJ/(h.m2.K2)",
+          "description": "Quadratic thermal loss coefficient"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 1,
+      "typeNumber": 1,
+      "numInputs": 4,
+      "numOutputs": 3,
+      "stateBreaking": false
+    }
+  },
+  {
+    "name": "Type2",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type2",
+    "exports": [
+      "nStuck",
+      "tHighLimit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 2 — Differential Controller",
+      "category": "Controllers",
+      "domain": "thermal",
+      "description": "On/off differential temperature controller with deadband hysteresis and high-limit cutout.",
+      "provenance": "TRNSYS Mathematical Reference — Type 2 Differential Controller",
+      "aliases": [
+        "TYPE2",
+        "TYPE 2",
+        "CONTROLLER",
+        "DIFF_CONTROLLER"
+      ],
+      "parameters": [
+        {
+          "key": "nStuck",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "-",
+          "description": "Maximum oscillations per timestep before locking"
+        },
+        {
+          "key": "tHighLimit",
+          "type": "real",
+          "defaultValue": 95,
+          "unit": "C",
+          "description": "High-temperature safety cutout"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 2,
+      "typeNumber": 2,
+      "numInputs": 6,
+      "numOutputs": 1,
+      "stateBreaking": true
+    }
+  },
+  {
+    "name": "Type3",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type3",
+    "exports": [
+      "mDotMax",
+      "cp",
+      "pMax",
+      "fPar"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 3 — Circulation Pump",
+      "category": "Hydronics",
+      "domain": "thermal",
+      "description": "Variable/constant-speed hydronic circulation pump with parasitic heat gain.",
+      "provenance": "TRNSYS Mathematical Reference — Type 3 Pump",
+      "aliases": [
+        "TYPE3",
+        "TYPE 3",
+        "PUMP"
+      ],
+      "parameters": [
+        {
+          "key": "mDotMax",
+          "type": "real",
+          "defaultValue": 200,
+          "unit": "kg/h",
+          "description": "Maximum mass flow rate"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 4.19,
+          "unit": "kJ/(kg.K)",
+          "description": "Fluid specific heat capacity"
+        },
+        {
+          "key": "pMax",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "kJ/h",
+          "description": "Maximum pump shaft power"
+        },
+        {
+          "key": "fPar",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "-",
+          "description": "Fraction of pump power converted to fluid heat"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 3,
+      "typeNumber": 3,
+      "numInputs": 3,
+      "numOutputs": 3,
+      "stateBreaking": false
+    }
+  },
+  {
+    "name": "Type4",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type4",
+    "exports": [
+      "volume",
+      "cp",
+      "rho",
+      "uLoss",
+      "height",
+      "nNodes"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 4 — Stratified Storage Tank",
+      "category": "Thermal Storage",
+      "domain": "thermal",
+      "description": "Multi-node thermally stratified fluid storage tank with ambient UA heat loss.",
+      "provenance": "Klein et al. (1975); Duffie & Beckman; TRNSYS Mathematical Reference — Type 4 Tank",
+      "aliases": [
+        "TYPE4",
+        "TYPE 4",
+        "STORAGE_TANK",
+        "TANK"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "m3",
+          "description": "Tank fluid volume"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 4.19,
+          "unit": "kJ/(kg.K)",
+          "description": "Fluid specific heat capacity"
+        },
+        {
+          "key": "rho",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "kg/m3",
+          "description": "Fluid density"
+        },
+        {
+          "key": "uLoss",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "kJ/(h.m2.K)",
+          "description": "Overall tank heat loss coefficient"
+        },
+        {
+          "key": "height",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "m",
+          "description": "Tank height"
+        },
+        {
+          "key": "nNodes",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "-",
+          "description": "Number of stratified thermal nodes (1..6)"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 4,
+      "typeNumber": 4,
+      "numInputs": 5,
+      "numOutputs": 6,
+      "stateBreaking": true
+    }
+  },
+  {
+    "name": "Type14",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type14",
+    "exports": [
+      "t0",
+      "v0",
+      "t1",
+      "v1",
+      "t2",
+      "v2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 14 — Time-Dependent Forcing Function",
+      "category": "Utility & Weather",
+      "domain": "thermal",
+      "description": "Periodic piecewise-linear time-dependent forcing function.",
+      "provenance": "TRNSYS Mathematical Reference — Type 14 Forcing Function",
+      "aliases": [
+        "TYPE14",
+        "TYPE 14",
+        "FORCING_FUNCTION",
+        "SCHEDULE"
+      ],
+      "parameters": [
+        {
+          "key": "t0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Point 0 time"
+        },
+        {
+          "key": "v0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Point 0 value"
+        },
+        {
+          "key": "t1",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "h",
+          "description": "Point 1 time"
+        },
+        {
+          "key": "v1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Point 1 value"
+        },
+        {
+          "key": "t2",
+          "type": "real",
+          "defaultValue": 24,
+          "unit": "h",
+          "description": "Point 2 time"
+        },
+        {
+          "key": "v2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Point 2 value"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 14,
+      "typeNumber": 14,
+      "numInputs": 0,
+      "numOutputs": 2,
+      "stateBreaking": true
+    }
+  },
+  {
+    "name": "Type15",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type15",
+    "exports": [
+      "tAmbMean",
+      "tAmbAmp",
+      "iPeak",
+      "sunriseHr",
+      "sunsetHr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 15 — Weather Data Processor",
+      "category": "Utility & Weather",
+      "domain": "thermal",
+      "description": "Synthetic / TMY ambient temperature and solar irradiance weather processor.",
+      "provenance": "TRNSYS Mathematical Reference — Type 15 Weather Data Processor",
+      "aliases": [
+        "TYPE15",
+        "TYPE 15",
+        "WEATHER",
+        "TMY"
+      ],
+      "parameters": [
+        {
+          "key": "tAmbMean",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "C",
+          "description": "Mean ambient temperature"
+        },
+        {
+          "key": "tAmbAmp",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "C",
+          "description": "Diurnal ambient temperature amplitude"
+        },
+        {
+          "key": "iPeak",
+          "type": "real",
+          "defaultValue": 2880,
+          "unit": "kJ/(h.m2)",
+          "description": "Peak solar irradiance (800 W/m2 = 2880 kJ/h.m2)"
+        },
+        {
+          "key": "sunriseHr",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "h",
+          "description": "Sunrise hour of day"
+        },
+        {
+          "key": "sunsetHr",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "h",
+          "description": "Sunset hour of day"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 15,
+      "typeNumber": 15,
+      "numInputs": 0,
+      "numOutputs": 4,
+      "stateBreaking": true
+    }
+  },
+  {
+    "name": "Type25",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type25",
+    "exports": [
+      "dtPrint",
+      "tStart",
+      "tStop",
+      "logicalUnit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 25 — Simulation Printer",
+      "category": "Utility & Weather",
+      "domain": "thermal",
+      "description": "Periodic tabular output printer recording connected unit outputs.",
+      "provenance": "TRNSYS Mathematical Reference — Type 25 Printer",
+      "aliases": [
+        "TYPE25",
+        "TYPE 25",
+        "PRINTER"
+      ],
+      "parameters": [
+        {
+          "key": "dtPrint",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "h",
+          "description": "Printing interval"
+        },
+        {
+          "key": "tStart",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "h",
+          "description": "Start time for printing"
+        },
+        {
+          "key": "tStop",
+          "type": "real",
+          "defaultValue": 24,
+          "unit": "h",
+          "description": "Stop time for printing"
+        },
+        {
+          "key": "logicalUnit",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "-",
+          "description": "Logical output file unit"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 25,
+      "typeNumber": 25,
+      "numInputs": 4,
+      "numOutputs": 0,
+      "stateBreaking": true
+    }
+  },
+  {
+    "name": "Type56",
+    "kind": "Class",
+    "namePath": "TRNSYS.Type56",
+    "exports": [
+      "capacitance",
+      "uaEnv",
+      "solarAperture",
+      "tInit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Type 56 — Multi-Zone Building",
+      "category": "Buildings",
+      "domain": "thermal",
+      "description": "Lumped thermal capacitance building zone ODE with envelope UA loss, solar gain, and HVAC input.",
+      "provenance": "TRNSYS 18 Volume 5 — Multizone Building Modeling with Type56",
+      "aliases": [
+        "TYPE56",
+        "TYPE 56",
+        "BUILDING",
+        "MULTIZONE_BUILDING"
+      ],
+      "parameters": [
+        {
+          "key": "capacitance",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "kJ/K",
+          "description": "Effective zone thermal capacitance"
+        },
+        {
+          "key": "uaEnv",
+          "type": "real",
+          "defaultValue": 250,
+          "unit": "kJ/(h.K)",
+          "description": "Envelope overall conductance UA"
+        },
+        {
+          "key": "solarAperture",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "m2",
+          "description": "Effective glazed solar aperture area"
+        },
+        {
+          "key": "tInit",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "C",
+          "description": "Initial zone air temperature"
+        }
+      ],
+      "wasmKernel": "trnsysModelStep",
+      "archetypeId": 56,
+      "typeNumber": 56,
+      "numInputs": 4,
+      "numOutputs": 3,
+      "stateBreaking": true
+    }
+  }
+]

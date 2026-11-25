@@ -4,13 +4,20 @@ import { Connection, TextDocuments, TextEdit } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
 
+import type { Tree } from "../utils/cst-facade.js";
+
 export { formatModelicaTree, restructureModelicaTree, type ModelicaFormatOptions } from "@modelscript/modelica";
 export { formatStepDocument } from "@modelscript/step";
+
+type FormattingTreeLike = Tree & {
+  rootPtr?: number;
+  rootNode: Tree["rootNode"] & { id?: number; ptr?: number };
+};
 
 export function registerFormattingProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  getDocumentTree: (uri: string) => any,
+  getDocumentTree: (uri: string) => Tree | { tree?: Tree | null } | null | undefined,
   isParserReady: () => boolean,
 ) {
   connection.onDocumentFormatting(async (params): Promise<TextEdit[]> => {
@@ -36,7 +43,7 @@ export function registerFormattingProvider(
     if (facade && typeof facade.formatDocument === "function") {
       try {
         const cached = getDocumentTree(params.textDocument.uri);
-        const tree = cached?.tree ?? cached;
+        const tree = (cached && "tree" in cached ? cached.tree : cached) as FormattingTreeLike | null | undefined;
         const rootPtr = tree?.rootNode?.id ?? tree?.rootNode?.ptr ?? tree?.rootPtr ?? 0;
         if (rootPtr) {
           facade.loadSource?.(document.getText());

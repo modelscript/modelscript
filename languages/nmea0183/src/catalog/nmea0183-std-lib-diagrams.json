@@ -1,0 +1,259 @@
+[
+  {
+    "namePath": "nmea0183.std.GGA",
+    "aliases": [
+      "GPGGA",
+      "GNGGA",
+      "GLGGA",
+      "GAGGA"
+    ],
+    "label": "Global Positioning System Fix Data (GGA)",
+    "category": "GNSS Position & Fix",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#132a46\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GNSS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--GGA</text></svg>",
+    "ports": [
+      {
+        "name": "nmea_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "geodetic",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "quality_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "nmea0183.std.RMC",
+    "aliases": [
+      "GPRMC",
+      "GNRMC",
+      "GLRMC",
+      "GARMC"
+    ],
+    "label": "Recommended Minimum Specific GNSS Data (RMC)",
+    "category": "GNSS Position & Fix",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#132a46\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GNSS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--RMC</text></svg>",
+    "ports": [
+      {
+        "name": "nmea_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "geodetic",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "quality_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "nmea0183.std.GSA",
+    "aliases": [
+      "GPGSA",
+      "GNGSA",
+      "GLGSA",
+      "GAGSA"
+    ],
+    "label": "GNSS DOP and Active Satellites (GSA)",
+    "category": "GNSS Constellation & DOP",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#281e47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--GSA</text></svg>",
+    "ports": [
+      {
+        "name": "nmea_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sat_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "nmea0183.std.GSV",
+    "aliases": [
+      "GPGSV",
+      "GLGSV",
+      "GAGSV",
+      "GNGSV"
+    ],
+    "label": "GNSS Satellites in View (GSV)",
+    "category": "GNSS Constellation & DOP",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#281e47\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">SAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--GSV</text></svg>",
+    "ports": [
+      {
+        "name": "nmea_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sat_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "nmea0183.std.VTG",
+    "aliases": [
+      "GPVTG",
+      "GNVTG",
+      "GLVTG",
+      "GAVTG"
+    ],
+    "label": "Course Over Ground and Ground Speed (VTG)",
+    "category": "Navigation & Kinematics",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#14382c\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">NAV</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--VTG</text></svg>",
+    "ports": [
+      {
+        "name": "nmea_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "vel_out",
+        "kind": "kinematics",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "nmea0183.std.HDG",
+    "aliases": [
+      "HCHDG",
+      "IIHDG",
+      "HEHDG"
+    ],
+    "label": "Heading, Deviation and Variation (HDG)",
+    "category": "Navigation & Kinematics",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#14382c\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">NAV</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--HDG</text></svg>",
+    "ports": [
+      {
+        "name": "nmea_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "vel_out",
+        "kind": "kinematics",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "nmea0183.std.DBT",
+    "aliases": [
+      "SDDBT",
+      "IIDBT"
+    ],
+    "label": "Depth Below Transducer (DBT)",
+    "category": "Marine Sensors",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3c2614\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">SENS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--DBT</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "meas_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "nmea0183.std.MWV",
+    "aliases": [
+      "WIMWV",
+      "IIMWV"
+    ],
+    "label": "Wind Speed and Angle (MWV)",
+    "category": "Marine Sensors",
+    "domain": "marine-navigation",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3c2614\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">SENS</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">$--MWV</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "telemetry",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "meas_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmSubstat" loc_name="North_220_Sub"/>
+  <DataObject class="ElmSubstat" loc_name="South_220_Sub"/>
+  <DataObject class="ElmTerm" loc_name="B1_North"><uknom>220.0</uknom><fnom>50.0</fnom><substat>North_220_Sub</substat></DataObject>
+  <DataObject class="ElmTerm" loc_name="B2_West"><uknom>220.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="B3_East"><uknom>220.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="B4_Center"><uknom>220.0</uknom><fnom>50.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="B5_SouthW"><uknom>220.0</uknom><fnom>50.0</fnom><substat>South_220_Sub</substat></DataObject>
+  <DataObject class="ElmTerm" loc_name="B6_SouthE"><uknom>220.0</uknom><fnom>50.0</fnom><substat>South_220_Sub</substat></DataObject>
+  <DataObject class="TypLne" loc_name="OHL_220_AlSt">
+    <uline>220.0</uline><r1>0.065</r1><x1>0.310</x1><b1>3.45</b1><snom>320.0</snom><inom>0.84</inom>
+  </DataObject>
+  <DataObject class="ElmLne" loc_name="L1_2"><bus1>B1_North</bus1><bus2>B2_West</bus2><dline>45.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="L1_3"><bus1>B1_North</bus1><bus2>B3_East</bus2><dline>52.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="L2_4"><bus1>B2_West</bus1><bus2>B4_Center</bus2><dline>38.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="L3_4"><bus1>B3_East</bus1><bus2>B4_Center</bus2><dline>41.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="L2_5"><bus1>B2_West</bus1><bus2>B5_SouthW</bus2><dline>60.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="L3_6"><bus1>B3_East</bus1><bus2>B6_SouthE</bus2><dline>58.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="L4_5"><bus1>B4_Center</bus1><bus2>B5_SouthW</bus2><dline>35.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="L4_6"><bus1>B4_Center</bus1><bus2>B6_SouthE</bus2><dline>33.0</dline><typ_id>OHL_220_AlSt</typ_id></DataObject>
+  <DataObject class="StaSwitch" loc_name="CB_SouthTie">
+    <bus1>B5_SouthW</bus1><bus2>B6_SouthE</bus2><on_off>1</on_off><isBreaker>1</isBreaker>
+  </DataObject>
+  <DataObject class="TypSym" loc_name="Thermal_300MVA">
+    <snom>300.0</snom><unom>220.0</unom><cosn>0.85</cosn><H>4.8</H>
+  </DataObject>
+  <DataObject class="ElmSym" loc_name="Gen_North"><bus1>B1_North</bus1><pgini>220.0</pgini><qgini>45.0</qgini><usetp>1.03</usetp><typ_id>Thermal_300MVA</typ_id></DataObject>
+  <DataObject class="ElmSym" loc_name="Gen_West"><bus1>B2_West</bus1><pgini>160.0</pgini><qgini>30.0</qgini><usetp>1.02</usetp><typ_id>Thermal_300MVA</typ_id></DataObject>
+  <DataObject class="ElmLod" loc_name="Load_Center"><bus1>B4_Center</bus1><plini>140.0</plini><qlini>35.0</qlini></DataObject>
+  <DataObject class="ElmLod" loc_name="Load_SouthW"><bus1>B5_SouthW</bus1><plini>125.0</plini><qlini>30.0</qlini></DataObject>
+  <DataObject class="ElmLod" loc_name="Load_SouthE"><bus1>B6_SouthE</bus1><plini>110.0</plini><qlini>28.0</qlini></DataObject>
+</PowerFactory>

@@ -1,0 +1,11 @@
+{
+  "id": "cif-04-dynamic-shift-reg",
+  "lang": "cif",
+  "subFormats": ["cif"],
+  "difficulty": 4,
+  "title": "2-Phase Dynamic Shift Register Stage",
+  "description": "Hierarchical CIF 2.0 2-phase non-overlapping clock dynamic shift register composing reusable inverter and pass-transistor subcells via C symbol calls and translations.",
+  "category": "Hierarchical Sequential Layout",
+  "tags": ["cif", "shift-register", "dynamic-logic", "hierarchy"],
+  "activeFile": "shift_reg.cif"
+}

@@ -6,15 +6,16 @@ import {
   DAEBuilder,
   ExprKind,
   inferArenaExprVarType,
-  type QueryDB,
-  type SymbolEntry,
-  type SymbolId,
   UnaryOp,
   Variability,
   VarType,
+  type QueryDB,
+  type SymbolEntry,
+  type SymbolId,
 } from "@modelscript/runtime";
 import type { SyntaxNode } from "../../../src-gen/bindings.js";
-import { getExprArrayShape, getFlatteningState, getNamedArrayShape } from "../support/state.js";
+import { getExprArrayShape, getFlatteningState, getNamedArrayShape, type FlatteningState } from "../support/state.js";
+import type { FlattenerHostLike } from "../types.js";
 import { exprReferencesRuntimeParameter } from "./binary-ops.js";
 import {
   beginExternalCstEval,
@@ -33,6 +34,70 @@ import {
   unwrapParenExprCst,
 } from "./cst-utils.js";
 import { SCALAR_VECTORIZABLE_FUNCTIONS } from "./functions.js";
+
+export type EvalValue = number | boolean | string | EvalValue[];
+
+type NameResolver = (name: string) => SymbolEntry | SymbolEntry[] | null | undefined;
+type SimpleNameResolver = (name: string) => SymbolEntry | null | undefined;
+
+interface RawDimDescriptor {
+  kind?: string | undefined;
+  value?: unknown;
+  text?: string | undefined;
+  cstBytes?: readonly [number, number] | undefined;
+}
+type RawDimItem = number | RawDimDescriptor | null | undefined;
+
+interface BindingExprLike {
+  text?: string | undefined;
+  cstBytes?: readonly [number, number] | undefined;
+}
+
+interface ComponentInstEvalLike {
+  modification?:
+    | {
+        bindingExpression?: BindingExprLike | undefined;
+        value?: BindingExprLike | undefined;
+      }
+    | undefined;
+  bindingExpression?: BindingExprLike | undefined;
+}
+
+interface EffectiveModEvalLike {
+  bindingExpression?: BindingExprLike | undefined;
+}
+
+interface OverconstrainedGraphLike {
+  selectedRoots?: Set<string> | undefined;
+  roots?: Set<string> | undefined;
+  rootedMap?: Map<string, boolean> | undefined;
+}
+
+type EvalFlatteningState = FlatteningState & {
+  realLoopVars?: Set<string> | undefined;
+  _exprDimsByNameCache?: Map<string, number[] | null> | undefined;
+};
+
+type EvalDaeExt = DAEBuilder & {
+  builtinFunctions?: Map<string, DAEBuilder> | undefined;
+  parentDae?: EvalDaeExt | undefined;
+  _recordConstVarIndices?: Set<number> | undefined;
+  pendingModValues?: Map<string, number | boolean> | undefined;
+  pendingModExprs?: Map<string, string> | undefined;
+  enclosingScopeId?: SymbolId | undefined;
+  symId?: SymbolId | undefined;
+  namedArrayTypes?: Map<string, number> | undefined;
+};
+
+type VisitedExprSet = Set<number> & {
+  _memo?: Map<number, EvalValue | null> | undefined;
+  _cycle?: boolean | undefined;
+};
+
+interface SymbolMetaLike {
+  classKind?: string | undefined;
+  variability?: string | undefined;
+}
 
 /**
  * Determines whether a raw expression string represents a balanced top-level
@@ -147,8 +212,8 @@ export function parseArrayLiteralElements(text: string): string[] {
  */
 export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
   const name = dae.interner.resolve(symId);
-  const state = getFlatteningState(dae);
-  if ((state as any).realLoopVars?.has(name)) return true;
+  const state = getFlatteningState(dae) as EvalFlatteningState;
+  if (state.realLoopVars?.has(name)) return true;
   if (state.activeLoopVars?.has(name)) return false;
   if (name === "time") return true;
   // 1. Direct variable lookup (scalar or array)
@@ -194,17 +259,16 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
           const segs = fieldRest.split(".");
           const currentClassId: SymbolId | undefined = state.flattener?.currentClassId ?? state.currentClassId;
           let currentScopeId: SymbolId | undefined = currentClassId;
-          let syms = currentScopeId
-            ? (
-                (activeDb.query("resolveName", currentScopeId) ??
-                  activeDb.query("resolveSimpleName", currentScopeId)) as any
-              )?.(cType)
+          const resolver = currentScopeId
+            ? (activeDb.query<NameResolver | null>("resolveName", currentScopeId) ??
+              activeDb.query<NameResolver | null>("resolveSimpleName", currentScopeId))
             : null;
-          let targetSym = syms ? (Array.isArray(syms) ? syms[0] : syms) : null;
+          let syms = resolver ? resolver(cType) : null;
+          let targetSym: SymbolEntry | null = syms ? (Array.isArray(syms) ? (syms[0] ?? null) : syms) : null;
           if (!targetSym) {
             const leafType = cType.includes(".") ? cType.split(".").pop()! : cType;
             const matches = activeDb.byName(leafType);
-            targetSym = matches.find((s) => s.kind === "Class" || s.kind === "Record") ?? matches[0];
+            targetSym = matches.find((s) => s.kind === "Class" || s.kind === "Record") ?? matches[0] ?? null;
           }
 
           if (targetSym) {
@@ -274,7 +338,8 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
     let syms: SymbolEntry[] = [];
     if (currentClassId && !name.includes(".")) {
       const resolver =
-        activeDb.query<any>("resolveSimpleName", currentClassId) ?? activeDb.query<any>("resolveName", currentClassId);
+        activeDb.query<SimpleNameResolver | null>("resolveSimpleName", currentClassId) ??
+        activeDb.query<SimpleNameResolver | null>("resolveName", currentClassId);
       const res = resolver?.(cleanLastPart);
       if (res) {
         syms = [res];
@@ -300,7 +365,8 @@ export function isRealNameExpr(symId: number, dae: DAEBuilder): boolean {
           const pcType = activeDb.query<SymbolEntry | null>("resolvedType", pc.id);
           if (pcType) {
             const resolver =
-              activeDb.query<any>("resolveSimpleName", pcType.id) ?? activeDb.query<any>("resolveName", pcType.id);
+              activeDb.query<SimpleNameResolver | null>("resolveSimpleName", pcType.id) ??
+              activeDb.query<SimpleNameResolver | null>("resolveName", pcType.id);
             const res = resolver?.(cleanLastPart);
             if (res) syms.push(res);
           }
@@ -499,11 +565,12 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
     }
     if (fnName === "floor" || fnName === "ceil" || fnName === "trunc") return true;
     if (fnName === "integer") return false;
+    const daeExt = dae as EvalDaeExt;
     const fnDae =
       dae.functions.get(fnName) ??
-      (dae as any).builtinFunctions?.get(fnName) ??
-      (dae as any).parentDae?.functions?.get(fnName) ??
-      (dae as any).parentDae?.builtinFunctions?.get(fnName);
+      daeExt.builtinFunctions?.get(fnName) ??
+      daeExt.parentDae?.functions?.get(fnName) ??
+      daeExt.parentDae?.builtinFunctions?.get(fnName);
     if (fnDae) {
       for (let i = 0; i < fnDae.varCount; i++) {
         if (fnDae.getVarCausality(i) === Causality.Output) {
@@ -521,7 +588,7 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
     return isRealExpr(elem0, dae);
   }
   if (kind === ExprKind.Comprehension) {
-    const state = getFlatteningState(dae);
+    const state = getFlatteningState(dae) as EvalFlatteningState;
     const iterCount = dae.getExprRight(exprId);
     const addedVars: string[] = [];
     const addedRealVars: string[] = [];
@@ -534,8 +601,8 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
         state.activeLoopVars.add(iterVarName);
         addedVars.push(iterVarName);
         if (isRealExpr(rangeId, dae)) {
-          if (!(state as any).realLoopVars) (state as any).realLoopVars = new Set<string>();
-          (state as any).realLoopVars.add(iterVarName);
+          if (!state.realLoopVars) state.realLoopVars = new Set<string>();
+          state.realLoopVars.add(iterVarName);
           addedRealVars.push(iterVarName);
         }
       }
@@ -544,7 +611,7 @@ export function isRealExpr(exprId: number, dae: DAEBuilder): boolean {
       return isRealExpr(dae.getExprLeft(exprId), dae);
     } finally {
       for (const v of addedVars) state.activeLoopVars?.delete(v);
-      for (const v of addedRealVars) (state as any).realLoopVars?.delete(v);
+      for (const v of addedRealVars) state.realLoopVars?.delete(v);
     }
   }
   return false;
@@ -873,13 +940,14 @@ export function castToRealExpr(exprId: number, dae: DAEBuilder): number {
  * @param rawDims - Raw dimension descriptors returned by `db.query("arrayDimensions", ...)`.
  * @returns Array of positive integer dimension sizes, or `null` if not statically resolved.
  */
-function normalizeDims(rawDims: any[] | null | undefined): number[] | null {
+function normalizeDims(rawDims: readonly RawDimItem[] | null | undefined): number[] | null {
   if (!rawDims || rawDims.length === 0) return null;
   const res: number[] = [];
   for (const d of rawDims) {
     if (typeof d === "number" && d > 0) res.push(d);
-    else if (d?.kind === "literal" && typeof d.value === "number" && d.value > 0) res.push(d.value);
-    else if (typeof d?.value === "number" && d.value > 0) res.push(d.value);
+    else if (d && typeof d === "object" && d.kind === "literal" && typeof d.value === "number" && d.value > 0)
+      res.push(d.value);
+    else if (d && typeof d === "object" && typeof d.value === "number" && d.value > 0) res.push(d.value);
     else return null;
   }
   return res.length > 0 ? res : null;
@@ -918,11 +986,18 @@ function normalizeDims(rawDims: any[] | null | undefined): number[] | null {
  * @param flattener - Optional flattener instance for scope context.
  * @returns Array of dimension sizes `[d1, d2, ...]`, or `null` if scalar/unknown.
  */
-export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener?: any): number[] | null {
+export function getExprDims(
+  exprId: number,
+  dae: DAEBuilder,
+  db?: QueryDB | null,
+  flattener?: FlattenerHostLike | null,
+): number[] | null {
   if (exprId < 0) return null;
-  const state = getFlatteningState(dae);
+  const state = getFlatteningState(dae) as EvalFlatteningState;
   db = db ?? state.db;
   flattener = flattener ?? state.flattener;
+  const activeDb = db;
+  const activeFlattener = flattener;
   // Fast path: check if an explicit array shape was already recorded for this arena node
   const storedShape = getExprArrayShape(dae, exprId);
   if (storedShape && storedShape.length > 0) return storedShape;
@@ -932,7 +1007,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
   if (kind === ExprKind.Name) {
     const vName = dae.interner.resolve(dae.getExprData1(exprId));
     if (vName) {
-      const flat = flattener ?? state.flattener;
+      const flat = activeFlattener ?? state.flattener;
       const leafVarName = vName.includes(".") ? vName.split(".").pop()! : vName;
       // Active for-loop iterator variables are always scalar
       if (state.activeLoopVars?.has(vName) || state.activeLoopVars?.has(leafVarName)) {
@@ -980,13 +1055,13 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         if (maxDims.length > 0 && maxDims.every((d) => d > 0)) return maxDims;
       }
       // 1d. Fallback to Salsa symbol table queries (cached per scope + variable name)
-      if (db) {
+      if (activeDb) {
         const currentScopeId =
           state.currentClassId ?? state.flattener?.currentClassId ?? state.flattener?.currentRootClassId;
-        let dimsCache = (state as any)._exprDimsByNameCache as Map<string, number[] | null> | undefined;
+        let dimsCache = state._exprDimsByNameCache;
         if (!dimsCache) {
           dimsCache = new Map();
-          (state as any)._exprDimsByNameCache = dimsCache;
+          state._exprDimsByNameCache = dimsCache;
         }
         const cacheKey = `${currentScopeId ?? 0}:${vName}`;
         if (dimsCache.has(cacheKey)) {
@@ -996,14 +1071,15 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
           const hasDot = vName.includes(".");
           const simpleName = hasDot ? vName.split(".").pop()! : vName;
           const cleanVName = stripArraySubscripts(vName);
-          let sym: any = null;
+          let sym: SymbolEntry | null = null;
           if (currentScopeId) {
-            const resolver = ((db as any).query("resolveName", currentScopeId) ??
-              (db as any).query("resolveSimpleName", currentScopeId)) as any;
+            const resolver =
+              activeDb.query<SimpleNameResolver | null>("resolveName", currentScopeId) ??
+              activeDb.query<SimpleNameResolver | null>("resolveSimpleName", currentScopeId);
             const res = resolver?.(vName) ?? resolver?.(cleanVName) ?? (!hasDot ? resolver?.(simpleName) : null);
             if (res) sym = res;
           }
-          const syms = sym ? [sym] : db.byName(simpleName);
+          const syms = sym ? [sym] : activeDb.byName(simpleName);
           const parentSeg = hasDot ? cleanVName.slice(0, cleanVName.lastIndexOf(".")).split(".").pop()! : null;
           for (const s of syms) {
             if (s.kind === "Component") {
@@ -1011,23 +1087,23 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                 if (!hasDot) {
                   if (currentScopeId && s.parentId !== currentScopeId && s.parentId !== null) continue;
                 } else {
-                  const pSym = s.parentId ? db.symbol(s.parentId) : null;
+                  const pSym = s.parentId ? activeDb.symbol(s.parentId) : null;
                   if (!pSym || pSym.name !== parentSeg) continue;
                 }
               }
-              const fullName = db.query("symbolFullName", s.id) ?? s.name;
+              const fullName = activeDb.query<string | null>("symbolFullName", s.id) ?? s.name;
               const matchesScope = !currentScopeId || s === sym || s.parentId === currentScopeId;
               if (s === sym || fullName === vName || (s.name === simpleName && matchesScope)) {
-                const rawDims = db.query("arrayDimensions", s.id);
+                const rawDims = activeDb.query<RawDimItem[] | null>("arrayDimensions", s.id);
                 let dims = normalizeDims(rawDims);
                 if (!dims) {
                   // Also check if the component's type alias itself carries array dimensions
-                  const typeSpec = db.query("typeSpecifier", s.id);
+                  const typeSpec = activeDb.query<string | null>("typeSpecifier", s.id);
                   if (typeSpec) {
-                    const typeMatches = db.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
+                    const typeMatches = activeDb.byName(typeSpec.includes(".") ? typeSpec.split(".").pop()! : typeSpec);
                     for (const tm of typeMatches) {
                       if (tm.kind === "Class") {
-                        const rawTDims = db.query("arrayDimensions", tm.id);
+                        const rawTDims = activeDb.query<RawDimItem[] | null>("arrayDimensions", tm.id);
                         const tDims = normalizeDims(rawTDims);
                         if (tDims) {
                           dims = tDims;
@@ -1060,13 +1136,13 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                   return dims;
                 }
               }
-            } else if (s.kind === "Class" || (s.metadata as any)?.classKind === "type") {
+            } else if (s.kind === "Class" || (s.metadata as SymbolMetaLike | undefined)?.classKind === "type") {
               // Enumeration type names used as range bounds (e.g. `size(EnumType)`) have 1D length = literal count
               if (hasDot && s !== sym) {
-                const pSym = s.parentId ? db.symbol(s.parentId) : null;
+                const pSym = s.parentId ? activeDb.symbol(s.parentId) : null;
                 if (!pSym || pSym.name !== parentSeg) continue;
               }
-              const literals = getSymbolEnumLiterals(db, s);
+              const literals = getSymbolEnumLiterals(activeDb, s);
               if (literals && literals.length > 0) {
                 return [literals.length];
               }
@@ -1400,11 +1476,11 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
     // (e.g. `output Real y[size(u, 1), n]` evaluated by substituting actual call-site argument shapes/values)
     if (db) {
       const cleanFnName = fnName.includes(".") ? fnName.split(".").pop()! : fnName;
-      let fnSyms = db.byName(cleanFnName).filter((s: any) => s.kind === "Function" || s.kind === "Class");
+      let fnSyms = db.byName(cleanFnName).filter((s) => s.kind === "Function" || s.kind === "Class");
       if (fnName.includes(".") && fnSyms.length > 1) {
         const normTarget = stripLeadingDot(fnName);
-        const qualifiedMatches = fnSyms.filter((s: any) => {
-          const fqn = String((db as QueryDB).query("symbolFullName", s.id) ?? s.name);
+        const qualifiedMatches = fnSyms.filter((s) => {
+          const fqn = String(db.query<string | null>("symbolFullName", s.id) ?? s.name);
           return fqn === normTarget || fqn.endsWith(`.${normTarget}`) || normTarget.endsWith(`.${fqn}`);
         });
         if (qualifiedMatches.length > 0) {
@@ -1414,15 +1490,15 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
       for (const fnSym of fnSyms) {
         const children = db.childrenOf(fnSym.id) || [];
         for (const c of children) {
-          if (c.kind === "Component" && (db as QueryDB).query("causality", c.id) === "output") {
-            const rawDims = (db as QueryDB).query<any>("arrayDimensions", c.id);
+          if (c.kind === "Component" && db.query<string | null>("causality", c.id) === "output") {
+            const rawDims = db.query<RawDimItem[] | null>("arrayDimensions", c.id);
             const dims = normalizeDims(rawDims);
             if (dims) {
               return dims;
             }
             if (rawDims && Array.isArray(rawDims)) {
               const inputs = children.filter(
-                (ch: any) => ch.kind === "Component" && (db as QueryDB).query("causality", ch.id) === "input",
+                (ch) => ch.kind === "Component" && db.query<string | null>("causality", ch.id) === "input",
               );
               const resolved: number[] = [];
               let allResolved = true;
@@ -1432,9 +1508,10 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                   resolved.push(norm[0]!);
                   continue;
                 }
-                const dimText = rd?.text?.trim();
+                const rdObj = rd && typeof rd === "object" ? rd : null;
+                const dimText = rdObj?.text?.trim();
                 if (dimText) {
-                  const inputIdx = inputs.findIndex((inp: any) => inp.name === dimText);
+                  const inputIdx = inputs.findIndex((inp) => inp.name === dimText);
                   if (inputIdx >= 0) {
                     const argExprId = inputIdx === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + inputIdx);
                     const evalVal = evalDaeExpr(argExprId, dae);
@@ -1513,7 +1590,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                         const arrName = unwrapParenExprCst(callArgs[0])?.text?.trim();
                         const dimIdx = callArgs[1] ? evalOutputDimNode(callArgs[1]) : 1;
                         if (arrName && dimIdx !== null && dimIdx >= 1) {
-                          const iIdx = inputs.findIndex((inp: any) => inp.name === arrName);
+                          const iIdx = inputs.findIndex((inp) => inp.name === arrName);
                           if (iIdx >= 0) {
                             const argDims = getArgDims(iIdx);
                             if (argDims && dimIdx <= argDims.length && argDims[dimIdx - 1]! > 0) {
@@ -1561,7 +1638,7 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                       }
                     }
                     if (node.type === "component_reference" || node.type === "identifier") {
-                      const iIdx = inputs.findIndex((inp: any) => inp.name === nText);
+                      const iIdx = inputs.findIndex((inp) => inp.name === nText);
                       if (iIdx >= 0) {
                         const v = getArgVal(iIdx);
                         if (v !== null) return v;
@@ -1570,8 +1647,9 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
                     return evaluateCSTNumber(node, undefined, c.parentId ?? fnSym.id, db, dae);
                   };
                   const dimCst =
-                    (rd?.cstBytes ? (db as any).cstNodeRange?.(rd.cstBytes[0], rd.cstBytes[1], c) : null) ??
-                    parseStandaloneExpressionCst(dimText);
+                    (rdObj?.cstBytes
+                      ? (db.cstNodeRange(rdObj.cstBytes[0], rdObj.cstBytes[1], c) as SyntaxNode | null)
+                      : null) ?? parseStandaloneExpressionCst(dimText);
                   const evalDim = dimCst
                     ? evalOutputDimNode(dimCst)
                     : evaluateCSTNumber(dimText, undefined, c.parentId ?? fnSym.id, db, dae);
@@ -1612,10 +1690,10 @@ export function getExprDims(exprId: number, dae: DAEBuilder, db?: any, flattener
         }
       } else if (db && fnName) {
         const cleanFnName = fnName.includes(".") ? fnName.split(".").pop()! : fnName;
-        const fnSym = db.byName(cleanFnName).find((s: any) => s.kind === "Function" || s.kind === "Class");
+        const fnSym = db.byName(cleanFnName).find((s) => s.kind === "Function" || s.kind === "Class");
         if (fnSym) {
           outCount = (db.childrenOf(fnSym.id) || []).filter(
-            (c: any) => c.kind === "Component" && (db as QueryDB).query("causality", c.id) === "output",
+            (c) => c.kind === "Component" && db.query<string | null>("causality", c.id) === "output",
           ).length;
         }
       }
@@ -1705,36 +1783,42 @@ export function evalDaeExpr(
   dae: DAEBuilder,
   visitedExprs?: Set<number>,
   visitedVars?: Set<number>,
-): any {
+): EvalValue | null {
   if (exprId < 0) return null;
   const isTopLevel = !visitedExprs;
-  if (!visitedExprs) visitedExprs = new Set<number>();
-  let memo = (visitedExprs as any)._memo as Map<number, any> | undefined;
+  const visited: VisitedExprSet = (visitedExprs ?? new Set<number>()) as VisitedExprSet;
+  let memo = visited._memo;
   if (!memo) {
-    memo = new Map<number, any>();
-    (visitedExprs as any)._memo = memo;
+    memo = new Map<number, EvalValue | null>();
+    visited._memo = memo;
   }
-  if (memo.has(exprId)) return memo.get(exprId);
-  if (visitedExprs.has(exprId)) {
-    (visitedExprs as any)._cycle = true;
+  if (memo.has(exprId)) return memo.get(exprId) ?? null;
+  if (visited.has(exprId)) {
+    visited._cycle = true;
     return null;
   }
   if (isTopLevel) beginExternalCstEval();
-  visitedExprs.add(exprId);
+  visited.add(exprId);
   try {
-    const res = evalDaeExprInner(exprId, dae, visitedExprs, visitedVars);
-    if (!(visitedExprs as any)._cycle) {
+    const res = evalDaeExprInner(exprId, dae, visited, visitedVars);
+    if (!visited._cycle) {
       memo.set(exprId, res);
     }
     return res;
   } finally {
-    visitedExprs.delete(exprId);
+    visited.delete(exprId);
     if (isTopLevel) endExternalCstEval();
   }
 }
 
-function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<number>, visitedVars?: Set<number>): any {
+function evalDaeExprInner(
+  exprId: number,
+  dae: DAEBuilder,
+  visitedExprs: Set<number>,
+  visitedVars?: Set<number>,
+): EvalValue | null {
   {
+    const daeExt = dae as EvalDaeExt;
     const kind = dae.getExprKind(exprId);
     switch (kind) {
       // ── Primitive scalar literals ──
@@ -1761,7 +1845,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
           visitedVars.add(varIdx);
           try {
             const v = dae.getVarVariability(varIdx);
-            const isRecConst = Boolean((dae as any)._recordConstVarIndices?.has(varIdx));
+            const isRecConst = Boolean(daeExt._recordConstVarIndices?.has(varIdx));
             // Only constants and parameters can be folded at compile time
             if (v === Variability.Constant || v === Variability.Parameter || isRecConst) {
               const bindingId = dae.getVarExpression(varIdx);
@@ -1790,7 +1874,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
           const baseIdx = dae.lookupVariable(baseName);
           if (baseIdx >= 0) {
             const v = dae.getVarVariability(baseIdx);
-            const isRecConst = Boolean((dae as any)._recordConstVarIndices?.has(baseIdx));
+            const isRecConst = Boolean(daeExt._recordConstVarIndices?.has(baseIdx));
             if (v === Variability.Constant || v === Variability.Parameter || isRecConst) {
               const bindingId = dae.getVarExpression(baseIdx);
               if (bindingId !== undefined && bindingId >= 0 && bindingId !== exprId) {
@@ -1800,7 +1884,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
                     .slice(name.indexOf("[") + 1, -1)
                     .split(",")
                     .map((s) => parseInt(s.trim(), 10));
-                  let cur: any = baseVal;
+                  let cur: EvalValue | null | undefined = baseVal;
                   for (const idx of subIndices) {
                     if (Array.isArray(cur) && idx >= 1 && idx <= cur.length) {
                       cur = cur[idx - 1];
@@ -1825,7 +1909,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         if (dae.hasArrayElements(name)) {
           const elemIndices = dae.getArrayElementIndices(name);
           if (elemIndices.length > 0) {
-            const elemVals: any[] = [];
+            const elemVals: EvalValue[] = [];
             for (const idx of elemIndices) {
               if (!visitedVars) visitedVars = new Set<number>();
               if (visitedVars.has(idx)) return null;
@@ -1834,7 +1918,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
                 const v = dae.getVarVariability(idx);
                 if (v !== Variability.Constant && v !== Variability.Parameter) return null;
                 const bId = dae.getVarExpression(idx);
-                let val: any = null;
+                let val: EvalValue | null = null;
                 if (bId !== undefined && bId >= 0) {
                   val = evalDaeExpr(bId, dae, visitedExprs, visitedVars);
                 } else {
@@ -1852,11 +1936,11 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
             }
             // Reshape flat element vector into nested tensor matching `arrShape` from innermost to outermost axis
             if (arrShape && arrShape.length > 1) {
-              let reshaped: any[] = elemVals;
+              let reshaped: EvalValue[] = elemVals;
               for (let d = arrShape.length - 1; d >= 1; d--) {
                 const dimLen = arrShape[d]!;
                 if (dimLen <= 0) break;
-                const next: any[] = [];
+                const next: EvalValue[] = [];
                 for (let i = 0; i < reshaped.length; i += dimLen) {
                   next.push(reshaped.slice(i, i + dimLen));
                 }
@@ -1870,36 +1954,36 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         // 3. Fallback to Salsa symbol table (`componentInstance` / `effectiveModification`)
         // for package constants or parameters not yet materialized in the local DAE arena
         {
-          const pendingVals = (dae as any).pendingModValues as Map<string, number | boolean> | undefined;
+          const pendingVals = daeExt.pendingModValues;
           if (pendingVals?.has(name)) {
             return pendingVals.get(name)!;
           }
           const flat = state.flattener;
           const db = state.db ?? flat?.db;
           const scopeIds = [
-            (dae as any).enclosingScopeId,
-            (flat as any)?.currentParentMods?.currentClassId,
-            (flat as any)?.currentParentMods?.ownerClassId,
+            daeExt.enclosingScopeId,
+            flat?.currentParentMods?.currentClassId,
+            flat?.currentParentMods?.ownerClassId,
             flat?.currentClassId,
             state.currentClassId,
-            (dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null,
+            daeExt.symId ? db?.symbol(daeExt.symId)?.parentId : null,
           ];
-          const scopeId = scopeIds.find((id) => id != null) ?? null;
+          const scopeId = scopeIds.find((id): id is SymbolId => id != null) ?? null;
           if (db) {
             const simpleName = name.includes(".") ? name.split(".").pop()! : name;
             const prefixPart = name.includes(".") ? name.split(".").slice(0, -1).join(".") : "";
-            const pendingExprs = (dae as any).pendingModExprs as Map<string, string> | undefined;
+            const pendingExprs = daeExt.pendingModExprs;
             const pendingExprText = pendingExprs?.get(name);
             if (pendingExprText && pendingExprText !== simpleName && pendingExprText !== name) {
               const evalVal = evaluateCSTNumber(pendingExprText, undefined, scopeId ?? undefined, db, dae, prefixPart);
               if (evalVal !== null) return evalVal;
             }
-            const candidates: any[] = [];
+            const candidates: SymbolEntry[] = [];
             for (const sId of scopeIds) {
               if (!sId) continue;
               const parentChild =
-                db.childrenOf(sId)?.find((c: any) => c.name === simpleName && c.kind === "Component") ??
-                db.query("resolveSimpleName", sId)?.(simpleName);
+                db.childrenOf(sId)?.find((c) => c.name === simpleName && c.kind === "Component") ??
+                db.query<SimpleNameResolver | null>("resolveSimpleName", sId)?.(simpleName);
               if (parentChild && parentChild.kind === "Component" && !candidates.includes(parentChild)) {
                 candidates.push(parentChild);
               }
@@ -1913,10 +1997,12 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
               }
             }
             for (const cand of candidates) {
-              const v = (cand.metadata as any)?.variability ?? db.query("variability", cand.id);
+              const v =
+                (cand.metadata as SymbolMetaLike | undefined)?.variability ??
+                db.query<string | null>("variability", cand.id);
               if (v === "constant" || v === "parameter") {
-                const compInst: any = db.query("componentInstance", cand.id);
-                const compMod: any = db.query("effectiveModification", cand.id);
+                const compInst = db.query<ComponentInstEvalLike | null>("componentInstance", cand.id);
+                const compMod = db.query<EffectiveModEvalLike | null>("effectiveModification", cand.id);
                 const bExpr =
                   compInst?.modification?.bindingExpression ??
                   compInst?.bindingExpression ??
@@ -1928,13 +2014,13 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
                     isArrayLiteral(bText) &&
                     !cstContainsNodeType(
                       (bExpr.cstBytes
-                        ? (db as any).cstNodeRange?.(bExpr.cstBytes[0], bExpr.cstBytes[1], cand)
+                        ? (db.cstNodeRange(bExpr.cstBytes[0], bExpr.cstBytes[1], cand) as SyntaxNode | null)
                         : null) ?? parseStandaloneExpressionCst(bText),
                       "for_indices",
                     )
                   ) {
                     const elems = parseArrayLiteralElements(bText);
-                    const parsedElems: any[] = [];
+                    const parsedElems: number[] = [];
                     let allOk = true;
                     for (const e of elems) {
                       const num = Number(e.trim());
@@ -1952,7 +2038,14 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
                   if (bText === "true") return true;
                   if (bText === "false") return false;
                   if (bText !== simpleName && bText !== name) {
-                    const evalVal = evaluateCSTNumber(bText, undefined, cand.parentId ?? scopeId, db, dae, prefixPart);
+                    const evalVal = evaluateCSTNumber(
+                      bText,
+                      undefined,
+                      cand.parentId ?? scopeId ?? undefined,
+                      db,
+                      dae,
+                      prefixPart,
+                    );
                     if (evalVal !== null) return evalVal;
                   }
                 }
@@ -2103,7 +2196,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
       // ── Array constructor `{e1, e2, ...}` ──
       case ExprKind.ArrayCtor: {
         const count = dae.getExprData1(exprId);
-        const result: any[] = [];
+        const result: EvalValue[] = [];
         for (let i = 0; i < count; i++) {
           const elemId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
           const val = evalDaeExpr(elemId, dae, visitedExprs, visitedVars);
@@ -2130,7 +2223,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
             const arrVal = evalDaeExpr(firstArg, dae, visitedExprs, visitedVars);
             if (Array.isArray(arrVal)) {
               dims = [];
-              let curr: any = arrVal;
+              let curr: EvalValue | undefined = arrVal;
               while (Array.isArray(curr)) {
                 dims.push(curr.length);
                 curr = curr[0];
@@ -2155,19 +2248,19 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         if ((cleanFn === "max" || cleanFn === "min") && argCount === 1) {
           const arrVal = evalDaeExpr(firstArg, dae, visitedExprs, visitedVars);
           if (Array.isArray(arrVal)) {
-            const flat = arrVal.flat(Infinity);
+            const flat = (arrVal as unknown[]).flat(Infinity) as EvalValue[];
             if (flat.length > 0) {
-              if (flat.every((x) => typeof x === "number")) {
+              if (flat.every((x): x is number => typeof x === "number")) {
                 return cleanFn === "max" ? Math.max(...flat) : Math.min(...flat);
               }
-              if (flat.every((x) => typeof x === "boolean")) {
+              if (flat.every((x): x is boolean => typeof x === "boolean")) {
                 return cleanFn === "max" ? flat.some(Boolean) : flat.every(Boolean);
               }
             } else {
               // Empty Boolean array reduction: min(empty) = true, max(empty) = false
               if (dae.getExprKind(firstArg) === ExprKind.Name) {
                 const arrName = dae.interner.resolve(dae.getExprData1(firstArg));
-                const arrTypes: Map<string, number> | undefined = (dae as any).namedArrayTypes;
+                const arrTypes = daeExt.namedArrayTypes;
                 if (arrName && arrTypes?.get(arrName) === VarType.Boolean) {
                   return cleanFn === "min";
                 }
@@ -2181,11 +2274,11 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         if ((cleanFn === "sum" || cleanFn === "product") && argCount === 1) {
           const arrVal = evalDaeExpr(firstArg, dae, visitedExprs, visitedVars);
           if (Array.isArray(arrVal)) {
-            const flat = arrVal.flat(Infinity);
+            const flat = (arrVal as unknown[]).flat(Infinity) as EvalValue[];
             if (flat.length === 0) {
               return cleanFn === "sum" ? 0 : 1;
             }
-            if (flat.every((x) => typeof x === "number")) {
+            if (flat.every((x): x is number => typeof x === "number")) {
               return cleanFn === "sum" ? flat.reduce((a, b) => a + b, 0) : flat.reduce((a, b) => a * b, 1);
             }
           }
@@ -2201,7 +2294,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         if ((fnName === "Connections.isRoot" || cleanFn === "isRoot") && argCount === 1) {
           if (dae.getExprKind(firstArg) === ExprKind.Name) {
             const connName = dae.interner.resolve(dae.getExprData1(firstArg));
-            const graph = (dae as any).extensionMetadata?.overconstrainedGraph;
+            const graph = dae.extensionMetadata?.["overconstrainedGraph"] as OverconstrainedGraphLike | undefined;
             if (connName && graph) {
               if (graph.selectedRoots instanceof Set) {
                 return graph.selectedRoots.has(connName);
@@ -2217,7 +2310,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         if ((fnName === "Connections.rooted" || fnName === "rooted" || cleanFn === "rooted") && argCount === 1) {
           if (dae.getExprKind(firstArg) === ExprKind.Name) {
             const connName = dae.interner.resolve(dae.getExprData1(firstArg));
-            const graph = (dae as any).extensionMetadata?.overconstrainedGraph;
+            const graph = dae.extensionMetadata?.["overconstrainedGraph"] as OverconstrainedGraphLike | undefined;
             if (connName && graph?.rootedMap instanceof Map && graph.rootedMap.has(connName)) {
               return graph.rootedMap.get(connName)!;
             }
@@ -2226,7 +2319,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         }
 
         // Evaluate all call arguments before dispatching scalar/array built-in functions
-        const args: any[] = [];
+        const args: EvalValue[] = [];
         for (let i = 0; i < argCount; i++) {
           const aId = i === 0 ? firstArg : dae.getExprLeft(exprId + i);
           const aVal = evalDaeExpr(aId, dae, visitedExprs, visitedVars);
@@ -2234,8 +2327,9 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
           args.push(aVal);
         }
         if (cleanFn.startsWith("/*Real[") || cleanFn === "/*Real*/" || cleanFn === "Real") {
-          if (typeof args[0] === "number") return args[0];
-          if (Array.isArray(args[0])) return args[0].map((x: any) => (typeof x === "number" ? Number(x) : x));
+          const arg0 = args[0];
+          if (typeof arg0 === "number") return arg0;
+          if (Array.isArray(arg0)) return arg0.map((x) => (typeof x === "number" ? Number(x) : x));
           return null;
         }
         if (cleanFn === "/*Integer*/" || cleanFn === "Integer" || cleanFn === "integer" || cleanFn === "floor") {
@@ -2257,48 +2351,66 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
           return args[1] !== 0 ? args[0] - Math.floor(args[0] / args[1]) * args[1] : null;
         }
         if (cleanFn === "max" && args.length >= 2) {
-          if (args.every((a) => typeof a === "number")) return Math.max(...args);
-          if (args.every((a) => typeof a === "boolean")) return args.some(Boolean);
+          if (args.every((a): a is number => typeof a === "number")) return Math.max(...args);
+          if (args.every((a): a is boolean => typeof a === "boolean")) return args.some(Boolean);
         }
         if (cleanFn === "min" && args.length >= 2) {
-          if (args.every((a) => typeof a === "number")) return Math.min(...args);
-          if (args.every((a) => typeof a === "boolean")) return args.every(Boolean);
+          if (args.every((a): a is number => typeof a === "number")) return Math.min(...args);
+          if (args.every((a): a is boolean => typeof a === "boolean")) return args.every(Boolean);
         }
         if (cleanFn === "homotopy" && args.length >= 1) {
-          return args[0];
+          return args[0] ?? null;
         }
         if (cleanFn === "smooth" && args.length >= 2) {
-          return args[1];
+          return args[1] ?? null;
         }
         if (cleanFn === "semiLinear" && args.length === 3) {
-          const evalSemi = (x: any, kPos: any, kNeg: any): any => {
+          const evalSemi = (
+            x: EvalValue | undefined,
+            kPos: EvalValue | undefined,
+            kNeg: EvalValue | undefined,
+          ): EvalValue | null => {
             if (typeof x === "number" && typeof kPos === "number" && typeof kNeg === "number") {
               return x >= 0 ? kPos * x : kNeg * x;
             }
             if (Array.isArray(x)) {
-              return x.map((xi, idx) =>
-                evalSemi(xi, Array.isArray(kPos) ? kPos[idx] : kPos, Array.isArray(kNeg) ? kNeg[idx] : kNeg),
-              );
+              const out: EvalValue[] = [];
+              for (let idx = 0; idx < x.length; idx++) {
+                const elem = evalSemi(
+                  x[idx],
+                  Array.isArray(kPos) ? kPos[idx] : kPos,
+                  Array.isArray(kNeg) ? kNeg[idx] : kNeg,
+                );
+                if (elem === null) return null;
+                out.push(elem);
+              }
+              return out;
             }
             return null;
           };
           return evalSemi(args[0], args[1], args[2]);
         }
         if (cleanFn === "outerProduct" && args.length === 2 && Array.isArray(args[0]) && Array.isArray(args[1])) {
-          if (args[0].every((x: any) => typeof x === "number") && args[1].every((y: any) => typeof y === "number")) {
-            return args[0].map((x: number) => args[1].map((y: number) => x * y));
+          const a0 = args[0];
+          const a1 = args[1];
+          if (
+            a0.every((x): x is number => typeof x === "number") &&
+            a1.every((y): y is number => typeof y === "number")
+          ) {
+            return a0.map((x) => a1.map((y) => x * y));
           }
         }
-        if (cleanFn === "to_unit1" && args.length === 1 && args[0] !== null) {
+        if (cleanFn === "to_unit1" && args.length === 1 && args[0] !== undefined) {
           return args[0];
         }
         if (cleanFn === "fill" && args.length >= 2) {
           const dims = args.slice(1);
-          if (dims.every((d) => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 1000)) {
-            const buildFill = (dimIdx: number): any => {
-              if (dimIdx >= dims.length) return args[0];
-              const len = dims[dimIdx] as number;
-              const arr: any[] = [];
+          if (dims.every((d): d is number => typeof d === "number" && Number.isInteger(d) && d >= 0 && d <= 1000)) {
+            const fillVal = args[0]!;
+            const buildFill = (dimIdx: number): EvalValue => {
+              if (dimIdx >= dims.length) return fillVal;
+              const len = dims[dimIdx]!;
+              const arr: EvalValue[] = [];
               for (let i = 0; i < len; i++) {
                 arr.push(buildFill(dimIdx + 1));
               }
@@ -2308,45 +2420,48 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
           }
         }
         if (cleanFn === "promote" && args.length === 2 && typeof args[1] === "number" && Number.isInteger(args[1])) {
-          const targetRank = args[1] as number;
+          const targetRank = args[1];
           let curRank = 0;
-          let probe = args[0];
+          let probe: EvalValue | undefined = args[0];
           while (Array.isArray(probe)) {
             curRank++;
             probe = probe[0];
           }
           const extraDims = targetRank - curRank;
-          if (extraDims <= 0) return args[0];
-          const wrapLeaves = (v: any, depth: number): any => {
+          if (extraDims <= 0) return args[0] ?? null;
+          const wrapLeaves = (v: EvalValue, depth: number): EvalValue => {
             if (depth > 0 && Array.isArray(v)) {
               return v.map((elem) => wrapLeaves(elem, depth - 1));
             }
-            let res = v;
+            let res: EvalValue = v;
             for (let k = 0; k < extraDims; k++) {
               res = [res];
             }
             return res;
           };
-          return wrapLeaves(args[0], curRank);
+          return wrapLeaves(args[0]!, curRank);
         }
         if (cleanFn === "cat" && args.length >= 2 && typeof args[0] === "number" && Number.isInteger(args[0])) {
-          const kDim = args[0] as number;
+          const kDim = args[0];
           const catArrs = args.slice(1);
-          if (kDim >= 1 && catArrs.every((a) => Array.isArray(a))) {
-            const catAlong = (dim: number, list: any[][]): any[] | null => {
+          if (kDim >= 1 && catArrs.every((a): a is EvalValue[] => Array.isArray(a))) {
+            const catAlong = (dim: number, list: EvalValue[][]): EvalValue[] | null => {
               if (dim === 1) {
-                const res: any[] = [];
+                const res: EvalValue[] = [];
                 for (const arr of list) res.push(...arr);
                 return res;
               }
               const firstLen = list[0]?.length ?? 0;
               if (list.some((arr) => !Array.isArray(arr) || arr.length !== firstLen)) return null;
-              const out: any[] = [];
+              const out: EvalValue[] = [];
               for (let idx = 0; idx < firstLen; idx++) {
-                const sub = catAlong(
-                  dim - 1,
-                  list.map((arr) => arr[idx]),
-                );
+                const slices: EvalValue[][] = [];
+                for (const arr of list) {
+                  const elem = arr[idx];
+                  if (!Array.isArray(elem)) return null;
+                  slices.push(elem);
+                }
+                const sub = catAlong(dim - 1, slices);
                 if (sub === null) return null;
                 out.push(sub);
               }
@@ -2359,21 +2474,22 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
           cleanFn === "length" &&
           args.length === 1 &&
           Array.isArray(args[0]) &&
-          args[0].every((x: any) => typeof x === "number")
+          args[0].every((x): x is number => typeof x === "number")
         ) {
-          return Math.sqrt(args[0].reduce((s: number, x: number) => s + x * x, 0));
+          return Math.sqrt(args[0].reduce((s, x) => s + x * x, 0));
         }
         if (
           (cleanFn === "normalizeWithAssert" || cleanFn === "normalize") &&
           args.length >= 1 &&
           Array.isArray(args[0]) &&
-          args[0].every((x: any) => typeof x === "number")
+          args[0].every((x): x is number => typeof x === "number")
         ) {
-          const norm = Math.sqrt(args[0].reduce((s: number, x: number) => s + x * x, 0));
-          return norm > 0 ? args[0].map((x: number) => x / norm) : args[0];
+          const vec = args[0];
+          const norm = Math.sqrt(vec.reduce((s, x) => s + x * x, 0));
+          return norm > 0 ? vec.map((x) => x / norm) : vec;
         }
         const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(cleanFn);
-        if (scalarBuiltin?.fold && args.every((a) => typeof a === "number")) {
+        if (scalarBuiltin?.fold && args.every((a): a is number => typeof a === "number")) {
           return scalarBuiltin.fold(...args);
         }
         let fnObj = dae.getFunction(fnName) ?? dae.getFunction(cleanFn);
@@ -2411,7 +2527,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
         const baseVal = evalDaeExpr(dae.getExprData1(exprId), dae, visitedExprs, visitedVars);
         if (!Array.isArray(baseVal)) return null;
         const subCount = dae.getExprRight(exprId);
-        let curr: any = baseVal;
+        let curr: EvalValue = baseVal;
         for (let i = 0; i < subCount; i++) {
           if (!Array.isArray(curr)) return null;
           const subExprId = i === 0 ? dae.getExprLeft(exprId) : dae.getExprLeft(exprId + i);
@@ -2419,7 +2535,7 @@ function evalDaeExprInner(exprId: number, dae: DAEBuilder, visitedExprs: Set<num
           if (typeof subVal === "number" && Number.isInteger(subVal)) {
             const idx = subVal - 1;
             if (idx >= 0 && idx < curr.length) {
-              curr = curr[idx];
+              curr = curr[idx]!;
             } else {
               return null;
             }
@@ -2461,7 +2577,7 @@ export function getConstVal(id: number, dae: DAEBuilder, visited?: Set<number>):
  * @param expectedType - Optional expected `VarType` to disambiguate `Real` vs `Integer` numbers.
  * @returns Newly allocated arena expression ID, or `-1` if `value` cannot be represented.
  */
-export function addArenaValueAsExpr(dae: DAEBuilder, value: any, expectedType?: VarType): number {
+export function addArenaValueAsExpr(dae: DAEBuilder, value: unknown, expectedType?: VarType): number {
   if (typeof value === "number") {
     if (expectedType === VarType.Real) {
       return dae.addRealLiteral(value);
@@ -2595,14 +2711,15 @@ export function exprContainsNonConstantRef(exprId: number, dae: DAEBuilder, visi
       const state = getFlatteningState(dae);
       const flat = state.flattener;
       const db = state.db ?? flat?.db;
+      const daeExt = dae as EvalDaeExt;
       const scopeId =
-        (dae as any).enclosingScopeId ??
-        ((dae as any).symId ? db?.symbol((dae as any).symId)?.parentId : null) ??
-        flat?.currentClassId;
+        daeExt.enclosingScopeId ?? (daeExt.symId ? db?.symbol(daeExt.symId)?.parentId : null) ?? flat?.currentClassId;
       if (scopeId && db) {
-        const parentChild = db.childrenOf(scopeId)?.find((c: any) => c.name === name && c.kind === "Component");
+        const parentChild = db.childrenOf(scopeId)?.find((c) => c.name === name && c.kind === "Component");
         if (parentChild) {
-          const v = (parentChild.metadata as any)?.variability ?? db.query("variability", parentChild.id);
+          const v =
+            (parentChild.metadata as SymbolMetaLike | undefined)?.variability ??
+            db.query<string | null>("variability", parentChild.id);
           if (v === "constant" || v === "parameter") {
             return false;
           }

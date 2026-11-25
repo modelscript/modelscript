@@ -21,26 +21,43 @@ function parseMPrefixedCodeNumber(raw: string): number | null {
   return isDigitsOnly(digits) ? Number(digits) : null;
 }
 
+export interface DiagnosticPluginLike {
+  languageDef?:
+    | {
+        errorCodes?: Record<string | number, unknown> | undefined;
+      }
+    | undefined;
+}
+
+function asRuleDef(raw: unknown): { rule?: string | undefined; code?: number | undefined } | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const rec = raw as { rule?: unknown; code?: unknown };
+  return {
+    rule: typeof rec.rule === "string" ? rec.rule : undefined,
+    code: typeof rec.code === "number" ? rec.code : undefined,
+  };
+}
+
 /**
  * Canonical error code information extracted from diagnostic code or lint name.
  */
 export function extractCanonicalErrorInfo(
   code: string | number | undefined,
   lintName?: string,
-  plugin?: any,
+  plugin?: DiagnosticPluginLike | null,
 ): { codeNum?: number | undefined; ruleName?: string | undefined; raw: string } {
   const raw = String(code ?? lintName ?? "").trim();
   if (!raw) return { raw: "" };
 
   if (typeof code === "number") {
-    const def = plugin?.languageDef?.errorCodes?.[code] ?? getModelicaErrorCodeDef(code);
+    const def = asRuleDef(plugin?.languageDef?.errorCodes?.[code]) ?? getModelicaErrorCodeDef(code);
     const rule = def?.rule ? normalizeRuleToken(def.rule) : undefined;
     return { codeNum: code, ruleName: rule, raw };
   }
 
   const num = parseMPrefixedCodeNumber(raw);
   if (num !== null) {
-    const def = plugin?.languageDef?.errorCodes?.[num] ?? getModelicaErrorCodeDef(num);
+    const def = asRuleDef(plugin?.languageDef?.errorCodes?.[num]) ?? getModelicaErrorCodeDef(num);
     const rule = def?.rule ? normalizeRuleToken(def.rule) : undefined;
     return { codeNum: num, ruleName: rule, raw };
   }
@@ -146,7 +163,7 @@ export class SemanticDiagnosticLineIndex {
 export function tryDeduplicateOrMergeSemanticDiagnostic(
   existingList: Diagnostic[],
   incoming: Diagnostic,
-  plugin?: any,
+  plugin?: DiagnosticPluginLike | null,
   lineIndex?: SemanticDiagnosticLineIndex,
 ): boolean {
   const incomingInfo = extractCanonicalErrorInfo(incoming.code, undefined, plugin);

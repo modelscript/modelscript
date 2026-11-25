@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sima:Model name="SparBuoyDecayTest">
+  <environment waterDepth="200.0" density="1025.0" friction="0.5"/>
+  <wave hs="4.0" tp="10.0" gamma="3.3" direction="0.0"/>
+  <wind speed="12.0" direction="0.0"/>
+  <vessel id="spar_hull" name="CylindricalSpar" mass="8066000" displacement="8230" gmt="3.8" gml="3.8" cgx="0" cgy="0" cgz="-62.0" rxx="28.0" ryy="28.0" rzz="12.0">
+    <fairlead id="fl_1" x="5.2" y="0.0" z="-70.0"/>
+    <fairlead id="fl_2" x="-2.6" y="4.503" z="-70.0"/>
+    <fairlead id="fl_3" x="-2.6" y="-4.503" z="-70.0"/>
+  </vessel>
+  <mooringLine id="line_1" name="SparLine_1" type="catenary" fairleadId="fl_1" anchorX="620.0" anchorY="0.0" anchorZ="-200.0">
+    <segment id="seg_1" length="695.0" diameter="0.12" dryMass="285.0" subWeight="2450.0" ea="1.1e9" ei="1.0e4" mbl="1.5e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+  <mooringLine id="line_2" name="SparLine_2" type="catenary" fairleadId="fl_2" anchorX="-310.0" anchorY="536.9" anchorZ="-200.0">
+    <segment id="seg_2" length="695.0" diameter="0.12" dryMass="285.0" subWeight="2450.0" ea="1.1e9" ei="1.0e4" mbl="1.5e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+  <mooringLine id="line_3" name="SparLine_3" type="catenary" fairleadId="fl_3" anchorX="-310.0" anchorY="-536.9" anchorZ="-200.0">
+    <segment id="seg_3" length="695.0" diameter="0.12" dryMass="285.0" subWeight="2450.0" ea="1.1e9" ei="1.0e4" mbl="1.5e7" cd="1.2" cm="2.0"/>
+  </mooringLine>
+</sima:Model>

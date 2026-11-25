@@ -1,0 +1,77 @@
+[
+  {
+    "id": "relap5-01-heated-boiling-channel",
+    "lang": "relap5",
+    "subFormats": ["r5"],
+    "difficulty": 1,
+    "title": "Single Heated Boiling Channel",
+    "description": "Vertical heated boiling pipe channel coupled to a cylindrical fuel heat structure between inlet and outlet boundary plenums for subcooled-to-saturated boiling analysis.",
+    "category": "Nuclear Thermal-Hydraulics",
+    "tags": ["relap5", "boiling-channel", "heat-structure", "two-phase"],
+    "activeFile": "boiling_channel.r5",
+    "fileNames": ["boiling_channel.r5"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "* ====================================================================\n* Single Vertical Heated Boiling Channel\n* ====================================================================\n100 Single Heated Boiling Channel\n101 new transnt\n201 20.0 1.0e-4 0.02 50 500\n* Inlet Plenum\n1000000 InletPlenum tmdpvol\n1000101 0.05 1.0 0.05\n1000201 0.0 0.0\n1000301 1.5e-5 0.025\n1000501 7.0e6 540.0 0.0\n* Vertical Heated Pipe Channel\n1100000 HeatedPipe pipe\n1100101 0.02 3.6 0.072\n1100201 0.0 3.6\n1100301 1.5e-5 0.014\n1100501 6.95e6 558.0 0.05\n* Outlet Plenum\n1200000 OutletPlenum tmdpvol\n1200101 0.05 1.0 0.05\n1200201 0.0 0.0\n1200301 1.5e-5 0.025\n1200501 6.90e6 560.0 0.12\n* Connecting Junctions\n1050000 InletJunc snglj\n1050101 100 110 0.02\n1050102 0.25 0.25\n1050201 1.8 0.0\n1150000 OutletJunc snglj\n1150101 110 120 0.02\n1150102 0.30 0.30\n1150201 1.8 0.2\n* Heated Wall Heat Structure\n10100000 5 1\n10100101 16.2 2.4e6\n10100201 110 110\n. end\n"
+  },
+  {
+    "id": "relap5-02-natural-circulation-loop",
+    "lang": "relap5",
+    "subFormats": ["r5"],
+    "difficulty": 2,
+    "title": "Closed Natural-Circulation Thermal-Siphon Loop",
+    "description": "Buoyancy-driven closed natural-circulation loop with a lower heated core riser, elevated heat-sink cooler, and cold-leg downcomer modeling passive decay-heat removal.",
+    "category": "Nuclear Thermal-Hydraulics",
+    "tags": ["relap5", "natural-circulation", "passive-cooling", "thermosiphon"],
+    "activeFile": "natural_circ.r5",
+    "fileNames": ["natural_circ.r5"],
+    "fileCount": 1,
+    "code": "* ====================================================================\n* Closed Natural-Circulation Thermal-Siphon Loop\n* ====================================================================\n100 Closed Natural-Circulation Thermal-Siphon Loop\n101 new transnt\n201 60.0 1.0e-4 0.05 100 1000\n* 1. Heated Riser Leg\n1000000 HeaterRiser pipe\n1000101 0.12 4.0 0.48\n1000201 0.0 4.0\n1000301 1.5e-5 0.04\n1000501 1.0e7 570.0 0.0\n* 2. Upper Horizontal Hot Leg\n1100000 HotLeg pipe\n1100101 0.12 3.0 0.36\n1100201 0.0 0.0\n1100301 1.5e-5 0.04\n1100501 9.96e6 585.0 0.0\n* 3. Cooled Downcomer Leg\n1200000 CoolerDowncomer pipe\n1200101 0.12 4.0 0.48\n1200201 0.0 -4.0\n1200301 1.5e-5 0.04\n1200501 9.98e6 555.0 0.0\n* 4. Lower Return Cold Leg\n1300000 ColdReturn pipe\n1300101 0.12 3.0 0.36\n1300201 0.0 0.0\n1300301 1.5e-5 0.04\n1300501 1.002e7 555.0 0.0\n* Closed Loop Junctions\n1050000 RiserToHot snglj\n1050101 100 110 0.12\n1050102 0.20 0.20\n1050201 0.85 0.0\n1150000 HotToCooler snglj\n1150101 110 120 0.12\n1150102 0.25 0.25\n1150201 0.85 0.0\n1250000 CoolerToCold snglj\n1250101 120 130 0.12\n1250102 0.20 0.20\n1250201 0.85 0.0\n1350000 ColdToRiser snglj\n1350101 130 100 0.12\n1350102 0.25 0.25\n1350201 0.85 0.0\n* Heater and Cooler Heat Structures\n10100000 5 1\n10100101 18.0 2.5e6\n10100201 100 100\n10200000 5 1\n10200101 22.0 3.2e6\n10200201 120 120\n. end\n"
+  },
+  {
+    "id": "relap5-03-pwr-primary-loop",
+    "lang": "relap5",
+    "subFormats": ["r5"],
+    "difficulty": 3,
+    "title": "PWR Primary Loop with Pump & Steam Generator",
+    "description": "Pressurized Water Reactor primary coolant loop with reactor core, upper plenum, U-tube steam generator primary, reactor coolant pump, fuel heat structure, and 6-group point kinetics.",
+    "category": "Nuclear Thermal-Hydraulics",
+    "tags": ["relap5", "pwr", "point-kinetics", "steam-generator"],
+    "activeFile": "pwr_primary.r5",
+    "fileNames": ["pwr_primary.r5"],
+    "fileCount": 1,
+    "code": "* ====================================================================\n* PWR Primary Loop with Reactor Coolant Pump & Steam Generator\n* ====================================================================\n100 PWR Primary Coolant Loop with Point Kinetics\n101 new transnt\n201 30.0 1.0e-5 0.01 100 1000\n* 1. Reactor Core Channel\n1000000 ReactorCore pipe\n1000101 4.5 3.66 16.47\n1000201 0.0 3.66\n1000301 1.5e-5 0.012\n1000501 1.55e7 578.0 0.0\n* 2. Upper Plenum\n1100000 UpperPlenum branch\n1100101 8.5 2.4 20.4\n1100201 0.0 2.4\n1100301 2.0e-5 0.45\n1100501 1.545e7 598.0 0.0\n* 3. Steam Generator Primary U-Tubes\n1200000 SGPrimary pipe\n1200101 3.8 18.0 68.4\n1200201 0.0 0.0\n1200301 1.5e-5 0.019\n1200501 1.53e7 575.0 0.0\n* 4. Reactor Coolant Pump\n1300000 RCPump pump\n1300101 0.65 1.8 1.17\n1300201 0.0 0.0\n1300301 1.5e-5 0.40\n1300501 1.56e7 564.0 0.0\n* 5. Lower Plenum\n1400000 LowerPlenum branch\n1400101 8.0 2.0 16.0\n1400201 0.0 -2.0\n1400301 2.0e-5 0.45\n1400501 1.555e7 564.0 0.0\n* Primary Loop Junctions\n1050000 CoreToUpper snglj\n1050101 100 110 4.5\n1050102 0.15 0.25\n1050201 4.8 0.0\n1150000 HotLegJunc snglj\n1150101 110 120 0.65\n1150102 0.30 0.30\n1150201 14.0 0.0\n1250000 SGToPump snglj\n1250101 120 130 0.65\n1250102 0.25 0.25\n1250201 14.0 0.0\n1350000 ColdLegJunc snglj\n1350101 130 140 0.65\n1350102 0.30 0.30\n1350201 14.0 0.0\n1450000 LowerToCore snglj\n1450101 140 100 4.5\n1450102 0.20 0.20\n1450201 4.8 0.0\n* Fuel Rod Heat Structure\n10100000 5 1\n10100101 16.5 2.1e6\n10100201 100 100\n* 6-Group Reactor Point Kinetics (2775 MWth)\n6000000 point 2.0e-5 0.0065 2775.0e6\n6000001 0.0124 0.000215\n6000002 0.0305 0.001424\n6000003 0.1110 0.001274\n6000004 0.3010 0.002568\n6000005 1.1400 0.000748\n6000006 3.0100 0.000271\n6000010 -2.5e-5 -1.0e-4\n. end\n"
+  },
+  {
+    "id": "relap5-04-sbloca-accumulator-injection",
+    "lang": "relap5",
+    "subFormats": ["r5"],
+    "difficulty": 4,
+    "title": "Small-Break LOCA with Accumulator Injection",
+    "description": "Pressurized Water Reactor cold-leg small-break loss-of-coolant accident (SBLOCA) with nitrogen-pressurized ECCS accumulator injection, containment sink, and low-pressure scram trip.",
+    "category": "Nuclear Safety Analysis",
+    "tags": ["relap5", "sbloca", "eccs", "accumulator", "reactor-trip"],
+    "activeFile": "sbloca_eccs.r5",
+    "fileNames": ["sbloca_eccs.r5"],
+    "fileCount": 1,
+    "code": "* ====================================================================\n* Small-Break LOCA (SBLOCA) with ECCS Accumulator Injection\n* ====================================================================\n100 PWR Small-Break LOCA with ECCS Accumulator Injection\n101 new transnt\n201 120.0 1.0e-5 0.01 100 1000\n* Reactor Trip & Safety Injection Trips\n2060001 p-100010000 lt 1.28e7 l\n2060002 time gt 1.0 l\n2060003 1 and 2 l\n* 1. Reactor Core\n1000000 ReactorCore pipe\n1000101 4.5 3.66 16.47\n1000201 0.0 3.66\n1000301 1.5e-5 0.012\n1000501 1.55e7 580.0 0.0\n* 2. Upper Plenum & Hot Leg\n1100000 HotLegPlenum branch\n1100101 7.5 2.5 18.75\n1100201 0.0 2.0\n1100301 2.0e-5 0.45\n1100501 1.54e7 596.0 0.0\n* 3. Cold Leg\n1200000 ColdLeg pipe\n1200101 0.65 6.0 3.90\n1200201 0.0 0.0\n1200301 1.5e-5 0.35\n1200501 1.55e7 563.0 0.0\n* 4. ECCS Nitrogen-Pressurized Accumulator\n2000000 Accumulator accum\n2000101 4.0 6.5 26.0\n2000201 0.0 6.5\n2000301 1.5e-5 1.8\n2000501 4.2e6 315.0 0.0\n* 5. Containment Atmosphere Sink\n9000000 Containment tmdpvol\n9000101 500.0 40.0 20000.0\n9000201 0.0 0.0\n9000301 2.0e-5 20.0\n9000501 1.05e5 310.0 1.0\n* Primary, Break & ECCS Junctions\n1050000 CoreToHot snglj\n1050101 100 110 4.5\n1050102 0.15 0.25\n1050201 4.6 0.0\n1150000 LoopReturn snglj\n1150101 110 120 0.65\n1150102 0.40 0.40\n1150201 12.0 0.0\n1250000 ColdToCore snglj\n1250101 120 100 0.65\n1250102 0.20 0.20\n1250201 12.0 0.0\n2050000 AccumCheckValve valve\n2050101 200 120 0.08\n2050102 1.2 1.2\n2050201 0.0 0.0\n9050000 ColdLegBreak valve\n9050101 120 900 0.0045\n9050102 0.8 0.8\n9050201 0.0 0.0\n* Core Fuel Heat Structure\n10100000 5 1\n10100101 16.5 2.1e6\n10100201 100 100\n* Point Kinetics\n6000000 point 2.0e-5 0.0065 3000.0e6\n6000001 0.0124 0.000215\n6000002 0.0305 0.001424\n6000003 0.1110 0.001274\n6000004 0.3010 0.002568\n6000005 1.1400 0.000748\n6000006 3.0100 0.000271\n6000010 -2.5e-5 -1.0e-4\n. end\n"
+  },
+  {
+    "id": "relap5-05-two-loop-pwr-safety-injection",
+    "lang": "relap5",
+    "subFormats": ["r5", "i"],
+    "difficulty": 5,
+    "title": "Two-Loop PWR Plant with Reactor Trip & Safety Injection",
+    "description": "Two-loop Pressurized Water Reactor primary plant with intact and broken loops, pressurizer surge line, HPSI safety injection, point kinetics, and companion trip logic card deck.",
+    "category": "Nuclear Safety Analysis",
+    "tags": ["relap5", "two-loop-pwr", "safety-injection", "multi-file", "trip-logic"],
+    "activeFile": "pwr_plant.r5",
+    "fileNames": ["pwr_plant.r5", "trip_logic.i"],
+    "fileCount": 2,
+    "code": "* ====================================================================\n* Two-Loop PWR Plant with Reactor Trip & Safety Injection\n* Companion Trip Logic Deck: trip_logic.i\n* ====================================================================\n100 Two-Loop PWR Plant with Reactor Trip and Safety Injection\n101 new transnt\n201 180.0 1.0e-5 0.01 100 1000\n* Reactor Protection System Trips\n2060001 p-100010000 lt 1.31e7 l\n2060002 p-100010000 gt 1.64e7 l\n2060003 1 or 2 l\n* Vessel Core & Plenums\n1000000 ReactorCore pipe\n1000101 4.6 3.66 16.84\n1000201 0.0 3.66\n1000301 1.5e-5 0.012\n1000501 1.55e7 580.0 0.0\n1100000 UpperPlenum branch\n1100101 8.5 2.5 21.25\n1100201 0.0 2.5\n1100301 2.0e-5 0.45\n1100501 1.545e7 598.0 0.0\n1400000 LowerPlenum branch\n1400101 8.2 2.2 18.04\n1400201 0.0 -2.2\n1400301 2.0e-5 0.45\n1400501 1.555e7 564.0 0.0\n* Loop A (Intact Loop with Pressurizer)\n2100000 LoopA_SG pipe\n2100101 2.2 18.0 39.6\n2100201 0.0 0.0\n2100301 1.5e-5 0.019\n2100501 1.535e7 578.0 0.0\n2200000 Pressurizer pipe\n2200101 3.6 10.0 36.0\n2200201 0.0 10.0\n2200301 1.5e-5 2.1\n2200501 1.55e7 618.0 0.35\n* Loop B (Affected Loop with HPSI Header)\n3100000 LoopB_SG pipe\n3100101 2.2 18.0 39.6\n3100201 0.0 0.0\n3100301 1.5e-5 0.019\n3100501 1.535e7 578.0 0.0\n4000000 HPSI_Source tmdpvol\n4000101 1.0 2.0 2.0\n4000201 0.0 0.0\n4000301 1.5e-5 0.25\n4000501 1.60e7 305.0 0.0\n* Connecting Junctions\n1050000 CoreOut snglj\n1050101 100 110 4.6\n1050102 0.15 0.25\n1050201 4.7 0.0\n2050000 LoopA_Hot snglj\n2050101 110 210 0.45\n2050102 0.25 0.25\n2050201 11.5 0.0\n2150000 LoopA_Cold snglj\n2150101 210 140 0.45\n2150102 0.25 0.25\n2150201 11.5 0.0\n2250000 SurgeLine snglj\n2250101 210 220 0.08\n2250102 0.60 0.60\n2250201 0.0 0.0\n3050000 LoopB_Hot snglj\n3050101 110 310 0.45\n3050102 0.25 0.25\n3050201 11.5 0.0\n3150000 LoopB_Cold snglj\n3150101 310 140 0.45\n3150102 0.25 0.25\n3150201 11.5 0.0\n4050000 HPSI_Valve valve\n4050101 400 140 0.04\n4050102 1.0 1.0\n4050201 0.0 0.0\n1450000 CoreIn snglj\n1450101 140 100 4.6\n1450102 0.20 0.20\n1450201 4.7 0.0\n* Core Fuel Heat Structure\n10100000 5 1\n10100101 16.5 2.1e6\n10100201 100 100\n* 6-Group Point Kinetics (3411 MWth)\n6000000 point 2.0e-5 0.0065 3411.0e6\n6000001 0.0124 0.000215\n6000002 0.0305 0.001424\n6000003 0.1110 0.001274\n6000004 0.3010 0.002568\n6000005 1.1400 0.000748\n6000006 3.0100 0.000271\n6000010 -2.5e-5 -1.0e-4\n. end\n",
+    "files": {
+      "pwr_plant.r5": "* ====================================================================\n* Two-Loop PWR Plant with Reactor Trip & Safety Injection\n* Companion Trip Logic Deck: trip_logic.i\n* ====================================================================\n100 Two-Loop PWR Plant with Reactor Trip and Safety Injection\n101 new transnt\n201 180.0 1.0e-5 0.01 100 1000\n* Reactor Protection System Trips\n2060001 p-100010000 lt 1.31e7 l\n2060002 p-100010000 gt 1.64e7 l\n2060003 1 or 2 l\n* Vessel Core & Plenums\n1000000 ReactorCore pipe\n1000101 4.6 3.66 16.84\n1000201 0.0 3.66\n1000301 1.5e-5 0.012\n1000501 1.55e7 580.0 0.0\n1100000 UpperPlenum branch\n1100101 8.5 2.5 21.25\n1100201 0.0 2.5\n1100301 2.0e-5 0.45\n1100501 1.545e7 598.0 0.0\n1400000 LowerPlenum branch\n1400101 8.2 2.2 18.04\n1400201 0.0 -2.2\n1400301 2.0e-5 0.45\n1400501 1.555e7 564.0 0.0\n* Loop A (Intact Loop with Pressurizer)\n2100000 LoopA_SG pipe\n2100101 2.2 18.0 39.6\n2100201 0.0 0.0\n2100301 1.5e-5 0.019\n2100501 1.535e7 578.0 0.0\n2200000 Pressurizer pipe\n2200101 3.6 10.0 36.0\n2200201 0.0 10.0\n2200301 1.5e-5 2.1\n2200501 1.55e7 618.0 0.35\n* Loop B (Affected Loop with HPSI Header)\n3100000 LoopB_SG pipe\n3100101 2.2 18.0 39.6\n3100201 0.0 0.0\n3100301 1.5e-5 0.019\n3100501 1.535e7 578.0 0.0\n4000000 HPSI_Source tmdpvol\n4000101 1.0 2.0 2.0\n4000201 0.0 0.0\n4000301 1.5e-5 0.25\n4000501 1.60e7 305.0 0.0\n* Connecting Junctions\n1050000 CoreOut snglj\n1050101 100 110 4.6\n1050102 0.15 0.25\n1050201 4.7 0.0\n2050000 LoopA_Hot snglj\n2050101 110 210 0.45\n2050102 0.25 0.25\n2050201 11.5 0.0\n2150000 LoopA_Cold snglj\n2150101 210 140 0.45\n2150102 0.25 0.25\n2150201 11.5 0.0\n2250000 SurgeLine snglj\n2250101 210 220 0.08\n2250102 0.60 0.60\n2250201 0.0 0.0\n3050000 LoopB_Hot snglj\n3050101 110 310 0.45\n3050102 0.25 0.25\n3050201 11.5 0.0\n3150000 LoopB_Cold snglj\n3150101 310 140 0.45\n3150102 0.25 0.25\n3150201 11.5 0.0\n4050000 HPSI_Valve valve\n4050101 400 140 0.04\n4050102 1.0 1.0\n4050201 0.0 0.0\n1450000 CoreIn snglj\n1450101 140 100 4.6\n1450102 0.20 0.20\n1450201 4.7 0.0\n* Core Fuel Heat Structure\n10100000 5 1\n10100101 16.5 2.1e6\n10100201 100 100\n* 6-Group Point Kinetics (3411 MWth)\n6000000 point 2.0e-5 0.0065 3411.0e6\n6000001 0.0124 0.000215\n6000002 0.0305 0.001424\n6000003 0.1110 0.001274\n6000004 0.3010 0.002568\n6000005 1.1400 0.000748\n6000006 3.0100 0.000271\n6000010 -2.5e-5 -1.0e-4\n. end\n",
+      "trip_logic.i": "* ====================================================================\n* Companion Reactor Protection System & Safety Injection Trip Logic\n* ====================================================================\n100 RPS Trip and HPSI Actuation Logic Module\n101 new transnt\n201 180.0 1.0e-5 0.01 100 1000\n* Variable Trips: Low Pressurizer Pressure, High Pressure, Low-Low SI\n2060001 p-100010000 lt 1.31e7 l\n2060002 p-100010000 gt 1.64e7 l\n2060003 p-100010000 lt 1.24e7 l\n* Logical Trips: Reactor Scram (1 or 2) and HPSI Actuation (3)\n2060004 1 or 2 l\n. end\n"
+    }
+  }
+]

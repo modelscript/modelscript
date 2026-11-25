@@ -49,15 +49,35 @@ export interface WasmCouplingSpec {
   offset?: number | undefined;
 }
 
+export interface WasmCosimExports {
+  cosimCreateOrchestrator?: (methodInt: number, maxIter: number, tol: number, relax: number) => number;
+  cosimAddParticipant?: (orchestratorPtr: number, instancePtr: number, fmiVersion: number, stepRatio: number) => number;
+  cosimAddCoupling?: (
+    orchestratorPtr: number,
+    srcInstancePtr: number,
+    srcVr: number,
+    srcFmiVersion: number,
+    dstInstancePtr: number,
+    dstVr: number,
+    dstFmiVersion: number,
+    scale: number,
+    offset: number,
+  ) => number;
+  cosimStep?: (orchestratorPtr: number, currentTime: number, communicationStepSize: number) => number;
+  cosimPropagateCouplings?: (orchestratorPtr: number) => number;
+  cosimGetParticipantCount?: (orchestratorPtr: number) => number;
+  cosimGetCouplingCount?: (orchestratorPtr: number) => number;
+}
+
 /**
  * In-memory WASM Co-Simulation Engine.
  * Executes co-simulation steps with zero-copy buffer exchange.
  */
 export class WasmCosimEngine {
-  private readonly exports: any;
+  private readonly exports: WasmCosimExports;
   public readonly orchestratorPtr: number;
 
-  constructor(wasmExports: any, config?: WasmCosimConfig) {
+  constructor(wasmExports: WasmCosimExports, config?: WasmCosimConfig) {
     this.exports = wasmExports;
     const methodInt = config?.method === "jacobi" ? 0 : 1;
     const maxIter = config?.maxIterations ?? 10;

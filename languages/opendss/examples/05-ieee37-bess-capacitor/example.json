@@ -1,0 +1,11 @@
+{
+  "id": "opendss-05-ieee37-bess-capacitor",
+  "lang": "opendss",
+  "subFormats": ["dss", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Module Feeder with BESS, PV & Switched Capacitors",
+  "description": "Full multi-file OpenDSS project splitting line codes, trunk lines, loads, battery storage / PV DERs, and 24-hour demand profile across 6 workspace files.",
+  "category": "Smart Grid Distribution",
+  "tags": ["opendss", "bess", "capacitor", "multi-file", "distribution"],
+  "activeFile": "Master.dss"
+}

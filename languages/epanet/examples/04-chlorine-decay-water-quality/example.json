@@ -1,0 +1,11 @@
+{
+  "id": "epanet-04-chlorine-decay-water-quality",
+  "lang": "epanet",
+  "subFormats": ["inp"],
+  "difficulty": 4,
+  "title": "Chlorine Decay Water Quality Transport",
+  "description": "48-hour hydraulic and water-quality advection-reaction simulation tracking free chlorine residual decay across bulk fluid and pipe walls with reservoir booster dosing.",
+  "category": "Water Quality Modeling",
+  "tags": ["epanet", "chlorine-decay", "water-quality", "reactions"],
+  "activeFile": "chlorine_decay.inp"
+}

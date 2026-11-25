@@ -476,11 +476,11 @@ test("BNGL UnifiedWorkspace & LSP: indexes symbols, hover, completions, and acti
   assert.equal(bnglLanguage.name, "bngl");
 });
 
-test("BNGL WASM GLR Parser & LSP: parses Morsel defaultCode without error and reports syntax errors", async () => {
+test("BNGL WASM GLR Parser & LSP: parses Ansatz defaultCode without error and reports syntax errors", async () => {
   const { getBnglWasmParser } = await import("../src/parser/wasm-loader.js");
   const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
 
-  const morselDefaultCode = `begin model
+  const ansatzDefaultCode = `begin model
 begin parameters
   kp_bind  0.01
   km_bind  0.10
@@ -499,11 +499,11 @@ end reaction rules
 end model
 `;
 
-  const tree = getBnglWasmParser().parse(morselDefaultCode);
+  const tree = getBnglWasmParser().parse(ansatzDefaultCode);
   assert.ok(tree?.rootNode);
   assert.equal(tree.rootNode.hasError, false);
   assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
-  assert.equal(validateBngl(morselDefaultCode).filter((d) => d.code === "M9050").length, 0);
+  assert.equal(validateBngl(ansatzDefaultCode).filter((d) => d.code === "M9050").length, 0);
 
   const brokenBngl = `begin model
 begin molecule types

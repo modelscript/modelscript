@@ -75,15 +75,15 @@ test("Touchstone LSP: executeTouchstoneAction executes registered actions", asyn
   assert(moRes.includes("model TouchstoneNPort"));
 });
 
-test("Touchstone LSP: WASM GLR parser parses Morsel defaultCode cleanly and surfaces M8300 on invalid syntax", async () => {
+test("Touchstone LSP: WASM GLR parser parses Ansatz defaultCode cleanly and surfaces M8300 on invalid syntax", async () => {
   const { getTouchstoneWasmParser } = await import("../src/index.js");
-  const morselDefault = `! 2-Port Bandpass Filter S-Parameters
+  const ansatzDefault = `! 2-Port Bandpass Filter S-Parameters
 # GHz S MA R 50
 1.00  0.88 -35.0  0.45  55.0  0.45  55.0  0.88 -35.0
 2.40  0.12 -85.0  0.96 -12.0  0.96 -12.0  0.12 -85.0
 3.50  0.82 -140.0 0.52 -95.0  0.52 -95.0  0.82 -140.0
 `;
-  const tree = getTouchstoneWasmParser().parse(morselDefault);
+  const tree = getTouchstoneWasmParser().parse(ansatzDefault);
   assert.strictEqual(tree?.rootNode.hasError, false);
 
   const badDiags = validateTouchstone("[Version 2.0\n# GHz S MA R 50 {{\n");

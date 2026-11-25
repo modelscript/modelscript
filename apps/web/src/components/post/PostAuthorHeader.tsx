@@ -4,7 +4,7 @@ import { HubotIcon, KebabHorizontalIcon, PencilIcon, RssIcon, ShieldCheckIcon } 
 import { Text, Tooltip } from "@primer/react";
 import React from "react";
 import { Link } from "react-router-dom";
-import { safeJsonParse } from "../../util/json";
+import type { NotebookMetadata } from "../../util/notebook";
 import Box from "../Box";
 import FederatedDomainPill from "../FederatedDomainPill";
 import ProfileHoverCard from "../ProfileHoverCard";
@@ -18,16 +18,18 @@ import {
   SignatureBadge,
   formatFullTimestamp,
   formatRelativeTime,
+  parsePostMetadata,
   parseUtcDate,
+  type PostRecord,
 } from "./styles";
 
 export interface PostAuthorHeaderProps {
-  displayPost: any;
+  displayPost: PostRecord;
   isDetail: boolean;
   parsedAuthor: { localUsername: string; isFederated: boolean; remoteDomain?: string | null | undefined };
   hasSignature: boolean;
   isNotebook: boolean;
-  notebookData?: any;
+  notebookData?: NotebookMetadata | null | undefined;
   showPostMenu: boolean;
   setShowPostMenu: (show: boolean) => void;
   canEditPost: boolean;
@@ -61,10 +63,7 @@ export const PostAuthorHeader: React.FC<PostAuthorHeaderProps> = ({
   remoteOriginUrl,
   isPinned,
 }) => {
-  const postMeta =
-    typeof displayPost?.metadata === "string"
-      ? safeJsonParse<Record<string, any>>(displayPost.metadata, {})
-      : displayPost?.metadata || {};
+  const postMeta = parsePostMetadata(displayPost?.metadata);
 
   const wasUpdated =
     displayPost.updated_at &&

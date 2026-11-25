@@ -5,7 +5,7 @@ import type React from "react";
 export interface FilterChip {
   id: string;
   label: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<{ size?: number | "small" | "medium" | "large" | undefined }>;
   emoji?: string | undefined;
   artifactType?: string | undefined;
   description: string;

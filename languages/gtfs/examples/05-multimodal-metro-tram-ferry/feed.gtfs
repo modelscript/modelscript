@@ -1,0 +1,33 @@
+# STOPS
+stop_id,stop_name,stop_lat,stop_lon
+METRO_CIVIC,Civic Center Metro,37.7793,-122.4175
+EMBARCADERO_HUB,Embarcadero Intermodal,37.7929,-122.3970
+FERRY_BLDG,Ferry Building Pier 1,37.7955,-122.3934
+ALAMEDA_PIER,Alameda Seaplane Terminal,37.7718,-122.2995
+FISHERMAN_WHARF,Waterfront Tram Terminus,37.8080,-122.4177
+
+# ROUTES
+route_id,route_short_name,route_long_name,route_type
+R_METRO,M1,Blue Line Heavy Metro,1
+R_TRAM,F,Historic Waterfront Tram,0
+R_FERRY,BAY1,Electric Bay Catamaran Ferry,4
+
+# TRIPS
+route_id,service_id,trip_id,shape_id
+R_METRO,DAILY,TR_M1_0800,SHP_M1
+R_TRAM,DAILY,TR_F_0815,SHP_F
+R_FERRY,DAILY,TR_BAY_0820,SHP_BAY
+
+# STOP_TIMES
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,shape_dist_traveled
+TR_M1_0800,08:00:00,08:00:30,METRO_CIVIC,1,0.0
+TR_M1_0800,08:06:00,08:06:30,EMBARCADERO_HUB,2,2400.0
+TR_F_0815,08:15:00,08:15:30,EMBARCADERO_HUB,1,0.0
+TR_F_0815,08:27:00,08:27:00,FISHERMAN_WHARF,2,2900.0
+TR_BAY_0820,08:20:00,08:21:00,FERRY_BLDG,1,0.0
+TR_BAY_0820,08:42:00,08:42:00,ALAMEDA_PIER,2,9100.0
+
+# VEHICLE
+mass 42000
+battery 680
+aux 18.0

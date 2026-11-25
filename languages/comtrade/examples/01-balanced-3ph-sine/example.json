@@ -1,0 +1,12 @@
+{
+  "id": "comtrade-01-balanced-3ph-sine",
+  "lang": "comtrade",
+  "subFormats": ["cfg", "dat"],
+  "difficulty": 1,
+  "title": "60 Hz Balanced 3-Phase Steady-State Capture",
+  "description": "IEEE C37.111-1999 ASCII COMTRADE oscillography capture of balanced 60 Hz 3-phase substation voltages and currents sampled at 1920 Hz.",
+  "category": "Power System Oscillography",
+  "tags": ["comtrade", "ieee-c37.111", "3-phase", "multi-file"],
+  "activeFile": "sine60hz.cfg",
+  "isDefaultStarter": true
+}

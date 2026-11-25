@@ -1,0 +1,12 @@
+{
+  "id": "phreeqc-05-geothermal-silica-scaling",
+  "lang": "phreeqc",
+  "subFormats": ["phreeqc"],
+  "difficulty": 5,
+  "title": "Geothermal Silica Scaling with Custom Mineral Database",
+  "description": "High-enthalpy geothermal brine cooling and amorphous silica/calcite scaling kinetics paired with a companion custom thermodynamic mineral database (.dat).",
+  "category": "Geothermal Engineering",
+  "tags": ["phreeqc", "geothermal", "silica-scaling", "thermodynamics", "multi-file"],
+  "activeFile": "geothermal_scale.pqi",
+  "fileOrder": ["geothermal_scale.pqi", "custom_thermo.dat"]
+}

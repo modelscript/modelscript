@@ -1,0 +1,71 @@
+$$ Monolithic 7075-T6 Aerospace Wing Rib Multi-Pass Pocket Program
+PARTNO WING_RIB_7075_105
+MACHIN / MILL, 5
+UNITS / MM
+INTOL / 0.005
+OUTTOL / 0.005
+CUTTER / 16.0
+SPINDL / 8000, CLW
+FEDRAT / 900.0
+COOLNT / ON
+
+$$ Tapered wing rib pocket geometry with corner fillet circles
+SETPT = POINT / -25.0, -25.0, 60.0
+R1 = POINT / 15.0, 15.0, 0.0
+R2 = POINT / 215.0, 25.0, 0.0
+R3 = POINT / 215.0, 115.0, 0.0
+R4 = POINT / 15.0, 135.0, 0.0
+C2C = POINT / 199.0, 41.0, 0.0
+C3C = POINT / 199.0, 99.0, 0.0
+
+LW1 = LINE / R1, R2
+LW2 = LINE / R2, R3
+LW3 = LINE / R3, R4
+LW4 = LINE / R4, R1
+CF2 = CIRCLE / CENTER, C2C, RADIUS, 16.0
+CF3 = CIRCLE / CENTER, C3C, RADIUS, 16.0
+
+$$ Stepped Z-depth planes for roughing and finish passes
+PLZ1 = PLANE / 0, 0, 1, -8.0
+PLZ2 = PLANE / 0, 0, 1, -16.0
+PLZ3 = PLANE / 0, 0, 1, -20.0
+
+$$ Pass 1: Roughing depth Z = -8.0 mm
+FROM / SETPT
+RAPID
+GOTO / (POINT / 40.0, 40.0, 10.0)
+GOTO / (POINT / 40.0, 40.0, -8.0)
+GO / TO, LW1, TO, PLZ1, TO, LW4
+GORGT / LW1, TANTO, CF2
+GOFWD / CF2, TANTO, LW2
+GOFWD / LW2, TANTO, CF3
+GOFWD / CF3, TANTO, LW3
+GOFWD / LW3, TO, LW4
+GOLFT / LW4, TO, LW1
+
+$$ Pass 2: Roughing depth Z = -16.0 mm
+GOTO / (POINT / 40.0, 40.0, -16.0)
+GO / TO, LW1, TO, PLZ2, TO, LW4
+GORGT / LW1, TANTO, CF2
+GOFWD / CF2, TANTO, LW2
+GOFWD / LW2, TANTO, CF3
+GOFWD / CF3, TANTO, LW3
+GOFWD / LW3, TO, LW4
+GOLFT / LW4, TO, LW1
+
+$$ Pass 3: Finish floor and walls at Z = -20.0 mm
+FEDRAT / 450.0
+GOTO / (POINT / 40.0, 40.0, -20.0)
+GO / TO, LW1, TO, PLZ3, TO, LW4
+GORGT / LW1, TANTO, CF2
+GOFWD / CF2, TANTO, LW2
+GOFWD / LW2, TANTO, CF3
+GOFWD / CF3, TANTO, LW3
+GOFWD / LW3, TO, LW4
+GOLFT / LW4, TO, LW1
+
+RAPID
+GOTO / SETPT
+COOLNT / OFF
+SPINDL / OFF
+FINI

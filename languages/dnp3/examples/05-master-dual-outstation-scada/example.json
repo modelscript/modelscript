@@ -1,0 +1,11 @@
+{
+  "id": "dnp3-05-master-dual-outstation-scada",
+  "lang": "dnp3",
+  "subFormats": ["dnp3"],
+  "difficulty": 5,
+  "title": "Master SCADA & Dual Substation Outstation Architecture",
+  "description": "Multi-file IEEE 1815 SCADA architecture coordinating a central EMS master concentrator with two regional transmission substation outstations for coordinated tie-line control and telemetry.",
+  "category": "Power Systems SCADA",
+  "tags": ["dnp3", "scada", "multi-file", "master-outstation", "ems"],
+  "activeFile": "master_poll.dnp3"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "iec104-01-startdt-testfr-supervision",
+  "lang": "iec104",
+  "subFormats": ["iec104"],
+  "difficulty": 1,
+  "title": "IEC 60870-5-104 StartDT & TestFR Connection Supervision",
+  "description": "Minimal IEC 104 substation RTU station configuration defining TCP port 2404, APCI flow-control parameters (k=12, w=8, t1=15s, t2=10s), and link supervision status points.",
+  "category": "Power Systems SCADA",
+  "tags": ["iec104", "scada", "rtu", "apci", "supervision"],
+  "activeFile": "supervision.iec104",
+  "isDefaultStarter": true
+}

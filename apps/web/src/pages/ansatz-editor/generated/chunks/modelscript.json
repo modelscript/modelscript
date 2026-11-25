@@ -1,0 +1,79 @@
+[
+  {
+    "id": "modelscript-01-typed-beam-stress",
+    "lang": "modelscript",
+    "subFormats": ["msx"],
+    "difficulty": 1,
+    "title": "Typed Cantilever Beam Stress Calculator",
+    "description": "Statically typed ModelScript structural calculation computing bending moment, section modulus, tip deflection, and safety factor for a cantilever beam.",
+    "category": "Structural Mechanics",
+    "tags": ["modelscript", "beam", "stress", "structs", "typed"],
+    "activeFile": "beam_stress.msx",
+    "fileNames": ["beam_stress.msx"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "struct BeamSection {\n  width: f64;\n  height: f64;\n  length: f64;\n  elasticModulus: f64;\n  yieldStrength: f64;\n}\n\nfunction secondMomentOfArea(sec: BeamSection): f64 {\n  return (sec.width * sec.height * sec.height * sec.height) / 12.0;\n}\n\nfunction maxBendingStress(sec: BeamSection, tipLoad: f64): f64 {\n  let moment: f64 = tipLoad * sec.length;\n  let inertia: f64 = secondMomentOfArea(sec);\n  let halfHeight: f64 = sec.height * 0.5;\n  return (moment * halfHeight) / inertia;\n}\n\nfunction tipDeflection(sec: BeamSection, tipLoad: f64): f64 {\n  let inertia: f64 = secondMomentOfArea(sec);\n  return (tipLoad * sec.length * sec.length * sec.length) / (3.0 * sec.elasticModulus * inertia);\n}\n\nfunction safetyFactor(sec: BeamSection, tipLoad: f64): f64 {\n  let sigmaMax: f64 = maxBendingStress(sec, tipLoad);\n  return sec.yieldStrength / sigmaMax;\n}\n"
+  },
+  {
+    "id": "modelscript-02-dc-servo-drive",
+    "lang": "modelscript",
+    "subFormats": ["msx"],
+    "difficulty": 2,
+    "title": "Closed-Loop DC Servo Drive",
+    "description": "Discrete-time Euler integration of an armature-controlled DC servo motor with proportional-integral speed control and voltage saturation.",
+    "category": "Control Systems",
+    "tags": ["modelscript", "servo", "pi-control", "simulation", "motor"],
+    "activeFile": "dc_servo.msx",
+    "fileNames": ["dc_servo.msx"],
+    "fileCount": 1,
+    "code": "struct MotorParams {\n  resistance: f64;\n  inductance: f64;\n  kt: f64;\n  ke: f64;\n  inertia: f64;\n  damping: f64;\n  vMax: f64;\n}\n\nfunction clampVoltage(v: f64, limit: f64): f64 {\n  if (v > limit) {\n    return limit;\n  }\n  if (v < -limit) {\n    return -limit;\n  }\n  return v;\n}\n\nfunction simulateServoSpeed(p: MotorParams, targetOmega: f64, kp: f64, ki: f64, dt: f64, steps: i32): f64 {\n  let omega: f64 = 0.0;\n  let current: f64 = 0.0;\n  let integralErr: f64 = 0.0;\n  let k: i32 = 0;\n\n  while (k < steps) {\n    let err: f64 = targetOmega - omega;\n    integralErr = integralErr + err * dt;\n    let vCmd: f64 = clampVoltage(kp * err + ki * integralErr, p.vMax);\n    let diDt: f64 = (vCmd - p.resistance * current - p.ke * omega) / p.inductance;\n    let dOmegaDt: f64 = (p.kt * current - p.damping * omega) / p.inertia;\n    current = current + diDt * dt;\n    omega = omega + dOmegaDt * dt;\n    k = k + 1;\n  }\n  return omega;\n}\n"
+  },
+  {
+    "id": "modelscript-03-parametric-pump-curve",
+    "lang": "modelscript",
+    "subFormats": ["msx"],
+    "difficulty": 3,
+    "title": "Parametric Centrifugal Pump Curve & Efficiency Study",
+    "description": "Affinity-law scaled centrifugal pump head, hydraulic power, brake power, and best-efficiency-point sweep across volumetric flow rates.",
+    "category": "Fluid Machinery",
+    "tags": ["modelscript", "pump", "hydraulics", "affinity-laws", "parametric"],
+    "activeFile": "pump_curve.msx",
+    "fileNames": ["pump_curve.msx"],
+    "fileCount": 1,
+    "code": "struct PumpSpec {\n  shutoffHead: f64;\n  headCoeff: f64;\n  ratedSpeedRpm: f64;\n  fluidDensity: f64;\n  gravity: f64;\n  peakEfficiency: f64;\n  bepFlow: f64;\n}\n\nfunction pumpHead(spec: PumpSpec, flow: f64, speedRpm: f64): f64 {\n  let ratio: f64 = speedRpm / spec.ratedSpeedRpm;\n  let qScaled: f64 = flow / ratio;\n  let hBase: f64 = spec.shutoffHead - spec.headCoeff * qScaled * qScaled;\n  if (hBase < 0.0) {\n    return 0.0;\n  }\n  return hBase * ratio * ratio;\n}\n\nfunction pumpEfficiency(spec: PumpSpec, flow: f64, speedRpm: f64): f64 {\n  let ratio: f64 = speedRpm / spec.ratedSpeedRpm;\n  let qBep: f64 = spec.bepFlow * ratio;\n  let delta: f64 = (flow - qBep) / qBep;\n  let eta: f64 = spec.peakEfficiency * (1.0 - 0.65 * delta * delta);\n  if (eta < 0.1) {\n    return 0.1;\n  }\n  return eta;\n}\n\nfunction shaftPowerWatts(spec: PumpSpec, flow: f64, speedRpm: f64): f64 {\n  let head: f64 = pumpHead(spec, flow, speedRpm);\n  let eta: f64 = pumpEfficiency(spec, flow, speedRpm);\n  let hydraulicPower: f64 = spec.fluidDensity * spec.gravity * flow * head;\n  return hydraulicPower / eta;\n}\n\nfunction sweepMaxHydraulicPower(spec: PumpSpec, speedRpm: f64, samples: i32): f64 {\n  let bestPower: f64 = 0.0;\n  let i: i32 = 1;\n  while (i <= samples) {\n    let q: f64 = 0.002 * i;\n    let h: f64 = pumpHead(spec, q, speedRpm);\n    let pHyd: f64 = spec.fluidDensity * spec.gravity * q * h;\n    if (pHyd > bestPower) {\n      bestPower = pHyd;\n    }\n    i = i + 1;\n  }\n  return bestPower;\n}\n"
+  },
+  {
+    "id": "modelscript-04-hybrid-battery-bms",
+    "lang": "modelscript",
+    "subFormats": ["msx"],
+    "difficulty": 4,
+    "title": "Hybrid State-Machine Battery Management System",
+    "description": "Lithium-ion pack BMS combining discrete operating mode supervision (idle, charge, discharge, thermal derate, fault) with coulomb counting and thermal dynamics.",
+    "category": "Energy Storage",
+    "tags": ["modelscript", "bms", "battery", "state-machine", "thermal"],
+    "activeFile": "battery_bms.msx",
+    "fileNames": ["battery_bms.msx"],
+    "fileCount": 1,
+    "code": "struct PackConfig {\n  capacityAh: f64;\n  internalResistance: f64;\n  thermalCapJK: f64;\n  coolingConductanceWK: f64;\n  ambientTempC: f64;\n  maxTempC: f64;\n  derateTempC: f64;\n}\n\nfunction selectBmsMode(soc: f64, tempC: f64, reqCurrentA: f64, cfg: PackConfig): i32 {\n  if (tempC >= cfg.maxTempC) {\n    return 4;\n  }\n  if (soc <= 0.05 && reqCurrentA > 0.0) {\n    return 0;\n  }\n  if (soc >= 0.98 && reqCurrentA < 0.0) {\n    return 0;\n  }\n  if (tempC >= cfg.derateTempC) {\n    return 3;\n  }\n  if (reqCurrentA > 0.0) {\n    return 2;\n  }\n  if (reqCurrentA < 0.0) {\n    return 1;\n  }\n  return 0;\n}\n\nfunction effectiveCurrent(mode: i32, reqCurrentA: f64): f64 {\n  if (mode == 4 || mode == 0) {\n    return 0.0;\n  }\n  if (mode == 3) {\n    return reqCurrentA * 0.5;\n  }\n  return reqCurrentA;\n}\n\nfunction simulateBmsCycle(cfg: PackConfig, initSoc: f64, reqCurrentA: f64, dt: f64, steps: i32): f64 {\n  let soc: f64 = initSoc;\n  let tempC: f64 = cfg.ambientTempC;\n  let k: i32 = 0;\n\n  while (k < steps) {\n    let mode: i32 = selectBmsMode(soc, tempC, reqCurrentA, cfg);\n    let current: f64 = effectiveCurrent(mode, reqCurrentA);\n    let qGen: f64 = current * current * cfg.internalResistance;\n    let qCool: f64 = cfg.coolingConductanceWK * (tempC - cfg.ambientTempC);\n    tempC = tempC + ((qGen - qCool) / cfg.thermalCapJK) * dt;\n    soc = soc - (current * dt) / (cfg.capacityAh * 3600.0);\n    k = k + 1;\n  }\n  return tempC;\n}\n"
+  },
+  {
+    "id": "modelscript-05-cyber-physical-quadrotor",
+    "lang": "modelscript",
+    "subFormats": ["msx"],
+    "difficulty": 5,
+    "title": "Multi-Module Cyber-Physical Quadrotor Mission",
+    "description": "Modular four-file quadrotor flight dynamics and altitude-hold control architecture separating shared types, rotor propulsion, PD controller, and mission loop.",
+    "category": "Aerospace & Robotics",
+    "tags": ["modelscript", "quadrotor", "multi-file", "uav", "control"],
+    "activeFile": "mission.msx",
+    "fileNames": ["mission.msx", "controller.msx", "propulsion.msx", "types.msx"],
+    "fileCount": 4,
+    "code": "import { QuadParams, AltitudeGains } from \"./types.msx\";\nimport { verticalAcceleration } from \"./propulsion.msx\";\nimport { computeRotorRpmCommand } from \"./controller.msx\";\n\nfunction runAltitudeHoldMission(p: QuadParams, g: AltitudeGains, targetZ: f64, dt: f64, steps: i32): f64 {\n  let z: f64 = 0.0;\n  let vz: f64 = 0.0;\n  let step: i32 = 0;\n\n  while (step < steps) {\n    let rpmCmd: f64 = computeRotorRpmCommand(p, g, targetZ, z, vz);\n    let az: f64 = verticalAcceleration(p, rpmCmd, vz);\n    vz = vz + az * dt;\n    z = z + vz * dt;\n    if (z < 0.0) {\n      z = 0.0;\n      vz = 0.0;\n    }\n    step = step + 1;\n  }\n  return z;\n}\n",
+    "files": {
+      "mission.msx": "import { QuadParams, AltitudeGains } from \"./types.msx\";\nimport { verticalAcceleration } from \"./propulsion.msx\";\nimport { computeRotorRpmCommand } from \"./controller.msx\";\n\nfunction runAltitudeHoldMission(p: QuadParams, g: AltitudeGains, targetZ: f64, dt: f64, steps: i32): f64 {\n  let z: f64 = 0.0;\n  let vz: f64 = 0.0;\n  let step: i32 = 0;\n\n  while (step < steps) {\n    let rpmCmd: f64 = computeRotorRpmCommand(p, g, targetZ, z, vz);\n    let az: f64 = verticalAcceleration(p, rpmCmd, vz);\n    vz = vz + az * dt;\n    z = z + vz * dt;\n    if (z < 0.0) {\n      z = 0.0;\n      vz = 0.0;\n    }\n    step = step + 1;\n  }\n  return z;\n}\n",
+      "controller.msx": "import { QuadParams, AltitudeGains } from \"./types.msx\";\n\nfunction computeRotorRpmCommand(p: QuadParams, g: AltitudeGains, targetZ: f64, z: f64, vz: f64): f64 {\n  let hoverThrust: f64 = p.massKg * p.gravity;\n  let thrustCmd: f64 = hoverThrust + g.kp * (targetZ - z) - g.kd * vz;\n  if (thrustCmd < 0.0) {\n    return 0.0;\n  }\n  let rpmSq: f64 = thrustCmd / (4.0 * p.thrustCoeff);\n  let estRpm: f64 = rpmSq * 0.00025;\n  if (estRpm > p.maxRotorRpm) {\n    return p.maxRotorRpm;\n  }\n  return estRpm;\n}\n",
+      "propulsion.msx": "import { QuadParams } from \"./types.msx\";\n\nfunction totalRotorThrust(p: QuadParams, rotorRpm: f64): f64 {\n  let clampedRpm: f64 = rotorRpm;\n  if (clampedRpm < 0.0) {\n    clampedRpm = 0.0;\n  }\n  if (clampedRpm > p.maxRotorRpm) {\n    clampedRpm = p.maxRotorRpm;\n  }\n  return 4.0 * p.thrustCoeff * clampedRpm * clampedRpm;\n}\n\nfunction verticalAcceleration(p: QuadParams, rotorRpm: f64, vz: f64): f64 {\n  let thrust: f64 = totalRotorThrust(p, rotorRpm);\n  let drag: f64 = p.dragCoeff * vz;\n  return (thrust - p.massKg * p.gravity - drag) / p.massKg;\n}\n",
+      "types.msx": "struct QuadParams {\n  massKg: f64;\n  gravity: f64;\n  thrustCoeff: f64;\n  dragCoeff: f64;\n  maxRotorRpm: f64;\n}\n\nstruct AltitudeGains {\n  kp: f64;\n  kd: f64;\n}\n"
+    }
+  }
+]

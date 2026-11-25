@@ -1,0 +1,12 @@
+{
+  "id": "nmodl-05-cortical-pyramidal-suite",
+  "lang": "nmodl",
+  "subFormats": ["nmodl"],
+  "difficulty": 5,
+  "title": "Cortical Pyramidal Neuron Complete Ion Channel Suite",
+  "description": "Multi-mechanism biophysical membrane suite for a neocortical Layer-5 pyramidal neuron combining fast Na+, delayed rectifier K+, muscarinic M-current, and Ca2+ pump.",
+  "category": "Computational Neuroscience",
+  "tags": ["nmodl", "pyramidal-neuron", "ion-channels", "multi-file"],
+  "activeFile": "na_fast.mod",
+  "fileOrder": ["na_fast.mod", "k_delayed.mod", "km_adapt.mod", "ca_pump.mod"]
+}

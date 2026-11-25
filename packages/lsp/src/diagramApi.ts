@@ -67,9 +67,9 @@ export class ModelicaDiagramBackend extends ModelicaDiagramBackendCore {
 
 export function processDiagramEditBatch(
   request: DiagramApplyEditsParams,
-  classInstance: any,
+  classInstance: Parameters<typeof processDiagramEditBatchCore>[1],
   docText: string,
-  unifiedIndex?: any,
+  unifiedIndex?: Parameters<typeof processDiagramEditBatchCore>[3],
   dropIconOptions?: Parameters<typeof processDiagramEditBatchCore>[4],
 ): DiagramApplyEditsResult {
   const opts = dropIconOptions?.crossLanguageDrop
@@ -83,14 +83,88 @@ export { SysML2DiagramBackend, type SysML2BackendDeps } from "@modelscript/sysml
 
 // ── Generic DSL Diagram Backend ──
 
+import type { SymbolIndex as RuntimeSymbolIndex } from "@modelscript/runtime";
+
+export interface GenericDiagramConfigLike {
+  language?: string | undefined;
+  name?: string | undefined;
+  palette?: { categories?: DiagramPalette["categories"] | undefined } | undefined;
+  placement?:
+    | {
+        persistence?: string | undefined;
+        formatPlacement?:
+          | ((
+              x: number,
+              y: number,
+              width?: number | undefined,
+              height?: number | undefined,
+              rotation?: number | undefined,
+            ) => string)
+          | undefined;
+        sidecar?: ConstructorParameters<typeof SidecarLayoutStorage>[0] | undefined;
+        sidecarPath?: string | undefined;
+        format?: string | undefined;
+      }
+    | undefined;
+  mutations?:
+    | {
+        edgeTemplates?: Record<string, unknown> | undefined;
+        edgeTemplate?: unknown;
+        createEdge?: unknown;
+        createNode?: ((className: string, name: string, x: number, y: number) => string) | undefined;
+        nodeTemplate?: string | ((className: string, name: string) => string) | undefined;
+        deleteEntity?: unknown;
+        sections?: { edge?: string | undefined; node?: string | undefined } | undefined;
+        insertionSection?: string | undefined;
+        defaultSection?: string | undefined;
+      }
+    | undefined;
+  properties?:
+    | {
+        inModelDiscovery?:
+          | {
+              extractSchema?:
+                | ((rawAst: unknown, componentName: string, symIndex: unknown) => ComponentPropertyData["schema"])
+                | undefined;
+              extractValues?:
+                ((rawAst: unknown, componentName: string, symIndex: unknown) => Record<string, unknown>) | undefined;
+            }
+          | undefined;
+        entities?: Record<string, ComponentPropertyData["schema"]> | undefined;
+        mutator?:
+          | {
+              updateProperty?: ((...args: unknown[]) => TextEdit[] | null | undefined) | undefined;
+              updateModifier?:
+                | ((
+                    docText: string,
+                    name: string,
+                    paramName: string,
+                    paramVal: unknown,
+                  ) => TextEdit[] | null | undefined)
+                | undefined;
+            }
+          | undefined;
+      }
+    | undefined;
+  [key: string]: unknown;
+}
+
+export interface RawAstDataLike {
+  nodes: unknown[];
+  edges: unknown[];
+}
+
+export type DiagramSymbolIndexLike = RuntimeSymbolIndex;
+export type DiagramScopeResolverLike = Parameters<typeof buildPolyglotDiagram>[3];
+
 export interface GenericDSLBackendDeps {
   getDocumentText: (uri: string) => string | undefined;
-  getDiagramConfig?: ((uri: string) => any) | undefined;
+  getDiagramConfig?: ((uri: string) => GenericDiagramConfigLike | undefined) | undefined;
   getSyntaxNames?: ((uri: string) => Record<number, string> | string[] | undefined) | undefined;
-  getRawAstData?: ((uri: string) => { nodes: any[]; edges: any[] } | null) | undefined;
-  getSymbolIndex?: ((uri: string) => any) | undefined;
-  getUnifiedIndex?: (() => any) | undefined;
-  getScopeResolver?: ((uri: string) => any) | undefined;
+  getRawAstData?: ((uri: string) => RawAstDataLike | null) | undefined;
+  getSymbolIndex?: ((uri: string) => DiagramSymbolIndexLike | undefined) | undefined;
+  getUnifiedIndex?: (() => DiagramSymbolIndexLike | null | undefined) | undefined;
+  getScopeResolver?: ((uri: string) => DiagramScopeResolverLike | undefined) | undefined;
   getParser?: ((langId: string) => CstParserLike | undefined) | undefined;
   layoutStorage?: SidecarLayoutStorage | undefined;
   fsBridge?: FileSystemBridge | undefined;
@@ -856,25 +930,54 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     const symbolIndex = this.deps.getSymbolIndex?.(params.uri);
     const resolver = this.deps.getScopeResolver?.(params.uri);
 
-    let diagramData: any = null;
+    interface MutableDiagramNodeLike {
+      id: string;
+      name?: string | undefined;
+      label?: string | undefined;
+      x?: number | undefined;
+      y?: number | undefined;
+      width?: number | undefined;
+      height?: number | undefined;
+      autoLayout?: boolean | undefined;
+      properties?: { description?: string | undefined } | undefined;
+      [key: string]: unknown;
+    }
+
+    interface MutableDiagramDataLike {
+      nodes: MutableDiagramNodeLike[];
+      edges: unknown[];
+      coordinateSystem?: unknown;
+      diagramBackground?: unknown;
+      [key: string]: unknown;
+    }
+
+    let diagramData: MutableDiagramDataLike | null = null;
 
     if (symbolIndex && config) {
-      const { graphicsConfig, options } = compileDiagramConfigToPolyglot(config);
+      const { graphicsConfig, options } = compileDiagramConfigToPolyglot(
+        config as Parameters<typeof compileDiagramConfigToPolyglot>[0],
+      );
       diagramData = buildPolyglotDiagram(
-        symbolIndex,
+        symbolIndex as unknown as Parameters<typeof buildPolyglotDiagram>[0],
         graphicsConfig as Parameters<typeof buildPolyglotDiagram>[1],
         params.uri,
         resolver,
         params.diagramType ?? "All",
         options as Parameters<typeof buildPolyglotDiagram>[5],
-      );
+      ) as unknown as MutableDiagramDataLike;
     } else {
       const syntaxNames = this.deps.getSyntaxNames?.(params.uri);
       const rawData = this.deps.getRawAstData?.(params.uri) ?? { nodes: [], edges: [] };
 
       if (!docText && rawData.nodes.length === 0) return null;
 
-      diagramData = buildDiagramFromDSL(rawData, config, syntaxNames, params.diagramType, docText);
+      diagramData = buildDiagramFromDSL(
+        rawData as Parameters<typeof buildDiagramFromDSL>[0],
+        config as Parameters<typeof buildDiagramFromDSL>[1],
+        syntaxNames,
+        params.diagramType,
+        docText,
+      ) as unknown as MutableDiagramDataLike;
     }
 
     if ((!diagramData || !Array.isArray(diagramData.nodes) || diagramData.nodes.length === 0) && docText) {
@@ -1079,8 +1182,8 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           : {}),
       });
 
-      const nodes: any[] = [];
-      const edges: any[] = [];
+      const nodes: MutableDiagramNodeLike[] = [];
+      const edges: Array<ReturnType<typeof makeStyledEdge>> = [];
 
       // Dedicated OpenSCAD (.scad) CSG Constructive Solid Geometry Tree & Parametric Diagram Builder
       if (isScad) {
@@ -1089,7 +1192,13 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           const scadParser = cachedOrProvided ?? (await (await import("@modelscript/scad")).getScadParser());
           const tree = scadParser?.parse?.(docText);
           if (tree?.rootNode) {
-            buildScadDiagramFromCst(tree.rootNode, makeStyledNode, makeStyledEdge, nodes, edges);
+            buildScadDiagramFromCst(
+              tree.rootNode,
+              makeStyledNode,
+              makeStyledEdge,
+              nodes as Parameters<typeof buildScadDiagramFromCst>[3],
+              edges as Parameters<typeof buildScadDiagramFromCst>[4],
+            );
           }
         } catch {
           // If SCAD WASM parser cannot be loaded, allow downstream fallbacks if any
@@ -1105,7 +1214,13 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           const fortranParser = cachedOrProvided ?? (await (await import("@modelscript/fortran")).getFortranParser());
           const tree = fortranParser?.parse?.(maskedFortran);
           if (tree?.rootNode) {
-            buildFortranDiagramFromCst(tree.rootNode, makeStyledNode, makeStyledEdge, nodes, edges);
+            buildFortranDiagramFromCst(
+              tree.rootNode,
+              makeStyledNode,
+              makeStyledEdge,
+              nodes as Parameters<typeof buildFortranDiagramFromCst>[3],
+              edges as Parameters<typeof buildFortranDiagramFromCst>[4],
+            );
           }
         } catch {
           // If Fortran WASM parser cannot be loaded, allow downstream fallbacks if any
@@ -1119,10 +1234,10 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           const visitSym = (
             sym:
               | {
-                  name?: string;
+                  name?: string | undefined;
                   kind?: unknown;
                   detail?: unknown;
-                  children?: unknown[];
+                  children?: unknown[] | undefined;
                 }
               | null
               | undefined,
@@ -1208,11 +1323,14 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
     if (params.sidecarContent) {
       try {
-        const storage = this.getLayoutStorage(params.uri);
-        const parser = (storage as any).options?.parse ?? parseLayout;
+        const storage = this.getLayoutStorage(params.uri) as unknown as {
+          options?: { parse?: typeof parseLayout } | undefined;
+          cache?: Map<string, unknown> | undefined;
+        };
+        const parser = storage.options?.parse ?? parseLayout;
         const parsed = parser(params.sidecarContent);
         if (parsed) {
-          (storage as any).cache?.set(params.uri, parsed);
+          storage.cache?.set(params.uri, parsed);
         }
       } catch {
         // ignore
@@ -1223,7 +1341,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     const layout = await this.getLayoutStorage(params.uri).loadLayout(params.uri);
     if (layout && diagramData) {
       for (const node of diagramData.nodes) {
-        const nodeName = (node as any).name || node.properties?.description;
+        const nodeName = node.name || node.properties?.description;
         const el = layout.elements[node.id] || (nodeName && layout.elements[nodeName]);
         if (el) {
           node.x = el.x;
@@ -1235,12 +1353,12 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       }
     }
 
-    return diagramData as any;
+    return diagramData as unknown as DiagramData;
   }
 
   getComponentProperties(params: DiagramGetComponentPropertiesParams): ComponentPropertyData | null {
     const config = this.deps.getDiagramConfig?.(params.uri);
-    const propConfig = (config as any)?.properties;
+    const propConfig = config?.properties;
     if (propConfig) {
       const className = params.className || "Component";
 
@@ -1290,7 +1408,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     // 3. Universal source-text parameter extraction fallback
     const docText = this.deps.getDocumentText(params.uri);
     const parameters: ComponentPropertyData["parameters"] = [];
-    const values: Record<string, any> = { name: params.componentName };
+    const values: Record<string, unknown> = { name: params.componentName };
     const fields: PropertyFieldConfig[] = [];
     if (docText) {
       const lines = docText.replaceAll("\r\n", "\n").split("\n");
@@ -1384,13 +1502,13 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
           byName?: Map<string, number[]>;
           symbols?: Map<
             number,
-            { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number }
+            { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number | null }
           >;
         }
       | null
       | undefined,
     name: string,
-  ): { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number } | null {
+  ): { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number | null } | null {
     if (!symbolIndex || !name) return null;
     const candidateIds: number[] = symbolIndex.byName?.get?.(name) ?? [];
     for (const id of candidateIds) {
@@ -1408,17 +1526,17 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
   private resolveChildSymbolEntry(
     symbolIndex:
       | {
-          childrenOf?: Map<number, number[]>;
+          childrenOf?: Map<number | null, number[]>;
           symbols?: Map<
             number,
-            { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number }
+            { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number | null }
           >;
         }
       | null
       | undefined,
     parentEntry: { id: number } | null | undefined,
     name: string,
-  ): { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number } | null {
+  ): { id: number; name: string; startOffset?: number; endOffset?: number; parentId?: number | null } | null {
     if (!symbolIndex || !parentEntry || !name) return null;
     const childIds: number[] = symbolIndex.childrenOf?.get?.(parentEntry.id) ?? [];
     for (const cid of childIds) {
@@ -1430,7 +1548,7 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
   async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
     const allEdits: TextEdit[] = [];
-    const itemsToSave: any[] = [];
+    const itemsToSave: PlacementItem[] = [];
     const docText = this.deps.getDocumentText(params.uri);
     const maskedText = docText !== undefined ? maskComments(docText) : undefined;
     const lines = docText !== undefined ? docText.split("\n") : [];
@@ -1464,16 +1582,23 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
     for (const action of params.actions) {
       switch (action.type) {
         case "move": {
+          const legacyMove = action as unknown as {
+            nodeId?: string | number | undefined;
+            position?: { x: number; y: number } | undefined;
+            width?: number | undefined;
+            height?: number | undefined;
+            size?: { width?: number | undefined; height?: number | undefined } | undefined;
+          };
           const moveItems: PlacementItem[] = Array.isArray(action.items)
             ? action.items
-            : (action as any).nodeId && (action as any).position
+            : legacyMove.nodeId && legacyMove.position
               ? [
                   {
-                    name: String((action as any).nodeId),
-                    x: (action as any).position.x,
-                    y: (action as any).position.y,
-                    width: (action as any).width ?? (action as any).size?.width ?? 0,
-                    height: (action as any).height ?? (action as any).size?.height ?? 0,
+                    name: String(legacyMove.nodeId),
+                    x: legacyMove.position.x,
+                    y: legacyMove.position.y,
+                    width: legacyMove.width ?? legacyMove.size?.width ?? 0,
+                    height: legacyMove.height ?? legacyMove.size?.height ?? 0,
                   },
                 ]
               : [];
@@ -1845,20 +1970,25 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
         }
         case "updateParameter":
         case "updateProperty": {
+          const legacyPropAction = action as unknown as {
+            propertyName?: string | undefined;
+            parameter?: string | undefined;
+            previousValue?: unknown;
+          };
           const paramName =
             action.type === "updateProperty"
-              ? (action.key ?? (action as any).propertyName ?? (action as any).parameter)
+              ? (action.key ?? legacyPropAction.propertyName ?? legacyPropAction.parameter)
               : action.parameter;
           const paramVal = action.value;
           if (docText !== undefined && paramName && paramVal !== undefined) {
             const mutator = config?.properties?.mutator;
             if (typeof mutator?.updateProperty === "function") {
               try {
-                const prevVal = (action as any).previousValue;
+                const prevVal = legacyPropAction.previousValue;
                 const rawAst = this.deps.getRawAstData?.(params.uri);
                 let customEdits = mutator.updateProperty(rawAst ?? docText, action.name, paramName, paramVal, prevVal);
                 if (!customEdits) {
-                  customEdits = (mutator.updateProperty as any)(action.name, paramName, paramVal, docText);
+                  customEdits = mutator.updateProperty(action.name, paramName, paramVal, docText);
                 }
                 if (Array.isArray(customEdits) && customEdits.length > 0) {
                   allEdits.push(...customEdits);
@@ -1957,7 +2087,10 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
       const updatedLayout = await storage.loadLayout(params.uri);
       if (updatedLayout) {
         sidecarUri = storage.getSidecarUri(params.uri);
-        const serialize = (storage as any).options?.serialize ?? ((l: any) => JSON.stringify(l, null, 2) + "\n");
+        const storageInternals = storage as unknown as {
+          options?: { serialize?: ((layout: unknown) => string) | undefined } | undefined;
+        };
+        const serialize = storageInternals.options?.serialize ?? ((l: unknown) => JSON.stringify(l, null, 2) + "\n");
         try {
           sidecarContent = serialize(updatedLayout);
         } catch {
@@ -1978,6 +2111,17 @@ export class GenericDSLDiagramBackend implements DiagramBackend {
 
 // ── Dispatch Factory ──
 
+interface BackendWithDepsLike {
+  deps?:
+    | {
+        getUnifiedIndex?: (() => unknown) | undefined;
+        getDocumentText?: ((uri: string) => string | undefined) | undefined;
+        getDiagramConfig?: ((uri: string) => GenericDiagramConfigLike | undefined) | undefined;
+      }
+    | undefined;
+  getLayoutStorage?: ((uri: string) => SidecarLayoutStorage | undefined) | undefined;
+}
+
 export interface DiagramDispatchDeps {
   modelica?: DiagramBackend | undefined;
   sysml2?: DiagramBackend | undefined;
@@ -1990,16 +2134,16 @@ export interface DiagramDispatchDeps {
   gensys?: DiagramBackend | undefined;
   adams?: DiagramBackend | undefined;
   urdf?: DiagramBackend | undefined;
-  getUnifiedIndex?: (() => any) | undefined;
+  getUnifiedIndex?: (() => unknown) | undefined;
   customBackends?: Map<string | RegExp, DiagramBackend> | undefined;
 }
 
-export function getUnifiedIndexFromDeps(backends: DiagramDispatchDeps): any {
+export function getUnifiedIndexFromDeps(backends: DiagramDispatchDeps): unknown {
   return (
     backends.getUnifiedIndex?.() ??
-    (backends.modelica as any)?.deps?.getUnifiedIndex?.() ??
-    (backends.sysml2 as any)?.deps?.getUnifiedIndex?.() ??
-    (backends.generic as any)?.deps?.getUnifiedIndex?.() ??
+    (backends.modelica as BackendWithDepsLike | undefined)?.deps?.getUnifiedIndex?.() ??
+    (backends.sysml2 as BackendWithDepsLike | undefined)?.deps?.getUnifiedIndex?.() ??
+    (backends.generic as BackendWithDepsLike | undefined)?.deps?.getUnifiedIndex?.() ??
     null
   );
 }
@@ -2026,38 +2170,38 @@ const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParam
   aspen: async (text) => {
     const { parseAspen } = await import("@modelscript/aspen");
     const { buildAspenDiagram } = await import("@modelscript/diagram/aspen-diagram-builder");
-    return buildAspenDiagram(parseAspen(text) as any);
+    return buildAspenDiagram(parseAspen(text) as unknown as Parameters<typeof buildAspenDiagram>[0]);
   },
   swmm: async (text) => {
     const { parseSwmm } = await import("@modelscript/swmm");
     const { buildSwmmDiagram } = await import("@modelscript/diagram/swmm-diagram-builder");
-    return buildSwmmDiagram(parseSwmm(text) as any);
+    return buildSwmmDiagram(parseSwmm(text) as unknown as Parameters<typeof buildSwmmDiagram>[0]);
   },
   eclipse: async (text) => {
     const { parseEclipse } = await import("@modelscript/eclipse");
     const { buildEclipseDiagram } = await import("@modelscript/diagram/eclipse-diagram-builder");
-    return buildEclipseDiagram(parseEclipse(text) as any);
+    return buildEclipseDiagram(parseEclipse(text) as unknown as Parameters<typeof buildEclipseDiagram>[0]);
   },
   jsbsim: async (text) => {
     const { parseJsbsim } = await import("@modelscript/jsbsim");
     const { buildJsbsimDiagram } = await import("@modelscript/diagram/jsbsim-diagram-builder");
-    const doc = parseJsbsim(text) as any;
-    return buildJsbsimDiagram(doc.fdm ?? doc);
+    const doc = parseJsbsim(text) as unknown as { fdm?: Parameters<typeof buildJsbsimDiagram>[0] };
+    return buildJsbsimDiagram((doc.fdm ?? doc) as Parameters<typeof buildJsbsimDiagram>[0]);
   },
   lps: async (text) => {
     const { parseLps } = await import("@modelscript/lps");
     const { buildLpsDiagram } = await import("@modelscript/diagram/lps-diagram-builder");
-    return buildLpsDiagram(parseLps(text) as any);
+    return buildLpsDiagram(parseLps(text) as unknown as Parameters<typeof buildLpsDiagram>[0]);
   },
   olga: async (text) => {
     const { parseOpi } = await import("@modelscript/olga");
     const { buildOlgaDiagram } = await import("@modelscript/diagram/olga-diagram-builder");
-    return buildOlgaDiagram(parseOpi(text) as any);
+    return buildOlgaDiagram(parseOpi(text) as unknown as Parameters<typeof buildOlgaDiagram>[0]);
   },
   opendss: async (text) => {
     const { parseOpenDss } = await import("@modelscript/opendss");
     const { buildOpenDssDiagram } = await import("@modelscript/diagram/opendss-diagram-builder");
-    return buildOpenDssDiagram(parseOpenDss(text) as any);
+    return buildOpenDssDiagram(parseOpenDss(text) as unknown as Parameters<typeof buildOpenDssDiagram>[0]);
   },
   gridlabd: async (text) => {
     const { parseGridlabd, projectGridlabdToOpenDss } = await import("@modelscript/gridlabd");
@@ -2096,7 +2240,9 @@ const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParam
   openscenario: async (text) => {
     const { parseOpenScenario } = await import("@modelscript/openscenario");
     const { buildOpenScenarioDiagram } = await import("@modelscript/diagram/openscenario-diagram-builder");
-    return buildOpenScenarioDiagram(parseOpenScenario(text) as any);
+    return buildOpenScenarioDiagram(
+      parseOpenScenario(text) as unknown as Parameters<typeof buildOpenScenarioDiagram>[0],
+    );
   },
   psse: async (text, params) => {
     const [{ buildPsseDiagramInput }, { buildPsseDiagram }] = await Promise.all([
@@ -2104,24 +2250,33 @@ const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParam
       import("@modelscript/diagram/psse-diagram-builder"),
     ]);
     const { model, powerFlow } = await buildPsseDiagramInput(text, params.uri);
-    return buildPsseDiagram(model, powerFlow);
+    return buildPsseDiagram(
+      model as Parameters<typeof buildPsseDiagram>[0],
+      powerFlow as Parameters<typeof buildPsseDiagram>[1],
+    );
   },
   relap5: async (text) => {
     const { parseRelap5 } = await import("@modelscript/relap5");
     const { buildRelap5Diagram } = await import("@modelscript/diagram/relap5-diagram-builder");
-    return buildRelap5Diagram(parseRelap5(text) as any);
+    return buildRelap5Diagram(parseRelap5(text) as unknown as Parameters<typeof buildRelap5Diagram>[0]);
   },
   sbml: async (text) => {
     const { parseSbml } = await import("@modelscript/sbml");
     const { buildSbmlDiagram } = await import("@modelscript/diagram/sbml-diagram-builder");
-    const doc = parseSbml(text) as any;
-    return buildSbmlDiagram(doc.model ?? doc);
+    const doc = parseSbml(text) as unknown as { model?: Parameters<typeof buildSbmlDiagram>[0] };
+    return buildSbmlDiagram((doc.model ?? doc) as Parameters<typeof buildSbmlDiagram>[0]);
   },
   touchstone: async (text) => {
     const { parseTouchstone } = await import("@modelscript/touchstone");
     const { buildTouchstoneDiagram } = await import("@modelscript/diagram/touchstone-diagram-builder");
-    const doc = parseTouchstone(text) as any;
-    return buildTouchstoneDiagram({ portCount: doc.numPorts ?? doc.portCount ?? 2, ...doc });
+    const doc = parseTouchstone(text) as unknown as Record<string, unknown> & {
+      numPorts?: number | undefined;
+      portCount?: number | undefined;
+    };
+    return buildTouchstoneDiagram({
+      portCount: doc.numPorts ?? doc.portCount ?? 2,
+      ...doc,
+    } as unknown as Parameters<typeof buildTouchstoneDiagram>[0]);
   },
   easy5: async (text) => {
     const { parseEasy5 } = await import("@modelscript/easy5");
@@ -2138,8 +2293,11 @@ const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParam
     return buildGtSuiteDiagramData(parseGtmModel(text, params.uri));
   },
   ssp: async (text) => {
-    const { parseSsd, buildSspDiagramData } = (await import("@modelscript/ssp")) as any;
-    return typeof buildSspDiagramData === "function" ? buildSspDiagramData(parseSsd(text)) : null;
+    const sspMod = (await import("@modelscript/ssp")) as unknown as {
+      parseSsd: (source: string) => unknown;
+      buildSspDiagramData?: ((model: unknown) => unknown) | undefined;
+    };
+    return typeof sspMod.buildSspDiagramData === "function" ? sspMod.buildSspDiagramData(sspMod.parseSsd(text)) : null;
   },
   autosar: async (text) => {
     const { parseArxml } = await import("@modelscript/autosar");
@@ -2160,7 +2318,7 @@ const DOMAIN_BUILDERS: Record<string, (text: string, params: DiagramGetDataParam
     const { parseOscal } = await import("@modelscript/oscal");
     const { buildOscalDiagram } = await import("@modelscript/diagram/oscal-diagram-builder");
     const doc = parseOscal(text, params.uri);
-    return buildOscalDiagram(doc as any);
+    return buildOscalDiagram(doc as unknown as Parameters<typeof buildOscalDiagram>[0]);
   },
 };
 
@@ -2184,7 +2342,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     }
     const plugin = globalLanguageRegistry.getPluginForUri(uri);
     if (plugin?.diagramBackend) {
-      return plugin.diagramBackend;
+      return plugin.diagramBackend as DiagramBackend;
     }
     if (uri.endsWith(".sysml") && backends.sysml2) return backends.sysml2;
     if (uri.endsWith(".mo") && backends.modelica) return backends.modelica;
@@ -2212,8 +2370,8 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
     }
     const readKinematicSource = async (targetUri: string): Promise<string | null> => {
       const memText =
-        (backends.generic as any)?.deps?.getDocumentText?.(targetUri) ??
-        (backends.modelica as any)?.deps?.getDocumentText?.(targetUri);
+        (backends.generic as BackendWithDepsLike | undefined)?.deps?.getDocumentText?.(targetUri) ??
+        (backends.modelica as BackendWithDepsLike | undefined)?.deps?.getDocumentText?.(targetUri);
       if (typeof memText === "string") return memText;
       try {
         const fs = await import("node:fs");
@@ -2226,18 +2384,42 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       return null;
     };
 
-    const formatKinematicDiagramData = async (rawDiagram: any, targetUri: string): Promise<DiagramData> => {
-      const cells = Array.isArray(rawDiagram?.cells) ? rawDiagram.cells : [];
-      const nodes = Array.isArray(rawDiagram?.nodes) ? rawDiagram.nodes : cells.filter((c: any) => c.shape !== "edge");
-      const edges = Array.isArray(rawDiagram?.edges) ? rawDiagram.edges : cells.filter((c: any) => c.shape === "edge");
+    interface RawDiagramCellLike {
+      id: string;
+      shape?: string | undefined;
+      name?: string | undefined;
+      label?: string | undefined;
+      x?: number | undefined;
+      y?: number | undefined;
+      width?: number | undefined;
+      height?: number | undefined;
+      position?: { x: number; y: number } | undefined;
+    }
+
+    interface RawDiagramPayloadLike {
+      cells?: RawDiagramCellLike[] | undefined;
+      nodes?: RawDiagramCellLike[] | undefined;
+      edges?: RawDiagramCellLike[] | undefined;
+      metadata?: Record<string, unknown> | undefined;
+    }
+
+    const formatKinematicDiagramData = async (rawDiagram: unknown, targetUri: string): Promise<DiagramData> => {
+      const raw = (rawDiagram && typeof rawDiagram === "object" ? rawDiagram : {}) as RawDiagramPayloadLike;
+      const cells: RawDiagramCellLike[] = Array.isArray(raw.cells) ? raw.cells : [];
+      const nodes: RawDiagramCellLike[] = Array.isArray(raw.nodes)
+        ? raw.nodes
+        : cells.filter((c) => c.shape !== "edge");
+      const edges: RawDiagramCellLike[] = Array.isArray(raw.edges)
+        ? raw.edges
+        : cells.filter((c) => c.shape === "edge");
 
       // Merge any persisted sidecar layout positions so drag/move edits persist
       try {
-        const storage = (backends.generic as any)?.getLayoutStorage?.(targetUri);
+        const storage = (backends.generic as BackendWithDepsLike | undefined)?.getLayoutStorage?.(targetUri);
         const layout = storage ? await storage.loadLayout(targetUri) : null;
         if (layout?.elements) {
           for (const node of nodes) {
-            const nodeName = (node as any).name || node.label || node.id;
+            const nodeName = node.name || node.label || node.id;
             const el = layout.elements[node.id] || (nodeName && layout.elements[nodeName]);
             if (el) {
               node.x = el.x;
@@ -2263,17 +2445,17 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
         cells: cells.length > 0 ? cells : [...nodes, ...edges],
         readOnly: true,
         metadata: {
-          ...rawDiagram?.metadata,
+          ...raw.metadata,
           readOnly: true,
           layoutEditable: Boolean(backends.generic),
         },
-      } as any;
+      } as unknown as DiagramData;
     };
 
     const domainBackendCache = new Map<string, DiagramBackend>();
 
     const createDomainBuilderBackend = (
-      buildFn: (text: string, params: DiagramGetDataParams) => Promise<any>,
+      buildFn: (text: string, params: DiagramGetDataParams) => Promise<unknown>,
       domainName?: string,
     ): DiagramBackend => ({
       async getData(params: DiagramGetDataParams): Promise<DiagramData | null> {
@@ -2300,7 +2482,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
               readOnly: true,
               domain: domainName,
             },
-          } as any;
+          } as unknown as DiagramData;
         }
         return {
           nodes: [],
@@ -2312,7 +2494,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
             readOnly: true,
             domain: domainName,
           },
-        } as any;
+        } as unknown as DiagramData;
       },
       async getComponentProperties(params: DiagramGetComponentPropertiesParams): Promise<ComponentPropertyData | null> {
         return backends.generic ? await backends.generic.getComponentProperties(params) : null;
@@ -2366,7 +2548,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       }
     }
 
-    return backends.generic ?? backends.modelica ?? (backends.sysml2 as any);
+    return (backends.generic ?? backends.modelica ?? backends.sysml2) as DiagramBackend;
   }
 
   return {
@@ -2455,7 +2637,7 @@ export function createDiagramDispatch(backends: DiagramDispatchDeps) {
       if (/\.scad($|\?|#)/i.test(uri) || plugin?.id === "scad") return true;
       if (/\.(f|for|f77|f90|f95|f03|f08)($|\?|#)/i.test(uri) || plugin?.id === "fortran") return true;
       if (plugin?.customHandlers?.symbols) return true;
-      const config = (backends.generic as any)?.deps?.getDiagramConfig?.(uri);
+      const config = (backends.generic as BackendWithDepsLike | undefined)?.deps?.getDiagramConfig?.(uri);
       if (config) return true;
       return false;
     },

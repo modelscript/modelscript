@@ -17,7 +17,7 @@ import {
 } from "@modelscript/diagram/protocol";
 import { globalLibraryRegistry } from "@modelscript/runtime";
 
-function getUnifiedIndexFromDeps(backends: DiagramBackendHost): any {
+function getUnifiedIndexFromDeps(backends: DiagramBackendHost): unknown {
   return (
     backends.getUnifiedIndex?.() ??
     backends.generic?.deps?.getUnifiedIndex?.() ??
@@ -81,8 +81,11 @@ function buildPropertyResponse(
  * First-class bidirectional LSP `DiagramBackend` for PSS/E `.raw` / `.dyr` models.
  */
 export function createPsseDiagramBackend(backends: DiagramBackendHost): DiagramBackend {
-  const resolveCrossLanguageComponentDrop = (...args: any[]) =>
-    backends.crossLanguageDrop?.resolveCrossLanguageComponentDrop?.(...args) ?? null;
+  const resolveCrossLanguageComponentDrop = (
+    ...args: unknown[]
+  ): { sourceLanguage?: string; className?: string } | null =>
+    (backends.crossLanguageDrop?.resolveCrossLanguageComponentDrop?.(...args) as
+      { sourceLanguage?: string; className?: string } | null | undefined) ?? null;
 
   const readPsseSource = async (targetUri: string, overrideText?: string): Promise<string | null> => {
     if (typeof overrideText === "string") return overrideText;

@@ -1,0 +1,11 @@
+{
+  "id": "atp-05-ferroresonance-cable-study",
+  "lang": "atp",
+  "subFormats": ["atp", "pch", "lib"],
+  "difficulty": 5,
+  "title": "3-Phase Underground Cable & Transformer Ferroresonance Study",
+  "description": "Multi-file EMT study of single-pole switching on an underground XLPE cable feeding a lightly loaded saturable distribution transformer using JMarti punch and saturable core libraries.",
+  "category": "Power Systems EMT",
+  "tags": ["atp", "ferroresonance", "xlpe-cable", "transformer", "multi-file"],
+  "activeFile": "cable_trans.atp"
+}

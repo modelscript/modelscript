@@ -1,0 +1,11 @@
+{
+  "id": "verilog-a-05-memristor-spice-testbench",
+  "lang": "verilog-a",
+  "subFormats": ["va", "vams", "sp"],
+  "difficulty": 5,
+  "title": "HP TiO2 Memristor Compact Device + SPICE Testbench",
+  "description": "Multi-file Verilog-A nonlinear ion-drift memristor model with internal state variable and accompanying SPICE transient hysteresis testbench.",
+  "category": "Emerging Devices",
+  "tags": ["verilog-a", "memristor", "spice-testbench", "compact-model", "multi-file"],
+  "activeFile": "memristor.va"
+}

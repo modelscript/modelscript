@@ -3,13 +3,23 @@
 import { ArenaScriptInterpreter } from "@modelscript/modelica/arena-script-interpreter";
 import { LspContext } from "../lsp-context.js";
 
+interface ReplParserLike {
+  parse(input: string): {
+    rootNode: { hasError?: boolean } & Record<string, unknown>;
+    delete?: () => void;
+  };
+}
+
 let replInterpreter: ArenaScriptInterpreter | null = null;
 
 export function registerReplEndpoints(context: LspContext) {
   context.connection.onRequest("modelscript/repl/evaluate", async (params: { input: string }) => {
     try {
+      const globalFallback = globalThis as { parser?: ReplParserLike; modelicaParser?: ReplParserLike };
       const parser =
-        context.parserService.getParser("modelica") ?? (globalThis as any).parser ?? (globalThis as any).modelicaParser;
+        (context.parserService.getParser("modelica") as ReplParserLike | null | undefined) ??
+        globalFallback.parser ??
+        globalFallback.modelicaParser;
       if (!parser) {
         return { status: "error", error: "Script parser not initialized on server." };
       }
@@ -20,10 +30,10 @@ export function registerReplEndpoints(context: LspContext) {
       }
 
       if (!replInterpreter) {
-        replInterpreter = new ArenaScriptInterpreter(queryEngine as any);
+        replInterpreter = new ArenaScriptInterpreter(queryEngine);
       }
 
-      // We append a newline to ensure tree-sitter treats single-line statements correctly
+      // Append a newline so the parser treats single-line statements consistently
       const tree = parser.parse(params.input + "\n");
       try {
         // If there's an error and the user hasn't explicitly terminated the statement or block
@@ -39,7 +49,9 @@ export function registerReplEndpoints(context: LspContext) {
           }
         }
 
-        const result = replInterpreter.execute(tree.rootNode as any);
+        const result = replInterpreter.execute(
+          tree.rootNode as unknown as Parameters<ArenaScriptInterpreter["execute"]>[0],
+        );
 
         if (result.error) {
           return { status: "error", error: result.error, result: result.output };

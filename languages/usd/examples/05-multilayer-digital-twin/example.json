@@ -1,0 +1,11 @@
+{
+  "id": "usd-05-multilayer-digital-twin",
+  "lang": "usd",
+  "subFormats": ["usda"],
+  "difficulty": 5,
+  "title": "Multi-Layer Digital Twin Assembly with Variants & Physics",
+  "description": "Four-layer OpenUSD digital twin separating base geometry, UsdPhysics mass/joint dynamics, PBR shading, and root stage composition with variant sets.",
+  "category": "Digital Twin Composition",
+  "tags": ["usd", "digital-twin", "sublayers", "variants", "multi-file"],
+  "activeFile": "root.usda"
+}

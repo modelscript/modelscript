@@ -1,0 +1,32 @@
+$ MSC/NX NASTRAN Bulk Data Deck - 5-Member Steel Warren Truss
+SOL 101
+CEND
+TITLE = Five-Member Steel Warren Truss Static Analysis
+SPC = 1
+LOAD = 2
+BEGIN BULK
+$ Grid points (mm)
+GRID, 1, , 0.0, 0.0, 0.0
+GRID, 2, , 2000.0, 0.0, 0.0
+GRID, 3, , 4000.0, 0.0, 0.0
+GRID, 4, , 1000.0, 1500.0, 0.0
+GRID, 5, , 3000.0, 1500.0, 0.0
+$ Rod elements
+CROD, 1, 10, 1, 2
+CROD, 2, 10, 2, 3
+CROD, 3, 10, 1, 4
+CROD, 4, 10, 4, 2
+CROD, 5, 10, 4, 5
+CROD, 6, 10, 2, 5
+CROD, 7, 10, 5, 3
+$ Rod cross-section property (A = 1200 mm2)
+PROD, 10, 100, 1200.0
+$ Isotropic Steel Material (E = 210000 MPa, nu = 0.3, rho = 7.85e-9 t/mm3)
+MAT1, 100, 210000.0, , 0.3, 7.85e-9
+$ Boundary conditions (pin at node 1, roller at node 3, out-of-plane Z fixed)
+SPC1, 1, 123, 1
+SPC1, 1, 23, 3
+SPC1, 1, 3, 2, 4, 5
+$ Vertical downward load at center bottom joint (node 2)
+FORCE, 2, 2, 0, 50000.0, 0.0, -1.0, 0.0
+ENDDATA

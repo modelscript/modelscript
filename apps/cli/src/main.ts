@@ -519,9 +519,7 @@ await yargs(rawArgs)
       "Lsp",
     ),
   )
-  .command(
-    lazy("playground", "Launch the dual-editor DSL workbench", () => import("./commands/playground.js"), "Playground"),
-  )
+  .command(lazy("ansatz", "Launch the dual-editor DSL workbench", () => import("./commands/ansatz.js"), "Ansatz"))
   .command(
     lazy(
       "sandbox [entries..]",

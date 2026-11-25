@@ -1,991 +1,100 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { AlignmentGuideLine } from "../core/alignment-guides.js";
 import { CameraController } from "../core/camera.js";
 import { Scissor3DPortalManager, type Embedded3DPortalSpec } from "../renderers/scissor-3d-manager.js";
 import { ScissorSnapshotBaker } from "../renderers/snapshot-baker.js";
 import { SpatialSurfaceBridge } from "../renderers/spatial-vr-bridge.js";
 import { WebGpuSchematicRenderer, type WebGpuLike } from "../renderers/webgpu-renderer.js";
 import type { WorldBounds, WorldPoint } from "../schema/canvas-document.js";
-import { hitTestScatterBrush, paintCanvasPlot, type CanvasPlotSpec } from "../widgets/canvas-plot.js";
+import { CompiledAnimationEngine, SimulationTimelineStore, type AnimationBindingSpec } from "./animation-engine.js";
+import type { Canvas2DContextLike } from "./glyph-compiler.js";
 import {
-  paintCanvasTable,
-  paintStickyBadge,
-  type CanvasTableSpec,
-  type StickyBadgeSpec,
-} from "../widgets/canvas-table.js";
-import {
-  AnimationPropKind,
-  CompiledAnimationEngine,
-  SimulationTimelineStore,
-  type AnimationBindingSpec,
-} from "./animation-engine.js";
-import {
-  applyAttrsToGlyph,
-  compileGlyphMarkup,
-  materializeGlyphToSvg,
-  paintGlyphToCanvas2D,
-  patchGlyphAttrPath,
-  readGlyphAttrPath,
-  setSvgTextContent,
-  type Canvas2DContextLike,
-  type CompiledGlyph,
-  type DiagramMarkupNode,
-} from "./glyph-compiler.js";
-import { CanvasPointerFSM, type ResizeHandleKind, type WiringPreview } from "./pointer-fsm.js";
-import { SceneNodeFlags, SoaSceneGraph, type SoaEdgeRecord } from "./soa-scene.js";
+  addEdgeToGraph,
+  addNodeToGraph,
+  applyAnimationUpdateToCell,
+  applyGridArgs,
+  applyRenderModeToDom,
+  attachGraphDomEventListeners,
+  brushPlotWidgetInHost,
+  cleanSelectionInStore,
+  clearCellsFromGraph,
+  computeEdgeRenderPath as computeEdgeRenderPathImpl,
+  computeZoomToRectState,
+  createGraphFsmCallbacks,
+  createInitialGridState,
+  createWebGpuCanvasEl,
+  disposeCellsAndCollections,
+  findOrCreateCellView,
+  getSelectedCellsFromStore,
+  loadSimulationResultInHost,
+  mountGraphDom,
+  nextAutoCellId,
+  paintSceneToCanvas2D,
+  patchCellSelectorDom as patchCellSelectorDomImpl,
+  pauseSimulationInHost,
+  playSimulationInHost,
+  rebuildCellDom as rebuildCellDomImpl,
+  removeCellFromGraph,
+  renderCanvas2DFrame,
+  renderWidgetCanvasDom,
+  reorderCellDomByZIndex as reorderCellDomByZIndexImpl,
+  resizeCellVisualDom as resizeCellVisualDomImpl,
+  resolveDesiredRenderMode,
+  seekSimulationInHost,
+  selectCellsInStore,
+  setWidgetPositionInHost,
+  setWidgetSizeInHost,
+  setWidgetTetherInHost,
+  syncAlignmentGuidesDom,
+  syncCellDom as syncCellDomImpl,
+  syncEdgeToolsDom as syncEdgeToolsDomImpl,
+  syncEdgeToScene as syncEdgeToSceneImpl,
+  syncGridPatternDom,
+  syncMagnetHighlightsDom,
+  syncMarqueeDom,
+  syncPlotCrosshairInHost,
+  syncSelectionBoxesDom as syncSelectionBoxesDomImpl,
+  syncSelectionFromFsmInStore,
+  UnifiedCell,
+  UnifiedSelection,
+  UnifiedTransform,
+  unselectCellsInStore,
+  type ActiveWidgetInteraction,
+  type Canvas2DPaintContext,
+  type CellDomSyncContext,
+  type CellStoreHost,
+  type EdgeRenderPathResult,
+  type GraphDomLayers,
+  type GridStyleState,
+  type OverlayDomContext,
+  type SimulationPlaybackState,
+  type SimulationWidgetsHost,
+  type UnifiedCanvasWidgetSpec,
+  type UnifiedCellViewBase,
+  type UnifiedConnectorFnBase,
+  type UnifiedEdgeTerminal,
+  type UnifiedGraphOptions,
+  type UnifiedPortItem,
+  type UnifiedRouterFnBase,
+  type UnifiedSelectionOptions,
+  type UnifiedTransformOptions,
+} from "./graph/index.js";
+import { CanvasPointerFSM } from "./pointer-fsm.js";
+import { SoaSceneGraph } from "./soa-scene.js";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-export interface UnifiedEdgeTerminal {
-  cell?: string | undefined;
-  port?: string | undefined;
-  x?: number | undefined;
-  y?: number | undefined;
-  anchor?: unknown;
-  connectionPoint?: unknown;
-}
-
-export interface UnifiedPortItem {
-  id: string;
-  group?: string | undefined;
-  args?: { x?: number | undefined; y?: number | undefined; angle?: number | undefined } | undefined;
-  markup?: DiagramMarkupNode | DiagramMarkupNode[] | undefined;
-  attrs?: Record<string, Record<string, unknown>> | undefined;
-  direction?: string | undefined;
-  [key: string]: unknown;
-}
-
-export interface UnifiedCellView {
-  cell: UnifiedCell;
-  graph: UnifiedGraph;
-  container: Element | null;
-  routePoints: WorldPoint[];
-  sourcePoint?: WorldPoint | undefined;
-  targetPoint?: WorldPoint | undefined;
-  getVertexIndex(x: number, y: number): number;
-}
-
-export type UnifiedRouterFn = (
-  vertices: WorldPoint[],
-  args: Record<string, unknown>,
-  view: UnifiedCellView,
-) => WorldPoint[];
-
-export type UnifiedConnectorFn = (
-  sourcePoint: WorldPoint,
-  targetPoint: WorldPoint,
-  routePoints: WorldPoint[],
-  args: Record<string, unknown>,
-  view: UnifiedCellView,
-) => string;
-
-export interface UnifiedSelectionOptions {
-  enabled?: boolean | undefined;
-  showNodeSelectionBox?: boolean | undefined;
-  showEdgeSelectionBox?: boolean | undefined;
-  rubberband?: boolean | undefined;
-  multiple?: boolean | undefined;
-  modifiers?: string | string[] | undefined;
-  multipleSelectionModifiers?: string | string[] | undefined;
-  pointerEvents?: string | undefined;
-  filter?: ((cell: UnifiedCell) => boolean) | undefined;
-}
-
-export interface UnifiedTransformOptions {
-  resizing?: boolean | { enabled?: boolean | ((node: UnifiedCell) => boolean) | undefined } | undefined;
-  rotating?: boolean | { enabled?: boolean | ((node: UnifiedCell) => boolean) | undefined } | undefined;
-}
-
-export interface UnifiedGraphOptions {
-  container?: HTMLElement | undefined;
-  width?: number | undefined;
-  height?: number | undefined;
-  /** Rendering backend mode: "auto" switches to virtualized Canvas2D/WebGPU above highScaleThreshold nodes. */
-  renderMode?: "auto" | "svg" | "canvas2d" | undefined;
-  /** Node threshold at which "auto" mode switches from SVG DOM to high-scale Canvas2D/WebGPU (default: 1500). */
-  highScaleThreshold?: number | undefined;
-  /** Prefer WebGPU instanced schematic pipeline when high-scale mode activates and `navigator.gpu` is available. */
-  preferWebGpu?: boolean | undefined;
-  /** Callback fired when the user brushes scatter/Pareto samples on a pinned plot widget. */
-  onWidgetBrush?: ((widgetId: string, brushedIndices: number[], linkedIds: string[]) => void) | undefined;
-  async?: boolean | undefined;
-  autoResize?: boolean | undefined;
-  background?: { color?: string | undefined } | undefined;
-  grid?:
-    | boolean
-    | number
-    | {
-        size?: number | undefined;
-        visible?: boolean | undefined;
-        type?: string | undefined;
-        args?: unknown;
-      }
-    | undefined;
-  panning?: boolean | { enabled?: boolean | undefined } | undefined;
-  mousewheel?:
-    | boolean
-    | { enabled?: boolean | undefined; global?: boolean | undefined; modifiers?: string | string[] | undefined }
-    | undefined;
-  embedding?: { enabled?: boolean | undefined } | undefined;
-  interacting?: boolean | ((view: { cell: UnifiedCell }) => boolean | Record<string, boolean>) | undefined;
-  connecting?:
-    | {
-        router?: unknown;
-        connector?: unknown;
-        snap?: boolean | { radius?: number | undefined } | undefined;
-        allowBlank?: boolean | (() => boolean) | undefined;
-        allowMulti?: boolean | (() => boolean) | undefined;
-        allowLoop?: boolean | (() => boolean) | undefined;
-        allowNode?: boolean | (() => boolean) | undefined;
-        allowEdge?: boolean | (() => boolean) | undefined;
-        allowPort?: boolean | (() => boolean) | undefined;
-        highlight?: boolean | undefined;
-        highlighting?: Record<string, unknown> | undefined;
-        validateMagnet?:
-          | ((args: { cell?: UnifiedCell | null | undefined; magnet?: Element | null | undefined }) => boolean)
-          | undefined;
-        validateConnection?:
-          | ((args: {
-              sourceCell?: UnifiedCell | null | undefined;
-              targetCell?: UnifiedCell | null | undefined;
-              sourceMagnet?: Element | null | undefined;
-              targetMagnet?: Element | null | undefined;
-              sourcePort?: string | null | undefined;
-              targetPort?: string | null | undefined;
-            }) => boolean)
-          | undefined;
-        validateEdge?: ((args: { edge: UnifiedCell }) => boolean) | undefined;
-        createEdge?: (() => UnifiedCell) | undefined;
-      }
-    | undefined;
-  [key: string]: unknown;
-}
-
-export interface UnifiedCanvasWidgetSpec {
-  id: string;
-  kind: "plot" | "table" | "sticky";
-  bounds: WorldBounds;
-  plot?: CanvasPlotSpec | undefined;
-  table?: CanvasTableSpec | undefined;
-  sticky?: StickyBadgeSpec | undefined;
-  /** Optional world-space leader tether target (wire/port) drawn as a dashed connector. */
-  tetherTarget?: { x: number; y: number; label?: string | undefined } | undefined;
-}
-
-/** Selection plugin replacement with native rotated/flipped OBB selection boxes. */
-export class UnifiedSelection {
-  public readonly name = "selection";
-  public readonly options: UnifiedSelectionOptions;
-  public selectionImpl: {
-    container?: HTMLElement | undefined;
-    createSelectionBox?: ((cell: UnifiedCell) => void) | undefined;
-    repositionSelectionBoxesInPlace?: (() => void) | undefined;
-  } = {};
-
-  constructor(options: UnifiedSelectionOptions = {}) {
-    this.options = options;
-  }
-}
-
-/** Transform plugin replacement with native rotated 8-way resize & rotate handles. */
-export class UnifiedTransform {
-  public readonly name = "transform";
-  public readonly options: UnifiedTransformOptions;
-
-  constructor(options: UnifiedTransformOptions = {}) {
-    this.options = options;
-  }
-}
-
-function defaultPolylinePath(
-  source: WorldPoint,
-  target: WorldPoint,
-  routePoints: WorldPoint[],
-  connectorName: string,
-  radius = 8,
-): string {
-  const pts = [source, ...routePoints, target];
-  if (pts.length < 2) return "";
-  if (connectorName === "rounded" && pts.length >= 3 && radius > 0) {
-    let d = `M ${pts[0]!.x} ${pts[0]!.y}`;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const prev = pts[i - 1]!;
-      const curr = pts[i]!;
-      const next = pts[i + 1]!;
-      const d1 = Math.hypot(curr.x - prev.x, curr.y - prev.y);
-      const d2 = Math.hypot(next.x - curr.x, next.y - curr.y);
-      const r = Math.min(radius, d1 / 2, d2 / 2);
-      if (r <= 0.5) {
-        d += ` L ${curr.x} ${curr.y}`;
-        continue;
-      }
-      const p1x = curr.x - ((curr.x - prev.x) / d1) * r;
-      const p1y = curr.y - ((curr.y - prev.y) / d1) * r;
-      const p2x = curr.x + ((next.x - curr.x) / d2) * r;
-      const p2y = curr.y + ((next.y - curr.y) / d2) * r;
-      d += ` L ${p1x} ${p1y} Q ${curr.x} ${curr.y} ${p2x} ${p2y}`;
-    }
-    const last = pts[pts.length - 1]!;
-    d += ` L ${last.x} ${last.y}`;
-    return d;
-  }
-
-  let d = `M ${pts[0]!.x} ${pts[0]!.y}`;
-  for (let i = 1; i < pts.length; i++) {
-    d += ` L ${pts[i]!.x} ${pts[i]!.y}`;
-  }
-  return d;
-}
-
-const RESIZE_CURSOR_RING = ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"] as const;
-
-const HANDLE_BASE_ANGLE: Record<ResizeHandleKind, number> = {
-  e: 0,
-  w: 0,
-  nw: 45,
-  se: 45,
-  n: 90,
-  s: 90,
-  ne: 135,
-  sw: 135,
-  rotate: 0,
+export { UnifiedCell, UnifiedSelection, UnifiedTransform };
+export type {
+  UnifiedCanvasWidgetSpec,
+  UnifiedEdgeTerminal,
+  UnifiedGraphOptions,
+  UnifiedPortItem,
+  UnifiedSelectionOptions,
+  UnifiedTransformOptions,
 };
 
-function getResizeCursorForHandle(handle: ResizeHandleKind, angleDeg: number): string {
-  if (handle === "rotate") return "grab";
-  const effective = (((HANDLE_BASE_ANGLE[handle] + angleDeg) % 180) + 180) % 180;
-  const sector = Math.round(effective / 45) % 4;
-  return RESIZE_CURSOR_RING[sector] ?? "nwse-resize";
-}
-
-let autoCellCounter = 1;
-
-function escapeSelectorAttr(value: string): string {
-  if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-    return CSS.escape(value);
-  }
-  return value.replace(/["\\]/g, "\\$&");
-}
-
-function isDarkColorString(color: string): boolean {
-  const c = color.trim().toLowerCase();
-  if (!c || c === "transparent" || c === "none") return false;
-  if (c === "#ffffff" || c === "#fff" || c === "white" || c === "#f8fafc" || c === "#f1f5f9") return false;
-  const hexMatch = /^#([0-9a-f]{3}|[0-9a-f]{6})$/.exec(c);
-  if (hexMatch) {
-    const hex = hexMatch[1]!;
-    const r = hex.length === 3 ? parseInt(hex[0]! + hex[0]!, 16) : parseInt(hex.slice(0, 2), 16);
-    const g = hex.length === 3 ? parseInt(hex[1]! + hex[1]!, 16) : parseInt(hex.slice(2, 4), 16);
-    const b = hex.length === 3 ? parseInt(hex[2]! + hex[2]!, 16) : parseInt(hex.slice(4, 6), 16);
-    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-    return lum < 0.5;
-  }
-  const rgbMatch = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(c);
-  if (rgbMatch) {
-    const lum = (0.299 * Number(rgbMatch[1]) + 0.587 * Number(rgbMatch[2]) + 0.114 * Number(rgbMatch[3])) / 255;
-    return lum < 0.5;
-  }
-  return true;
-}
-
-function resolvePortScalar(raw: unknown, total: number): number | undefined {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (trimmed.endsWith("%")) {
-      const pct = parseFloat(trimmed.slice(0, -1));
-      return Number.isFinite(pct) ? (pct / 100) * total : undefined;
-    }
-    const n = parseFloat(trimmed);
-    return Number.isFinite(n) ? n : undefined;
-  }
-  return undefined;
-}
-
-function resolvePortsWithGroups(
-  items: UnifiedPortItem[],
-  groups: Record<string, unknown>,
-  width: number,
-  height: number,
-): UnifiedPortItem[] {
-  const countsByGroup = new Map<string, number>();
-  for (const p of items) {
-    const g = p.group ?? "";
-    countsByGroup.set(g, (countsByGroup.get(g) ?? 0) + 1);
-  }
-  const indexByGroup = new Map<string, number>();
-
-  return items.map((raw) => {
-    const p: UnifiedPortItem = { ...raw, args: raw.args ? { ...raw.args } : {} };
-    const grpName = p.group ?? "";
-    const idx = indexByGroup.get(grpName) ?? 0;
-    indexByGroup.set(grpName, idx + 1);
-    const totalInGroup = countsByGroup.get(grpName) ?? 1;
-
-    const grpSpec =
-      grpName && typeof groups[grpName] === "object" && groups[grpName] !== null
-        ? (groups[grpName] as Record<string, unknown>)
-        : null;
-
-    if (!p.markup && grpSpec?.["markup"]) {
-      p.markup = grpSpec["markup"] as DiagramMarkupNode | DiagramMarkupNode[];
-    }
-    if (!p.attrs && grpSpec?.["attrs"]) {
-      p.attrs = grpSpec["attrs"] as Record<string, Record<string, unknown>>;
-    }
-
-    const posSpec = grpSpec?.["position"];
-    const posName =
-      typeof posSpec === "string"
-        ? posSpec
-        : posSpec && typeof posSpec === "object"
-          ? String((posSpec as Record<string, unknown>)["name"] ?? "")
-          : grpName;
-    const posArgs =
-      posSpec && typeof posSpec === "object" && typeof (posSpec as Record<string, unknown>)["args"] === "object"
-        ? ((posSpec as Record<string, unknown>)["args"] as Record<string, unknown>)
-        : undefined;
-
-    const rawX = (p.args as Record<string, unknown> | undefined)?.["x"] ?? posArgs?.["x"];
-    const rawY = (p.args as Record<string, unknown> | undefined)?.["y"] ?? posArgs?.["y"];
-    let x = resolvePortScalar(rawX, width);
-    let y = resolvePortScalar(rawY, height);
-
-    const frac = (idx + 1) / (totalInGroup + 1);
-    if (x === undefined || y === undefined) {
-      if (posName === "left" || posName === "in") {
-        if (x === undefined) x = 0;
-        if (y === undefined) y = height * frac;
-      } else if (posName === "right" || posName === "out") {
-        if (x === undefined) x = width;
-        if (y === undefined) y = height * frac;
-      } else if (posName === "top") {
-        if (x === undefined) x = width * frac;
-        if (y === undefined) y = 0;
-      } else if (posName === "bottom") {
-        if (x === undefined) x = width * frac;
-        if (y === undefined) y = height;
-      }
-    }
-
-    p.args = {
-      ...(p.args ?? {}),
-      x: x ?? 0,
-      y: y ?? 0,
-    };
-    return p;
-  });
-}
-
-/**
- * Unified Cell (Node or Edge) backed by `SoaSceneGraph` and `CompiledGlyph`.
- * Implements the full drop-in API surface previously satisfied by AntV X6 cells.
- */
-export class UnifiedCell {
-  public readonly id: string;
-  public readonly kind: "node" | "edge";
-  public shape: string;
-  public x = 0;
-  public y = 0;
-  public width = 0;
-  public height = 0;
-  public angle = 0;
-  public zIndex = 0;
-  public visible = true;
-  public opacity = 1;
-
-  public source?: UnifiedEdgeTerminal | undefined;
-  public target?: UnifiedEdgeTerminal | undefined;
-  public vertices: WorldPoint[] = [];
-  public router?: unknown;
-  public connector?: unknown;
-  public labels: unknown[] = [];
-
-  private graph: UnifiedGraph | null = null;
-  private data: Record<string, unknown> = {};
-  private markup: DiagramMarkupNode | DiagramMarkupNode[] | undefined;
-  private attrs: Record<string, Record<string, unknown>> = {};
-  private compiledGlyph: CompiledGlyph | null = null;
-  private ports: UnifiedPortItem[] = [];
-  private portGroups: Record<string, unknown> = {};
-  private children = new Set<UnifiedCell>();
-  private parent: UnifiedCell | null = null;
-  private tools: unknown[] = [];
-  private customProps = new Map<string, unknown>();
-
-  /** Optional live DOM elements bound to this cell when mounted in a browser surface. */
-  public view: UnifiedCellView | null = null;
-  public selectorElements = new Map<string, Element[]>();
-
-  constructor(kind: "node" | "edge", metadata: Record<string, unknown>, graph?: UnifiedGraph | null) {
-    this.kind = kind;
-    this.graph = graph ?? null;
-    this.id =
-      typeof metadata["id"] === "string" && metadata["id"].length > 0 ? metadata["id"] : `${kind}_${autoCellCounter++}`;
-    this.shape = typeof metadata["shape"] === "string" ? metadata["shape"] : kind === "edge" ? "edge" : "rect";
-    this.zIndex = typeof metadata["zIndex"] === "number" ? metadata["zIndex"] : 0;
-    this.opacity = typeof metadata["opacity"] === "number" ? metadata["opacity"] : 1;
-    this.visible = metadata["visible"] !== false;
-
-    if (metadata["data"] && typeof metadata["data"] === "object") {
-      this.data = { ...(metadata["data"] as Record<string, unknown>) };
-    }
-    if (metadata["attrs"] && typeof metadata["attrs"] === "object") {
-      for (const [k, v] of Object.entries(metadata["attrs"] as Record<string, unknown>)) {
-        if (v && typeof v === "object") {
-          this.attrs[k] = { ...(v as Record<string, unknown>) };
-        }
-      }
-    }
-
-    if (kind === "node") {
-      this.x = typeof metadata["x"] === "number" ? metadata["x"] : 0;
-      this.y = typeof metadata["y"] === "number" ? metadata["y"] : 0;
-      this.width = typeof metadata["width"] === "number" ? metadata["width"] : 80;
-      this.height = typeof metadata["height"] === "number" ? metadata["height"] : 40;
-      this.angle = typeof metadata["angle"] === "number" ? metadata["angle"] : 0;
-      this.markup = metadata["markup"] as DiagramMarkupNode | DiagramMarkupNode[] | undefined;
-
-      const rawPorts = metadata["ports"] as
-        | { items?: UnifiedPortItem[] | undefined; groups?: Record<string, unknown> | undefined }
-        | UnifiedPortItem[]
-        | undefined;
-      if (Array.isArray(rawPorts)) {
-        this.ports = resolvePortsWithGroups(rawPorts, this.portGroups, this.width, this.height);
-      } else if (rawPorts && typeof rawPorts === "object") {
-        this.portGroups = rawPorts.groups ? { ...rawPorts.groups } : {};
-        const rawItems = Array.isArray(rawPorts.items) ? rawPorts.items : [];
-        this.ports = resolvePortsWithGroups(rawItems, this.portGroups, this.width, this.height);
-      }
-      this.compiledGlyph = compileGlyphMarkup(this.markup, this.attrs, this.width, this.height);
-    } else {
-      this.source = this.normalizeTerminal(metadata["source"]);
-      this.target = this.normalizeTerminal(metadata["target"]);
-      if (Array.isArray(metadata["vertices"])) {
-        this.vertices = (metadata["vertices"] as WorldPoint[]).map((p) => ({ x: p.x, y: p.y }));
-      }
-      this.router = metadata["router"];
-      this.connector = metadata["connector"];
-      if (Array.isArray(metadata["labels"])) {
-        this.labels = [...metadata["labels"]];
-      }
-    }
-  }
-
-  private normalizeTerminal(raw: unknown): UnifiedEdgeTerminal {
-    if (typeof raw === "string") return { cell: raw };
-    if (raw && typeof raw === "object") {
-      return { ...(raw as UnifiedEdgeTerminal) };
-    }
-    return {};
-  }
-
-  public attachGraph(graph: UnifiedGraph | null): void {
-    this.graph = graph;
-  }
-
-  public isNode(): boolean {
-    return this.kind === "node";
-  }
-
-  public isEdge(): boolean {
-    return this.kind === "edge";
-  }
-
-  public getCompiledGlyph(): CompiledGlyph | null {
-    return this.compiledGlyph;
-  }
-
-  public remove(): void {
-    this.graph?.removeCell(this);
-  }
-
-  public getPosition(): { x: number; y: number } {
-    return { x: this.x, y: this.y };
-  }
-
-  public setPosition(x: number, y: number, options?: { silent?: boolean | undefined }): void {
-    const prev = { x: this.x, y: this.y };
-    const dx = x - this.x;
-    const dy = y - this.y;
-    this.x = x;
-    this.y = y;
-    this.graph?.scene.setNodePosition(this.id, x, y);
-    if (dx !== 0 || dy !== 0) {
-      const moveChildren = (parent: UnifiedCell) => {
-        for (const child of parent.children) {
-          child.x += dx;
-          child.y += dy;
-          this.graph?.syncCellDom(child);
-          moveChildren(child);
-        }
-      };
-      moveChildren(this);
-    }
-    this.graph?.syncCellDom(this);
-    if (!options?.silent) {
-      this.graph?.emit("node:change:position", {
-        cell: this,
-        node: this,
-        current: { x, y },
-        previous: prev,
-      });
-    }
-  }
-
-  public position(x?: number, y?: number): { x: number; y: number } {
-    if (typeof x === "number" && typeof y === "number") {
-      this.setPosition(x, y);
-    }
-    return this.getPosition();
-  }
-
-  public translate(dx: number, dy: number): void {
-    this.setPosition(this.x + dx, this.y + dy);
-  }
-
-  public getSize(): { width: number; height: number } {
-    return { width: this.width, height: this.height };
-  }
-
-  public size(width?: number, height?: number): { width: number; height: number } {
-    if (typeof width === "number" && typeof height === "number") {
-      this.setSize(width, height);
-    }
-    return this.getSize();
-  }
-
-  public setSize(width: number, height: number): void {
-    const prev = { width: this.width, height: this.height };
-    this.width = Math.max(0, width);
-    this.height = Math.max(0, height);
-    this.graph?.scene.setNodeSize(this.id, this.width, this.height);
-    this.graph?.resizeCellVisualDom(this, prev.width, prev.height);
-    this.graph?.syncCellDom(this);
-    this.graph?.emit("node:change:size", {
-      cell: this,
-      node: this,
-      current: { width: this.width, height: this.height },
-      previous: prev,
-    });
-  }
-
-  public resize(width: number, height: number): void {
-    this.setSize(width, height);
-  }
-
-  public getAngle(): number {
-    return this.angle;
-  }
-
-  public rotate(angle: number, options?: { absolute?: boolean | undefined }): void {
-    const prev = this.angle;
-    const next = options?.absolute ? angle : this.angle + angle;
-    this.angle = ((next % 360) + 360) % 360;
-    this.graph?.scene.setNodeRotation(this.id, this.angle);
-    this.graph?.syncCellDom(this);
-    this.graph?.emit("node:change:angle", { cell: this, node: this, current: this.angle, previous: prev });
-  }
-
-  public getBBox(): WorldBounds {
-    return { x: this.x, y: this.y, width: this.width, height: this.height };
-  }
-
-  public getZIndex(): number {
-    return this.zIndex;
-  }
-
-  public setZIndex(z: number): void {
-    this.zIndex = z;
-    if (this.kind === "node") {
-      this.graph?.scene.setNodeZIndex(this.id, z);
-    } else {
-      const rec = this.graph?.scene.getEdge(this.id);
-      if (rec) rec.zIndex = z;
-    }
-    this.graph?.reorderCellDomByZIndex(this);
-    this.graph?.syncCellDom(this);
-  }
-
-  public setVisible(visible: boolean): void {
-    this.visible = visible;
-    this.graph?.scene.setNodeFlag(this.id, SceneNodeFlags.VISIBLE, visible);
-    if (this.view?.container && "style" in this.view.container) {
-      (this.view.container as HTMLElement).style.display = visible ? "" : "none";
-    }
-  }
-
-  public isVisible(): boolean {
-    return this.visible;
-  }
-
-  public getData(): Record<string, unknown> {
-    return this.data;
-  }
-
-  public setData(
-    data: Record<string, unknown>,
-    options?: { overwrite?: boolean | undefined; [key: string]: unknown },
-  ): void {
-    this.data = options?.overwrite ? { ...data } : { ...this.data, ...data };
-    if (this.kind === "node") {
-      const flipX = Boolean(this.data["flipX"]);
-      const flipY = Boolean(this.data["flipY"]);
-      this.graph?.scene.setNodeFlip(this.id, flipX, flipY);
-    }
-    this.graph?.syncCellDom(this);
-  }
-
-  public getMarkup(): DiagramMarkupNode | DiagramMarkupNode[] | undefined {
-    return this.markup;
-  }
-
-  public setMarkup(markup: unknown): void {
-    this.markup = markup as DiagramMarkupNode | DiagramMarkupNode[] | undefined;
-    if (this.kind === "node") {
-      this.compiledGlyph = compileGlyphMarkup(this.markup, this.attrs, this.width, this.height);
-      this.graph?.rebuildCellDom(this);
-    }
-  }
-
-  public getAttrs(): Record<string, Record<string, unknown>> {
-    return this.attrs;
-  }
-
-  public setAttrs(attrs: Record<string, unknown>): void {
-    for (const [k, v] of Object.entries(attrs)) {
-      if (v && typeof v === "object") {
-        this.attrs[k] = { ...(this.attrs[k] ?? {}), ...(v as Record<string, unknown>) };
-      }
-    }
-    if (this.compiledGlyph) {
-      applyAttrsToGlyph(this.compiledGlyph, this.attrs);
-    }
-    this.graph?.syncCellDom(this);
-  }
-
-  public attr(path: string, val?: unknown): unknown {
-    if (arguments.length === 1) {
-      const slash = path.indexOf("/");
-      if (slash > 0) {
-        const sel = path.slice(0, slash);
-        const key = path.slice(slash + 1);
-        const stored = this.attrs[sel]?.[key];
-        if (stored !== undefined) return stored;
-        return this.compiledGlyph ? readGlyphAttrPath(this.compiledGlyph, path) : undefined;
-      }
-      return this.attrs[path];
-    }
-
-    const slash = path.indexOf("/");
-    if (slash > 0) {
-      const sel = path.slice(0, slash);
-      const key = path.slice(slash + 1);
-      if (!this.attrs[sel]) this.attrs[sel] = {};
-      if (val === null || val === undefined) {
-        Reflect.deleteProperty(this.attrs[sel]!, key);
-      } else {
-        this.attrs[sel]![key] = val;
-      }
-      if (this.compiledGlyph) {
-        patchGlyphAttrPath(this.compiledGlyph, path, val);
-      }
-      this.graph?.patchCellSelectorDom(this, sel, key, val);
-    } else if (val && typeof val === "object") {
-      this.attrs[path] = { ...(this.attrs[path] ?? {}), ...(val as Record<string, unknown>) };
-      if (this.compiledGlyph) applyAttrsToGlyph(this.compiledGlyph, this.attrs);
-      this.graph?.syncCellDom(this);
-    }
-    return this;
-  }
-
-  public prop(path: string | string[], val?: unknown): unknown {
-    const key = Array.isArray(path) ? path.join("/") : path;
-    if (arguments.length === 1) {
-      if (key === "source") return this.source;
-      if (key === "target") return this.target;
-      if (key === "source/anchor") return this.source?.anchor;
-      if (key === "target/anchor") return this.target?.anchor;
-      if (key === "zIndex") return this.zIndex;
-      if (key === "ports") return { items: this.ports, groups: this.portGroups };
-      return this.customProps.get(key);
-    }
-    if (key === "source/anchor" && this.source) this.source.anchor = val;
-    else if (key === "target/anchor" && this.target) this.target.anchor = val;
-    else if (key === "zIndex" && typeof val === "number") this.setZIndex(val);
-    else if (key === "ports") {
-      if (Array.isArray(val)) {
-        this.ports = resolvePortsWithGroups(val as UnifiedPortItem[], this.portGroups, this.width, this.height);
-      } else if (val && typeof val === "object") {
-        const obj = val as { items?: UnifiedPortItem[] | undefined; groups?: Record<string, unknown> | undefined };
-        if (obj.groups) this.portGroups = { ...obj.groups };
-        const rawItems = Array.isArray(obj.items) ? obj.items : [];
-        this.ports = resolvePortsWithGroups(rawItems, this.portGroups, this.width, this.height);
-      }
-      this.graph?.scene.setNodePorts(
-        this.id,
-        this.ports.map((p) => ({
-          id: p.id,
-          group: p.group,
-          x: p.args?.x ?? 0,
-          y: p.args?.y ?? 0,
-          angle: p.args?.angle,
-        })),
-      );
-      this.graph?.rebuildCellDom(this);
-    } else this.customProps.set(key, val);
-    return this;
-  }
-
-  public setPortProp(portId: string, path: string | string[], val?: unknown): this {
-    const port = this.ports.find((p) => p.id === portId);
-    if (!port) return this;
-    const key = Array.isArray(path) ? path.join("/") : path;
-    if (key === "args" && val && typeof val === "object") {
-      port.args = { ...(port.args ?? {}), ...(val as Record<string, unknown>) };
-    } else if (key.startsWith("args/")) {
-      const sub = key.slice(5);
-      port.args = { ...(port.args ?? {}), [sub]: val };
-    } else if (key === "attrs" && val && typeof val === "object") {
-      port.attrs = { ...(port.attrs ?? {}), ...(val as Record<string, Record<string, unknown>>) };
-    } else if (key.startsWith("attrs/")) {
-      const rest = key.slice(6);
-      const slash = rest.indexOf("/");
-      if (slash > 0) {
-        const sel = rest.slice(0, slash);
-        const attrKey = rest.slice(slash + 1);
-        port.attrs = port.attrs ?? {};
-        port.attrs[sel] = { ...(port.attrs[sel] ?? {}), [attrKey]: val };
-      }
-    } else if (key === "markup") {
-      port.markup = val as DiagramMarkupNode | DiagramMarkupNode[] | undefined;
-    }
-    this.ports = resolvePortsWithGroups(this.ports, this.portGroups, this.width, this.height);
-    this.graph?.scene.setNodePorts(
-      this.id,
-      this.ports.map((p) => ({
-        id: p.id,
-        group: p.group,
-        x: p.args?.x ?? 0,
-        y: p.args?.y ?? 0,
-        angle: p.args?.angle,
-      })),
-    );
-    const updatedPort = this.ports.find((p) => p.id === portId);
-    const containerEl = this.view?.container;
-    const escPort = escapeSelectorAttr(portId);
-    const existingPortEl =
-      (key === "args" || key.startsWith("args/")) && containerEl
-        ? containerEl.querySelector(`.ms-port[port-id="${escPort}"], .ms-port[port="${escPort}"]`)
-        : null;
-    if (existingPortEl && updatedPort) {
-      const flipX = Boolean(this.data["flipX"]);
-      const flipY = Boolean(this.data["flipY"]);
-      const px = flipX ? this.width - (updatedPort.args?.x ?? 0) : (updatedPort.args?.x ?? 0);
-      const py = flipY ? this.height - (updatedPort.args?.y ?? 0) : (updatedPort.args?.y ?? 0);
-      existingPortEl.setAttribute("transform", `translate(${px}, ${py})`);
-    } else {
-      this.graph?.rebuildCellDom(this);
-    }
-    return this;
-  }
-
-  public removeProp(path: string | string[]): void {
-    const key = Array.isArray(path) ? path.join("/") : path;
-    if (key === "source/anchor" && this.source) delete this.source.anchor;
-    else if (key === "target/anchor" && this.target) delete this.target.anchor;
-    else this.customProps.delete(key);
-  }
-
-  public addChild(child: UnifiedCell): void {
-    this.children.add(child);
-    child.parent = this;
-    this.graph?.scene.setParent(child.id, this.id);
-  }
-
-  public removeChild(child: UnifiedCell): void {
-    this.children.delete(child);
-    if (child.parent === this) child.parent = null;
-    this.graph?.scene.setParent(child.id, null);
-  }
-
-  public getParent(): UnifiedCell | null {
-    return this.parent;
-  }
-
-  public getChildren(): UnifiedCell[] {
-    return Array.from(this.children);
-  }
-
-  public getPorts(): UnifiedPortItem[] {
-    return this.ports;
-  }
-
-  public getPort(portId: string): UnifiedPortItem | undefined {
-    return this.ports.find((p) => p.id === portId);
-  }
-
-  public getPortProp(portId: string, prop?: string): unknown {
-    const p = this.getPort(portId);
-    if (!p) return undefined;
-    if (!prop) return p;
-    return p[prop];
-  }
-
-  public getPortGroups(): Record<string, unknown> {
-    return this.portGroups;
-  }
-
-  public getSource(): UnifiedEdgeTerminal {
-    return this.source ?? {};
-  }
-
-  public setSource(source: UnifiedEdgeTerminal): void {
-    this.source = this.normalizeTerminal(source);
-    this.graph?.syncEdgeToScene(this);
-    this.graph?.syncCellDom(this);
-    this.graph?.emit("edge:change:source", { cell: this, edge: this, current: this.source });
-  }
-
-  public getTarget(): UnifiedEdgeTerminal {
-    return this.target ?? {};
-  }
-
-  public setTarget(target: UnifiedEdgeTerminal): void {
-    this.target = this.normalizeTerminal(target);
-    this.graph?.syncEdgeToScene(this);
-    this.graph?.syncCellDom(this);
-    this.graph?.emit("edge:change:target", { cell: this, edge: this, current: this.target });
-  }
-
-  public getSourceCellId(): string {
-    return this.source?.cell ?? "";
-  }
-
-  public getTargetCellId(): string {
-    return this.target?.cell ?? "";
-  }
-
-  public getSourcePortId(): string | undefined {
-    return this.source?.port;
-  }
-
-  public getTargetPortId(): string | undefined {
-    return this.target?.port;
-  }
-
-  public getSourceCell(): UnifiedCell | null {
-    return this.source?.cell ? (this.graph?.getCellById(this.source.cell) ?? null) : null;
-  }
-
-  public getTargetCell(): UnifiedCell | null {
-    return this.target?.cell ? (this.graph?.getCellById(this.target.cell) ?? null) : null;
-  }
-
-  public getSourcePoint(): WorldPoint {
-    if (this.source && typeof this.source.x === "number" && typeof this.source.y === "number") {
-      return { x: this.source.x, y: this.source.y };
-    }
-    const edgeRec = this.graph?.scene.getEdge(this.id);
-    if (edgeRec && this.graph) {
-      return this.graph.scene.resolveEdgeEndpoints(edgeRec).source;
-    }
-    return { x: 0, y: 0 };
-  }
-
-  public getTargetPoint(): WorldPoint {
-    if (this.target && typeof this.target.x === "number" && typeof this.target.y === "number") {
-      return { x: this.target.x, y: this.target.y };
-    }
-    const edgeRec = this.graph?.scene.getEdge(this.id);
-    if (edgeRec && this.graph) {
-      return this.graph.scene.resolveEdgeEndpoints(edgeRec).target;
-    }
-    return { x: 0, y: 0 };
-  }
-
-  public getVertices(): WorldPoint[] {
-    return this.vertices.map((p) => ({ x: p.x, y: p.y }));
-  }
-
-  public setVertices(
-    vertices: WorldPoint[],
-    options?: { ignoreSnap?: boolean | undefined; ui?: boolean | undefined; toolId?: string | undefined },
-  ): void {
-    this.vertices = vertices.map((p) => ({ x: p.x, y: p.y }));
-    this.graph?.syncEdgeToScene(this);
-    this.graph?.syncCellDom(this);
-    this.graph?.emit("edge:change:vertices", {
-      cell: this,
-      edge: this,
-      current: this.getVertices(),
-      options,
-    });
-  }
-
-  public insertVertex(vertex: WorldPoint, index?: number): void {
-    const idx = index === undefined ? this.vertices.length : Math.max(0, Math.min(this.vertices.length, index));
-    const next = this.getVertices();
-    next.splice(idx, 0, { x: vertex.x, y: vertex.y });
-    this.setVertices(next);
-  }
-
-  public getRouter(): unknown {
-    return this.router;
-  }
-
-  public setRouter(router: unknown): void {
-    this.router = router;
-    this.graph?.syncCellDom(this);
-  }
-
-  public removeRouter(): void {
-    this.router = undefined;
-    this.graph?.syncCellDom(this);
-  }
-
-  public getConnector(): unknown {
-    return this.connector;
-  }
-
-  public setConnector(connector: unknown): void {
-    this.connector = connector;
-    this.graph?.syncCellDom(this);
-  }
-
-  public setLabels(labels: unknown[]): void {
-    this.labels = [...labels];
-    this.graph?.syncCellDom(this);
-  }
-
-  public addTools(tools: unknown[]): void {
-    this.tools = [...tools];
-    this.graph?.syncEdgeToolsDom(this);
-  }
-
-  public removeTools(): void {
-    this.tools = [];
-    this.graph?.syncEdgeToolsDom(this);
-  }
-
-  public getTools(): unknown[] {
-    return this.tools;
-  }
-
-  public startBatch(_name: string): void {
-    // Supported for tool compatibility
-  }
-
-  public stopBatch(_name: string): void {
-    // Supported for tool compatibility
-  }
-
-  public findView(graph?: UnifiedGraph): UnifiedCellView | null {
-    const g = graph ?? this.graph;
-    return g ? g.findViewByCell(this) : this.view;
-  }
-}
+export type UnifiedCellView = UnifiedCellViewBase<UnifiedCell, UnifiedGraph>;
+export type UnifiedRouterFn = UnifiedRouterFnBase<UnifiedCell, UnifiedGraph>;
+export type UnifiedConnectorFn = UnifiedConnectorFnBase<UnifiedCell, UnifiedGraph>;
 
 /**
  * Custom Unified Graph Engine — 100% AntV X6 Replacement.
@@ -1003,15 +112,11 @@ export class UnifiedGraph {
   private static readonly connectorRegistry = new Map<string, UnifiedConnectorFn>();
 
   public static registerRouter(name: string, fn: UnifiedRouterFn, force = true): void {
-    if (force || !UnifiedGraph.routerRegistry.has(name)) {
-      UnifiedGraph.routerRegistry.set(name, fn);
-    }
+    if (force || !UnifiedGraph.routerRegistry.has(name)) UnifiedGraph.routerRegistry.set(name, fn);
   }
 
   public static registerConnector(name: string, fn: UnifiedConnectorFn, force = true): void {
-    if (force || !UnifiedGraph.connectorRegistry.has(name)) {
-      UnifiedGraph.connectorRegistry.set(name, fn);
-    }
+    if (force || !UnifiedGraph.connectorRegistry.has(name)) UnifiedGraph.connectorRegistry.set(name, fn);
   }
 
   public readonly container: HTMLElement;
@@ -1026,20 +131,11 @@ export class UnifiedGraph {
   public readonly timelineStore: SimulationTimelineStore;
 
   public disposed = false;
-  public readonly coord: {
-    localToGraphRect: (rect: WorldBounds) => WorldBounds;
-  };
+  public readonly coord: { localToGraphRect: (rect: WorldBounds) => WorldBounds };
 
   private width: number;
   private height: number;
-  private gridSize = 2;
-  private gridVisible = true;
-  private gridType: string = "doubleMesh";
-  private gridColor = "rgba(255, 255, 255, 0.12)";
-  private gridThickness = 1;
-  private gridFactor = 10;
-  private gridMinorColor = "transparent";
-  private gridMinorThickness = 0;
+  private gridState: GridStyleState;
   private bgColor = "transparent";
   private renderModePreference: "auto" | "svg" | "canvas2d" = "auto";
   private highScaleThreshold = 1500;
@@ -1055,37 +151,18 @@ export class UnifiedGraph {
   private batchDepth = 0;
   private markerCache = new Map<string, string>();
   private canvas2DRafId: number | null = null;
-  private simPlaybackRafId: number | null = null;
-  private simLastFrameMs = 0;
-  private hasLoadedSimulation = false;
-  private activeWidgetInteraction: {
-    mode: "drag" | "resize" | "brush";
-    widgetId: string;
-    startU: number;
-    startV: number;
-    origBounds: WorldBounds;
-  } | null = null;
+  private simState: SimulationPlaybackState = {
+    simPlaybackRafId: null,
+    simLastFrameMs: 0,
+    hasLoadedSimulation: false,
+  };
+  private hoveredCellId: string | null = null;
+  private activeWidgetInteraction: ActiveWidgetInteraction | null = null;
 
   // Browser DOM layers (null in headless Node environment)
-  private rootEl: HTMLElement | null = null;
-  private svgEl: SVGSVGElement | null = null;
-  private defsEl: SVGDefsElement | null = null;
-  private canvas2DEl: HTMLCanvasElement | null = null;
+  private dom: GraphDomLayers | null = null;
   private webGpuCanvasEl: HTMLCanvasElement | null = null;
-  private widgetCanvasEl: HTMLCanvasElement | null = null;
   private gridPatternId: string;
-  private gridPatternEl: SVGPatternElement | null = null;
-  private gridRectEl: SVGRectElement | null = null;
-  private viewportG: SVGGElement | null = null;
-  private edgesG: SVGGElement | null = null;
-  private nodesG: SVGGElement | null = null;
-  private toolsG: SVGGElement | null = null;
-  private edgeToolsG: SVGGElement | null = null;
-  private guidesG: SVGGElement | null = null;
-  private marqueeRectEl: SVGRectElement | null = null;
-  private selectionOverlayEl: HTMLElement | null = null;
-  private widgetLayerEl: HTMLElement | null = null;
-  private wirePreviewPathEl: SVGPathElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private cleanupDomListeners: (() => void)[] = [];
 
@@ -1098,21 +175,9 @@ export class UnifiedGraph {
     this.highScaleThreshold = Math.max(100, options.highScaleThreshold ?? 1500);
     this.preferWebGpu = options.preferWebGpu === true;
     this.activeRenderMode = this.renderModePreference === "canvas2d" ? "canvas2d" : "svg";
-    this.gridPatternId = `ms-grid-${autoCellCounter++}`;
-
-    if (typeof options.grid === "object" && options.grid !== null) {
-      this.gridSize = Math.max(1, options.grid.size ?? 2);
-      this.gridVisible = options.grid.visible !== false;
-      this.gridType = options.grid.type ?? "doubleMesh";
-      if ("args" in options.grid) {
-        this.applyGridArgs((options.grid as { args?: unknown }).args);
-      }
-    } else if (typeof options.grid === "number") {
-      this.gridSize = Math.max(1, options.grid);
-    }
-    if (options.background?.color) {
-      this.bgColor = options.background.color;
-    }
+    this.gridPatternId = nextAutoCellId("ms-grid-");
+    this.gridState = createInitialGridState(options.grid);
+    if (options.background?.color) this.bgColor = options.background.color;
 
     this.scene = new SoaSceneGraph(1024, 256);
     this.camera = new CameraController({ minZoom: 0.02, maxZoom: 20, initial: { tx: 0, ty: 0, zoom: 1 } });
@@ -1126,265 +191,34 @@ export class UnifiedGraph {
 
     this.fsm = new CanvasPointerFSM(
       this.scene,
-      {
-        onSelectionChange: (nodeIds, edgeIds) => {
-          this.syncSelectionFromFsm(nodeIds, edgeIds);
-        },
-        onNodesMoved: (moves, committed) => {
-          for (const [id, pt] of Object.entries(moves)) {
-            const cell = this.cells.get(id);
-            if (!cell) continue;
-            const prev = { x: cell.x, y: cell.y };
-            cell.x = pt.x;
-            cell.y = pt.y;
-            this.syncCellDom(cell);
-            this.refreshConnectedEdges(cell);
-            this.emit("node:change:position", { cell, node: cell, current: pt, previous: prev });
-            if (committed) {
-              this.emit("node:moved", { cell, node: cell });
-            }
-          }
-          this.syncSelectionBoxesDom();
-          this.scheduleCanvas2DRender();
-        },
-        onNodeResized: (nodeId, bounds, committed) => {
-          const cell = this.cells.get(nodeId);
-          if (!cell) return;
-          const prev = { width: cell.width, height: cell.height };
-          cell.x = bounds.x;
-          cell.y = bounds.y;
-          cell.width = bounds.width;
-          cell.height = bounds.height;
-          this.resizeCellVisualDom(cell, prev.width, prev.height);
-          this.syncCellDom(cell);
-          this.refreshConnectedEdges(cell);
-          this.emit("node:change:size", {
-            cell,
-            node: cell,
-            current: { width: bounds.width, height: bounds.height },
-            previous: prev,
-          });
-          this.emit(committed ? "node:resized" : "node:resizing", { cell, node: cell });
-          this.syncSelectionBoxesDom();
-          this.scheduleCanvas2DRender();
-        },
-        onNodeRotated: (nodeId, angleDeg, committed) => {
-          const cell = this.cells.get(nodeId);
-          if (!cell) return;
-          cell.angle = angleDeg;
-          this.syncCellDom(cell);
-          this.refreshConnectedEdges(cell);
-          this.emit("node:change:angle", { cell, node: cell, current: angleDeg });
-          this.emit(committed ? "node:rotated" : "node:rotating", { cell, node: cell });
-          this.syncSelectionBoxesDom();
-          this.scheduleCanvas2DRender();
-        },
-        onWireConnected: ({ sourceNodeId, sourcePortId, targetNodeId, targetPortId }) => {
-          const connOpts = this.options.connecting;
-          const allowLoop = typeof connOpts?.allowLoop === "function" ? connOpts.allowLoop() : connOpts?.allowLoop;
-          if (allowLoop === false && sourceNodeId === targetNodeId) {
-            return;
-          }
-          const allowMulti = typeof connOpts?.allowMulti === "function" ? connOpts.allowMulti() : connOpts?.allowMulti;
-          if (allowMulti === false) {
-            for (const existing of this.getEdges()) {
-              const s = existing.getSource();
-              const t = existing.getTarget();
-              if (
-                (s.cell === sourceNodeId &&
-                  s.port === sourcePortId &&
-                  t.cell === targetNodeId &&
-                  t.port === targetPortId) ||
-                (s.cell === targetNodeId &&
-                  s.port === targetPortId &&
-                  t.cell === sourceNodeId &&
-                  t.port === sourcePortId)
-              ) {
-                return;
-              }
-            }
-          }
-          const edge = connOpts?.createEdge ? connOpts.createEdge() : this.createEdge({});
-          edge.setSource({ cell: sourceNodeId, port: sourcePortId });
-          edge.setTarget({ cell: targetNodeId, port: targetPortId });
-          if (!edge.getRouter() && connOpts?.router) {
-            edge.setRouter(connOpts.router);
-          }
-          if (!edge.getConnector() && connOpts?.connector) {
-            edge.setConnector(connOpts.connector);
-          }
-          if (connOpts?.validateEdge && !connOpts.validateEdge({ edge })) {
-            return;
-          }
-          this.addEdge(edge);
-          this.emit("edge:connected", { isNew: true, edge, cell: edge });
-        },
-        onEdgeVerticesChanged: (edgeId, vertices, committed) => {
-          const edge = this.cells.get(edgeId);
-          if (!edge) return;
-          edge.setVertices(vertices, { ui: !committed });
-          this.syncEdgeToolsDom(edge);
-          if (committed) {
-            this.emit("edge:mouseup", { edge, cell: edge });
-          }
-        },
-        onPanDelta: (dx, dy) => {
-          const next = this.camera.panByScreenDelta(dx, dy);
-          this.applyViewportTransformDom(true);
-          this.emit("translate", { tx: next.tx, ty: next.ty });
-        },
-        onAlignmentGuides: (guides) => {
-          this.syncAlignmentGuidesDom(guides);
-        },
-        onMarqueeChange: (rect) => {
-          this.syncMarqueeDom(rect);
-        },
-        onWiringPreview: (preview) => {
-          this.syncMagnetHighlightsDom(preview);
-          if (!this.wirePreviewPathEl) return;
-          if (!preview) {
-            this.wirePreviewPathEl.setAttribute("d", "");
-            return;
-          }
-          const srcPt = preview.sourcePoint;
-          const tgtPt = preview.snappedTarget
-            ? { x: preview.snappedTarget.x, y: preview.snappedTarget.y }
-            : preview.currentPoint;
-          let routePts: WorldPoint[] = [];
-
-          const srcCell = this.cells.get(preview.sourceNodeId);
-          const tgtCell = preview.snappedTarget ? this.cells.get(preview.snappedTarget.nodeId) : undefined;
-          const mockEdge = {
-            id: "__wiring_preview__",
-            getSource: () => ({ cell: preview.sourceNodeId, port: preview.sourcePortId }),
-            getTarget: () =>
-              preview.snappedTarget
-                ? { cell: preview.snappedTarget.nodeId, port: preview.snappedTarget.portId }
-                : { x: tgtPt.x, y: tgtPt.y },
-            getSourceCell: () => srcCell ?? null,
-            getTargetCell: () => tgtCell ?? null,
-            getSourcePortId: () => preview.sourcePortId,
-            getTargetPortId: () => preview.snappedTarget?.portId,
-            getSourcePoint: () => srcPt,
-            getTargetPoint: () => tgtPt,
-            getVertices: () => [],
-          };
-          const mockView: UnifiedCellView = {
-            cell: mockEdge as unknown as UnifiedCell,
-            graph: this,
-            container: null,
-            sourcePoint: srcPt,
-            targetPoint: tgtPt,
-            routePoints: [],
-            getVertexIndex: () => -1,
-          };
-
-          const routerSpec = this.options.connecting?.router;
-          const routerName =
-            typeof routerSpec === "string"
-              ? routerSpec
-              : routerSpec && typeof routerSpec === "object"
-                ? (routerSpec as { name?: string | undefined }).name
-                : undefined;
-          const routerFn = routerName ? UnifiedGraph.routerRegistry.get(routerName) : undefined;
-          if (routerFn) {
-            try {
-              const routerArgs =
-                routerSpec && typeof routerSpec === "object"
-                  ? ((routerSpec as { args?: Record<string, unknown> | undefined }).args ?? {})
-                  : {};
-              const routed = routerFn([], routerArgs, mockView);
-              if (Array.isArray(routed)) {
-                routePts = routed;
-              }
-            } catch {
-              routePts = [];
-            }
-          }
-
-          if (routePts.length === 0 && Math.abs(tgtPt.x - srcPt.x) > 1 && Math.abs(tgtPt.y - srcPt.y) > 1) {
-            const portWorld = this.scene.getPortWorldPosition(preview.sourceNodeId, preview.sourcePortId);
-            const horiz = portWorld ? Math.abs(portWorld.nx) >= Math.abs(portWorld.ny) : true;
-            routePts = horiz ? [{ x: tgtPt.x, y: srcPt.y }] : [{ x: srcPt.x, y: tgtPt.y }];
-          }
-          mockView.routePoints = routePts;
-
-          const connSpec = this.options.connecting?.connector;
-          const connName =
-            typeof connSpec === "string"
-              ? connSpec
-              : connSpec && typeof connSpec === "object"
-                ? ((connSpec as { name?: string | undefined }).name ?? "rounded")
-                : "rounded";
-          const connArgs =
-            connSpec && typeof connSpec === "object"
-              ? ((connSpec as { args?: Record<string, unknown> | undefined }).args ?? {})
-              : {};
-          const connFn = UnifiedGraph.connectorRegistry.get(connName);
-          let d = "";
-          if (connFn) {
-            try {
-              d = connFn(srcPt, tgtPt, routePts, connArgs, mockView);
-            } catch {
-              d = defaultPolylinePath(srcPt, tgtPt, routePts, connName);
-            }
-          } else {
-            d = defaultPolylinePath(srcPt, tgtPt, routePts, connName);
-          }
-          this.wirePreviewPathEl.setAttribute("d", d);
-        },
-        onNodeInteractiveClick: (nodeId, phase, u, v) => {
-          const node = this.cells.get(nodeId);
-          if (!node) return;
-          if (phase === "down") this.emit("node:mousedown", { node, cell: node, x: u, y: v });
-          else if (phase === "up") this.emit("node:mouseup", { node, cell: node, x: u, y: v });
-          else if (phase === "click") {
-            this.emit("node:click", { node, cell: node, x: u, y: v });
-            this.emit("cell:click", { cell: node, node, x: u, y: v });
-          }
-        },
-        validateConnection: (sId, sPort, tId, tPort) => {
-          const connOpts = this.options.connecting;
-          const allowLoop = typeof connOpts?.allowLoop === "function" ? connOpts.allowLoop() : connOpts?.allowLoop;
-          if (allowLoop === false && sId === tId) return false;
-          const validator = connOpts?.validateConnection;
-          if (!validator) return true;
-          return validator({
-            sourceCell: this.cells.get(sId) ?? null,
-            targetCell: this.cells.get(tId) ?? null,
-            sourcePort: sPort,
-            targetPort: tPort,
-          });
-        },
-        validateMagnet: (nodeId, portId) => {
-          const vm = this.options.connecting?.validateMagnet;
-          if (!vm) return true;
-          const cell = this.cells.get(nodeId) ?? null;
-          const view = cell ? this.findViewByCell(cell) : null;
-          const escPort = escapeSelectorAttr(portId);
-          const magnet =
-            view?.container?.querySelector?.(`.ms-port[port="${escPort}"], .ms-port[port-id="${escPort}"]`) ?? null;
-          return vm({ cell, magnet });
-        },
-        canInteract: (cellId) => {
-          const inter = this.options.interacting;
-          if (inter === undefined || inter === true) return true;
-          if (inter === false) return false;
-          const cell = this.cells.get(cellId);
-          if (!cell) return true;
-          return inter({ cell });
-        },
-        selectionFilter: (cellId) => {
-          const selPlugin = this.getPlugin("selection");
-          const filter = selPlugin instanceof UnifiedSelection ? selPlugin.options.filter : undefined;
-          if (!filter) return true;
-          const cell = this.cells.get(cellId);
-          if (!cell) return true;
-          if (typeof filter === "function") return filter(cell);
-          return true;
-        },
-      },
-      { gridSize: this.gridSize },
+      createGraphFsmCallbacks({
+        graph: this,
+        options: this.options,
+        scene: this.scene,
+        camera: this.camera,
+        cells: this.cells,
+        routerRegistry: UnifiedGraph.routerRegistry,
+        connectorRegistry: UnifiedGraph.connectorRegistry,
+        getWirePreviewPathEl: () => this.dom?.wirePreviewPathEl ?? null,
+        getEdges: () => this.getEdges(),
+        createEdge: (metadata) => this.createEdge(metadata),
+        addEdge: (metadata) => this.addEdge(metadata),
+        getPlugin: (name) => this.getPlugin(name),
+        syncSelectionFromFsm: (nodeIds, edgeIds) =>
+          syncSelectionFromFsmInStore(this.createCellStoreHost(), nodeIds, edgeIds),
+        syncCellDom: (cell) => this.syncCellDom(cell),
+        resizeCellVisualDom: (cell, pw, ph) => this.resizeCellVisualDom(cell, pw, ph),
+        refreshConnectedEdges: (node) => this.refreshConnectedEdges(node),
+        syncSelectionBoxesDom: (panOnly) => this.syncSelectionBoxesDom(panOnly),
+        syncEdgeToolsDom: (edge) => this.syncEdgeToolsDom(edge),
+        syncAlignmentGuidesDom: (guides) => syncAlignmentGuidesDom(this.dom?.guidesG ?? null, guides),
+        syncMarqueeDom: (rect) => syncMarqueeDom(this.dom?.marqueeRectEl ?? null, rect),
+        syncMagnetHighlightsDom: (preview) => syncMagnetHighlightsDom(this.dom?.nodesG ?? null, preview),
+        applyViewportTransformDom: (panOnly) => this.applyViewportTransformDom(panOnly),
+        scheduleCanvas2DRender: () => this.scheduleCanvas2DRender(),
+        emit: (event, args) => this.emit(event, args),
+      }),
+      { gridSize: this.gridState.gridSize },
     );
 
     this.coord = {
@@ -1403,555 +237,56 @@ export class UnifiedGraph {
   }
 
   private mountDomIfAvailable(): void {
-    if (typeof document === "undefined" || !this.container || typeof this.container.appendChild !== "function") {
-      return;
-    }
+    const layers = mountGraphDom({
+      container: this.container,
+      width: this.width,
+      height: this.height,
+      bgColor: this.bgColor,
+      gridPatternId: this.gridPatternId,
+      gridSize: this.gridState.gridSize,
+      gridColor: this.gridState.gridColor,
+      gridVisible: this.gridState.gridVisible,
+      activeRenderMode: this.activeRenderMode,
+    });
+    if (!layers) return;
+    this.dom = layers;
+    this.syncGridDom();
 
-    const style = this.container.style;
-    if (style) {
-      if (!style.position) style.position = "relative";
-      style.overflow = "hidden";
-      style.backgroundColor = this.bgColor;
-    }
-
-    const root = document.createElement("div");
-    root.className = "ms-graph ms-unified-canvas";
-    root.style.position = "relative";
-    root.style.width = "100%";
-    root.style.height = "100%";
-    root.style.userSelect = "none";
-
-    // High-scale Canvas2D layer (auto-activated above highScaleThreshold nodes)
-    const canvas2D = document.createElement("canvas");
-    canvas2D.className = "ms-canvas2d-layer";
-    canvas2D.style.position = "absolute";
-    canvas2D.style.inset = "0";
-    canvas2D.style.width = "100%";
-    canvas2D.style.height = "100%";
-    canvas2D.style.display = this.activeRenderMode === "canvas2d" ? "block" : "none";
-    canvas2D.style.pointerEvents = "none";
-
-    const svg = document.createElementNS(SVG_NS, "svg");
-    svg.setAttribute("class", "ms-graph-svg");
-    svg.setAttribute("width", String(this.width));
-    svg.setAttribute("height", String(this.height));
-    svg.style.width = "100%";
-    svg.style.height = "100%";
-    svg.style.display = "block";
-
-    const defs = document.createElementNS(SVG_NS, "defs");
-    const pattern = document.createElementNS(SVG_NS, "pattern");
-    pattern.setAttribute("id", this.gridPatternId);
-    pattern.setAttribute("width", String(this.gridSize * 10));
-    pattern.setAttribute("height", String(this.gridSize * 10));
-    pattern.setAttribute("patternUnits", "userSpaceOnUse");
-    const gridPath = document.createElementNS(SVG_NS, "path");
-    const step = this.gridSize * 10;
-    gridPath.setAttribute("d", `M ${step} 0 L 0 0 0 ${step}`);
-    gridPath.setAttribute("fill", "none");
-    gridPath.setAttribute("stroke", this.gridColor);
-    gridPath.setAttribute("stroke-width", "1");
-    pattern.appendChild(gridPath);
-    defs.appendChild(pattern);
-    svg.appendChild(defs);
-
-    const gridRect = document.createElementNS(SVG_NS, "rect");
-    gridRect.setAttribute("width", "100%");
-    gridRect.setAttribute("height", "100%");
-    gridRect.setAttribute("fill", this.gridVisible ? `url(#${this.gridPatternId})` : "none");
-    gridRect.setAttribute("pointer-events", "none");
-    svg.appendChild(gridRect);
-
-    const viewportG = document.createElementNS(SVG_NS, "g");
-    viewportG.setAttribute("class", "ms-canvas-viewport");
-
-    const edgesG = document.createElementNS(SVG_NS, "g");
-    edgesG.setAttribute("class", "ms-edges-layer");
-    const nodesG = document.createElementNS(SVG_NS, "g");
-    nodesG.setAttribute("class", "ms-nodes-layer");
-    const toolsG = document.createElementNS(SVG_NS, "g");
-    toolsG.setAttribute("class", "ms-tools-layer");
-
-    const guidesG = document.createElementNS(SVG_NS, "g");
-    guidesG.setAttribute("class", "ms-alignment-guides");
-    guidesG.setAttribute("pointer-events", "none");
-
-    const edgeToolsG = document.createElementNS(SVG_NS, "g");
-    edgeToolsG.setAttribute("class", "ms-edge-tools");
-
-    const marqueeRect = document.createElementNS(SVG_NS, "rect");
-    marqueeRect.setAttribute("class", "ms-marquee-rect");
-    marqueeRect.setAttribute("fill", "rgba(56, 189, 248, 0.12)");
-    marqueeRect.setAttribute("stroke", "#38bdf8");
-    marqueeRect.setAttribute("stroke-width", "1");
-    marqueeRect.setAttribute("stroke-dasharray", "4 3");
-    marqueeRect.setAttribute("vector-effect", "non-scaling-stroke");
-    marqueeRect.setAttribute("pointer-events", "none");
-    marqueeRect.style.display = "none";
-
-    const previewPath = document.createElementNS(SVG_NS, "path");
-    previewPath.setAttribute("fill", "none");
-    previewPath.setAttribute("stroke", "#0891b2");
-    previewPath.setAttribute("stroke-width", "1.5");
-    previewPath.setAttribute("stroke-dasharray", "5 4");
-    previewPath.setAttribute("vector-effect", "non-scaling-stroke");
-    previewPath.setAttribute("pointer-events", "none");
-
-    toolsG.appendChild(guidesG);
-    toolsG.appendChild(edgeToolsG);
-    toolsG.appendChild(marqueeRect);
-    toolsG.appendChild(previewPath);
-
-    viewportG.appendChild(edgesG);
-    viewportG.appendChild(nodesG);
-    viewportG.appendChild(toolsG);
-    svg.appendChild(viewportG);
-
-    const widgetLayer = document.createElement("div");
-    widgetLayer.className = "ms-widget-portal-layer";
-    widgetLayer.style.position = "absolute";
-    widgetLayer.style.inset = "0";
-    widgetLayer.style.pointerEvents = "none";
-
-    const widgetCanvas = document.createElement("canvas");
-    widgetCanvas.className = "ms-widgets-canvas";
-    widgetCanvas.style.position = "absolute";
-    widgetCanvas.style.inset = "0";
-    widgetCanvas.style.width = "100%";
-    widgetCanvas.style.height = "100%";
-    widgetCanvas.style.display = "none";
-    widgetCanvas.style.pointerEvents = "none";
-    widgetLayer.appendChild(widgetCanvas);
-
-    const selOverlay = document.createElement("div");
-    selOverlay.className = "ms-widget-selection";
-    selOverlay.style.position = "absolute";
-    selOverlay.style.inset = "0";
-    selOverlay.style.pointerEvents = "none";
-
-    root.appendChild(canvas2D);
-    root.appendChild(svg);
-    root.appendChild(widgetLayer);
-    root.appendChild(selOverlay);
-    this.container.appendChild(root);
-
-    this.rootEl = root;
-    this.canvas2DEl = canvas2D;
-    this.widgetCanvasEl = widgetCanvas;
-    this.svgEl = svg;
-    this.defsEl = defs;
-    this.gridPatternEl = pattern;
-    this.gridRectEl = gridRect;
-    this.viewportG = viewportG;
-    this.edgesG = edgesG;
-    this.nodesG = nodesG;
-    this.toolsG = toolsG;
-    this.guidesG = guidesG;
-    this.edgeToolsG = edgeToolsG;
-    this.marqueeRectEl = marqueeRect;
-    this.widgetLayerEl = widgetLayer;
-    this.selectionOverlayEl = selOverlay;
-    this.wirePreviewPathEl = previewPath;
-
-    this.syncGridPatternDom();
-    this.attachDomEventListeners(root);
+    const cleanup = attachGraphDomEventListeners(layers.rootEl, {
+      container: this.container,
+      options: this.options,
+      scene: this.scene,
+      camera: this.camera,
+      fsm: this.fsm,
+      cells: this.cells,
+      widgets: this.widgets,
+      getActiveRenderModeInternal: () => this.activeRenderMode,
+      getHoveredCellId: () => this.hoveredCellId,
+      setHoveredCellId: (id) => {
+        this.hoveredCellId = id;
+      },
+      getActiveWidgetInteraction: () => this.activeWidgetInteraction,
+      setActiveWidgetInteraction: (inter) => {
+        this.activeWidgetInteraction = inter;
+      },
+      clientToLocal: (x, y) => this.clientToLocal(x, y),
+      setWidgetPosition: (id, x, y) => this.setWidgetPosition(id, x, y),
+      setWidgetSize: (id, w, h) => this.setWidgetSize(id, w, h),
+      brushPlotWidget: (id, rect) => this.brushPlotWidget(id, rect),
+      applyViewportTransformDom: (panOnly) => this.applyViewportTransformDom(panOnly),
+      emit: (event, args) => this.emit(event, args),
+    });
+    this.cleanupDomListeners.push(cleanup);
 
     if (this.options.autoResize && typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => {
         if (this.disposed) return;
         const w = this.container.clientWidth;
         const h = this.container.clientHeight;
-        if (w > 0 && h > 0 && (w !== this.width || h !== this.height)) {
-          this.resize(w, h);
-        }
+        if (w > 0 && h > 0 && (w !== this.width || h !== this.height)) this.resize(w, h);
       });
       this.resizeObserver.observe(this.container);
     }
-  }
-
-  private hoveredCellId: string | null = null;
-  private lastGridZoom = -1;
-
-  private attachDomEventListeners(root: HTMLElement): void {
-    const toLocal = (e: MouseEvent | PointerEvent): { u: number; v: number; sx: number; sy: number } => {
-      const pt = this.clientToLocal(e.clientX, e.clientY);
-      const rect = this.container.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-      return { u: pt.x, v: pt.y, sx: e.clientX - rect.left, sy: e.clientY - rect.top };
-    };
-
-    const hitTestWidget = (
-      u: number,
-      v: number,
-    ): { widget: UnifiedCanvasWidgetSpec; mode: "drag" | "resize" | "brush" } | null => {
-      const list = Array.from(this.widgets.values()).reverse();
-      for (const w of list) {
-        const b = w.bounds;
-        if (u < b.x || u > b.x + b.width || v < b.y || v > b.y + b.height) continue;
-        // Bottom-right 14x14 corner = resize handle
-        if (u >= b.x + b.width - 14 && v >= b.y + b.height - 14) {
-          return { widget: w, mode: "resize" };
-        }
-        // Scatter / Pareto plot body below header = brush select
-        if (w.kind === "plot" && w.plot && (w.plot.kind === "scatter" || w.plot.kind === "pareto") && v > b.y + 22) {
-          return { widget: w, mode: "brush" };
-        }
-        // Title bar or sticky/table body = drag move
-        return { widget: w, mode: "drag" };
-      }
-      return null;
-    };
-
-    const clearHover = (e?: Event) => {
-      if (!this.hoveredCellId) return;
-      const prevCell = this.cells.get(this.hoveredCellId);
-      this.hoveredCellId = null;
-      if (prevCell) {
-        if (prevCell.isNode()) {
-          this.emit("node:mouseleave", { node: prevCell, cell: prevCell, e });
-        } else {
-          this.emit("edge:mouseleave", { edge: prevCell, cell: prevCell, e });
-        }
-      }
-    };
-
-    const updateHover = (e: PointerEvent, u: number, v: number) => {
-      if (this.fsm.mode !== "idle" || this.activeWidgetInteraction) return;
-      const targetEl = e.target as Element | null;
-      const cellEl = targetEl?.closest?.("[data-cell-id]");
-      let nextId = cellEl?.getAttribute("data-cell-id") ?? null;
-      if (!nextId && this.activeRenderMode === "canvas2d") {
-        const hitNode = this.scene.hitTestNode(u, v);
-        if (hitNode) nextId = hitNode.id;
-      }
-      if (nextId !== this.hoveredCellId) {
-        clearHover(e);
-        if (nextId) {
-          const nextCell = this.cells.get(nextId);
-          if (nextCell) {
-            this.hoveredCellId = nextId;
-            if (nextCell.isNode()) {
-              this.emit("node:mouseenter", { node: nextCell, cell: nextCell, x: u, y: v, e });
-            } else {
-              this.emit("edge:mouseenter", { edge: nextCell, cell: nextCell, x: u, y: v, e });
-            }
-          }
-        }
-      }
-      if (this.hoveredCellId) {
-        const curCell = this.cells.get(this.hoveredCellId);
-        if (curCell) {
-          if (curCell.isNode()) {
-            this.emit("node:mousemove", { node: curCell, cell: curCell, x: u, y: v, e });
-          } else {
-            this.emit("edge:mousemove", { edge: curCell, cell: curCell, x: u, y: v, e });
-          }
-        }
-      } else {
-        this.emit("blank:mousemove", { x: u, y: v, e });
-      }
-    };
-
-    const cancelActiveGestures = () => {
-      if (this.activeWidgetInteraction) {
-        this.activeWidgetInteraction = null;
-      }
-      this.fsm.cancel();
-    };
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (e.isPrimary === false) return;
-      // Focus the container so scoped keyboard shortcuts work reliably
-      if (typeof this.container?.focus === "function" && this.container.tabIndex >= 0) {
-        this.container.focus({ preventScroll: true });
-      }
-      const { u, v, sx, sy } = toLocal(e);
-      if (e.button === 0 && this.widgets.size > 0) {
-        const hit = hitTestWidget(u, v);
-        if (hit) {
-          (root as { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId);
-          this.activeWidgetInteraction = {
-            mode: hit.mode,
-            widgetId: hit.widget.id,
-            startU: u,
-            startV: v,
-            origBounds: { ...hit.widget.bounds },
-          };
-          return;
-        }
-      }
-      if (e.button === 0 || e.button === 1) {
-        (root as { setPointerCapture?: (id: number) => void }).setPointerCapture?.(e.pointerId);
-      }
-      let pointerPortHit: { nodeId: string; portId: string } | null = null;
-      const targetEl = e.target as Element | null;
-      const portEl = targetEl?.closest?.(".ms-port, [data-port], [magnet='true']");
-      if (portEl) {
-        const portId =
-          portEl.getAttribute("port-id") ?? portEl.getAttribute("port") ?? portEl.getAttribute("data-port");
-        const nodeEl = portEl.closest?.("[data-cell-id]");
-        const nodeId = nodeEl?.getAttribute("data-cell-id");
-        if (nodeId && portId) {
-          pointerPortHit = { nodeId, portId };
-        }
-      }
-      this.fsm.handleEvent({
-        planeId: "primary",
-        u,
-        v,
-        screenX: sx,
-        screenY: sy,
-        pointerId: e.pointerId,
-        isPrimary: e.isPrimary,
-        button: e.button,
-        buttons: e.buttons,
-        shiftKey: e.shiftKey,
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        altKey: e.altKey,
-        phase: "down",
-        pointerPortHit,
-      });
-    };
-
-    const onPointerMove = (e: PointerEvent) => {
-      const { u, v, sx, sy } = toLocal(e);
-      if (this.activeWidgetInteraction) {
-        const inter = this.activeWidgetInteraction;
-        if (inter.mode === "drag") {
-          this.setWidgetPosition(
-            inter.widgetId,
-            Math.round(inter.origBounds.x + (u - inter.startU)),
-            Math.round(inter.origBounds.y + (v - inter.startV)),
-          );
-        } else if (inter.mode === "resize") {
-          this.setWidgetSize(
-            inter.widgetId,
-            Math.max(120, Math.round(inter.origBounds.width + (u - inter.startU))),
-            Math.max(80, Math.round(inter.origBounds.height + (v - inter.startV))),
-          );
-        } else if (inter.mode === "brush") {
-          this.brushPlotWidget(inter.widgetId, {
-            x0: Math.min(inter.startU, u),
-            y0: Math.min(inter.startV, v),
-            x1: Math.max(inter.startU, u),
-            y1: Math.max(inter.startV, v),
-          });
-        }
-        return;
-      }
-      this.fsm.handleEvent({
-        planeId: "primary",
-        u,
-        v,
-        screenX: sx,
-        screenY: sy,
-        pointerId: e.pointerId,
-        isPrimary: e.isPrimary,
-        button: e.button,
-        buttons: e.buttons,
-        shiftKey: e.shiftKey,
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        altKey: e.altKey,
-        phase: "move",
-      });
-      updateHover(e, u, v);
-      this.emit("blank:pointermove", { x: u, y: v, e });
-      this.emit("cell:pointermove", { x: u, y: v, e });
-    };
-
-    const onPointerUp = (e: PointerEvent) => {
-      try {
-        (root as { releasePointerCapture?: (id: number) => void }).releasePointerCapture?.(e.pointerId);
-      } catch {
-        // Ignore when capture was not held on this pointerId
-      }
-      const { u, v, sx, sy } = toLocal(e);
-      if (this.activeWidgetInteraction) {
-        const finished = this.activeWidgetInteraction;
-        this.activeWidgetInteraction = null;
-        this.emit("widget:changed", { widgetId: finished.widgetId, mode: finished.mode });
-        return;
-      }
-      const hitNode = this.scene.hitTestNode(u, v);
-      const edgeTol = Math.max(4, Math.min(32, 8 / Math.max(0.1, this.camera.getState().zoom)));
-      const hitEdge = hitNode ? null : this.scene.hitTestEdge(u, v, edgeTol);
-      this.fsm.handleEvent({
-        planeId: "primary",
-        u,
-        v,
-        screenX: sx,
-        screenY: sy,
-        pointerId: e.pointerId,
-        isPrimary: e.isPrimary,
-        button: e.button,
-        buttons: e.buttons,
-        shiftKey: e.shiftKey,
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        altKey: e.altKey,
-        phase: "up",
-      });
-      if (!hitNode && !hitEdge && e.button === 0) {
-        this.emit("blank:mouseup", { x: u, y: v, e });
-        if (this.fsm.wasLastUpCleanBlankClick()) {
-          this.emit("blank:click", { x: u, y: v, e });
-        }
-      }
-      this.emit("blank:pointerup", { x: u, y: v, e });
-      this.emit("cell:pointerup", { x: u, y: v, e });
-    };
-
-    const onPointerCancel = (e: PointerEvent) => {
-      try {
-        (root as { releasePointerCapture?: (id: number) => void }).releasePointerCapture?.(e.pointerId);
-      } catch {
-        // Ignore
-      }
-      cancelActiveGestures();
-    };
-
-    const onLostPointerCapture = () => {
-      if (this.fsm.mode !== "idle" && this.fsm.mode !== "portal-focused") {
-        cancelActiveGestures();
-      }
-    };
-
-    const onPointerLeave = (e: PointerEvent) => {
-      clearHover(e);
-      this.emit("blank:mouseleave", { e });
-    };
-
-    const onWindowBlur = () => {
-      clearHover();
-      cancelActiveGestures();
-    };
-
-    const onDblClick = (e: MouseEvent) => {
-      const { u, v } = toLocal(e);
-      const hitNode = this.scene.hitTestNode(u, v);
-      if (hitNode) {
-        const cell = this.cells.get(hitNode.id);
-        if (cell) this.emit("node:dblclick", { node: cell, cell, e });
-      } else {
-        const edgeTol = Math.max(4, Math.min(32, 8 / Math.max(0.1, this.camera.getState().zoom)));
-        const hitEdge = this.scene.hitTestEdge(u, v, edgeTol);
-        if (hitEdge) {
-          const cell = this.cells.get(hitEdge.edge.id);
-          if (cell) this.emit("edge:dblclick", { edge: cell, cell, e });
-        }
-      }
-      this.fsm.handleEvent({
-        planeId: "primary",
-        u,
-        v,
-        button: e.button,
-        buttons: e.buttons,
-        shiftKey: e.shiftKey,
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        altKey: e.altKey,
-        phase: "dblclick",
-      });
-    };
-
-    const onContextMenu = (e: MouseEvent) => {
-      const { u, v } = toLocal(e);
-      const hitNode = this.scene.hitTestNode(u, v);
-      if (hitNode) {
-        const cell = this.cells.get(hitNode.id);
-        if (cell) this.emit("node:contextmenu", { node: cell, cell, e });
-        return;
-      }
-      const edgeTol = Math.max(4, Math.min(32, 8 / Math.max(0.1, this.camera.getState().zoom)));
-      const hitEdge = this.scene.hitTestEdge(u, v, edgeTol);
-      if (hitEdge) {
-        const cell = this.cells.get(hitEdge.edge.id);
-        if (cell) this.emit("edge:contextmenu", { edge: cell, cell, e });
-        return;
-      }
-      this.emit("blank:contextmenu", { x: u, y: v, e });
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      const mw = this.options.mousewheel;
-      const enabled = mw === true || (typeof mw === "object" && mw.enabled !== false);
-      if (!enabled) return;
-
-      // Normalize deltaMode (0 = pixels, 1 = lines, 2 = pages)
-      const modeScale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
-      const dy = e.deltaY * modeScale;
-      const dx = e.deltaX * modeScale;
-
-      const mods = typeof mw === "object" ? mw.modifiers : undefined;
-      const modsArr = Array.isArray(mods) ? mods : typeof mods === "string" ? [mods] : null;
-      const zoomModPressed = modsArr
-        ? modsArr.some((m) =>
-            m === "ctrl"
-              ? e.ctrlKey || e.metaKey
-              : m === "meta"
-                ? e.metaKey
-                : m === "shift"
-                  ? e.shiftKey
-                  : m === "alt"
-                    ? e.altKey
-                    : false,
-          )
-        : e.ctrlKey || e.metaKey;
-
-      if (zoomModPressed) {
-        e.preventDefault();
-        const rect = this.container.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-        const next = this.camera.zoomByWheelDelta(dy, {
-          x: e.clientX - rect.left,
-          y: e.clientY - rect.top,
-        });
-        this.applyViewportTransformDom();
-        this.emit("scale", { sx: next.zoom, sy: next.zoom });
-      } else if (dx !== 0 || dy !== 0) {
-        // Two-finger trackpad scroll / plain wheel pans the canvas smoothly
-        const panEnabled =
-          this.options.panning === undefined ||
-          this.options.panning === true ||
-          (typeof this.options.panning === "object" && this.options.panning.enabled !== false);
-        if (panEnabled) {
-          e.preventDefault();
-          const panDx = e.shiftKey && dx === 0 ? -dy : -dx;
-          const panDy = e.shiftKey && dx === 0 ? 0 : -dy;
-          const next = this.camera.panByScreenDelta(panDx, panDy);
-          this.applyViewportTransformDom(true);
-          this.emit("translate", { tx: next.tx, ty: next.ty });
-        }
-      }
-    };
-
-    root.addEventListener("pointerdown", onPointerDown);
-    root.addEventListener("pointermove", onPointerMove);
-    root.addEventListener("pointerup", onPointerUp);
-    root.addEventListener("pointercancel", onPointerCancel);
-    root.addEventListener("lostpointercapture", onLostPointerCapture);
-    root.addEventListener("pointerleave", onPointerLeave);
-    root.addEventListener("dblclick", onDblClick);
-    root.addEventListener("contextmenu", onContextMenu);
-    root.addEventListener("wheel", onWheel, { passive: false });
-    if (typeof window !== "undefined") {
-      window.addEventListener("blur", onWindowBlur);
-    }
-
-    this.cleanupDomListeners.push(() => {
-      root.removeEventListener("pointerdown", onPointerDown);
-      root.removeEventListener("pointermove", onPointerMove);
-      root.removeEventListener("pointerup", onPointerUp);
-      root.removeEventListener("pointercancel", onPointerCancel);
-      root.removeEventListener("lostpointercapture", onLostPointerCapture);
-      root.removeEventListener("pointerleave", onPointerLeave);
-      root.removeEventListener("dblclick", onDblClick);
-      root.removeEventListener("contextmenu", onContextMenu);
-      root.removeEventListener("wheel", onWheel);
-      if (typeof window !== "undefined") {
-        window.removeEventListener("blur", onWindowBlur);
-      }
-    });
   }
 
   public isDisposed(): boolean {
@@ -1993,39 +328,18 @@ export class UnifiedGraph {
     this.resizeObserver = null;
     for (const fn of this.cleanupDomListeners) fn();
     this.cleanupDomListeners = [];
-    if (this.rootEl && this.rootEl.parentElement) {
-      this.rootEl.parentElement.removeChild(this.rootEl);
-    }
-    this.rootEl = null;
-    this.svgEl = null;
-    this.defsEl = null;
-    this.gridPatternEl = null;
-    this.gridRectEl = null;
-    this.viewportG = null;
-    this.edgesG = null;
-    this.nodesG = null;
-    this.toolsG = null;
-    this.guidesG = null;
-    this.edgeToolsG = null;
-    this.marqueeRectEl = null;
-    this.widgetLayerEl = null;
-    this.selectionOverlayEl = null;
-    this.wirePreviewPathEl = null;
-    this.canvas2DEl = null;
+    if (this.dom?.rootEl.parentElement) this.dom.rootEl.parentElement.removeChild(this.dom.rootEl);
+    this.dom = null;
     this.webGpuCanvasEl = null;
-    this.widgetCanvasEl = null;
-    this.markerCache.clear();
-    this.plugins.clear();
-    this.widgets.clear();
-    for (const c of this.cells.values()) {
-      c.selectorElements.clear();
-      c.view = null;
-      c.attachGraph(null);
-    }
-    this.cells.clear();
-    this.selectedIds.clear();
-    this.scene.clear();
-    this.listeners.clear();
+    disposeCellsAndCollections(
+      this.cells,
+      this.selectedIds,
+      this.widgets,
+      this.plugins,
+      this.markerCache,
+      this.listeners,
+      this.scene,
+    );
   }
 
   // ── Event Bus ──
@@ -2041,11 +355,8 @@ export class UnifiedGraph {
   }
 
   public off<T = Record<string, unknown>>(event: string, handler?: (args: T) => void): this {
-    if (!handler) {
-      this.listeners.delete(event);
-    } else {
-      this.listeners.get(event)?.delete(handler as (args: unknown) => void);
-    }
+    if (!handler) this.listeners.delete(event);
+    else this.listeners.get(event)?.delete(handler as (args: unknown) => void);
     return this;
   }
 
@@ -2066,10 +377,9 @@ export class UnifiedGraph {
   public use(plugin: unknown): this {
     if (plugin && typeof plugin === "object") {
       const p = plugin as { name?: string | undefined };
-      const key = p.name ?? `plugin_${this.plugins.size}`;
-      this.plugins.set(key, plugin);
-      if (plugin instanceof UnifiedSelection && this.selectionOverlayEl) {
-        plugin.selectionImpl.container = this.selectionOverlayEl;
+      this.plugins.set(p.name ?? `plugin_${this.plugins.size}`, plugin);
+      if (plugin instanceof UnifiedSelection && this.dom?.selectionOverlayEl) {
+        plugin.selectionImpl.container = this.dom.selectionOverlayEl;
       }
     }
     return this;
@@ -2083,142 +393,37 @@ export class UnifiedGraph {
 
   public drawBackground(options: { color: string }): void {
     this.bgColor = options.color;
-    if (this.container?.style) {
-      this.container.style.backgroundColor = options.color;
-    }
+    if (this.container?.style) this.container.style.backgroundColor = options.color;
   }
 
-  private applyGridArgs(args: unknown): void {
-    if (Array.isArray(args)) {
-      const minor = args[0] as { color?: string | undefined; thickness?: number | undefined } | undefined;
-      const major = args[args.length - 1] as
-        { color?: string | undefined; thickness?: number | undefined; factor?: number | undefined } | undefined;
-      if (minor && args.length >= 2) {
-        if (typeof minor.color === "string") this.gridMinorColor = minor.color;
-        if (typeof minor.thickness === "number") this.gridMinorThickness = minor.thickness;
-      }
-      if (major) {
-        if (typeof major.color === "string") this.gridColor = major.color;
-        if (typeof major.thickness === "number") this.gridThickness = major.thickness;
-        if (typeof major.factor === "number" && major.factor >= 1) this.gridFactor = major.factor;
-      }
-    } else if (args && typeof args === "object") {
-      const a = args as { color?: string | undefined; thickness?: number | undefined; factor?: number | undefined };
-      if (typeof a.color === "string") this.gridColor = a.color;
-      if (typeof a.thickness === "number") this.gridThickness = a.thickness;
-      if (typeof a.factor === "number" && a.factor >= 1) this.gridFactor = a.factor;
-    }
-  }
-
-  private syncGridPatternDom(panOnly = false): void {
-    if (!this.gridPatternEl || typeof document === "undefined") return;
-    const s = this.camera.getState();
-    const zoom = Math.max(0.02, s.zoom);
-    const baseStep = Math.max(1, this.gridSize);
-
-    // Fast path during panning when zoom & grid config have not changed: update patternTransform only
-    if (panOnly && this.lastGridZoom === zoom && this.gridPatternEl.childElementCount > 0) {
-      if (this.gridType === "dot") {
-        const r = Math.max(0.75, Math.min(3, this.gridThickness * 0.75));
-        this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx - r}, ${s.ty - r})`);
-      } else {
-        this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx}, ${s.ty})`);
-      }
-      return;
-    }
-    this.lastGridZoom = zoom;
-
-    if (this.gridType === "dot") {
-      let screenStep = baseStep * zoom;
-      while (screenStep < 8) screenStep *= 2;
-      const r = Math.max(0.75, Math.min(3, this.gridThickness * 0.75));
-      this.gridPatternEl.setAttribute("width", String(screenStep));
-      this.gridPatternEl.setAttribute("height", String(screenStep));
-      this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx - r}, ${s.ty - r})`);
-      this.gridPatternEl.innerHTML = "";
-      const dot = document.createElementNS(SVG_NS, "circle");
-      dot.setAttribute("cx", String(r));
-      dot.setAttribute("cy", String(r));
-      dot.setAttribute("r", String(r));
-      dot.setAttribute("fill", this.gridColor);
-      this.gridPatternEl.appendChild(dot);
-    } else if (this.gridType === "mesh") {
-      let screenStep = baseStep * zoom;
-      while (screenStep < 8) screenStep *= 2;
-      this.gridPatternEl.setAttribute("width", String(screenStep));
-      this.gridPatternEl.setAttribute("height", String(screenStep));
-      this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx}, ${s.ty})`);
-      this.gridPatternEl.innerHTML = "";
-      const path = document.createElementNS(SVG_NS, "path");
-      path.setAttribute("d", `M ${screenStep} 0 L 0 0 0 ${screenStep}`);
-      path.setAttribute("fill", "none");
-      path.setAttribute("stroke", this.gridColor);
-      path.setAttribute("stroke-width", String(Math.max(0.5, this.gridThickness)));
-      this.gridPatternEl.appendChild(path);
-    } else {
-      // doubleMesh: major grid every gridSize * gridFactor, optional minor subdivisions
-      const factor = Math.max(1, Math.round(this.gridFactor));
-      let majorStep = baseStep * factor * zoom;
-      while (majorStep < 10) majorStep *= 2;
-      const minorStep = majorStep / factor;
-
-      this.gridPatternEl.setAttribute("width", String(majorStep));
-      this.gridPatternEl.setAttribute("height", String(majorStep));
-      this.gridPatternEl.setAttribute("patternTransform", `translate(${s.tx}, ${s.ty})`);
-      this.gridPatternEl.innerHTML = "";
-
-      if (
-        factor > 1 &&
-        minorStep >= 6 &&
-        this.gridMinorThickness > 0 &&
-        this.gridMinorColor !== "transparent" &&
-        this.gridMinorColor !== "none"
-      ) {
-        let minorD = "";
-        for (let i = 1; i < factor; i++) {
-          const offset = i * minorStep;
-          minorD += `M ${offset} 0 L ${offset} ${majorStep} M 0 ${offset} L ${majorStep} ${offset} `;
-        }
-        const minorPath = document.createElementNS(SVG_NS, "path");
-        minorPath.setAttribute("d", minorD.trim());
-        minorPath.setAttribute("fill", "none");
-        minorPath.setAttribute("stroke", this.gridMinorColor);
-        minorPath.setAttribute("stroke-width", String(this.gridMinorThickness));
-        this.gridPatternEl.appendChild(minorPath);
-      }
-
-      const majorPath = document.createElementNS(SVG_NS, "path");
-      majorPath.setAttribute("d", `M ${majorStep} 0 L 0 0 0 ${majorStep}`);
-      majorPath.setAttribute("fill", "none");
-      majorPath.setAttribute("stroke", this.gridColor);
-      majorPath.setAttribute("stroke-width", String(Math.max(0.5, this.gridThickness)));
-      this.gridPatternEl.appendChild(majorPath);
-    }
-
-    if (this.gridRectEl) {
-      this.gridRectEl.setAttribute("fill", this.gridVisible ? `url(#${this.gridPatternId})` : "none");
-    }
+  private syncGridDom(panOnly = false): void {
+    syncGridPatternDom(
+      this.dom?.gridPatternEl ?? null,
+      this.dom?.gridRectEl ?? null,
+      this.gridPatternId,
+      this.gridState,
+      this.camera.getState(),
+      panOnly,
+    );
   }
 
   public drawGrid(options: Record<string, unknown>): void {
-    this.gridVisible = true;
-    this.lastGridZoom = -1;
-    if (typeof options["type"] === "string") {
-      this.gridType = options["type"];
-    }
-    this.applyGridArgs(options["args"]);
-    this.syncGridPatternDom();
+    this.gridState.gridVisible = true;
+    this.gridState.lastGridZoom = -1;
+    if (typeof options["type"] === "string") this.gridState.gridType = options["type"];
+    applyGridArgs(this.gridState, options["args"]);
+    this.syncGridDom();
   }
 
   public showGrid(): void {
-    this.gridVisible = true;
-    this.lastGridZoom = -1;
-    this.syncGridPatternDom();
+    this.gridState.gridVisible = true;
+    this.gridState.lastGridZoom = -1;
+    this.syncGridDom();
   }
 
   public hideGrid(): void {
-    this.gridVisible = false;
-    this.gridRectEl?.setAttribute("fill", "none");
+    this.gridState.gridVisible = false;
+    this.dom?.gridRectEl.setAttribute("fill", "none");
   }
 
   public clearGrid(): void {
@@ -2226,18 +431,18 @@ export class UnifiedGraph {
   }
 
   public setGridSize(size: number): void {
-    this.gridSize = Math.max(1, size);
-    this.lastGridZoom = -1;
-    this.fsm.setOptions({ gridSize: this.gridSize });
-    this.syncGridPatternDom();
+    this.gridState.gridSize = Math.max(1, size);
+    this.gridState.lastGridZoom = -1;
+    this.fsm.setOptions({ gridSize: this.gridState.gridSize });
+    this.syncGridDom();
   }
 
   public getGridSize(): number {
-    return this.gridSize;
+    return this.gridState.gridSize;
   }
 
   public getGridType(): string {
-    return this.gridType;
+    return this.gridState.gridType;
   }
 
   public snapToGrid(x: number, y: number): { x: number; y: number; toJSON: () => { x: number; y: number } } {
@@ -2253,140 +458,19 @@ export class UnifiedGraph {
   }
 
   public addNode(metadata: Record<string, unknown> | UnifiedCell): UnifiedCell {
-    const node = metadata instanceof UnifiedCell ? metadata : new UnifiedCell("node", metadata, this);
-    const existing = this.cells.get(node.id);
-    if (existing && existing !== node && existing.view?.container && existing.view.container.parentNode) {
-      existing.view.container.parentNode.removeChild(existing.view.container);
-      existing.selectorElements.clear();
-      existing.view = null;
-      existing.attachGraph(null);
-    }
-    node.attachGraph(this);
-    this.cells.set(node.id, node);
-
-    const data = node.getData();
-    let flags: number = node.visible ? SceneNodeFlags.VISIBLE : SceneNodeFlags.NONE;
-    if (data["readOnly"] || data["isInherited"]) flags |= SceneNodeFlags.READONLY;
-    if (data["locked"]) flags |= SceneNodeFlags.LOCKED;
-    if (data["portal"]) flags |= SceneNodeFlags.PORTAL;
-    if (data["widget"]) flags |= SceneNodeFlags.WIDGET;
-    if (node.id.startsWith("solder_dot_") || node.id.startsWith("__") || node.id === "diagram_background") {
-      flags |= SceneNodeFlags.EPHEMERAL;
-    }
-
-    this.scene.upsertNode({
-      id: node.id,
-      x: node.x,
-      y: node.y,
-      width: node.width,
-      height: node.height,
-      angleDeg: node.angle,
-      flipX: Boolean(data["flipX"]),
-      flipY: Boolean(data["flipY"]),
-      opacity: node.opacity,
-      zIndex: node.zIndex,
-      flags,
-    });
-
-    const ports = node.getPorts();
-    if (ports.length > 0) {
-      this.scene.setNodePorts(
-        node.id,
-        ports.map((p) => ({
-          id: p.id,
-          group: p.group,
-          x: p.args?.x ?? 0,
-          y: p.args?.y ?? 0,
-          angle: p.args?.angle ?? 0,
-          direction: p.direction,
-        })),
-      );
-    }
-
-    // Automatically register embedded 3D CAD/FEA/CFD portal or canvas widget if attached in metadata
-    if (data["portal"] && typeof data["portal"] === "object") {
-      const pSpec = data["portal"] as Partial<Embedded3DPortalSpec>;
-      if (pSpec.kind && pSpec.artifactUri) {
-        this.registerEmbeddedPortal({
-          id: node.id,
-          kind: pSpec.kind,
-          artifactUri: pSpec.artifactUri,
-          bounds: node.getBBox(),
-          featurePins: pSpec.featurePins,
-          isAnimating: pSpec.isAnimating,
-          snapshotDataUrl: pSpec.snapshotDataUrl,
-        });
-      }
-    }
-    if (data["widget"] && typeof data["widget"] === "object") {
-      const wSpec = data["widget"] as Partial<UnifiedCanvasWidgetSpec>;
-      if (wSpec.kind) {
-        this.registerCanvasWidget({
-          id: node.id,
-          kind: wSpec.kind,
-          bounds: node.getBBox(),
-          plot: wSpec.plot,
-          table: wSpec.table,
-          sticky: wSpec.sticky,
-        });
-      }
-    }
-
-    this.evaluateRenderMode();
-    if (this.activeRenderMode === "svg") {
-      this.rebuildCellDom(node);
-    } else {
-      this.scheduleCanvas2DRender();
-    }
-    this.emit("cell:added", { cell: node });
-    this.emit("node:added", { node, cell: node });
-    return node;
+    return addNodeToGraph(this.createCellStoreHost(), metadata);
   }
 
   public addEdge(metadata: Record<string, unknown> | UnifiedCell): UnifiedCell {
-    const edge = metadata instanceof UnifiedCell ? metadata : new UnifiedCell("edge", metadata, this);
-    const existing = this.cells.get(edge.id);
-    if (existing && existing !== edge && existing.view?.container && existing.view.container.parentNode) {
-      existing.view.container.parentNode.removeChild(existing.view.container);
-      existing.selectorElements.clear();
-      existing.view = null;
-      existing.attachGraph(null);
-    }
-    edge.attachGraph(this);
-    this.cells.set(edge.id, edge);
-    this.syncEdgeToScene(edge);
-    if (this.activeRenderMode === "svg") {
-      this.rebuildCellDom(edge);
-    } else {
-      this.scheduleCanvas2DRender();
-    }
-    this.emit("cell:added", { cell: edge });
-    this.emit("edge:added", { edge, cell: edge });
-    return edge;
+    return addEdgeToGraph(this.createCellStoreHost(), metadata);
   }
 
   public syncEdgeToScene(edge: UnifiedCell): void {
-    const src = edge.getSource();
-    const tgt = edge.getTarget();
-    const rec: SoaEdgeRecord = {
-      id: edge.id,
-      sourceNodeId: src.cell ?? "",
-      sourcePortId: src.port,
-      sourcePoint: typeof src.x === "number" && typeof src.y === "number" ? { x: src.x, y: src.y } : undefined,
-      targetNodeId: tgt.cell ?? "",
-      targetPortId: tgt.port,
-      targetPoint: typeof tgt.x === "number" && typeof tgt.y === "number" ? { x: tgt.x, y: tgt.y } : undefined,
-      vertices: edge.getVertices(),
-      routePoints: edge.view?.routePoints ?? [],
-      zIndex: edge.zIndex,
-      flags: SceneNodeFlags.VISIBLE,
-    };
-    this.scene.upsertEdge(rec);
+    syncEdgeToSceneImpl(this.scene, edge);
   }
 
   public getCellById(id?: string): UnifiedCell | null {
-    if (!id) return null;
-    return this.cells.get(id) ?? null;
+    return id ? (this.cells.get(id) ?? null) : null;
   }
 
   public getCells(): UnifiedCell[] {
@@ -2394,27 +478,18 @@ export class UnifiedGraph {
   }
 
   public getNodes(): UnifiedCell[] {
-    const out: UnifiedCell[] = [];
-    for (const c of this.cells.values()) {
-      if (c.isNode()) out.push(c);
-    }
-    return out;
+    return Array.from(this.cells.values()).filter((c) => c.isNode());
   }
 
   public getEdges(): UnifiedCell[] {
-    const out: UnifiedCell[] = [];
-    for (const c of this.cells.values()) {
-      if (c.isEdge()) out.push(c);
-    }
-    return out;
+    return Array.from(this.cells.values()).filter((c) => c.isEdge());
   }
 
   public getConnectedEdges(node: { id?: string | undefined } | string): UnifiedCell[] {
     const id = typeof node === "string" ? node : (node?.id ?? "");
     if (!id) return [];
-    const edgeIds = this.scene.getConnectedEdgeIds(id);
     const out: UnifiedCell[] = [];
-    for (const eid of edgeIds) {
+    for (const eid of this.scene.getConnectedEdgeIds(id)) {
       const c = this.cells.get(eid);
       if (c && c.isEdge()) out.push(c);
     }
@@ -2422,61 +497,7 @@ export class UnifiedGraph {
   }
 
   public removeCell(cellOrId: unknown): UnifiedCell | null {
-    const id =
-      typeof cellOrId === "string"
-        ? cellOrId
-        : cellOrId && typeof cellOrId === "object" && "id" in cellOrId
-          ? String((cellOrId as { id: string }).id)
-          : "";
-    const cell = this.cells.get(id);
-    if (!cell) return null;
-
-    // Cascade removal to connected edges when removing a node so wires don't dangle to (0,0)
-    if (cell.isNode()) {
-      const connectedEdges = this.getConnectedEdges(id);
-      for (const edge of connectedEdges) {
-        if (this.cells.has(edge.id)) {
-          this.removeCell(edge);
-        }
-      }
-    }
-
-    const wasSelected = this.selectedIds.delete(id);
-    this.cells.delete(id);
-    this.widgets.delete(id);
-    this.portal3DManager.unregisterPortal(id);
-    if (this.hoveredCellId === id) this.hoveredCellId = null;
-
-    if (cell.isNode()) {
-      this.scene.removeNode(id);
-    } else {
-      this.scene.removeEdge(id);
-    }
-
-    if (cell.view?.container && cell.view.container.parentNode) {
-      cell.view.container.parentNode.removeChild(cell.view.container);
-    }
-    if (cell.isEdge() && this.edgeToolsG) {
-      const toolGroup = this.edgeToolsG.querySelector(`[data-edge-tools-id="${escapeSelectorAttr(id)}"]`);
-      if (toolGroup && toolGroup.parentNode) toolGroup.parentNode.removeChild(toolGroup);
-    }
-    cell.selectorElements.clear();
-    cell.view = null;
-    cell.attachGraph(null);
-
-    if (wasSelected) {
-      this.syncFsmSelection();
-      this.emit("selection:changed", { added: [], removed: [cell], selected: this.getSelectedCells() });
-    }
-
-    this.emit("cell:removed", { cell });
-    this.emit(cell.isNode() ? "node:removed" : "edge:removed", {
-      cell,
-      node: cell.isNode() ? cell : undefined,
-      edge: cell.isEdge() ? cell : undefined,
-    });
-    this.syncSelectionBoxesDom();
-    return cell;
+    return removeCellFromGraph(this.createCellStoreHost(), cellOrId);
   }
 
   public removeCells(cells: UnifiedCell[]): UnifiedCell[] {
@@ -2489,29 +510,7 @@ export class UnifiedGraph {
   }
 
   public clearCells(): void {
-    const all = Array.from(this.cells.values());
-    const prevSelected = this.getSelectedCells();
-    for (const c of all) {
-      this.portal3DManager.unregisterPortal(c.id);
-      if (c.view?.container && c.view.container.parentNode) {
-        c.view.container.parentNode.removeChild(c.view.container);
-      }
-      c.selectorElements.clear();
-      c.view = null;
-      c.attachGraph(null);
-    }
-    if (this.edgeToolsG) this.edgeToolsG.innerHTML = "";
-    if (this.guidesG) this.guidesG.innerHTML = "";
-    this.hoveredCellId = null;
-    this.cells.clear();
-    this.selectedIds.clear();
-    this.widgets.clear();
-    this.scene.clear();
-    this.syncFsmSelection();
-    this.syncSelectionBoxesDom();
-    if (prevSelected.length > 0) {
-      this.emit("selection:changed", { added: [], removed: prevSelected, selected: [] });
-    }
+    clearCellsFromGraph(this.createCellStoreHost());
   }
 
   public batchUpdate(_name: string, execute: () => void): void {
@@ -2520,9 +519,7 @@ export class UnifiedGraph {
       execute();
     } finally {
       this.batchDepth--;
-      if (this.batchDepth === 0) {
-        this.applyViewportTransformDom();
-      }
+      if (this.batchDepth === 0) this.applyViewportTransformDom();
     }
   }
 
@@ -2532,64 +529,19 @@ export class UnifiedGraph {
   }): void {
     this.batchUpdate("fromJSON", () => {
       this.clearCells();
-      for (const n of data.nodes ?? []) {
-        this.addNode(n);
-      }
-      for (const e of data.edges ?? []) {
-        this.addEdge(e);
-      }
+      for (const n of data.nodes ?? []) this.addNode(n);
+      for (const e of data.edges ?? []) this.addEdge(e);
     });
   }
 
   public findViewByCell(cell: UnifiedCell | string): UnifiedCellView | null {
-    const c = typeof cell === "string" ? this.cells.get(cell) : cell;
-    if (!c) return null;
-    if (!c.view) {
-      c.view = {
-        cell: c,
-        graph: this,
-        container: null,
-        routePoints: c.isEdge() ? c.getVertices() : [],
-        getVertexIndex: (x: number, y: number) => {
-          const verts = c.getVertices();
-          if (verts.length === 0) return 0;
-          let bestIdx = 0;
-          let bestDist = Infinity;
-          for (let i = 0; i < verts.length; i++) {
-            const d = Math.hypot(verts[i]!.x - x, verts[i]!.y - y);
-            if (d < bestDist) {
-              bestDist = d;
-              bestIdx = i;
-            }
-          }
-          return bestIdx;
-        },
-      };
-    }
-    return c.view;
+    return findOrCreateCellView(this, this.cells, cell);
   }
 
   // ── Selection ──
 
-  private syncFsmSelection(): void {
-    const nodeIds: string[] = [];
-    const edgeIds: string[] = [];
-    for (const id of this.selectedIds) {
-      const c = this.cells.get(id);
-      if (!c) continue;
-      if (c.isNode()) nodeIds.push(id);
-      else edgeIds.push(id);
-    }
-    this.fsm.syncSelection(nodeIds, edgeIds);
-  }
-
   public getSelectedCells(): UnifiedCell[] {
-    const out: UnifiedCell[] = [];
-    for (const id of this.selectedIds) {
-      const c = this.cells.get(id);
-      if (c) out.push(c);
-    }
-    return out;
+    return getSelectedCellsFromStore(this.cells, this.selectedIds);
   }
 
   public isSelected(cell: UnifiedCell): boolean {
@@ -2597,75 +549,15 @@ export class UnifiedGraph {
   }
 
   public select(cellOrCells: UnifiedCell | UnifiedCell[]): void {
-    const list = Array.isArray(cellOrCells) ? cellOrCells : [cellOrCells];
-    const added: UnifiedCell[] = [];
-    for (const c of list) {
-      if (!this.selectedIds.has(c.id)) {
-        this.selectedIds.add(c.id);
-        this.scene.setNodeFlag(c.id, SceneNodeFlags.SELECTED, true);
-        added.push(c);
-        if (c.isEdge()) this.emit("edge:selected", { edge: c, cell: c });
-      }
-    }
-    if (added.length > 0) {
-      this.syncFsmSelection();
-      this.syncSelectionBoxesDom();
-      this.emit("selection:changed", { added, removed: [], selected: this.getSelectedCells() });
-    }
+    selectCellsInStore(this.createCellStoreHost(), cellOrCells);
   }
 
   public unselect(cellOrCells: UnifiedCell | UnifiedCell[]): void {
-    const list = Array.isArray(cellOrCells) ? cellOrCells : [cellOrCells];
-    const removed: UnifiedCell[] = [];
-    for (const c of list) {
-      if (this.selectedIds.delete(c.id)) {
-        this.scene.setNodeFlag(c.id, SceneNodeFlags.SELECTED, false);
-        removed.push(c);
-      }
-    }
-    if (removed.length > 0) {
-      this.syncFsmSelection();
-      this.syncSelectionBoxesDom();
-      this.emit("selection:changed", { added: [], removed, selected: this.getSelectedCells() });
-    }
+    unselectCellsInStore(this.createCellStoreHost(), cellOrCells);
   }
 
   public cleanSelection(): void {
-    if (this.selectedIds.size === 0) return;
-    const removed = this.getSelectedCells();
-    for (const c of removed) {
-      this.scene.setNodeFlag(c.id, SceneNodeFlags.SELECTED, false);
-    }
-    this.selectedIds.clear();
-    this.syncFsmSelection();
-    this.syncSelectionBoxesDom();
-    this.emit("selection:changed", { added: [], removed, selected: [] });
-  }
-
-  private syncSelectionFromFsm(nodeIds: string[], edgeIds: string[]): void {
-    const next = new Set([...nodeIds, ...edgeIds]);
-    const added: UnifiedCell[] = [];
-    const removed: UnifiedCell[] = [];
-    for (const id of next) {
-      if (!this.selectedIds.has(id)) {
-        const c = this.cells.get(id);
-        if (c) added.push(c);
-      }
-    }
-    for (const id of this.selectedIds) {
-      if (!next.has(id)) {
-        const c = this.cells.get(id);
-        if (c) removed.push(c);
-      }
-    }
-    this.selectedIds = next;
-    this.syncSelectionBoxesDom();
-    if (added.length > 0 || removed.length > 0) {
-      for (const c of added) {
-        if (c.isEdge()) this.emit("edge:selected", { edge: c, cell: c });
-      }
-      this.emit("selection:changed", { added, removed, selected: this.getSelectedCells() });
-    }
+    cleanSelectionInStore(this.createCellStoreHost());
   }
 
   // ── Viewport / Camera ──
@@ -2703,9 +595,9 @@ export class UnifiedGraph {
   public resize(width: number, height: number): void {
     this.width = Math.max(1, width);
     this.height = Math.max(1, height);
-    if (this.svgEl) {
-      this.svgEl.setAttribute("width", String(this.width));
-      this.svgEl.setAttribute("height", String(this.height));
+    if (this.dom?.svgEl) {
+      this.dom.svgEl.setAttribute("width", String(this.width));
+      this.dom.svgEl.setAttribute("height", String(this.height));
     }
     this.scheduleCanvas2DRender();
     this.renderWidgetCanvasDom();
@@ -2719,21 +611,8 @@ export class UnifiedGraph {
       viewportArea?: WorldBounds | undefined;
     },
   ): void {
-    const pad = options?.padding ?? 24;
-    const area = options?.viewportArea ?? { x: 0, y: 0, width: this.width, height: this.height };
-    const safeW = Math.max(1, rect.width);
-    const safeH = Math.max(1, rect.height);
-    const availW = Math.max(16, area.width - pad * 2);
-    const availH = Math.max(16, area.height - pad * 2);
-    let zoom = this.camera.clampZoom(Math.min(availW / safeW, availH / safeH));
-    if (options?.maxScale !== undefined && zoom > options.maxScale) {
-      zoom = this.camera.clampZoom(options.maxScale);
-    }
-    const cx = rect.x + safeW / 2;
-    const cy = rect.y + safeH / 2;
-    const tx = area.x + area.width / 2 - cx * zoom;
-    const ty = area.y + area.height / 2 - cy * zoom;
-    this.camera.setState({ tx, ty, zoom });
+    const next = computeZoomToRectState(rect, this.width, this.height, (z) => this.camera.clampZoom(z), options);
+    this.camera.setState(next);
     this.applyViewportTransformDom();
     const s = this.camera.getState();
     this.emit("scale", { sx: s.zoom, sy: s.zoom });
@@ -2746,21 +625,17 @@ export class UnifiedGraph {
     viewportArea?: WorldBounds | undefined;
   }): void {
     const bounds = this.scene.getContentBounds();
-    if (!bounds) return;
-    this.zoomToRect(bounds, options);
+    if (bounds) this.zoomToRect(bounds, options);
   }
 
   public centerPoint(worldX: number, worldY: number): void {
     const z = this.camera.getState().zoom;
-    const tx = this.width / 2 - worldX * z;
-    const ty = this.height / 2 - worldY * z;
-    this.translate(tx, ty);
+    this.translate(this.width / 2 - worldX * z, this.height / 2 - worldY * z);
   }
 
   public centerContent(): void {
     const bounds = this.scene.getContentBounds();
-    if (!bounds) return;
-    this.centerPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    if (bounds) this.centerPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
   }
 
   public centerCell(cell: UnifiedCell): void {
@@ -2782,32 +657,16 @@ export class UnifiedGraph {
 
   /** Returns the active rendering backend ("svg" for standard schematics, "canvas2d" or "webgpu" above highScaleThreshold). */
   public getActiveRenderMode(): "svg" | "canvas2d" | "webgpu" {
-    if (this.activeRenderMode === "canvas2d" && this.webGpuRenderer.isReady()) {
-      return "webgpu";
-    }
-    return this.activeRenderMode;
+    return this.activeRenderMode === "canvas2d" && this.webGpuRenderer.isReady() ? "webgpu" : this.activeRenderMode;
   }
 
   /** Initializes optional WebGPU instanced schematic rendering on a dedicated GPU canvas layer. */
   public async enableWebGpu(gpuOverride?: WebGpuLike | null): Promise<boolean> {
     this.preferWebGpu = true;
     this.webGpuInitAttempted = true;
-    if (!this.webGpuCanvasEl && typeof document !== "undefined" && this.rootEl) {
-      const gpuCanvas = document.createElement("canvas");
-      gpuCanvas.className = "ms-webgpu-layer";
-      gpuCanvas.style.position = "absolute";
-      gpuCanvas.style.inset = "0";
-      gpuCanvas.style.width = "100%";
-      gpuCanvas.style.height = "100%";
-      gpuCanvas.style.pointerEvents = "none";
-      gpuCanvas.style.display = "none";
-      this.rootEl.insertBefore(gpuCanvas, this.rootEl.firstChild);
-      this.webGpuCanvasEl = gpuCanvas;
-    }
+    if (!this.webGpuCanvasEl) this.webGpuCanvasEl = createWebGpuCanvasEl(this.dom?.rootEl ?? null);
     const ok = await this.webGpuRenderer.initialize(this.webGpuCanvasEl, gpuOverride);
-    if (ok && this.activeRenderMode === "canvas2d") {
-      this.scheduleCanvas2DRender();
-    }
+    if (ok && this.activeRenderMode === "canvas2d") this.scheduleCanvas2DRender();
     return ok;
   }
 
@@ -2818,10 +677,7 @@ export class UnifiedGraph {
 
   /** Computes clipped WebGL scissor rects for all visible 3D portals on 1 shared WebGL context. */
   public computeEmbedded3DScissorRects() {
-    return this.portal3DManager.computeFrameScissorRects(this.camera, {
-      width: this.width,
-      height: this.height,
-    });
+    return this.portal3DManager.computeFrameScissorRects(this.camera, { width: this.width, height: this.height });
   }
 
   /** Pins a Modelon Impact-style Canvas2D plot, table, or KPI sticky widget onto the schematic canvas. */
@@ -2842,22 +698,12 @@ export class UnifiedGraph {
 
   /** Moves a pinned Canvas2D plot, table, or KPI sticky widget in world coordinates. */
   public setWidgetPosition(widgetId: string, x: number, y: number): boolean {
-    const w = this.widgets.get(widgetId);
-    if (!w) return false;
-    w.bounds = { ...w.bounds, x, y };
-    this.renderWidgetCanvasDom();
-    this.scheduleCanvas2DRender();
-    return true;
+    return setWidgetPositionInHost(this.createSimWidgetsHost(), widgetId, x, y);
   }
 
   /** Resizes a pinned Canvas2D plot, table, or KPI sticky widget in world coordinates. */
   public setWidgetSize(widgetId: string, width: number, height: number): boolean {
-    const w = this.widgets.get(widgetId);
-    if (!w) return false;
-    w.bounds = { ...w.bounds, width: Math.max(100, width), height: Math.max(60, height) };
-    this.renderWidgetCanvasDom();
-    this.scheduleCanvas2DRender();
-    return true;
+    return setWidgetSizeInHost(this.createSimWidgetsHost(), widgetId, width, height);
   }
 
   /** Connects a pinned widget to a world-space wire or port via a dashed leader tether. */
@@ -2865,14 +711,7 @@ export class UnifiedGraph {
     widgetId: string,
     target: { x: number; y: number; label?: string | undefined } | undefined,
   ): boolean {
-    const w = this.widgets.get(widgetId);
-    if (!w) return false;
-    w.tetherTarget = target;
-    if (w.plot) w.plot.tetherTarget = target;
-    if (w.sticky) w.sticky.tetherTarget = target;
-    this.renderWidgetCanvasDom();
-    this.scheduleCanvas2DRender();
-    return true;
+    return setWidgetTetherInHost(this.createSimWidgetsHost(), widgetId, target);
   }
 
   /**
@@ -2884,34 +723,12 @@ export class UnifiedGraph {
     widgetId: string,
     brushRect: { x0: number; y0: number; x1: number; y1: number } | undefined,
   ): { indices: number[]; linkedIds: string[] } {
-    const w = this.widgets.get(widgetId);
-    if (!w || w.kind !== "plot" || !w.plot) return { indices: [], linkedIds: [] };
-    w.plot.brushRect = brushRect;
-    const hit = brushRect
-      ? hitTestScatterBrush(w.plot, w.bounds.x, w.bounds.y, w.bounds.width, w.bounds.height, brushRect)
-      : { indices: [], linkedIds: [] };
-
-    for (const other of this.widgets.values()) {
-      if (other.kind === "table" && other.table) {
-        other.table.highlightedRowIds = hit.linkedIds.length > 0 ? hit.linkedIds : undefined;
-      }
-    }
-    this.renderWidgetCanvasDom();
-    this.scheduleCanvas2DRender();
-    this.options.onWidgetBrush?.(widgetId, hit.indices, hit.linkedIds);
-    this.emit("widget:brushed", { widgetId, indices: hit.indices, linkedIds: hit.linkedIds });
-    return hit;
+    return brushPlotWidgetInHost(this.createSimWidgetsHost(), widgetId, brushRect);
   }
 
   /** Synchronizes the vertical time crosshair across all pinned Canvas2D plot widgets. */
   public syncPlotCrosshair(time: number | undefined): void {
-    for (const w of this.widgets.values()) {
-      if (w.kind === "plot" && w.plot) {
-        w.plot.crosshairX = time;
-      }
-    }
-    this.renderWidgetCanvasDom();
-    this.scheduleCanvas2DRender();
+    syncPlotCrosshairInHost(this.createSimWidgetsHost(), time);
   }
 
   public getCanvasWidgets(): UnifiedCanvasWidgetSpec[] {
@@ -2919,11 +736,11 @@ export class UnifiedGraph {
   }
 
   public getWidgetPortalLayer(): HTMLElement | null {
-    return this.widgetLayerEl;
+    return this.dom?.widgetLayerEl ?? null;
   }
 
   public getToolsLayer(): SVGGElement | null {
-    return this.toolsG;
+    return this.dom?.toolsG ?? null;
   }
 
   /** Compiles SCADA / Modelica `ReactiveAnimationBinding`s into zero-GC SoA tables. */
@@ -2936,65 +753,22 @@ export class UnifiedGraph {
    * `SimulationTimelineStore`, re-syncs plot crosshairs, and ticks compiled animations at t0.
    */
   public loadSimulationResult(result: { time: ArrayLike<number>; signals: Record<string, ArrayLike<number>> }): void {
-    const timeArr = result.time instanceof Float64Array ? result.time : Float64Array.from(result.time);
-    const signalsF64: Record<string, Float64Array> = {};
-    for (const [k, v] of Object.entries(result.signals)) {
-      signalsF64[k] = v instanceof Float64Array ? v : Float64Array.from(v);
-    }
-    this.timelineStore.loadTrajectories(timeArr, signalsF64);
-    this.hasLoadedSimulation = timeArr.length > 0;
-    const st = this.timelineStore.getState();
-    const frame = this.timelineStore.getCurrentFrame();
-    if (frame.length > 0) {
-      this.tickAnimations(frame, 0);
-    }
-    this.syncPlotCrosshair(st.currentTime);
-    this.emit("simulation:loaded", { start: st.startTime, end: st.endTime, current: st.currentTime });
+    loadSimulationResultInHost(this.createSimWidgetsHost(), this.simState, result);
   }
 
   /** Starts 60 FPS lockstep playback across 2D schematic animations, pinned plots, and `"simulation:tick"` subscribers. */
   public playSimulation(speed = 1): void {
-    this.timelineStore.setPlaybackRate(speed);
-    this.timelineStore.setPlaying(true);
-    if (this.simPlaybackRafId !== null || typeof requestAnimationFrame !== "function") return;
-    this.simLastFrameMs = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const step = (now: number) => {
-      if (this.disposed || !this.timelineStore.getState().playing) {
-        this.simPlaybackRafId = null;
-        return;
-      }
-      const dtSec = Math.max(0, Math.min(0.1, (now - this.simLastFrameMs) / 1000));
-      this.simLastFrameMs = now;
-      const st = this.timelineStore.advance(dtSec);
-      const frame = this.timelineStore.getCurrentFrame();
-      if (frame.length > 0) {
-        this.tickAnimations(frame, dtSec);
-      }
-      this.syncPlotCrosshair(st.currentTime);
-      this.emit("simulation:tick", { time: st.currentTime, frame, playing: st.playing });
-      this.simPlaybackRafId = requestAnimationFrame(step);
-    };
-    this.simPlaybackRafId = requestAnimationFrame(step);
+    playSimulationInHost(this.createSimWidgetsHost(), this.simState, speed);
   }
 
   /** Pauses active simulation timeline playback. */
   public pauseSimulation(): void {
-    this.timelineStore.setPlaying(false);
-    if (this.simPlaybackRafId !== null && typeof cancelAnimationFrame === "function") {
-      cancelAnimationFrame(this.simPlaybackRafId);
-      this.simPlaybackRafId = null;
-    }
+    pauseSimulationInHost(this.createSimWidgetsHost(), this.simState);
   }
 
   /** Seeks the loaded simulation timeline to an exact timestamp, updating animations & plots immediately. */
   public seekSimulation(time: number): void {
-    const st = this.timelineStore.seek(time);
-    const frame = this.timelineStore.getCurrentFrame();
-    if (frame.length > 0) {
-      this.tickAnimations(frame, 0);
-    }
-    this.syncPlotCrosshair(st.currentTime);
-    this.emit("simulation:tick", { time: st.currentTime, frame, playing: st.playing });
+    seekSimulationInHost(this.createSimWidgetsHost(), time);
   }
 
   public isSimulationPlaying(): boolean {
@@ -3002,7 +776,7 @@ export class UnifiedGraph {
   }
 
   public getSimulationTimeRange(): { start: number; end: number; current: number } | null {
-    if (!this.hasLoadedSimulation) return null;
+    if (!this.simState.hasLoadedSimulation) return null;
     const st = this.timelineStore.getState();
     return { start: st.startTime, end: st.endTime, current: st.currentTime };
   }
@@ -3011,28 +785,7 @@ export class UnifiedGraph {
   public tickAnimations(frame: Float64Array, dtSeconds = 1 / 60): number {
     return this.animationEngine.tick(frame, dtSeconds, (upd) => {
       const cell = this.cells.get(upd.targetId);
-      if (!cell) return;
-      if (upd.propKind === AnimationPropKind.FILL_COLOR && upd.color) {
-        cell.attr(`${upd.selector}/fill`, upd.color);
-      } else if (upd.propKind === AnimationPropKind.STROKE_COLOR && upd.color) {
-        cell.attr(`${upd.selector}/stroke`, upd.color);
-      } else if (upd.propKind === AnimationPropKind.ROTATION) {
-        cell.rotate(upd.numericValue, { absolute: true });
-      } else if (upd.propKind === AnimationPropKind.OPACITY) {
-        cell.attr(`${upd.selector}/opacity`, Math.max(0, Math.min(1, upd.normalized)));
-      } else if (upd.propKind === AnimationPropKind.VISIBLE) {
-        cell.setVisible(upd.numericValue > 0.5);
-      } else if (upd.propKind === AnimationPropKind.TEXT && upd.formattedValue !== undefined) {
-        cell.attr(`${upd.selector}/text`, upd.formattedValue);
-      } else if (upd.propKind === AnimationPropKind.FLOW_SPEED) {
-        cell.attr(`${upd.selector}/stroke-dashoffset`, -upd.numericValue);
-      } else if (upd.propKind === AnimationPropKind.STROKE_WIDTH) {
-        cell.attr(`${upd.selector}/stroke-width`, Math.max(0.5, upd.numericValue));
-      } else if (upd.propKind === AnimationPropKind.FILL_LEVEL) {
-        const n = Math.max(0, Math.min(1, upd.normalized));
-        const h = cell.height || 1;
-        cell.attr(`${upd.selector}/transform`, `translate(0, ${(h * (1 - n)).toFixed(2)}) scale(1, ${n.toFixed(3)})`);
-      }
+      if (cell) applyAnimationUpdateToCell(cell, upd);
     });
   }
 
@@ -3051,1359 +804,194 @@ export class UnifiedGraph {
   public paintToCanvas2D(
     ctx: Canvas2DContextLike,
     options: { dark?: boolean | undefined } = {},
-  ): {
-    drawnNodes: number;
-    drawnEdges: number;
-    drawnWidgets: number;
-    drawnFrozenPortals: number;
-  } {
-    const cam = this.camera.getState();
-    const visibleRect = this.camera.getVisibleWorldBounds({ width: this.width, height: this.height }, 64);
-    const visibleNodes = this.scene.queryVisibleNodes(visibleRect);
-
-    ctx.save();
-    ctx.translate(cam.tx, cam.ty);
-    ctx.scale(cam.zoom, cam.zoom);
-
-    const vMinX = visibleRect.x;
-    const vMinY = visibleRect.y;
-    const vMaxX = visibleRect.x + visibleRect.width;
-    const vMaxY = visibleRect.y + visibleRect.height;
-
-    let drawnEdges = 0;
-    for (const edge of this.getEdges()) {
-      const { d, sourcePt, targetPt, routePoints, stroke, strokeWidth } = this.computeEdgeRenderPath(edge);
-      if (!d) continue;
-      // Frustum-cull offscreen edges
-      let eMinX = Math.min(sourcePt.x, targetPt.x);
-      let eMaxX = Math.max(sourcePt.x, targetPt.x);
-      let eMinY = Math.min(sourcePt.y, targetPt.y);
-      let eMaxY = Math.max(sourcePt.y, targetPt.y);
-      for (const rp of routePoints) {
-        if (rp.x < eMinX) eMinX = rp.x;
-        if (rp.x > eMaxX) eMaxX = rp.x;
-        if (rp.y < eMinY) eMinY = rp.y;
-        if (rp.y > eMaxY) eMaxY = rp.y;
-      }
-      if (eMaxX < vMinX || eMinX > vMaxX || eMaxY < vMinY || eMinY > vMaxY) continue;
-      if (typeof Path2D !== "undefined") {
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = strokeWidth / Math.max(0.25, cam.zoom);
-        ctx.stroke(new Path2D(d));
-      }
-      drawnEdges++;
-    }
-
-    let drawnNodes = 0;
-    const lodMinimal = cam.zoom < 0.35;
-    for (const summary of visibleNodes) {
-      const cell = this.cells.get(summary.id);
-      const glyph = cell?.getCompiledGlyph();
-      if (!cell || !glyph) continue;
-      ctx.save();
-      const cx = summary.x + summary.width / 2;
-      const cy = summary.y + summary.height / 2;
-      ctx.translate(cx, cy);
-      if (summary.angleDeg !== 0) ctx.rotate((summary.angleDeg * Math.PI) / 180);
-      if (summary.flipX || summary.flipY) {
-        ctx.scale(summary.flipX ? -1 : 1, summary.flipY ? -1 : 1);
-      }
-      ctx.translate(-summary.width / 2, -summary.height / 2);
-      paintGlyphToCanvas2D(ctx, glyph, summary.width, summary.height, {
-        lodMinimal,
-        scale: cam.zoom,
-      });
-      ctx.restore();
-      drawnNodes++;
-    }
-
-    // Stamp offscreen-baked 3D LOD snapshots at 0 GPU cost for zoomed-out / idle portals
-    const portalRects = this.portal3DManager.computeFrameScissorRects(this.camera, {
-      width: this.width,
-      height: this.height,
-    });
-    const drawnFrozenPortals = this.snapshotBaker.paintFrozenSnapshots(
-      ctx,
-      portalRects
-        .filter((r) => !r.renderLive)
-        .map((r) => {
-          const cell = this.cells.get(r.portalId);
-          return {
-            portalId: r.portalId,
-            x: cell?.x ?? r.cssX,
-            y: cell?.y ?? r.cssY,
-            width: cell?.width ?? r.cssWidth,
-            height: cell?.height ?? r.cssHeight,
-            snapshotFrozen: true,
-            label: `${r.kind.toUpperCase()} (Frozen LOD)`,
-          };
-        }),
-    );
-
-    let drawnWidgets = 0;
-    for (const w of this.widgets.values()) {
-      if (w.kind === "plot" && w.plot) {
-        paintCanvasPlot(
-          ctx,
-          { ...w.plot, tetherTarget: w.plot.tetherTarget ?? w.tetherTarget, dark: w.plot.dark ?? options.dark },
-          w.bounds.x,
-          w.bounds.y,
-          w.bounds.width,
-          w.bounds.height,
-        );
-        drawnWidgets++;
-      } else if (w.kind === "table" && w.table) {
-        paintCanvasTable(
-          ctx,
-          { ...w.table, dark: w.table.dark ?? options.dark },
-          w.bounds.x,
-          w.bounds.y,
-          w.bounds.width,
-          w.bounds.height,
-        );
-        drawnWidgets++;
-      } else if (w.kind === "sticky" && w.sticky) {
-        paintStickyBadge(
-          ctx,
-          { ...w.sticky, tetherTarget: w.sticky.tetherTarget ?? w.tetherTarget, dark: w.sticky.dark ?? options.dark },
-          w.bounds.x,
-          w.bounds.y,
-          w.bounds.width,
-          w.bounds.height,
-        );
-        drawnWidgets++;
-      }
-    }
-
-    ctx.restore();
-    return { drawnNodes, drawnEdges, drawnWidgets, drawnFrozenPortals };
+  ): { drawnNodes: number; drawnEdges: number; drawnWidgets: number; drawnFrozenPortals: number } {
+    return paintSceneToCanvas2D(ctx, this.createPaintContext(), options);
   }
 
-  // ── Internal DOM Synchronization (Browser Mode) ──
+  // ── Internal DOM Synchronization & Context Builders ──
+
+  private createCellStoreHost(): CellStoreHost<UnifiedGraph> {
+    return {
+      graph: this,
+      scene: this.scene,
+      fsm: this.fsm,
+      portal3DManager: this.portal3DManager,
+      cells: this.cells,
+      selectedIds: this.selectedIds,
+      widgets: this.widgets,
+      getEdgeToolsG: () => this.dom?.edgeToolsG ?? null,
+      getGuidesG: () => this.dom?.guidesG ?? null,
+      getHoveredCellId: () => this.hoveredCellId,
+      setHoveredCellId: (id) => {
+        this.hoveredCellId = id;
+      },
+      getActiveRenderModeInternal: () => this.activeRenderMode,
+      evaluateRenderMode: () => this.evaluateRenderMode(),
+      rebuildCellDom: (cell) => this.rebuildCellDom(cell),
+      scheduleCanvas2DRender: () => this.scheduleCanvas2DRender(),
+      syncSelectionBoxesDom: (panOnly) => this.syncSelectionBoxesDom(panOnly),
+      registerEmbeddedPortal: (spec) => this.registerEmbeddedPortal(spec),
+      registerCanvasWidget: (widget) => this.registerCanvasWidget(widget),
+      emit: (event, args) => this.emit(event, args),
+    };
+  }
+
+  private createSimWidgetsHost(): SimulationWidgetsHost {
+    return {
+      widgets: this.widgets,
+      options: this.options,
+      timelineStore: this.timelineStore,
+      isDisposed: () => this.disposed,
+      renderWidgetCanvasDom: () => this.renderWidgetCanvasDom(),
+      scheduleCanvas2DRender: () => this.scheduleCanvas2DRender(),
+      tickAnimations: (frame, dt) => this.tickAnimations(frame, dt),
+      emit: (event, args) => this.emit(event, args),
+    };
+  }
+
+  private createPaintContext(): Canvas2DPaintContext {
+    return {
+      width: this.width,
+      height: this.height,
+      bgColor: this.bgColor,
+      activeRenderMode: this.activeRenderMode,
+      camera: this.camera,
+      scene: this.scene,
+      cells: this.cells,
+      widgets: this.widgets,
+      portal3DManager: this.portal3DManager,
+      snapshotBaker: this.snapshotBaker,
+      webGpuRenderer: this.webGpuRenderer,
+      getEdges: () => this.getEdges(),
+      computeEdgeRenderPath: (edge) => this.computeEdgeRenderPath(edge),
+    };
+  }
+
+  private createCellDomContext(): CellDomSyncContext<UnifiedGraph> {
+    return {
+      activeRenderMode: this.activeRenderMode,
+      nodesG: this.dom?.nodesG ?? null,
+      edgesG: this.dom?.edgesG ?? null,
+      defsEl: this.dom?.defsEl ?? null,
+      markerCache: this.markerCache,
+      selectedIds: this.selectedIds,
+      scheduleCanvas2DRender: () => this.scheduleCanvas2DRender(),
+      findViewByCell: (cell) => this.findViewByCell(cell),
+      computeEdgeRenderPath: (edge) => this.computeEdgeRenderPath(edge),
+      syncEdgeToolsDom: (edge) => this.syncEdgeToolsDom(edge),
+    };
+  }
+
+  private createOverlayDomContext(): OverlayDomContext {
+    return {
+      rootEl: this.dom?.rootEl ?? null,
+      edgeToolsG: this.dom?.edgeToolsG ?? null,
+      selectionOverlayEl: this.dom?.selectionOverlayEl ?? null,
+      cells: this.cells,
+      selectedIds: this.selectedIds,
+      camera: this.camera,
+      fsm: this.fsm,
+      options: this.options,
+      coord: this.coord,
+      getPlugin: (name) => this.getPlugin(name),
+      clientToLocal: (x, y) => this.clientToLocal(x, y),
+      emit: (event, args) => this.emit(event, args),
+      removeCell: (cellOrId) => this.removeCell(cellOrId),
+    };
+  }
+
+  private computeEdgeRenderPath(edge: UnifiedCell): EdgeRenderPathResult {
+    return computeEdgeRenderPathImpl(
+      edge,
+      this.scene,
+      (c) => this.findViewByCell(c),
+      UnifiedGraph.routerRegistry,
+      UnifiedGraph.connectorRegistry,
+    );
+  }
 
   private evaluateRenderMode(): void {
-    const desired: "svg" | "canvas2d" =
-      this.renderModePreference === "canvas2d"
-        ? "canvas2d"
-        : this.renderModePreference === "svg"
-          ? "svg"
-          : this.scene.nodeCount > this.highScaleThreshold
-            ? "canvas2d"
-            : "svg";
+    const desired = resolveDesiredRenderMode(this.renderModePreference, this.scene.nodeCount, this.highScaleThreshold);
     if (desired === this.activeRenderMode) return;
     this.activeRenderMode = desired;
-    if (desired === "canvas2d" && this.preferWebGpu && !this.webGpuInitAttempted) {
-      void this.enableWebGpu();
-    }
-    if (this.canvas2DEl) {
-      this.canvas2DEl.style.display = desired === "canvas2d" ? "block" : "none";
-    }
-    if (this.webGpuCanvasEl) {
-      this.webGpuCanvasEl.style.display = desired === "canvas2d" && this.webGpuRenderer.isReady() ? "block" : "none";
-    }
-    if (this.nodesG && this.edgesG) {
-      if (desired === "canvas2d") {
-        // Clear heavy SVG DOM subtrees when entering high-scale Canvas2D/WebGPU mode
-        this.nodesG.innerHTML = "";
-        this.edgesG.innerHTML = "";
-        this.scheduleCanvas2DRender();
-      } else {
-        for (const c of this.cells.values()) {
-          this.rebuildCellDom(c);
-        }
-      }
-    }
+    if (desired === "canvas2d" && this.preferWebGpu && !this.webGpuInitAttempted) void this.enableWebGpu();
+    applyRenderModeToDom({
+      desired,
+      canvas2DEl: this.dom?.canvas2DEl ?? null,
+      webGpuCanvasEl: this.webGpuCanvasEl,
+      webGpuReady: this.webGpuRenderer.isReady(),
+      nodesG: this.dom?.nodesG ?? null,
+      edgesG: this.dom?.edgesG ?? null,
+      cells: this.cells,
+      scheduleCanvas2DRender: () => this.scheduleCanvas2DRender(),
+      rebuildCellDom: (c) => this.rebuildCellDom(c),
+    });
   }
 
   private scheduleCanvas2DRender(): void {
-    if (this.activeRenderMode !== "canvas2d" || !this.canvas2DEl || this.disposed) return;
+    if (this.activeRenderMode !== "canvas2d" || !this.dom?.canvas2DEl || this.disposed) return;
     if (this.canvas2DRafId !== null) return;
     const render = () => {
       this.canvas2DRafId = null;
-      if (this.disposed || !this.canvas2DEl || this.activeRenderMode !== "canvas2d") return;
-      const dpr = typeof window !== "undefined" ? Math.max(1, window.devicePixelRatio || 1) : 1;
-      const targetW = Math.max(1, Math.round(this.width * dpr));
-      const targetH = Math.max(1, Math.round(this.height * dpr));
-
-      // Attempt zero-overhead WebGPU instanced submission first when enabled & ready
-      if (this.webGpuRenderer.isReady() && this.webGpuCanvasEl) {
-        if (this.webGpuCanvasEl.width !== targetW || this.webGpuCanvasEl.height !== targetH) {
-          this.webGpuCanvasEl.width = targetW;
-          this.webGpuCanvasEl.height = targetH;
-        }
-        this.webGpuCanvasEl.style.display = "block";
-        const gpuRes = this.webGpuRenderer.renderFrame(this.scene, this.camera, {
-          width: this.width,
-          height: this.height,
-        });
-        if (gpuRes.rendered) {
-          this.canvas2DEl.style.display = "none";
-          this.renderWidgetCanvasDom();
-          return;
-        }
-      }
-
-      this.canvas2DEl.style.display = "block";
-      if (this.canvas2DEl.width !== targetW || this.canvas2DEl.height !== targetH) {
-        this.canvas2DEl.width = targetW;
-        this.canvas2DEl.height = targetH;
-      }
-      const ctx = this.canvas2DEl.getContext("2d");
-      if (!ctx) return;
-      ctx.save();
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, this.width, this.height);
-      const isDark = isDarkColorString(this.bgColor);
-      this.paintToCanvas2D(ctx as unknown as Canvas2DContextLike, { dark: isDark });
-      ctx.restore();
+      if (this.disposed || !this.dom?.canvas2DEl || this.activeRenderMode !== "canvas2d") return;
+      renderCanvas2DFrame(
+        this.dom.canvas2DEl,
+        this.webGpuCanvasEl,
+        this.dom.widgetCanvasEl,
+        this.disposed,
+        this.createPaintContext(),
+      );
     };
-    if (typeof requestAnimationFrame === "function") {
-      this.canvas2DRafId = requestAnimationFrame(render);
-    } else {
-      render();
-    }
+    this.canvas2DRafId = typeof requestAnimationFrame === "function" ? requestAnimationFrame(render) : (render(), null);
   }
 
   private renderWidgetCanvasDom(): void {
-    if (!this.widgetCanvasEl || this.disposed) return;
-    if (this.widgets.size === 0 || (this.activeRenderMode === "canvas2d" && !this.webGpuRenderer.isReady())) {
-      this.widgetCanvasEl.style.display = "none";
-      return;
-    }
-    this.widgetCanvasEl.style.display = "block";
-    const dpr = typeof window !== "undefined" ? Math.max(1, window.devicePixelRatio || 1) : 1;
-    const targetW = Math.max(1, Math.round(this.width * dpr));
-    const targetH = Math.max(1, Math.round(this.height * dpr));
-    if (this.widgetCanvasEl.width !== targetW || this.widgetCanvasEl.height !== targetH) {
-      this.widgetCanvasEl.width = targetW;
-      this.widgetCanvasEl.height = targetH;
-    }
-    const ctx = this.widgetCanvasEl.getContext("2d");
-    if (!ctx) return;
-    const cam = this.camera.getState();
-    const isDark = isDarkColorString(this.bgColor);
-    ctx.save();
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, this.width, this.height);
-    ctx.translate(cam.tx, cam.ty);
-    ctx.scale(cam.zoom, cam.zoom);
-    const ctxLike = ctx as unknown as Canvas2DContextLike;
-    for (const w of this.widgets.values()) {
-      if (w.kind === "plot" && w.plot) {
-        paintCanvasPlot(
-          ctxLike,
-          { ...w.plot, tetherTarget: w.plot.tetherTarget ?? w.tetherTarget, dark: w.plot.dark ?? isDark },
-          w.bounds.x,
-          w.bounds.y,
-          w.bounds.width,
-          w.bounds.height,
-        );
-      } else if (w.kind === "table" && w.table) {
-        paintCanvasTable(
-          ctxLike,
-          { ...w.table, dark: w.table.dark ?? isDark },
-          w.bounds.x,
-          w.bounds.y,
-          w.bounds.width,
-          w.bounds.height,
-        );
-      } else if (w.kind === "sticky" && w.sticky) {
-        paintStickyBadge(
-          ctxLike,
-          { ...w.sticky, tetherTarget: w.sticky.tetherTarget ?? w.tetherTarget, dark: w.sticky.dark ?? isDark },
-          w.bounds.x,
-          w.bounds.y,
-          w.bounds.width,
-          w.bounds.height,
-        );
-      }
-    }
-    ctx.restore();
+    renderWidgetCanvasDom(this.dom?.widgetCanvasEl ?? null, this.disposed, this.createPaintContext());
   }
 
   private applyViewportTransformDom(panOnly = false): void {
     const s = this.camera.getState();
     this.fsm.setZoom(s.zoom);
     this.fsm.setPortSnapRadius(Math.max(4, Math.min(24, 14 / Math.max(0.05, s.zoom))));
-    if (this.viewportG) {
-      this.viewportG.setAttribute("transform", `matrix(${s.zoom},0,0,${s.zoom},${s.tx},${s.ty})`);
+    if (this.dom?.viewportG) {
+      this.dom.viewportG.setAttribute("transform", `matrix(${s.zoom},0,0,${s.zoom},${s.tx},${s.ty})`);
     }
-    this.syncGridPatternDom(panOnly);
+    this.syncGridDom(panOnly);
     this.syncSelectionBoxesDom(panOnly);
     this.scheduleCanvas2DRender();
     this.renderWidgetCanvasDom();
   }
 
-  private ensureEdgeMarker(markerSpec: unknown, strokeColor: string): string | null {
-    if (!markerSpec || !this.defsEl || typeof document === "undefined") return null;
-    const name =
-      typeof markerSpec === "string"
-        ? markerSpec
-        : typeof markerSpec === "object"
-          ? ((markerSpec as { name?: string | undefined }).name ?? "block")
-          : "";
-    if (!name || name === "none") return null;
-
-    const sizeW =
-      typeof markerSpec === "object" && typeof (markerSpec as { width?: number }).width === "number"
-        ? (markerSpec as { width: number }).width
-        : 10;
-    const sizeH =
-      typeof markerSpec === "object" && typeof (markerSpec as { height?: number }).height === "number"
-        ? (markerSpec as { height: number }).height
-        : 8;
-    const fill =
-      typeof markerSpec === "object" && typeof (markerSpec as { fill?: string }).fill === "string"
-        ? (markerSpec as { fill: string }).fill
-        : strokeColor;
-
-    const key = `${name}|${fill}|${strokeColor}|${sizeW}x${sizeH}`;
-    const cached = this.markerCache.get(key);
-    if (cached) return cached;
-
-    const id = `ms-marker-${autoCellCounter++}`;
-    const marker = document.createElementNS(SVG_NS, "marker");
-    marker.setAttribute("id", id);
-    marker.setAttribute("viewBox", "0 0 10 10");
-    marker.setAttribute("refX", "9");
-    marker.setAttribute("refY", "5");
-    marker.setAttribute("markerWidth", String(sizeW));
-    marker.setAttribute("markerHeight", String(sizeH));
-    marker.setAttribute("orient", "auto-start-reverse");
-
-    const shape = document.createElementNS(SVG_NS, name === "circle" ? "circle" : "path");
-    if (name === "circle") {
-      shape.setAttribute("cx", "5");
-      shape.setAttribute("cy", "5");
-      shape.setAttribute("r", "3.5");
-      shape.setAttribute("fill", fill);
-      shape.setAttribute("stroke", strokeColor);
-    } else if (name === "diamond") {
-      shape.setAttribute("d", "M 0 5 L 5 1 L 10 5 L 5 9 Z");
-      shape.setAttribute("fill", fill);
-      shape.setAttribute("stroke", strokeColor);
-    } else if (name === "classic" || name === "async") {
-      shape.setAttribute("d", "M 0 1 L 10 5 L 0 9 L 2.5 5 Z");
-      shape.setAttribute("fill", fill);
-    } else {
-      // Standard block / triangle arrowhead
-      shape.setAttribute("d", "M 0 1 L 10 5 L 0 9 Z");
-      shape.setAttribute("fill", fill);
-    }
-    marker.appendChild(shape);
-    this.defsEl.appendChild(marker);
-    this.markerCache.set(key, id);
-    return id;
-  }
-
-  private computeEdgeRenderPath(edge: UnifiedCell): {
-    d: string;
-    sourcePt: WorldPoint;
-    targetPt: WorldPoint;
-    routePoints: WorldPoint[];
-    stroke: string;
-    strokeWidth: number;
-    strokeDasharray?: string | undefined;
-    sourceMarker?: unknown;
-    targetMarker?: unknown;
-  } {
-    const view = this.findViewByCell(edge)!;
-    const sourcePt = edge.getSourcePoint();
-    const targetPt = edge.getTargetPoint();
-    view.sourcePoint = sourcePt;
-    view.targetPoint = targetPt;
-
-    let routePoints = edge.getVertices();
-    const routerSpec = edge.getRouter();
-    const routerName =
-      typeof routerSpec === "string"
-        ? routerSpec
-        : routerSpec && typeof routerSpec === "object"
-          ? (routerSpec as { name?: string | undefined }).name
-          : undefined;
-    const routerArgs =
-      routerSpec && typeof routerSpec === "object"
-        ? ((routerSpec as { args?: Record<string, unknown> | undefined }).args ?? {})
-        : {};
-    if (routerName) {
-      const fn = UnifiedGraph.routerRegistry.get(routerName);
-      if (fn) {
-        try {
-          const routed = fn(routePoints, routerArgs, view);
-          if (Array.isArray(routed)) routePoints = routed;
-        } catch {
-          // Fallback to existing vertices
-        }
-      }
-    }
-    view.routePoints = routePoints;
-    const edgeRec = this.scene.getEdge(edge.id);
-    if (edgeRec) edgeRec.routePoints = routePoints;
-
-    const connSpec = edge.getConnector();
-    const connName =
-      typeof connSpec === "string"
-        ? connSpec
-        : connSpec && typeof connSpec === "object"
-          ? ((connSpec as { name?: string | undefined }).name ?? "rounded")
-          : "rounded";
-    const connArgs =
-      connSpec && typeof connSpec === "object"
-        ? ((connSpec as { args?: Record<string, unknown> | undefined }).args ?? {})
-        : {};
-
-    let d = "";
-    const connFn = UnifiedGraph.connectorRegistry.get(connName);
-    if (connFn) {
-      try {
-        d = connFn(sourcePt, targetPt, routePoints, connArgs, view);
-      } catch {
-        d = defaultPolylinePath(sourcePt, targetPt, routePoints, connName);
-      }
-    } else {
-      d = defaultPolylinePath(
-        sourcePt,
-        targetPt,
-        routePoints,
-        connName,
-        typeof connArgs["radius"] === "number" ? connArgs["radius"] : 8,
-      );
-    }
-
-    const lineAttrs = edge.getAttrs()["line"] ?? {};
-    const stroke = typeof lineAttrs["stroke"] === "string" ? lineAttrs["stroke"] : "#38bdf8";
-    const strokeWidth =
-      typeof lineAttrs["strokeWidth"] === "number"
-        ? lineAttrs["strokeWidth"]
-        : typeof lineAttrs["stroke-width"] === "number"
-          ? lineAttrs["stroke-width"]
-          : 1.5;
-    const strokeDasharray =
-      typeof lineAttrs["strokeDasharray"] === "string"
-        ? lineAttrs["strokeDasharray"]
-        : typeof lineAttrs["stroke-dasharray"] === "string"
-          ? lineAttrs["stroke-dasharray"]
-          : undefined;
-
-    return {
-      d,
-      sourcePt,
-      targetPt,
-      routePoints,
-      stroke,
-      strokeWidth,
-      strokeDasharray,
-      sourceMarker: lineAttrs["sourceMarker"],
-      targetMarker: lineAttrs["targetMarker"],
-    };
-  }
-
-  private samplePointAlongPolyline(pts: WorldPoint[], fraction: number): WorldPoint {
-    if (pts.length === 0) return { x: 0, y: 0 };
-    if (pts.length === 1) return pts[0]!;
-    const segLengths: number[] = [];
-    let total = 0;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const len = Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
-      segLengths.push(len);
-      total += len;
-    }
-    if (total <= 1e-6) return pts[0]!;
-    const targetDist = Math.max(0, Math.min(1, fraction)) * total;
-    let acc = 0;
-    for (let i = 0; i < segLengths.length; i++) {
-      const seg = segLengths[i]!;
-      if (acc + seg >= targetDist || i === segLengths.length - 1) {
-        const localT = seg > 1e-6 ? (targetDist - acc) / seg : 0;
-        const a = pts[i]!;
-        const b = pts[i + 1]!;
-        return { x: a.x + (b.x - a.x) * localT, y: a.y + (b.y - a.y) * localT };
-      }
-      acc += seg;
-    }
-    return pts[pts.length - 1]!;
-  }
-
-  private syncEdgeLabelsDom(edge: UnifiedCell, pts: WorldPoint[]): void {
-    const container = edge.view?.container;
-    if (!container || typeof document === "undefined") return;
-    let labelsG = container.querySelector(".ms-edge-labels") as SVGGElement | null;
-    if (!edge.labels || edge.labels.length === 0) {
-      if (labelsG) labelsG.innerHTML = "";
-      return;
-    }
-    if (!labelsG) {
-      labelsG = document.createElementNS(SVG_NS, "g");
-      labelsG.setAttribute("class", "ms-edge-labels");
-      container.appendChild(labelsG);
-    }
-    labelsG.innerHTML = "";
-
-    for (const rawLabel of edge.labels) {
-      if (!rawLabel || typeof rawLabel !== "object") continue;
-      const lbl = rawLabel as {
-        attrs?:
-          | {
-              text?:
-                { text?: string | undefined; fill?: string | undefined; fontSize?: number | undefined } | undefined;
-              label?: { text?: string | undefined } | undefined;
-              rect?: { fill?: string | undefined; stroke?: string | undefined } | undefined;
-            }
-          | undefined;
-        position?: number | { distance?: number | undefined } | undefined;
-      };
-      const text = lbl.attrs?.text?.text ?? lbl.attrs?.label?.text;
-      if (!text) continue;
-      const frac =
-        typeof lbl.position === "number"
-          ? lbl.position <= 1 && lbl.position >= 0
-            ? lbl.position
-            : 0.5
-          : typeof lbl.position?.distance === "number" && lbl.position.distance <= 1 && lbl.position.distance >= 0
-            ? lbl.position.distance
-            : 0.5;
-      const pt = this.samplePointAlongPolyline(pts, frac);
-
-      const lg = document.createElementNS(SVG_NS, "g");
-      lg.setAttribute("class", "ms-edge-label");
-      lg.setAttribute("transform", `translate(${pt.x}, ${pt.y})`);
-
-      const fontSize = lbl.attrs?.text?.fontSize ?? 11;
-      const padX = 5;
-      const estW = Math.max(18, text.length * (fontSize * 0.62) + padX * 2);
-      const estH = fontSize + 6;
-      const pill = document.createElementNS(SVG_NS, "rect");
-      pill.setAttribute("x", String(-estW / 2));
-      pill.setAttribute("y", String(-estH / 2));
-      pill.setAttribute("width", String(estW));
-      pill.setAttribute("height", String(estH));
-      pill.setAttribute("rx", "3");
-      pill.setAttribute("fill", lbl.attrs?.rect?.fill ?? "rgba(15, 23, 42, 0.85)");
-      if (lbl.attrs?.rect?.stroke) pill.setAttribute("stroke", lbl.attrs.rect.stroke);
-      lg.appendChild(pill);
-
-      const txt = document.createElementNS(SVG_NS, "text");
-      txt.setAttribute("text-anchor", "middle");
-      txt.setAttribute("dominant-baseline", "central");
-      txt.setAttribute("font-size", String(fontSize));
-      txt.setAttribute("fill", lbl.attrs?.text?.fill ?? "#e2e8f0");
-      txt.textContent = text;
-      lg.appendChild(txt);
-      labelsG.appendChild(lg);
-    }
-  }
-
   public reorderCellDomByZIndex(cell: UnifiedCell): void {
-    const el = cell.view?.container;
-    const layer = cell.isNode() ? this.nodesG : this.edgesG;
-    if (!el || !layer || el.parentNode !== layer) return;
-    el.setAttribute("data-z-index", String(cell.zIndex));
-    const targetZ = cell.zIndex;
-    let insertBeforeEl: Element | null = null;
-    for (let child = layer.firstElementChild; child; child = child.nextElementSibling) {
-      if (child === el) continue;
-      const cz = Number(child.getAttribute("data-z-index") ?? 0);
-      if (cz > targetZ) {
-        insertBeforeEl = child;
-        break;
-      }
-    }
-    if (insertBeforeEl !== el.nextElementSibling) {
-      layer.insertBefore(el, insertBeforeEl);
-    }
-  }
-
-  private insertElementByZIndex(layer: SVGGElement, el: Element, zIndex: number): void {
-    el.setAttribute("data-z-index", String(zIndex));
-    for (let child = layer.firstElementChild; child; child = child.nextElementSibling) {
-      const cz = Number(child.getAttribute("data-z-index") ?? 0);
-      if (cz > zIndex) {
-        layer.insertBefore(el, child);
-        return;
-      }
-    }
-    layer.appendChild(el);
+    reorderCellDomByZIndexImpl(cell, this.dom?.nodesG ?? null, this.dom?.edgesG ?? null);
   }
 
   public rebuildCellDom(cell: UnifiedCell): void {
-    if (typeof document === "undefined" || !this.nodesG || !this.edgesG) return;
-    if (this.activeRenderMode === "canvas2d") {
-      this.scheduleCanvas2DRender();
-      return;
-    }
-
-    const oldContainer = cell.view?.container ?? null;
-    cell.selectorElements.clear();
-
-    const g = document.createElementNS(SVG_NS, "g");
-    g.setAttribute("data-cell-id", cell.id);
-    g.setAttribute("data-z-index", String(cell.zIndex));
-    g.setAttribute("class", cell.isNode() ? "ms-cell ms-node" : "ms-cell ms-edge");
-
-    if (cell.isNode()) {
-      const glyph = cell.getCompiledGlyph();
-      if (glyph) {
-        const inner = materializeGlyphToSvg(glyph, document, cell.width, cell.height, cell.selectorElements);
-        inner.setAttribute("class", "ms-node-glyph");
-        g.appendChild(inner);
-      }
-      // Render ports (respecting flipX / flipY so flips survive DOM rebuilds)
-      const data = cell.getData();
-      const flipX = Boolean(data["flipX"]);
-      const flipY = Boolean(data["flipY"]);
-      for (const p of cell.getPorts()) {
-        const pg = document.createElementNS(SVG_NS, "g");
-        pg.setAttribute("class", "ms-port");
-        pg.setAttribute("port", p.id);
-        pg.setAttribute("port-id", p.id);
-        pg.setAttribute("data-port", p.id);
-        pg.setAttribute("magnet", "true");
-        const rawX = p.args?.x ?? 0;
-        const rawY = p.args?.y ?? 0;
-        const px = flipX ? cell.width - rawX : rawX;
-        const py = flipY ? cell.height - rawY : rawY;
-        pg.setAttribute("transform", `translate(${px}, ${py})`);
-        if (p.markup) {
-          const portGlyph = compileGlyphMarkup(p.markup, p.attrs, 8, 8);
-          pg.appendChild(materializeGlyphToSvg(portGlyph, document, 8, 8));
-        } else {
-          const dot = document.createElementNS(SVG_NS, "circle");
-          dot.setAttribute("r", "4");
-          dot.setAttribute("fill", "#38bdf8");
-          dot.setAttribute("stroke", "#0f172a");
-          dot.setAttribute("stroke-width", "1");
-          pg.appendChild(dot);
-        }
-        g.appendChild(pg);
-      }
-      if (oldContainer && oldContainer.parentNode === this.nodesG) {
-        this.nodesG.replaceChild(g, oldContainer);
-      } else {
-        if (oldContainer && oldContainer.parentNode) {
-          oldContainer.parentNode.removeChild(oldContainer);
-        }
-        this.insertElementByZIndex(this.nodesG, g, cell.zIndex);
-      }
-    } else {
-      const haloEl = document.createElementNS(SVG_NS, "path");
-      haloEl.setAttribute("class", "ms-edge-halo");
-      haloEl.setAttribute("fill", "none");
-      haloEl.setAttribute("stroke", "rgba(56, 189, 248, 0.35)");
-      haloEl.setAttribute("stroke-width", "8");
-      haloEl.setAttribute("stroke-linecap", "round");
-      haloEl.setAttribute("stroke-linejoin", "round");
-      haloEl.setAttribute("vector-effect", "non-scaling-stroke");
-      haloEl.setAttribute("pointer-events", "none");
-      haloEl.style.display = "none";
-      g.appendChild(haloEl);
-
-      const pathEl = document.createElementNS(SVG_NS, "path");
-      pathEl.setAttribute("class", "ms-edge-line connection");
-      pathEl.setAttribute("fill", "none");
-      pathEl.setAttribute("data-selector", "line");
-      pathEl.setAttribute("vector-effect", "non-scaling-stroke");
-      g.appendChild(pathEl);
-
-      const hitEl = document.createElementNS(SVG_NS, "path");
-      hitEl.setAttribute("class", "ms-edge-hit");
-      hitEl.setAttribute("fill", "none");
-      hitEl.setAttribute("stroke", "transparent");
-      hitEl.setAttribute("stroke-width", "14");
-      hitEl.setAttribute("vector-effect", "non-scaling-stroke");
-      hitEl.setAttribute("pointer-events", "stroke");
-      hitEl.style.cursor = "pointer";
-      g.appendChild(hitEl);
-
-      cell.selectorElements.set("line", [pathEl]);
-      cell.selectorElements.set("halo", [haloEl]);
-      cell.selectorElements.set("hit", [hitEl]);
-      if (oldContainer && oldContainer.parentNode === this.edgesG) {
-        this.edgesG.replaceChild(g, oldContainer);
-      } else {
-        if (oldContainer && oldContainer.parentNode) {
-          oldContainer.parentNode.removeChild(oldContainer);
-        }
-        this.insertElementByZIndex(this.edgesG, g, cell.zIndex);
-      }
-    }
-
-    const view = this.findViewByCell(cell)!;
-    view.container = g;
-    this.syncCellDom(cell);
+    rebuildCellDomImpl(cell, this.createCellDomContext());
   }
 
-  /**
-   * Scales a node's vector icon graphics, ref-sized primitives, and port positions in-place
-   * whenever its dimensions change (via interactive resize handles or `setSize()`).
-   */
   public resizeCellVisualDom(cell: UnifiedCell, prevWidth: number, prevHeight: number): void {
-    if (!cell.isNode()) return;
-    const newW = cell.width;
-    const newH = cell.height;
-    if (Math.abs(newW - prevWidth) < 0.01 && Math.abs(newH - prevHeight) < 0.01) return;
-
-    // 1. Rescale ports proportionally and sync SoA scene
-    const ports = cell.getPorts();
-    if (ports.length > 0) {
-      const sx = prevWidth > 0 ? newW / prevWidth : 1;
-      const sy = prevHeight > 0 ? newH / prevHeight : 1;
-      for (const p of ports) {
-        if (!p.args) p.args = {};
-        if (typeof p.args.x === "number") p.args.x = Math.round(p.args.x * sx * 10) / 10;
-        if (typeof p.args.y === "number") p.args.y = Math.round(p.args.y * sy * 10) / 10;
-      }
-      this.scene.setNodePorts(
-        cell.id,
-        ports.map((p) => ({
-          id: p.id,
-          group: p.group,
-          x: p.args?.x ?? 0,
-          y: p.args?.y ?? 0,
-          angle: p.args?.angle,
-        })),
-      );
-    }
-
-    // 2. Keep markup root dimensions in sync (clone attrs so shared markup objects are never mutated)
-    const rawMarkup = cell.getMarkup();
-    if (rawMarkup && !Array.isArray(rawMarkup) && rawMarkup.attrs) {
-      if (rawMarkup.attrs["width"] !== undefined || rawMarkup.attrs["height"] !== undefined) {
-        const clonedAttrs = { ...rawMarkup.attrs };
-        if (clonedAttrs["width"] !== undefined) clonedAttrs["width"] = newW;
-        if (clonedAttrs["height"] !== undefined) clonedAttrs["height"] = newH;
-        rawMarkup.attrs = clonedAttrs;
-      }
-    }
-    const el = cell.view?.container;
-    if (!el || typeof document === "undefined" || this.activeRenderMode === "canvas2d") return;
-
-    // Update live port DOM transforms (accounting for flip)
-    const data = cell.getData();
-    const flipX = Boolean(data["flipX"]);
-    const flipY = Boolean(data["flipY"]);
-    const portEls = el.querySelectorAll(".ms-port");
-    portEls.forEach((pEl) => {
-      const pid = pEl.getAttribute("port-id") ?? pEl.getAttribute("port");
-      const match = ports.find((p) => p.id === pid);
-      if (match) {
-        const rawX = match.args?.x ?? 0;
-        const rawY = match.args?.y ?? 0;
-        const px = flipX ? newW - rawX : rawX;
-        const py = flipY ? newH - rawY : rawY;
-        pEl.setAttribute("transform", `translate(${px}, ${py})`);
-      }
-    });
-
-    // Update outer <svg> or re-materialize glyph primitives so icons & background rects scale smoothly
-    const glyphHost = el.querySelector(".ms-node-glyph");
-    const outerSvg = glyphHost?.firstElementChild;
-    if (outerSvg && outerSvg.tagName.toLowerCase() === "svg") {
-      outerSvg.setAttribute("width", String(newW));
-      outerSvg.setAttribute("height", String(newH));
-      for (const child of Array.from(outerSvg.children)) {
-        const tag = child.tagName.toLowerCase();
-        if (tag === "rect") {
-          // Only resize background/body rects matching the previous full bounds, not inner graphic rects
-          const rw = parseFloat(child.getAttribute("width") ?? "");
-          const rh = parseFloat(child.getAttribute("height") ?? "");
-          const isBody = child.getAttribute("data-selector") === "body";
-          if (isBody || (Math.abs(rw - prevWidth) < 1 && Math.abs(rh - prevHeight) < 1)) {
-            child.setAttribute("width", String(newW));
-            child.setAttribute("height", String(newH));
-          }
-        } else if (tag === "g") {
-          const tf = child.getAttribute("transform") || "";
-          const m = /scale\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/.exec(tf);
-          if (m) {
-            const fsx = parseFloat(m[1]!);
-            const fsy = parseFloat(m[2]!);
-            child.setAttribute(
-              "transform",
-              `translate(${fsx < 0 ? newW : 0}, ${fsy < 0 ? newH : 0}) scale(${fsx}, ${fsy})`,
-            );
-          }
-        }
-      }
-    } else if (glyphHost && glyphHost.parentNode) {
-      const recompiled = compileGlyphMarkup(cell.getMarkup(), cell.getAttrs(), newW, newH);
-      cell.selectorElements.clear();
-      const nextGlyph = materializeGlyphToSvg(recompiled, document, newW, newH, cell.selectorElements);
-      nextGlyph.setAttribute("class", "ms-node-glyph");
-      glyphHost.parentNode.replaceChild(nextGlyph, glyphHost);
-    }
+    resizeCellVisualDomImpl(cell, prevWidth, prevHeight, this.scene, this.activeRenderMode);
   }
 
   public syncCellDom(cell: UnifiedCell): void {
-    if (this.activeRenderMode === "canvas2d") {
-      this.scheduleCanvas2DRender();
-      return;
-    }
-    const el = cell.view?.container;
-    if (!el) return;
-
-    if (cell.isNode()) {
-      const cx = cell.width / 2;
-      const cy = cell.height / 2;
-      const rot = cell.angle !== 0 ? ` rotate(${cell.angle}, ${cx}, ${cy})` : "";
-      el.setAttribute("transform", `translate(${cell.x}, ${cell.y})${rot}`);
-      if ("style" in el) {
-        (el as HTMLElement).style.display = cell.visible ? "" : "none";
-      }
-      // Apply flipX / flipY cleanly on the glyph host so flips persist across DOM rebuilds
-      const data = cell.getData();
-      const flipX = Boolean(data["flipX"]);
-      const flipY = Boolean(data["flipY"]);
-      const glyphHost = el.querySelector?.(".ms-node-glyph");
-      if (glyphHost) {
-        if (flipX || flipY) {
-          const sx = flipX ? -1 : 1;
-          const sy = flipY ? -1 : 1;
-          const tx = flipX ? cell.width : 0;
-          const ty = flipY ? cell.height : 0;
-          glyphHost.setAttribute("transform", `translate(${tx}, ${ty}) scale(${sx}, ${sy})`);
-        } else if (glyphHost.getAttribute?.("transform")) {
-          glyphHost.removeAttribute?.("transform");
-        }
-      }
-      // Keep port DOM positions synchronized with flip state
-      const ports = cell.getPorts();
-      if (ports.length > 0) {
-        el.querySelectorAll(".ms-port").forEach((pEl) => {
-          const pid = pEl.getAttribute("port-id") ?? pEl.getAttribute("port");
-          const match = ports.find((p) => p.id === pid);
-          if (match) {
-            const rawX = match.args?.x ?? 0;
-            const rawY = match.args?.y ?? 0;
-            const px = flipX ? cell.width - rawX : rawX;
-            const py = flipY ? cell.height - rawY : rawY;
-            pEl.setAttribute("transform", `translate(${px}, ${py})`);
-          }
-        });
-      }
-    } else {
-      const { d, sourcePt, targetPt, routePoints, stroke, strokeWidth, strokeDasharray, sourceMarker, targetMarker } =
-        this.computeEdgeRenderPath(cell);
-      const isSelected = this.selectedIds.has(cell.id);
-      el.classList?.toggle?.("ms-edge-selected", isSelected);
-      const haloEl = cell.selectorElements.get("halo")?.[0] as SVGElement | undefined;
-      if (haloEl) {
-        haloEl.setAttribute("d", d);
-        haloEl.style.display = isSelected ? "" : "none";
-      }
-      const hitEl = cell.selectorElements.get("hit")?.[0];
-      if (hitEl) {
-        hitEl.setAttribute("d", d);
-      }
-      const pathEl = cell.selectorElements.get("line")?.[0];
-      if (pathEl) {
-        pathEl.setAttribute("d", d);
-        pathEl.setAttribute("stroke", stroke);
-        pathEl.setAttribute("stroke-width", String(strokeWidth));
-        if (strokeDasharray) pathEl.setAttribute("stroke-dasharray", strokeDasharray);
-        else pathEl.removeAttribute("stroke-dasharray");
-
-        const srcMarkerId = this.ensureEdgeMarker(sourceMarker, stroke);
-        if (srcMarkerId) pathEl.setAttribute("marker-start", `url(#${srcMarkerId})`);
-        else pathEl.removeAttribute("marker-start");
-
-        const tgtMarkerId = this.ensureEdgeMarker(targetMarker, stroke);
-        if (tgtMarkerId) pathEl.setAttribute("marker-end", `url(#${tgtMarkerId})`);
-        else pathEl.removeAttribute("marker-end");
-      }
-      this.syncEdgeLabelsDom(cell, [sourcePt, ...routePoints, targetPt]);
-      if (cell.getTools().length > 0 || isSelected) {
-        this.syncEdgeToolsDom(cell);
-      }
-    }
+    syncCellDomImpl(cell, this.createCellDomContext());
   }
 
   public patchCellSelectorDom(cell: UnifiedCell, selector: string, key: string, val: unknown): void {
-    if (this.activeRenderMode === "canvas2d") {
-      this.scheduleCanvas2DRender();
-      return;
-    }
-    const els = cell.selectorElements.get(selector);
-    if (!els || els.length === 0) return;
-    for (const el of els) {
-      if (key === "text" || key === "textContent") {
-        const str = val === null || val === undefined ? "" : String(val);
-        if (el.tagName.toLowerCase() === "text" && typeof document !== "undefined") {
-          setSvgTextContent(el, str, document);
-        } else {
-          el.textContent = str;
-        }
-      } else if (val === null || val === undefined) {
-        el.removeAttribute(key);
-      } else {
-        el.setAttribute(key, String(val));
-      }
-    }
+    patchCellSelectorDomImpl(cell, selector, key, val, this.activeRenderMode, () => this.scheduleCanvas2DRender());
   }
 
-  private canInteractWithCell(cell: UnifiedCell): { nodeMovable: boolean; edgeMovable: boolean } {
-    if (this.fsm.isReadOnly()) return { nodeMovable: false, edgeMovable: false };
-    const inter = this.options.interacting;
-    if (inter === false) return { nodeMovable: false, edgeMovable: false };
-    if (typeof inter === "function") {
-      const res = inter({ cell });
-      if (typeof res === "boolean") return { nodeMovable: res, edgeMovable: res };
-      if (res && typeof res === "object") {
-        return {
-          nodeMovable: res["nodeMovable"] !== false,
-          edgeMovable: res["edgeMovable"] !== false,
-        };
-      }
-    }
-    return { nodeMovable: true, edgeMovable: true };
-  }
-
-  /**
-   * Renders interactive native SVG edge editing handles (orthogonal segment midpoint bars,
-   * vertex dots with drag & right-click delete, and remove pill) directly inside `edgeToolsG`.
-   */
   public syncEdgeToolsDom(edge: UnifiedCell): void {
-    if (!this.edgeToolsG || typeof document === "undefined") return;
-    const escId = escapeSelectorAttr(edge.id);
-    const existing = this.edgeToolsG.querySelector(`[data-edge-tools-id="${escId}"]`);
-    if (existing && existing.parentNode) {
-      existing.parentNode.removeChild(existing);
-    }
-    const tools = edge.getTools();
-    const isSelected = this.selectedIds.has(edge.id);
-    if ((!tools || tools.length === 0) && !isSelected) return;
-    if (!this.cells.has(edge.id)) return;
-
-    // Enforce read-only and interacting.edgeMovable before rendering any interactive edge tools
-    const { edgeMovable } = this.canInteractWithCell(edge);
-    if (!edgeMovable) return;
-
-    const toolConfigs = new Map<string, Record<string, unknown>>();
-    for (const t of tools) {
-      if (typeof t === "string") {
-        toolConfigs.set(t, {});
-      } else if (t && typeof t === "object" && "name" in t) {
-        const obj = t as { name: string; args?: Record<string, unknown> | undefined };
-        toolConfigs.set(String(obj.name), obj.args ?? {});
-      }
-    }
-    // Only add default tools when caller did not explicitly configure a custom tool set
-    if (isSelected && toolConfigs.size === 0) {
-      toolConfigs.set("button-remove", {});
-      toolConfigs.set("segments", {});
-      toolConfigs.set("vertices", {});
-    }
-    if (toolConfigs.size === 0) return;
-
-    const zoom = Math.max(0.1, this.camera.getState().zoom);
-    const invZoom = 1 / zoom;
-
-    const group = document.createElementNS(SVG_NS, "g");
-    group.setAttribute("data-edge-tools-id", edge.id);
-    group.setAttribute("class", "ms-edge-tools-group");
-
-    const sourcePt = edge.getSourcePoint();
-    const targetPt = edge.getTargetPoint();
-    const verts = edge.getVertices();
-    const routePts = edge.view?.routePoints ?? [];
-    const activePts = verts.length > 0 ? verts : routePts;
-    const fullPoly = [sourcePt, ...activePts, targetPt];
-
-    // 1. Orthogonal segment drag bars at each segment midpoint (screen-constant size + generous hit target)
-    if (toolConfigs.has("segments")) {
-      const segArgs = toolConfigs.get("segments") ?? {};
-      const segAttrs = (segArgs["attrs"] as Record<string, unknown> | undefined) ?? {};
-      const segFill = typeof segAttrs["fill"] === "string" ? segAttrs["fill"] : "#38bdf8";
-      const segStroke = typeof segAttrs["stroke"] === "string" ? segAttrs["stroke"] : "#0f172a";
-      const barLen = 14 * invZoom;
-      const barThick = 6 * invZoom;
-      const hitPad = 6 * invZoom;
-
-      for (let i = 0; i < fullPoly.length - 1; i++) {
-        const a = fullPoly[i]!;
-        const b = fullPoly[i + 1]!;
-        const len = Math.hypot(b.x - a.x, b.y - a.y);
-        if (len < 16 * invZoom) continue;
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
-        const isHoriz = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
-
-        const segG = document.createElementNS(SVG_NS, "g");
-        segG.setAttribute("class", "ms-segment-handle");
-        segG.style.cursor = isHoriz ? "ns-resize" : "ew-resize";
-
-        // Transparent ≥18px screen hit area
-        const hitRect = document.createElementNS(SVG_NS, "rect");
-        hitRect.setAttribute("x", String(mx - (isHoriz ? barLen / 2 : barThick / 2) - hitPad));
-        hitRect.setAttribute("y", String(my - (isHoriz ? barThick / 2 : barLen / 2) - hitPad));
-        hitRect.setAttribute("width", String((isHoriz ? barLen : barThick) + hitPad * 2));
-        hitRect.setAttribute("height", String((isHoriz ? barThick : barLen) + hitPad * 2));
-        hitRect.setAttribute("fill", "transparent");
-        segG.appendChild(hitRect);
-
-        const bar = document.createElementNS(SVG_NS, "rect");
-        bar.setAttribute("x", String(mx - (isHoriz ? barLen / 2 : barThick / 2)));
-        bar.setAttribute("y", String(my - (isHoriz ? barThick / 2 : barLen / 2)));
-        bar.setAttribute("width", String(isHoriz ? barLen : barThick));
-        bar.setAttribute("height", String(isHoriz ? barThick : barLen));
-        bar.setAttribute("rx", String(2 * invZoom));
-        bar.setAttribute("fill", segFill);
-        bar.setAttribute("stroke", segStroke);
-        bar.setAttribute("stroke-width", String(1 * invZoom));
-        segG.appendChild(bar);
-
-        segG.addEventListener("pointerdown", (e) => {
-          if (e.button !== 0) return;
-          e.stopPropagation();
-          (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
-          const pt = this.clientToLocal(e.clientX, e.clientY);
-          this.fsm.startSegmentDrag(edge.id, i, pt.x, pt.y, e.pointerId);
-        });
-        group.appendChild(segG);
-      }
-    }
-
-    // 2. Vertex drag dots (right-click or double-click removes vertex; screen-constant size + ≥18px hit target)
-    if (toolConfigs.has("vertices")) {
-      const vArgs = toolConfigs.get("vertices") ?? {};
-      const vAttrs = (vArgs["attrs"] as Record<string, unknown> | undefined) ?? {};
-      const vFill = typeof vAttrs["fill"] === "string" ? vAttrs["fill"] : "#f8fafc";
-      const vStroke = typeof vAttrs["stroke"] === "string" ? vAttrs["stroke"] : "#0284c7";
-      const dotR = 4.5 * invZoom;
-      const hitR = 9 * invZoom;
-
-      for (let i = 0; i < verts.length; i++) {
-        const v = verts[i]!;
-        const vG = document.createElementNS(SVG_NS, "g");
-        vG.setAttribute("class", "ms-vertex-handle");
-        vG.style.cursor = "move";
-
-        const hitCircle = document.createElementNS(SVG_NS, "circle");
-        hitCircle.setAttribute("cx", String(v.x));
-        hitCircle.setAttribute("cy", String(v.y));
-        hitCircle.setAttribute("r", String(hitR));
-        hitCircle.setAttribute("fill", "transparent");
-        vG.appendChild(hitCircle);
-
-        const dot = document.createElementNS(SVG_NS, "circle");
-        dot.setAttribute("cx", String(v.x));
-        dot.setAttribute("cy", String(v.y));
-        dot.setAttribute("r", String(dotR));
-        dot.setAttribute("fill", vFill);
-        dot.setAttribute("stroke", vStroke);
-        dot.setAttribute("stroke-width", String(1.5 * invZoom));
-        vG.appendChild(dot);
-
-        vG.addEventListener("pointerdown", (e) => {
-          if (e.button !== 0) return;
-          e.stopPropagation();
-          (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
-          const pt = this.clientToLocal(e.clientX, e.clientY);
-          this.fsm.startVertexDrag(edge.id, i, pt.x, pt.y, e.pointerId);
-        });
-        const removeVertex = (e: Event) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const next = edge.getVertices();
-          next.splice(i, 1);
-          edge.setVertices(next);
-          this.syncEdgeToolsDom(edge);
-        };
-        vG.addEventListener("contextmenu", removeVertex);
-        vG.addEventListener("dblclick", removeVertex);
-        group.appendChild(vG);
-      }
-    }
-
-    // 3. Remove connection pill button with accessible tooltip (screen-constant size)
-    if (toolConfigs.has("button-remove")) {
-      const mid = this.samplePointAlongPolyline(fullPoly, 0.5);
-      const btnG = document.createElementNS(SVG_NS, "g");
-      btnG.setAttribute("class", "ms-edge-remove-btn");
-      btnG.setAttribute("transform", `translate(${mid.x + 12 * invZoom}, ${mid.y - 12 * invZoom}) scale(${invZoom})`);
-      btnG.setAttribute("role", "button");
-      btnG.setAttribute("aria-label", "Delete connection");
-      btnG.style.cursor = "pointer";
-      const title = document.createElementNS(SVG_NS, "title");
-      title.textContent = "Delete connection (Del)";
-      btnG.appendChild(title);
-      const circle = document.createElementNS(SVG_NS, "circle");
-      circle.setAttribute("r", "8");
-      circle.setAttribute("fill", "#ef4444");
-      circle.setAttribute("stroke", "#ffffff");
-      circle.setAttribute("stroke-width", "1.5");
-      const cross = document.createElementNS(SVG_NS, "path");
-      cross.setAttribute("d", "M -2.8 -2.8 L 2.8 2.8 M 2.8 -2.8 L -2.8 2.8");
-      cross.setAttribute("stroke", "#ffffff");
-      cross.setAttribute("stroke-width", "1.6");
-      cross.setAttribute("stroke-linecap", "round");
-      btnG.appendChild(circle);
-      btnG.appendChild(cross);
-      btnG.addEventListener("pointerdown", (e) => {
-        if (e.button !== 0) return;
-        e.stopPropagation();
-        this.emit("edge:remove-requested", { edge, cell: edge });
-        this.removeCell(edge);
-      });
-      group.appendChild(btnG);
-    }
-
-    this.edgeToolsG.appendChild(group);
-  }
-
-  private syncMarqueeDom(rect: WorldBounds | null): void {
-    if (!this.marqueeRectEl) return;
-    if (!rect || (rect.width < 1 && rect.height < 1)) {
-      this.marqueeRectEl.style.display = "none";
-      return;
-    }
-    this.marqueeRectEl.style.display = "";
-    this.marqueeRectEl.setAttribute("x", String(rect.x));
-    this.marqueeRectEl.setAttribute("y", String(rect.y));
-    this.marqueeRectEl.setAttribute("width", String(rect.width));
-    this.marqueeRectEl.setAttribute("height", String(rect.height));
-  }
-
-  private syncAlignmentGuidesDom(guides: AlignmentGuideLine[]): void {
-    if (!this.guidesG || typeof document === "undefined") return;
-    this.guidesG.innerHTML = "";
-    for (const g of guides) {
-      const line = document.createElementNS(SVG_NS, "line");
-      line.setAttribute("class", "ms-alignment-guide");
-      if (g.orientation === "vertical") {
-        line.setAttribute("x1", String(g.position));
-        line.setAttribute("x2", String(g.position));
-        line.setAttribute("y1", String(g.start));
-        line.setAttribute("y2", String(g.end));
-      } else {
-        line.setAttribute("x1", String(g.start));
-        line.setAttribute("x2", String(g.end));
-        line.setAttribute("y1", String(g.position));
-        line.setAttribute("y2", String(g.position));
-      }
-      line.setAttribute("stroke", "#ec4899");
-      line.setAttribute("stroke-width", "1");
-      line.setAttribute("stroke-dasharray", "4 3");
-      line.setAttribute("vector-effect", "non-scaling-stroke");
-      this.guidesG.appendChild(line);
-    }
-  }
-
-  private syncMagnetHighlightsDom(preview: WiringPreview | null): void {
-    if (!this.nodesG) return;
-    const ports = this.nodesG.querySelectorAll(".ms-port");
-    ports.forEach((el) => {
-      el.classList.remove("ms-magnet-available");
-      el.classList.remove("ms-magnet-adsorbed");
-      if (!preview) return;
-      const cellId = el.closest?.("[data-cell-id]")?.getAttribute("data-cell-id");
-      const portId = el.getAttribute("port") ?? el.getAttribute("port-id");
-      if (preview.snappedTarget && preview.snappedTarget.nodeId === cellId && preview.snappedTarget.portId === portId) {
-        el.classList.add("ms-magnet-adsorbed");
-      } else if (cellId !== preview.sourceNodeId || portId !== preview.sourcePortId) {
-        el.classList.add("ms-magnet-available");
-      }
-    });
+    syncEdgeToolsDomImpl(edge, this.createOverlayDomContext());
   }
 
   private refreshConnectedEdges(node: UnifiedCell): void {
-    for (const edge of this.getConnectedEdges(node)) {
-      this.syncCellDom(edge);
-    }
-  }
-
-  private canResizeOrRotateNode(cell: UnifiedCell): { canResize: boolean; canRotate: boolean } {
-    const { nodeMovable } = this.canInteractWithCell(cell);
-    if (!nodeMovable) return { canResize: false, canRotate: false };
-    const data = cell.getData();
-    if (data["readOnly"] || data["isInherited"] || data["locked"]) {
-      return { canResize: false, canRotate: false };
-    }
-    const tfPlugin = this.getPlugin("transform");
-    if (!(tfPlugin instanceof UnifiedTransform)) {
-      return { canResize: true, canRotate: true };
-    }
-    const evalOpt = (opt: UnifiedTransformOptions["resizing"]): boolean => {
-      if (opt === undefined) return true;
-      if (typeof opt === "boolean") return opt;
-      if (typeof opt.enabled === "function") return opt.enabled(cell);
-      return opt.enabled !== false;
-    };
-    return {
-      canResize: evalOpt(tfPlugin.options.resizing),
-      canRotate: evalOpt(tfPlugin.options.rotating),
-    };
+    for (const edge of this.getConnectedEdges(node)) this.syncCellDom(edge);
   }
 
   private syncSelectionBoxesDom(panOnly = false): void {
-    if (!this.selectionOverlayEl || typeof document === "undefined") return;
-
-    // Skip rebuilding edge tools during pan-only viewport updates (SVG edges move via viewportG matrix)
-    if (!panOnly) {
-      for (const cell of this.cells.values()) {
-        if (cell.isEdge()) {
-          const isSel = this.selectedIds.has(cell.id);
-          const haloEl = cell.selectorElements.get("halo")?.[0] as SVGElement | undefined;
-          if (haloEl) haloEl.style.display = isSel ? "" : "none";
-          cell.view?.container?.classList?.toggle?.("ms-edge-selected", isSel);
-          if (isSel || cell.getTools().length > 0) {
-            this.syncEdgeToolsDom(cell);
-          } else if (this.edgeToolsG) {
-            const oldTools = this.edgeToolsG.querySelector(`[data-edge-tools-id="${escapeSelectorAttr(cell.id)}"]`);
-            if (oldTools && oldTools.parentNode) oldTools.parentNode.removeChild(oldTools);
-          }
-        }
-      }
-    }
-
-    const mode = this.fsm.mode;
-    if (panOnly || mode === "resizing" || mode === "rotating") {
-      let updatedAll = true;
-      for (const id of this.selectedIds) {
-        const cell = this.cells.get(id);
-        if (!cell || !cell.isNode()) continue;
-        const existingBox = this.selectionOverlayEl.querySelector(
-          `.ms-selection-box[data-cell-id="${escapeSelectorAttr(cell.id)}"]`,
-        ) as HTMLElement | null;
-        if (existingBox) {
-          const rect = this.coord.localToGraphRect(cell.getBBox());
-          existingBox.style.left = `${rect.x}px`;
-          existingBox.style.top = `${rect.y}px`;
-          existingBox.style.width = `${rect.width}px`;
-          existingBox.style.height = `${rect.height}px`;
-          existingBox.style.transform = cell.angle !== 0 ? `rotate(${cell.angle}deg)` : "";
-          if (mode === "rotating") {
-            existingBox.querySelectorAll<HTMLElement>(".ms-resize-handle").forEach((hEl) => {
-              const hk = hEl.getAttribute("data-handle") as ResizeHandleKind | null;
-              if (hk) hEl.style.cursor = getResizeCursorForHandle(hk, cell.angle);
-            });
-          }
-        } else {
-          updatedAll = false;
-        }
-      }
-      if (updatedAll) return;
-    }
-
-    this.selectionOverlayEl.innerHTML = "";
-    const handles: ResizeHandleKind[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w", "rotate"];
-
-    for (const id of this.selectedIds) {
-      const cell = this.cells.get(id);
-      if (!cell || !cell.isNode()) continue;
-      const rect = this.coord.localToGraphRect(cell.getBBox());
-      const { canResize, canRotate } = this.canResizeOrRotateNode(cell);
-
-      const box = document.createElement("div");
-      box.className = "ms-selection-box";
-      box.setAttribute("data-cell-id", cell.id);
-      box.style.position = "absolute";
-      box.style.left = `${rect.x}px`;
-      box.style.top = `${rect.y}px`;
-      box.style.width = `${rect.width}px`;
-      box.style.height = `${rect.height}px`;
-      box.style.border = "1.5px solid #0284c7";
-      box.style.boxSizing = "content-box";
-      box.style.margin = "-5px 0 0 -5px";
-      box.style.padding = "4px";
-      box.style.pointerEvents = "none";
-      if (cell.angle !== 0) {
-        box.style.transform = `rotate(${cell.angle}deg)`;
-        box.style.transformOrigin = "center center";
-      }
-
-      if (canRotate) {
-        // Vertical lollipop stem connecting rotate handle to top-center
-        const stem = document.createElement("div");
-        stem.className = "ms-rotate-stem";
-        stem.style.position = "absolute";
-        stem.style.left = "50%";
-        stem.style.top = "-14px";
-        stem.style.width = "1.5px";
-        stem.style.height = "14px";
-        stem.style.marginLeft = "-0.75px";
-        stem.style.background = "#10b981";
-        stem.style.pointerEvents = "none";
-        box.appendChild(stem);
-      }
-
-      const cellW = cell.width || 1;
-      const cellH = cell.height || 1;
-      const isMidpointOccludingPort = (h: ResizeHandleKind): boolean => {
-        if (h !== "n" && h !== "e" && h !== "s" && h !== "w") return false;
-        if ((h === "n" || h === "s") && rect.width < 36) return true;
-        if ((h === "e" || h === "w") && rect.height < 36) return true;
-        const hx = h === "w" ? 0 : h === "e" ? cellW : cellW / 2;
-        const hy = h === "n" ? 0 : h === "s" ? cellH : cellH / 2;
-        const tol = Math.max(8, Math.min(cellW, cellH) * 0.25);
-        for (const p of cell.getPorts()) {
-          const px = p.args?.x ?? cellW / 2;
-          const py = p.args?.y ?? cellH / 2;
-          if (Math.hypot(px - hx, py - hy) <= tol) return true;
-        }
-        return false;
-      };
-
-      for (const h of handles) {
-        if (h === "rotate" ? !canRotate : !canResize) continue;
-        if (isMidpointOccludingPort(h)) continue;
-        const dot = document.createElement("div");
-        dot.className = `ms-resize-handle ms-handle-${h}`;
-        dot.setAttribute("data-handle", h);
-        dot.style.position = "absolute";
-        dot.style.width = h === "rotate" ? "10px" : "8px";
-        dot.style.height = h === "rotate" ? "10px" : "8px";
-        dot.style.borderRadius = h === "rotate" ? "999px" : "2px";
-        dot.style.background = h === "rotate" ? "#10b981" : "#ffffff";
-        dot.style.border = h === "rotate" ? "1.5px solid #064e3b" : "1.5px solid #0284c7";
-        dot.style.boxShadow = "0 1px 2px rgba(0, 0, 0, 0.25)";
-        dot.style.pointerEvents = "auto";
-        dot.style.cursor = getResizeCursorForHandle(h, cell.angle);
-        if (h === "nw") {
-          dot.style.left = "-5px";
-          dot.style.top = "-5px";
-        } else if (h === "n") {
-          dot.style.left = "50%";
-          dot.style.top = "-5px";
-          dot.style.marginLeft = "-5px";
-        } else if (h === "ne") {
-          dot.style.right = "-5px";
-          dot.style.top = "-5px";
-        } else if (h === "e") {
-          dot.style.right = "-5px";
-          dot.style.top = "50%";
-          dot.style.marginTop = "-5px";
-        } else if (h === "se") {
-          dot.style.right = "-5px";
-          dot.style.bottom = "-5px";
-        } else if (h === "s") {
-          dot.style.left = "50%";
-          dot.style.bottom = "-5px";
-          dot.style.marginLeft = "-5px";
-        } else if (h === "sw") {
-          dot.style.left = "-5px";
-          dot.style.bottom = "-5px";
-        } else if (h === "w") {
-          dot.style.left = "-5px";
-          dot.style.top = "50%";
-          dot.style.marginTop = "-5px";
-        } else if (h === "rotate") {
-          dot.style.left = "50%";
-          dot.style.top = "-22px";
-          dot.style.marginLeft = "-6px";
-          dot.title = "Drag to rotate (hold Shift for 15° snap)";
-        }
-        dot.addEventListener("pointerdown", (e) => {
-          if (e.button !== 0) return;
-          e.stopPropagation();
-          (this.rootEl as { setPointerCapture?: (id: number) => void } | null)?.setPointerCapture?.(e.pointerId);
-          const pt = this.clientToLocal(e.clientX, e.clientY);
-          this.fsm.startResize(cell.id, h, pt.x, pt.y, e.pointerId);
-        });
-        box.appendChild(dot);
-      }
-
-      this.selectionOverlayEl.appendChild(box);
-    }
+    syncSelectionBoxesDomImpl(this.createOverlayDomContext(), panOnly);
   }
 }
 

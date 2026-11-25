@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import Editor from "@monaco-editor/react";
+import Editor, { type OnMount } from "@monaco-editor/react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -636,12 +636,12 @@ export const SpaceCodeTab: React.FC<SpaceCodeTabProps> = ({ detail, viewerState 
   const [copiedFile, setCopiedFile] = useState(false);
   const [initializingTemplate, setInitializingTemplate] = useState(false);
 
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [allRepoFiles, setAllRepoFiles] = useState<GitlabTreeNode[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [fileFilterQuery, setFileFilterQuery] = useState("");
 
-  const handleEditorMount = (editor: any, monaco: any) => {
+  const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
     ensureMonacoThemesDefined(monaco);
   };

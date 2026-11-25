@@ -1,0 +1,18 @@
+[CASE DATA]
+BASE_MVA=100.0, FREQ=60.0, TITLE="Companion 230 kV Distance & Overcurrent Relay Curves"
+
+[BUS DATA]
+4, "SUB_4_230KV", 230.0, 1, 1
+5, "SUB_5_230KV", 230.0, 1, 1
+7, "SUB_7_230KV", 230.0, 1, 1
+
+[LINE DATA]
+"LN4-5", 4, 5, "1", 0.010, 0.085, 0.030, 0.255, 0.04, 0.02, 300.0, 38.0
+"LN5-7", 5, 7, "1", 0.032, 0.161, 0.096, 0.483, 0.06, 0.03, 300.0, 72.0
+
+[RELAY OVERCURRENT]
+"OC_4_5", "BACKUP_51_4_5", "LN4-5", 4, 900.0, 240.0, 3.5, "IEEE_Very_Inverse", 5400.0
+
+[RELAY DISTANCE]
+"D21_4_5", "SEL_421_BUS4_TO_5", "LN4-5", 4, 36.2, 54.0, 0.35, 92.0, 1.0
+"D21_5_7", "SEL_421_BUS5_TO_7", "LN5-7", 5, 68.5, 102.0, 0.35, 145.0, 1.0

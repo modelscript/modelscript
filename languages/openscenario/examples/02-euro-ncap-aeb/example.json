@@ -1,0 +1,12 @@
+{
+  "id": "openscenario-02-euro-ncap-aeb",
+  "lang": "openscenario",
+  "subFormats": ["xosc", "xodr"],
+  "difficulty": 2,
+  "title": "Euro NCAP AEB Rear-End Braking Test",
+  "description": "Euro NCAP Car-to-Car Rear Stationary (CCRs) autonomous emergency braking test scenario where Ego approaches a stopped GVT target at 50 km/h on a proving-ground straight track.",
+  "category": "ADAS Safety Validation",
+  "tags": ["euro-ncap", "aeb", "ccrs", "braking", "multi-file"],
+  "activeFile": "aeb_ccrs.xosc",
+  "fileOrder": ["aeb_ccrs.xosc", "test_track.xodr"]
+}

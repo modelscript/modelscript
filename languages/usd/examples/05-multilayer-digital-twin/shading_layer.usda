@@ -1,0 +1,26 @@
+#usda 1.0
+(
+    defaultPrim = "ActuatorCell"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+over "ActuatorCell"
+{
+    def Scope "Looks"
+    {
+        def Material "AnodizedAluminum"
+        {
+            color3f inputs:diffuseColor = (0.76, 0.78, 0.82)
+            float inputs:metallic = 0.92
+            float inputs:roughness = 0.24
+        }
+
+        def Material "HardenedSteel"
+        {
+            color3f inputs:diffuseColor = (0.48, 0.50, 0.54)
+            float inputs:metallic = 0.96
+            float inputs:roughness = 0.18
+        }
+    }
+}

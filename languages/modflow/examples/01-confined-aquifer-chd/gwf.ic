@@ -1,0 +1,5 @@
+# Initial Conditions Package
+BEGIN GRIDDATA
+  STRT
+    CONSTANT 48.0
+END GRIDDATA

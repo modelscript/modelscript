@@ -1,0 +1,11 @@
+{
+  "id": "febio-03-tendon-ogden-stretch",
+  "lang": "febio",
+  "subFormats": ["feb"],
+  "difficulty": 3,
+  "title": "Ogden Hyperelastic Tendon Tensile Stretch",
+  "description": "Two-element tetrahedral Achilles tendon fascicle modeled with a nonlinear Ogden hyperelastic strain-energy function under 8% axial physiological tensile elongation.",
+  "category": "Soft-Tissue Biomechanics & FEA",
+  "tags": ["febio", "ogden", "tendon", "hyperelastic", "tet4"],
+  "activeFile": "tendon_stretch.feb"
+}

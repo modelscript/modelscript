@@ -80,7 +80,7 @@ export interface SerializedThreadFile {
   "@type": "ms:DigitalThreadCollection";
   version: string;
   generatedAt: string;
-  metadata?: Record<string, any> | undefined;
+  metadata?: Record<string, unknown> | undefined;
   threads: {
     threadId: number | string;
     revision: number;
@@ -92,7 +92,7 @@ export interface SerializedThreadFile {
 }
 
 export class ThreadSerializer {
-  static serialize(hypergraph: DigitalThreadHypergraph, metadata: Record<string, any> = {}): string {
+  static serialize(hypergraph: DigitalThreadHypergraph, metadata: Record<string, unknown> = {}): string {
     const records = hypergraph.getAllRecords();
     const threads = records.map((rec) => {
       let statusStr: "synced" | "stale" | "conflict" | "removed" = "synced";
@@ -154,8 +154,8 @@ export class ThreadSerializer {
 
       let rel = ThreadRelation.Aligned;
       if (typeof t.relation === "string") {
-        const matching = (ThreadRelation as any)[t.relation];
-        if (matching !== undefined) rel = matching;
+        const matching = (ThreadRelation as unknown as Record<string, unknown>)[t.relation];
+        if (typeof matching === "number") rel = matching as ThreadRelation;
       } else if (typeof t.relation === "number") {
         rel = t.relation as ThreadRelation;
       }

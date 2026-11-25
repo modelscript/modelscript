@@ -1,0 +1,35 @@
+begin model
+begin parameters
+  L0 120
+  R0 200
+  kp1 0.0025
+  km1 0.08
+end parameters
+
+begin compartments
+  EC 3 1.0
+end compartments
+
+begin molecule types
+  L(r)
+  R(l)
+end molecule types
+
+begin seed species
+  L(r) L0
+  R(l) R0
+end seed species
+
+begin observables
+  Molecules FreeLigand L(r)
+  Molecules FreeReceptor R(l)
+  Molecules BoundComplex L(r!1).R(l!1)
+end observables
+
+begin reaction rules
+  Bind: L(r) + R(l) <-> L(r!1).R(l!1) kp1, km1
+end reaction rules
+end model
+
+generate_network({overwrite=>1,max_iter=>5})
+simulate({method=>"ode",t_end=>20,n_steps=>200})

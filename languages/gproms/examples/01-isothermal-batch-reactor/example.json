@@ -1,0 +1,12 @@
+{
+  "id": "gproms-01-isothermal-batch-reactor",
+  "lang": "gproms",
+  "subFormats": ["gproms"],
+  "difficulty": 1,
+  "title": "Isothermal Batch Reactor First-Order Decay",
+  "description": "Foundational gPROMS dynamic model of an isothermal well-mixed batch reactor with first-order irreversible conversion A -> B and typed physical variables.",
+  "category": "Chemical Process Engineering",
+  "tags": ["gproms", "batch-reactor", "kinetics", "dae"],
+  "activeFile": "batch_reactor.gproms",
+  "isDefaultStarter": true
+}

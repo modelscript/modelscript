@@ -1,0 +1,12 @@
+{
+  "id": "bufr-01-synop-surface-station",
+  "lang": "bufr",
+  "subFormats": ["bufr-ed4"],
+  "difficulty": 1,
+  "title": "WMO SYNOP Surface Weather Station Report",
+  "description": "WMO FM 94 BUFR Edition 4 SYNOP land surface observation using Table D sequence 3-07-080 with station pressure, temperature, dewpoint, humidity, and surface wind.",
+  "category": "Meteorology",
+  "tags": ["bufr", "wmo", "synop", "surface-observation"],
+  "activeFile": "denver_synop.bufr",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "asm-01-aerobic-cstr-bod",
+    "lang": "asm",
+    "subFormats": ["asm"],
+    "difficulty": 1,
+    "title": "Single Aerobic CSTR BOD Removal (ASM1)",
+    "description": "Minimal IWA ASM1 municipal wastewater treatment plant with a single continuously stirred aerobic bioreactor and secondary settling clarifier for carbonaceous BOD removal.",
+    "category": "Wastewater Biokinetics",
+    "tags": ["asm", "asm1", "cstr", "bod-removal"],
+    "activeFile": "aerobic_cstr.asm",
+    "fileNames": ["aerobic_cstr.asm"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "plant Single_Aerobic_CSTR {\n  model: ASM1;\n\n  influent {\n    flow: 5000.0 m3/day;\n    S_S: 65.0;\n    S_I: 28.0;\n    X_I: 45.0;\n    X_S: 185.0;\n    X_BH: 25.0;\n    S_NH: 28.0;\n    S_NO: 0.0;\n    S_ND: 6.0;\n    X_ND: 9.5;\n    S_ALK: 6.8;\n  }\n\n  recycle {\n    internal_ratio: 0.0;\n    sludge_ratio: 0.75;\n    waste_flow: 110.0 m3/day;\n  }\n\n  bioreactor AERATION_BASIN {\n    type: Aerobic;\n    volume: 1600.0 m3;\n    kla: 180.0;\n    do_target: 2.0;\n  }\n\n  clarifier FINAL_CLARIFIER {\n    area: 450.0 m2;\n    depth: 3.5 m;\n    layers: 10;\n    feed_layer: 5;\n  }\n}\n"
+  },
+  {
+    "id": "asm-02-pre-denitrification-loop",
+    "lang": "asm",
+    "subFormats": ["asm"],
+    "difficulty": 2,
+    "title": "Pre-Denitrification Anoxic-Aerobic Nitrification Loop",
+    "description": "Modified Ludzack-Ettinger (MLE) ASM1 activated sludge configuration pairing an upstream anoxic denitrification tank with an aerated nitrification basin and 2.5x internal nitrate recycle.",
+    "category": "Wastewater Biokinetics",
+    "tags": ["asm", "asm1", "mle", "nitrification", "denitrification"],
+    "activeFile": "mle_nitrification.asm",
+    "fileNames": ["mle_nitrification.asm"],
+    "fileCount": 1,
+    "code": "plant MLE_PreDenitrification {\n  model: ASM1;\n\n  influent {\n    flow: 12000.0 m3/day;\n    S_S: 72.0;\n    S_I: 30.0;\n    X_I: 50.0;\n    X_S: 195.0;\n    X_BH: 28.0;\n    S_NH: 32.0;\n    S_NO: 0.0;\n    S_ND: 7.0;\n    X_ND: 10.5;\n    S_ALK: 7.0;\n  }\n\n  recycle {\n    internal_ratio: 2.5;\n    sludge_ratio: 0.9;\n    waste_flow: 240.0 m3/day;\n  }\n\n  bioreactor ANOXIC_ZONE {\n    type: Anoxic;\n    volume: 1400.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor AEROBIC_NITRIF {\n    type: Aerobic;\n    volume: 2600.0 m3;\n    kla: 220.0;\n    do_target: 2.0;\n  }\n\n  clarifier SECONDARY_CLARIFIER {\n    area: 980.0 m2;\n    depth: 4.0 m;\n    layers: 10;\n    feed_layer: 5;\n  }\n}\n"
+  },
+  {
+    "id": "asm-03-bsm1-five-tank-clarifier",
+    "lang": "asm",
+    "subFormats": ["asm"],
+    "difficulty": 3,
+    "title": "Benchmark Simulation Model No. 1 (BSM1 5-Tank Plant)",
+    "description": "Standard IWA/COST Benchmark Simulation Model No. 1 (BSM1) featuring two 1000 m3 anoxic tanks, three 1333 m3 aerated reactors, 3x internal recycle, and a 10-layer Takacs clarifier.",
+    "category": "Wastewater Biokinetics",
+    "tags": ["asm", "bsm1", "asm1", "takacs-clarifier", "benchmark"],
+    "activeFile": "bsm1_plant.asm",
+    "fileNames": ["bsm1_plant.asm"],
+    "fileCount": 1,
+    "code": "plant IWA_Benchmark_BSM1 {\n  model: ASM1;\n\n  influent {\n    flow: 18446.0 m3/day;\n    S_S: 69.5;\n    S_I: 30.0;\n    X_I: 51.2;\n    X_S: 202.32;\n    X_BH: 28.17;\n    S_NH: 31.56;\n    S_NO: 0.0;\n    S_ND: 6.95;\n    X_ND: 10.59;\n    S_ALK: 7.0;\n  }\n\n  recycle {\n    internal_ratio: 3.0;\n    sludge_ratio: 1.0;\n    waste_flow: 385.0 m3/day;\n  }\n\n  bioreactor ANOXIC_1 {\n    type: Anoxic;\n    volume: 1000.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor ANOXIC_2 {\n    type: Anoxic;\n    volume: 1000.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor AEROBIC_3 {\n    type: Aerobic;\n    volume: 1333.0 m3;\n    kla: 240.0;\n    do_target: 2.0;\n  }\n\n  bioreactor AEROBIC_4 {\n    type: Aerobic;\n    volume: 1333.0 m3;\n    kla: 240.0;\n    do_target: 2.0;\n  }\n\n  bioreactor AEROBIC_5 {\n    type: Aerobic;\n    volume: 1333.0 m3;\n    kla: 84.0;\n    do_target: 2.0;\n  }\n\n  clarifier SECONDARY_CLARIFIER {\n    area: 1500.0 m2;\n    depth: 4.0 m;\n    layers: 10;\n    feed_layer: 5;\n  }\n}\n"
+  },
+  {
+    "id": "asm-04-ebpr-asm2d-plant",
+    "lang": "asm",
+    "subFormats": ["asm"],
+    "difficulty": 4,
+    "title": "Enhanced Biological Phosphorus Removal (ASM2d)",
+    "description": "A2O Enhanced Biological Phosphorus Removal (EBPR) plant modeled under IWA ASM2d with sequential anaerobic PAO release, anoxic denitrification, and aerobic luxury phosphorus uptake zones.",
+    "category": "Nutrient Removal Engineering",
+    "tags": ["asm", "asm2d", "ebpr", "phosphorus-removal", "a2o"],
+    "activeFile": "ebpr_asm2d.asm",
+    "fileNames": ["ebpr_asm2d.asm"],
+    "fileCount": 1,
+    "code": "plant A2O_EBPR_ASM2d {\n  model: ASM2d;\n\n  influent {\n    flow: 24000.0 m3/day;\n    S_F: 38.0;\n    S_A: 24.0;\n    S_I: 30.0;\n    X_I: 48.0;\n    X_S: 190.0;\n    X_H: 30.0;\n    S_NH4: 34.0;\n    S_PO4: 8.5;\n    S_NO3: 0.0;\n    S_ALK: 7.2;\n  }\n\n  recycle {\n    internal_ratio: 3.2;\n    sludge_ratio: 1.0;\n    waste_flow: 480.0 m3/day;\n  }\n\n  bioreactor ANAEROBIC_PAO {\n    type: Anaerobic;\n    volume: 1200.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor ANOXIC_DENIT {\n    type: Anoxic;\n    volume: 1800.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor AEROBIC_UPTAKE_1 {\n    type: Aerobic;\n    volume: 2200.0 m3;\n    kla: 250.0;\n    do_target: 2.2;\n  }\n\n  bioreactor AEROBIC_UPTAKE_2 {\n    type: Aerobic;\n    volume: 2200.0 m3;\n    kla: 160.0;\n    do_target: 2.0;\n  }\n\n  clarifier FINAL_SETTLER {\n    area: 1950.0 m2;\n    depth: 4.2 m;\n    layers: 10;\n    feed_layer: 5;\n  }\n}\n"
+  },
+  {
+    "id": "asm-05-bsm1-dynamic-storm-wwtp",
+    "lang": "asm",
+    "subFormats": ["asm", "csv"],
+    "difficulty": 5,
+    "title": "Dynamic Storm-Weather BSM1 WWTP with Influent Profile",
+    "description": "Full-scale BSM1 municipal wastewater treatment plant configured for dry-weather and storm-surge hydraulic load testing alongside a 24-hour dynamic influent flow and COD/NH4 profile CSV.",
+    "category": "Wastewater Biokinetics",
+    "tags": ["asm", "bsm1", "storm-weather", "dynamic-influent", "multi-file"],
+    "activeFile": "bsm1_dynamic.asm",
+    "fileNames": ["bsm1_dynamic.asm", "influent_dry_storm.csv"],
+    "fileCount": 2,
+    "code": "plant Metro_WWTP_Dynamic_BSM1 {\n  model: ASM1;\n\n  influent {\n    flow: 22500.0 m3/day;\n    S_S: 68.0;\n    S_I: 29.0;\n    X_I: 52.0;\n    X_S: 205.0;\n    X_BH: 29.0;\n    S_NH: 31.0;\n    S_NO: 0.0;\n    S_ND: 6.8;\n    X_ND: 10.4;\n    S_ALK: 7.0;\n  }\n\n  recycle {\n    internal_ratio: 3.5;\n    sludge_ratio: 1.0;\n    waste_flow: 420.0 m3/day;\n  }\n\n  bioreactor ANOXIC_1 {\n    type: Anoxic;\n    volume: 1200.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor ANOXIC_2 {\n    type: Anoxic;\n    volume: 1200.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor AEROBIC_3 {\n    type: Aerobic;\n    volume: 1600.0 m3;\n    kla: 260.0;\n    do_target: 2.2;\n  }\n\n  bioreactor AEROBIC_4 {\n    type: Aerobic;\n    volume: 1600.0 m3;\n    kla: 240.0;\n    do_target: 2.0;\n  }\n\n  bioreactor AEROBIC_5 {\n    type: Aerobic;\n    volume: 1600.0 m3;\n    kla: 110.0;\n    do_target: 2.0;\n  }\n\n  clarifier NORTH_CLARIFIER {\n    area: 1850.0 m2;\n    depth: 4.2 m;\n    layers: 10;\n    feed_layer: 5;\n  }\n}\n",
+    "files": {
+      "bsm1_dynamic.asm": "plant Metro_WWTP_Dynamic_BSM1 {\n  model: ASM1;\n\n  influent {\n    flow: 22500.0 m3/day;\n    S_S: 68.0;\n    S_I: 29.0;\n    X_I: 52.0;\n    X_S: 205.0;\n    X_BH: 29.0;\n    S_NH: 31.0;\n    S_NO: 0.0;\n    S_ND: 6.8;\n    X_ND: 10.4;\n    S_ALK: 7.0;\n  }\n\n  recycle {\n    internal_ratio: 3.5;\n    sludge_ratio: 1.0;\n    waste_flow: 420.0 m3/day;\n  }\n\n  bioreactor ANOXIC_1 {\n    type: Anoxic;\n    volume: 1200.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor ANOXIC_2 {\n    type: Anoxic;\n    volume: 1200.0 m3;\n    kla: 0.0;\n  }\n\n  bioreactor AEROBIC_3 {\n    type: Aerobic;\n    volume: 1600.0 m3;\n    kla: 260.0;\n    do_target: 2.2;\n  }\n\n  bioreactor AEROBIC_4 {\n    type: Aerobic;\n    volume: 1600.0 m3;\n    kla: 240.0;\n    do_target: 2.0;\n  }\n\n  bioreactor AEROBIC_5 {\n    type: Aerobic;\n    volume: 1600.0 m3;\n    kla: 110.0;\n    do_target: 2.0;\n  }\n\n  clarifier NORTH_CLARIFIER {\n    area: 1850.0 m2;\n    depth: 4.2 m;\n    layers: 10;\n    feed_layer: 5;\n  }\n}\n",
+      "influent_dry_storm.csv": "hour,dry_flow_m3_day,storm_flow_m3_day,S_S_mg_L,X_S_mg_L,S_NH_mg_L\n0,14200,15100,52.0,165.0,26.5\n4,11800,14500,44.0,148.0,22.0\n8,21500,26800,76.0,225.0,36.2\n10,24800,48500,62.0,240.0,28.4\n12,23200,56200,48.0,210.0,21.5\n14,22400,44000,54.0,198.0,24.8\n18,23900,32500,74.0,220.0,34.0\n20,21000,25400,70.0,208.0,32.5\n24,14800,16200,54.0,168.0,27.0\n"
+    }
+  }
+]

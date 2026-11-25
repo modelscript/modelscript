@@ -1,0 +1,12 @@
+{
+  "id": "las-01-gamma-ray-caliper-lithology",
+  "lang": "las",
+  "subFormats": ["las"],
+  "difficulty": 1,
+  "title": "Gamma-Ray & Caliper Sandstone-Shale Lithology Well Log",
+  "description": "CWLS LAS 2.0 wireline well log capturing natural gamma-ray (GR) and borehole caliper (CALI) across a clean sandstone bed bounded by marine shale.",
+  "category": "Subsurface & Petrophysics",
+  "tags": ["las", "well-log", "gamma-ray", "caliper", "lithology"],
+  "activeFile": "well_gr.las",
+  "isDefaultStarter": true
+}

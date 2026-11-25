@@ -8,6 +8,7 @@ import { useAuth } from "../AuthContext";
 import { AnsatzMark } from "../components/AnsatzLogo";
 import Spinner from "../components/Spinner";
 import { useInstanceBranding } from "../InstanceBrandingContext";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 import {
   Button,
@@ -77,8 +78,8 @@ export default function VerifyEmailPage() {
     try {
       const res = await resendVerificationEmail(resendEmail);
       setResendMessage(res.message || "A fresh verification link has been sent to your email.");
-    } catch (err: any) {
-      setResendError(err?.response?.data?.error || "Failed to resend verification email.");
+    } catch (err: unknown) {
+      setResendError(getApiErrorMessage(err, "Failed to resend verification email."));
     } finally {
       setResendLoading(false);
     }

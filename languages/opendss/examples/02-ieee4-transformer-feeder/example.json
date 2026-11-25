@@ -1,0 +1,11 @@
+{
+  "id": "opendss-02-ieee4-transformer-feeder",
+  "lang": "opendss",
+  "subFormats": ["dss"],
+  "difficulty": 2,
+  "title": "IEEE 4-Bus Transformer Test Feeder",
+  "description": "Standard IEEE 4-bus step-down distribution test feeder with 115/12.47 kV substation transformer, two overhead spans, and distributed loads.",
+  "category": "Distribution Benchmark",
+  "tags": ["opendss", "ieee4", "transformer", "distribution"],
+  "activeFile": "ieee4_feeder.dss"
+}

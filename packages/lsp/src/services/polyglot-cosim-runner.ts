@@ -704,12 +704,22 @@ export function flattenModelicaForCosim(text: string, uri: string, className?: s
     ctx.load(text, uri);
     let target = className;
     if (!target) {
+      type ModelicaCtxWithWorkspaceIndex = {
+        workspaceIndex?: {
+          getUnifiedIndex?: () => {
+            symbols?: {
+              values?: () => Iterable<{
+                kind?: string | undefined;
+                name?: string | undefined;
+                metadata?: { classKind?: string | undefined } | undefined;
+              }>;
+            };
+          };
+        };
+      };
       const syms = Array.from(
-        ((ctx as any).workspaceIndex?.getUnifiedIndex?.()?.symbols?.values?.() ?? []) as Array<{
-          kind?: string;
-          name?: string;
-          metadata?: { classKind?: string };
-        }>,
+        (ctx as unknown as ModelicaCtxWithWorkspaceIndex).workspaceIndex?.getUnifiedIndex?.()?.symbols?.values?.() ??
+          [],
       );
       const modelSym =
         syms.find((s) => (s.kind === "Class" || s.kind === "Def") && s.metadata?.classKind === "model") ??

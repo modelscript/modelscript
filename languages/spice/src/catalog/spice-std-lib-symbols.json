@@ -1,0 +1,2137 @@
+[
+  {
+    "name": "D_1N4148",
+    "kind": "spice_device_model",
+    "namePath": "spice:D_1N4148",
+    "exports": [
+      "IS",
+      "N",
+      "RS",
+      "BV",
+      "IBV",
+      "CJO"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1N4148 Fast Switching Silicon Signal Diode",
+      "category": "Diode",
+      "domain": "electrical",
+      "description": "Small-signal high-speed silicon switching diode modeled via the Shockley p-n junction equation.",
+      "provenance": "Shockley (1949) p-n Junction Theory / JEDEC 1N4148 Public Datasheet Parameters",
+      "aliases": [
+        "1N4148",
+        "D1N4148"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 2.52e-9,
+          "unit": "A",
+          "description": "Saturation current"
+        },
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 1.752,
+          "unit": "",
+          "description": "Emission coefficient (ideality factor)"
+        },
+        {
+          "key": "RS",
+          "type": "real",
+          "defaultValue": 0.568,
+          "unit": "Ohm",
+          "description": "Ohmic series resistance"
+        },
+        {
+          "key": "BV",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "V",
+          "description": "Reverse breakdown voltage"
+        },
+        {
+          "key": "IBV",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "A",
+          "description": "Current at breakdown voltage"
+        },
+        {
+          "key": "CJO",
+          "type": "real",
+          "defaultValue": 4e-12,
+          "unit": "F",
+          "description": "Zero-bias junction capacitance"
+        }
+      ],
+      "wasmKernel": "D_1N4148",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "D_1N4007",
+    "kind": "spice_device_model",
+    "namePath": "spice:D_1N4007",
+    "exports": [
+      "IS",
+      "N",
+      "RS",
+      "BV",
+      "IBV",
+      "CJO"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1N4007 1000V 1A General-Purpose Rectifier Diode",
+      "category": "Diode",
+      "domain": "electrical",
+      "description": "High-voltage silicon power rectifier diode with 1000V reverse breakdown rating.",
+      "provenance": "Shockley (1949) p-n Junction Theory / JEDEC 1N4007 Public Datasheet Parameters",
+      "aliases": [
+        "1N4007",
+        "D1N4007"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 7.02e-9,
+          "unit": "A",
+          "description": "Saturation current"
+        },
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 1.77,
+          "unit": "",
+          "description": "Emission coefficient"
+        },
+        {
+          "key": "RS",
+          "type": "real",
+          "defaultValue": 0.034,
+          "unit": "Ohm",
+          "description": "Ohmic series resistance"
+        },
+        {
+          "key": "BV",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "V",
+          "description": "Reverse breakdown voltage"
+        },
+        {
+          "key": "IBV",
+          "type": "real",
+          "defaultValue": 0.000005,
+          "unit": "A",
+          "description": "Current at breakdown voltage"
+        },
+        {
+          "key": "CJO",
+          "type": "real",
+          "defaultValue": 1.5e-11,
+          "unit": "F",
+          "description": "Zero-bias junction capacitance"
+        }
+      ],
+      "wasmKernel": "D_1N4007",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "D_1N5819_SCHOTTKY",
+    "kind": "spice_device_model",
+    "namePath": "spice:D_1N5819_SCHOTTKY",
+    "exports": [
+      "IS",
+      "N",
+      "RS",
+      "BV",
+      "IBV",
+      "CJO"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1N5819 40V 1A Schottky Barrier Rectifier Diode",
+      "category": "Diode",
+      "domain": "electrical",
+      "description": "Low forward-drop metal-semiconductor Schottky barrier diode for switching power supplies.",
+      "provenance": "Shockley Thermionic Emission / Sze Semiconductor Physics (JEDEC 1N5819)",
+      "aliases": [
+        "1N5819",
+        "D1N5819"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 0.0000317,
+          "unit": "A",
+          "description": "Schottky saturation current"
+        },
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 1.05,
+          "unit": "",
+          "description": "Emission coefficient"
+        },
+        {
+          "key": "RS",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "Ohm",
+          "description": "Series resistance"
+        },
+        {
+          "key": "BV",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "V",
+          "description": "Reverse breakdown voltage"
+        },
+        {
+          "key": "IBV",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "A",
+          "description": "Current at breakdown voltage"
+        },
+        {
+          "key": "CJO",
+          "type": "real",
+          "defaultValue": 1.1e-10,
+          "unit": "F",
+          "description": "Zero-bias junction capacitance"
+        }
+      ],
+      "wasmKernel": "D_1N5819_SCHOTTKY",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "D_BZX84C5V1_ZENER",
+    "kind": "spice_device_model",
+    "namePath": "spice:D_BZX84C5V1_ZENER",
+    "exports": [
+      "IS",
+      "N",
+      "RS",
+      "BV",
+      "IBV",
+      "CJO"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BZX84C5V1 5.1V Zener Voltage Reference Diode",
+      "category": "Diode",
+      "domain": "electrical",
+      "description": "5.1V Zener voltage regulator diode with sharp reverse avalanche/Zener breakdown knee.",
+      "provenance": "Shockley / Zener Breakdown Model (Sedra & Smith Microelectronic Circuits, BZX84C5V1)",
+      "aliases": [
+        "BZX84C5V1",
+        "BZX84C5V1L",
+        "ZENER_5V1"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 1e-12,
+          "unit": "A",
+          "description": "Saturation current"
+        },
+        {
+          "key": "N",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Emission coefficient"
+        },
+        {
+          "key": "RS",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "Ohm",
+          "description": "Dynamic series resistance"
+        },
+        {
+          "key": "BV",
+          "type": "real",
+          "defaultValue": 5.1,
+          "unit": "V",
+          "description": "Nominal Zener breakdown voltage"
+        },
+        {
+          "key": "IBV",
+          "type": "real",
+          "defaultValue": 0.005,
+          "unit": "A",
+          "description": "Zener test current at BV"
+        },
+        {
+          "key": "CJO",
+          "type": "real",
+          "defaultValue": 1.8e-10,
+          "unit": "F",
+          "description": "Zero-bias junction capacitance"
+        }
+      ],
+      "wasmKernel": "D_BZX84C5V1_ZENER",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "Q_2N2222_NPN",
+    "kind": "spice_device_model",
+    "namePath": "spice:Q_2N2222_NPN",
+    "exports": [
+      "IS",
+      "BF",
+      "BR",
+      "NF",
+      "VAF",
+      "RB",
+      "VAR",
+      "IKF",
+      "CJE",
+      "VJE",
+      "MJE",
+      "CJC",
+      "VJC",
+      "MJC",
+      "NR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2N2222 General-Purpose NPN Silicon BJT",
+      "category": "BJT",
+      "domain": "electrical",
+      "description": "Classic general-purpose NPN bipolar junction transistor modeled with Ebers-Moll / Gummel-Poon physics.",
+      "provenance": "Ebers-Moll (1954) & Gummel-Poon (1970) BJT Equations / JEDEC 2N2222 Public Parameters",
+      "aliases": [
+        "2N2222",
+        "2N2222A",
+        "PN2222"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 1.434e-14,
+          "unit": "A",
+          "description": "Transport saturation current"
+        },
+        {
+          "key": "BF",
+          "type": "real",
+          "defaultValue": 255.9,
+          "unit": "",
+          "description": "Ideal maximum forward beta"
+        },
+        {
+          "key": "BR",
+          "type": "real",
+          "defaultValue": 6.092,
+          "unit": "",
+          "description": "Ideal maximum reverse beta"
+        },
+        {
+          "key": "NF",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Forward current emission coefficient"
+        },
+        {
+          "key": "VAF",
+          "type": "real",
+          "defaultValue": 74.03,
+          "unit": "V",
+          "description": "Forward Early voltage"
+        },
+        {
+          "key": "RB",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm",
+          "description": "Zero-bias base resistance"
+        },
+        {
+          "key": "VAR",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "V",
+          "description": "Reverse Early voltage"
+        },
+        {
+          "key": "IKF",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "A",
+          "description": "Forward high-level injection knee current"
+        },
+        {
+          "key": "CJE",
+          "type": "real",
+          "defaultValue": 2.5e-11,
+          "unit": "F",
+          "description": "Zero-bias B-E depletion capacitance"
+        },
+        {
+          "key": "VJE",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-E junction built-in potential"
+        },
+        {
+          "key": "MJE",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-E junction grading coefficient"
+        },
+        {
+          "key": "CJC",
+          "type": "real",
+          "defaultValue": 8e-12,
+          "unit": "F",
+          "description": "Zero-bias B-C depletion capacitance"
+        },
+        {
+          "key": "VJC",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-C junction built-in potential"
+        },
+        {
+          "key": "MJC",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-C junction grading coefficient"
+        },
+        {
+          "key": "NR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Reverse current emission coefficient"
+        }
+      ],
+      "wasmKernel": "Q_2N2222_NPN",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "Q_2N3904_NPN",
+    "kind": "spice_device_model",
+    "namePath": "spice:Q_2N3904_NPN",
+    "exports": [
+      "IS",
+      "BF",
+      "BR",
+      "NF",
+      "VAF",
+      "RB",
+      "VAR",
+      "IKF",
+      "CJE",
+      "VJE",
+      "MJE",
+      "CJC",
+      "VJC",
+      "MJC",
+      "NR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2N3904 Small-Signal NPN Silicon BJT",
+      "category": "BJT",
+      "domain": "electrical",
+      "description": "Ubiquitous small-signal NPN switching and amplification transistor.",
+      "provenance": "Ebers-Moll (1954) & Gummel-Poon (1970) BJT Equations / JEDEC 2N3904 Public Parameters",
+      "aliases": [
+        "2N3904",
+        "MMBT3904"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 6.734e-15,
+          "unit": "A",
+          "description": "Transport saturation current"
+        },
+        {
+          "key": "BF",
+          "type": "real",
+          "defaultValue": 416.4,
+          "unit": "",
+          "description": "Ideal maximum forward beta"
+        },
+        {
+          "key": "BR",
+          "type": "real",
+          "defaultValue": 0.7371,
+          "unit": "",
+          "description": "Ideal maximum reverse beta"
+        },
+        {
+          "key": "NF",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Forward current emission coefficient"
+        },
+        {
+          "key": "VAF",
+          "type": "real",
+          "defaultValue": 74.03,
+          "unit": "V",
+          "description": "Forward Early voltage"
+        },
+        {
+          "key": "RB",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm",
+          "description": "Zero-bias base resistance"
+        },
+        {
+          "key": "VAR",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "V",
+          "description": "Reverse Early voltage"
+        },
+        {
+          "key": "IKF",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "A",
+          "description": "Forward high-level injection knee current"
+        },
+        {
+          "key": "CJE",
+          "type": "real",
+          "defaultValue": 2.5e-11,
+          "unit": "F",
+          "description": "Zero-bias B-E depletion capacitance"
+        },
+        {
+          "key": "VJE",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-E junction built-in potential"
+        },
+        {
+          "key": "MJE",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-E junction grading coefficient"
+        },
+        {
+          "key": "CJC",
+          "type": "real",
+          "defaultValue": 8e-12,
+          "unit": "F",
+          "description": "Zero-bias B-C depletion capacitance"
+        },
+        {
+          "key": "VJC",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-C junction built-in potential"
+        },
+        {
+          "key": "MJC",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-C junction grading coefficient"
+        },
+        {
+          "key": "NR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Reverse current emission coefficient"
+        }
+      ],
+      "wasmKernel": "Q_2N3904_NPN",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "Q_2N3906_PNP",
+    "kind": "spice_device_model",
+    "namePath": "spice:Q_2N3906_PNP",
+    "exports": [
+      "IS",
+      "BF",
+      "BR",
+      "NF",
+      "VAF",
+      "RB",
+      "VAR",
+      "IKF",
+      "CJE",
+      "VJE",
+      "MJE",
+      "CJC",
+      "VJC",
+      "MJC",
+      "NR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2N3906 Small-Signal PNP Silicon BJT",
+      "category": "BJT",
+      "domain": "electrical",
+      "description": "Complementary PNP small-signal silicon transistor paired with 2N3904.",
+      "provenance": "Ebers-Moll (1954) & Gummel-Poon (1970) BJT Equations / JEDEC 2N3906 Public Parameters",
+      "aliases": [
+        "2N3906",
+        "MMBT3906"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 1.41e-15,
+          "unit": "A",
+          "description": "Transport saturation current"
+        },
+        {
+          "key": "BF",
+          "type": "real",
+          "defaultValue": 180.7,
+          "unit": "",
+          "description": "Ideal maximum forward beta"
+        },
+        {
+          "key": "BR",
+          "type": "real",
+          "defaultValue": 4.977,
+          "unit": "",
+          "description": "Ideal maximum reverse beta"
+        },
+        {
+          "key": "NF",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Forward current emission coefficient"
+        },
+        {
+          "key": "VAF",
+          "type": "real",
+          "defaultValue": 18.7,
+          "unit": "V",
+          "description": "Forward Early voltage"
+        },
+        {
+          "key": "RB",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm",
+          "description": "Zero-bias base resistance"
+        },
+        {
+          "key": "VAR",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "V",
+          "description": "Reverse Early voltage"
+        },
+        {
+          "key": "IKF",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "A",
+          "description": "Forward high-level injection knee current"
+        },
+        {
+          "key": "CJE",
+          "type": "real",
+          "defaultValue": 1e-11,
+          "unit": "F",
+          "description": "Zero-bias B-E depletion capacitance"
+        },
+        {
+          "key": "VJE",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-E junction built-in potential"
+        },
+        {
+          "key": "MJE",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-E junction grading coefficient"
+        },
+        {
+          "key": "CJC",
+          "type": "real",
+          "defaultValue": 4e-12,
+          "unit": "F",
+          "description": "Zero-bias B-C depletion capacitance"
+        },
+        {
+          "key": "VJC",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-C junction built-in potential"
+        },
+        {
+          "key": "MJC",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-C junction grading coefficient"
+        },
+        {
+          "key": "NR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Reverse current emission coefficient"
+        }
+      ],
+      "wasmKernel": "Q_2N3906_PNP",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "Q_BC547_NPN",
+    "kind": "spice_device_model",
+    "namePath": "spice:Q_BC547_NPN",
+    "exports": [
+      "IS",
+      "BF",
+      "BR",
+      "NF",
+      "VAF",
+      "RB",
+      "VAR",
+      "IKF",
+      "CJE",
+      "VJE",
+      "MJE",
+      "CJC",
+      "VJC",
+      "MJC",
+      "NR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BC547 Low-Noise Audio/General NPN BJT",
+      "category": "BJT",
+      "domain": "electrical",
+      "description": "High-gain European standard small-signal NPN transistor for audio and instrumentation.",
+      "provenance": "Ebers-Moll (1954) & Gummel-Poon (1970) BJT Equations / Pro Electron BC547 Public Parameters",
+      "aliases": [
+        "BC547",
+        "BC547B",
+        "BC547C"
+      ],
+      "parameters": [
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 2.39e-14,
+          "unit": "A",
+          "description": "Transport saturation current"
+        },
+        {
+          "key": "BF",
+          "type": "real",
+          "defaultValue": 294.3,
+          "unit": "",
+          "description": "Ideal maximum forward beta"
+        },
+        {
+          "key": "BR",
+          "type": "real",
+          "defaultValue": 7.94,
+          "unit": "",
+          "description": "Ideal maximum reverse beta"
+        },
+        {
+          "key": "NF",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Forward current emission coefficient"
+        },
+        {
+          "key": "VAF",
+          "type": "real",
+          "defaultValue": 63.2,
+          "unit": "V",
+          "description": "Forward Early voltage"
+        },
+        {
+          "key": "RB",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm",
+          "description": "Zero-bias base resistance"
+        },
+        {
+          "key": "VAR",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "V",
+          "description": "Reverse Early voltage"
+        },
+        {
+          "key": "IKF",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "A",
+          "description": "Forward high-level injection knee current"
+        },
+        {
+          "key": "CJE",
+          "type": "real",
+          "defaultValue": 1.2e-11,
+          "unit": "F",
+          "description": "Zero-bias B-E depletion capacitance"
+        },
+        {
+          "key": "VJE",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-E junction built-in potential"
+        },
+        {
+          "key": "MJE",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-E junction grading coefficient"
+        },
+        {
+          "key": "CJC",
+          "type": "real",
+          "defaultValue": 4.5e-12,
+          "unit": "F",
+          "description": "Zero-bias B-C depletion capacitance"
+        },
+        {
+          "key": "VJC",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "V",
+          "description": "B-C junction built-in potential"
+        },
+        {
+          "key": "MJC",
+          "type": "real",
+          "defaultValue": 0.33,
+          "unit": "",
+          "description": "B-C junction grading coefficient"
+        },
+        {
+          "key": "NR",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Reverse current emission coefficient"
+        }
+      ],
+      "wasmKernel": "Q_BC547_NPN",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "M_2N7002_NMOS",
+    "kind": "spice_device_model",
+    "namePath": "spice:M_2N7002_NMOS",
+    "exports": [
+      "VTO",
+      "KP",
+      "W",
+      "L",
+      "LAMBDA",
+      "GAMMA",
+      "NSUB",
+      "ETA0",
+      "ESAT",
+      "PHI"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2N7002 60V Small-Signal N-Channel Enhancement MOSFET",
+      "category": "MOSFET / JFET",
+      "domain": "electrical",
+      "description": "Logic-level N-channel enhancement MOSFET modeled with BSIM short-channel physics.",
+      "provenance": "Shichman-Hodges (1968) MOSFET Level-1 / BSIM Foundation (JEDEC 2N7002)",
+      "aliases": [
+        "2N7002",
+        "2N7000"
+      ],
+      "parameters": [
+        {
+          "key": "VTO",
+          "type": "real",
+          "defaultValue": 2.1,
+          "unit": "V",
+          "description": "Zero-bias threshold voltage"
+        },
+        {
+          "key": "KP",
+          "type": "real",
+          "defaultValue": 0.32,
+          "unit": "A/V^2",
+          "description": "Intrinsic transconductance parameter"
+        },
+        {
+          "key": "W",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Effective normalized channel width"
+        },
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Effective normalized channel length"
+        },
+        {
+          "key": "LAMBDA",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "1/V",
+          "description": "Channel-length modulation parameter"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 0.37,
+          "unit": "V^0.5",
+          "description": "Bulk threshold parameter"
+        },
+        {
+          "key": "NSUB",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "",
+          "description": "Subthreshold swing ideality factor n"
+        },
+        {
+          "key": "ETA0",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "V/V",
+          "description": "DIBL threshold voltage shift coefficient"
+        },
+        {
+          "key": "ESAT",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "V/m",
+          "description": "Velocity saturation critical electric field"
+        },
+        {
+          "key": "PHI",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "V",
+          "description": "Surface potential 2*phi_F"
+        }
+      ],
+      "wasmKernel": "M_2N7002_NMOS",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "M_IRF540_NMOS",
+    "kind": "spice_device_model",
+    "namePath": "spice:M_IRF540_NMOS",
+    "exports": [
+      "VTO",
+      "KP",
+      "W",
+      "L",
+      "LAMBDA",
+      "GAMMA",
+      "NSUB",
+      "ETA0",
+      "ESAT",
+      "PHI"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IRF540 100V 28A Power N-Channel MOSFET",
+      "category": "MOSFET / JFET",
+      "domain": "electrical",
+      "description": "High-current vertical power N-channel MOSFET for DC-DC converters and motor drives.",
+      "provenance": "Shichman-Hodges (1968) MOSFET Level-1 / Sedra & Smith Power MOSFET Model (IRF540)",
+      "aliases": [
+        "IRF540",
+        "IRF540N"
+      ],
+      "parameters": [
+        {
+          "key": "VTO",
+          "type": "real",
+          "defaultValue": 3.5,
+          "unit": "V",
+          "description": "Zero-bias threshold voltage"
+        },
+        {
+          "key": "KP",
+          "type": "real",
+          "defaultValue": 4.5,
+          "unit": "A/V^2",
+          "description": "Effective power transconductance parameter"
+        },
+        {
+          "key": "W",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Effective normalized channel width"
+        },
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Effective normalized channel length"
+        },
+        {
+          "key": "LAMBDA",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "1/V",
+          "description": "Channel-length modulation parameter"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 0.4,
+          "unit": "V^0.5",
+          "description": "Bulk threshold parameter"
+        },
+        {
+          "key": "NSUB",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "",
+          "description": "Subthreshold swing ideality factor n"
+        },
+        {
+          "key": "ETA0",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "V/V",
+          "description": "DIBL threshold voltage shift coefficient"
+        },
+        {
+          "key": "ESAT",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "V/m",
+          "description": "Velocity saturation critical electric field"
+        },
+        {
+          "key": "PHI",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "V",
+          "description": "Surface potential 2*phi_F"
+        }
+      ],
+      "wasmKernel": "M_IRF540_NMOS",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "M_BS250_PMOS",
+    "kind": "spice_device_model",
+    "namePath": "spice:M_BS250_PMOS",
+    "exports": [
+      "VTO",
+      "KP",
+      "W",
+      "L",
+      "LAMBDA",
+      "GAMMA",
+      "NSUB",
+      "ETA0",
+      "ESAT",
+      "PHI"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "BS250 -45V Small-Signal P-Channel Enhancement MOSFET",
+      "category": "MOSFET / JFET",
+      "domain": "electrical",
+      "description": "P-channel enhancement-mode MOSFET for high-side switching and complementary CMOS stages.",
+      "provenance": "Shichman-Hodges (1968) MOSFET Level-1 / BSIM Foundation (Pro Electron BS250)",
+      "aliases": [
+        "BS250",
+        "BS250P"
+      ],
+      "parameters": [
+        {
+          "key": "VTO",
+          "type": "real",
+          "defaultValue": -3,
+          "unit": "V",
+          "description": "Zero-bias threshold voltage (negative for PMOS)"
+        },
+        {
+          "key": "KP",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "A/V^2",
+          "description": "Intrinsic transconductance parameter"
+        },
+        {
+          "key": "W",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Effective normalized channel width"
+        },
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "m",
+          "description": "Effective normalized channel length"
+        },
+        {
+          "key": "LAMBDA",
+          "type": "real",
+          "defaultValue": 0.025,
+          "unit": "1/V",
+          "description": "Channel-length modulation parameter"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "V^0.5",
+          "description": "Bulk threshold parameter"
+        },
+        {
+          "key": "NSUB",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "",
+          "description": "Subthreshold swing ideality factor n"
+        },
+        {
+          "key": "ETA0",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "V/V",
+          "description": "DIBL threshold voltage shift coefficient"
+        },
+        {
+          "key": "ESAT",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "V/m",
+          "description": "Velocity saturation critical electric field"
+        },
+        {
+          "key": "PHI",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "V",
+          "description": "Surface potential 2*phi_F"
+        }
+      ],
+      "wasmKernel": "M_BS250_PMOS",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "J_2N5457_JFET",
+    "kind": "spice_device_model",
+    "namePath": "spice:J_2N5457_JFET",
+    "exports": [
+      "VTO",
+      "BETA",
+      "LAMBDA",
+      "IS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2N5457 General-Purpose N-Channel JFET",
+      "category": "MOSFET / JFET",
+      "domain": "electrical",
+      "description": "Depletion-mode N-channel junction field-effect transistor for high-impedance analog amplifiers.",
+      "provenance": "Shichman-Hodges (1968) JFET Quadratic Model / JEDEC 2N5457 Public Parameters",
+      "aliases": [
+        "2N5457",
+        "J2N5457"
+      ],
+      "parameters": [
+        {
+          "key": "VTO",
+          "type": "real",
+          "defaultValue": -1.6,
+          "unit": "V",
+          "description": "Pinch-off threshold voltage"
+        },
+        {
+          "key": "BETA",
+          "type": "real",
+          "defaultValue": 0.001125,
+          "unit": "A/V^2",
+          "description": "Transconductance parameter"
+        },
+        {
+          "key": "LAMBDA",
+          "type": "real",
+          "defaultValue": 0.0023,
+          "unit": "1/V",
+          "description": "Channel-length modulation parameter"
+        },
+        {
+          "key": "IS",
+          "type": "real",
+          "defaultValue": 1e-14,
+          "unit": "A",
+          "description": "Gate junction saturation current"
+        }
+      ],
+      "wasmKernel": "J_2N5457_JFET",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "A_AND",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_AND",
+    "exports": [
+      "GATE_TYPE",
+      "REF",
+      "VHIGH",
+      "VLOW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Behavioral Digital AND Gate (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Cleanroom behavioral 2-input logical AND gate with configurable logic threshold and output rails.",
+      "provenance": "IEEE Std 91 / SPICE3 & Mixed-Signal Behavioral Logic Specification",
+      "aliases": [
+        "AND",
+        "AND2"
+      ],
+      "parameters": [
+        {
+          "key": "GATE_TYPE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Gate function selector (0=AND, 1=OR, 2=XOR)"
+        },
+        {
+          "key": "REF",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "V",
+          "description": "Input logic switching threshold"
+        },
+        {
+          "key": "VHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Logic high output voltage"
+        },
+        {
+          "key": "VLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Logic low output voltage"
+        }
+      ],
+      "wasmKernel": "A_AND",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "A_OR",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_OR",
+    "exports": [
+      "GATE_TYPE",
+      "REF",
+      "VHIGH",
+      "VLOW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Behavioral Digital OR Gate (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Cleanroom behavioral 2-input logical OR gate with configurable logic threshold and output rails.",
+      "provenance": "IEEE Std 91 / SPICE3 & Mixed-Signal Behavioral Logic Specification",
+      "aliases": [
+        "OR",
+        "OR2"
+      ],
+      "parameters": [
+        {
+          "key": "GATE_TYPE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Gate function selector (0=AND, 1=OR, 2=XOR)"
+        },
+        {
+          "key": "REF",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "V",
+          "description": "Input logic switching threshold"
+        },
+        {
+          "key": "VHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Logic high output voltage"
+        },
+        {
+          "key": "VLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Logic low output voltage"
+        }
+      ],
+      "wasmKernel": "A_OR",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "A_XOR",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_XOR",
+    "exports": [
+      "GATE_TYPE",
+      "REF",
+      "VHIGH",
+      "VLOW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Behavioral Digital XOR Gate (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Cleanroom behavioral 2-input logical exclusive-OR gate for phase detectors and digital logic.",
+      "provenance": "IEEE Std 91 / SPICE3 & Mixed-Signal Behavioral Logic Specification",
+      "aliases": [
+        "XOR",
+        "XOR2"
+      ],
+      "parameters": [
+        {
+          "key": "GATE_TYPE",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "",
+          "description": "Gate function selector (0=AND, 1=OR, 2=XOR)"
+        },
+        {
+          "key": "REF",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "V",
+          "description": "Input logic switching threshold"
+        },
+        {
+          "key": "VHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Logic high output voltage"
+        },
+        {
+          "key": "VLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Logic low output voltage"
+        }
+      ],
+      "wasmKernel": "A_XOR",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "A_SCHMITT",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_SCHMITT",
+    "exports": [
+      "VT",
+      "VH",
+      "VHIGH",
+      "VLOW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Schmitt Trigger Buffer with Hysteresis (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Comparator/buffer with symmetric threshold Vt ± Vh hysteresis to reject input noise.",
+      "provenance": "Schmitt (1938) Thermionic Trigger / Sedra & Smith Bistable Comparator Model",
+      "aliases": [
+        "SCHMITT",
+        "SCHMITT_BUF"
+      ],
+      "parameters": [
+        {
+          "key": "VT",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "V",
+          "description": "Center switching threshold"
+        },
+        {
+          "key": "VH",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "V",
+          "description": "Hysteresis half-width (trip points at VT +/- VH)"
+        },
+        {
+          "key": "VHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Logic high output voltage"
+        },
+        {
+          "key": "VLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Logic low output voltage"
+        }
+      ],
+      "wasmKernel": "A_SCHMITT",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "A_DFLOP",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_DFLOP",
+    "exports": [
+      "LOGIC_TYPE",
+      "REF",
+      "VHIGH",
+      "VLOW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rising-Edge D Flip-Flop (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Positive-edge-triggered D flip-flop latching input D on rising CLK crossings above REF.",
+      "provenance": "IEEE Std 91 / Digital Sequential Logic Specification",
+      "aliases": [
+        "DFLOP",
+        "DFF"
+      ],
+      "parameters": [
+        {
+          "key": "LOGIC_TYPE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Sequential type (0=DFLOP, 1=SRFLOP)"
+        },
+        {
+          "key": "REF",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "V",
+          "description": "Clock and data logic threshold"
+        },
+        {
+          "key": "VHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Logic high output voltage"
+        },
+        {
+          "key": "VLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Logic low output voltage"
+        }
+      ],
+      "wasmKernel": "A_DFLOP",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "A_SRFLOP",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_SRFLOP",
+    "exports": [
+      "LOGIC_TYPE",
+      "REF",
+      "VHIGH",
+      "VLOW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Set-Reset Flip-Flop Latch (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Behavioral Set-Reset latch for PWM controllers and mixed-signal state machines.",
+      "provenance": "IEEE Std 91 / Digital Sequential Logic Specification",
+      "aliases": [
+        "SRFLOP",
+        "SR_LATCH"
+      ],
+      "parameters": [
+        {
+          "key": "LOGIC_TYPE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Sequential type (0=DFLOP, 1=SRFLOP)"
+        },
+        {
+          "key": "REF",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "V",
+          "description": "Set/Reset logic threshold"
+        },
+        {
+          "key": "VHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Logic high output voltage"
+        },
+        {
+          "key": "VLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Logic low output voltage"
+        }
+      ],
+      "wasmKernel": "A_SRFLOP",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "A_OTA",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_OTA",
+    "exports": [
+      "G",
+      "IOUT_MAX",
+      "ROUT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Operational Transconductance Amplifier (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Hyperbolic-tangent saturated differential voltage-to-current transconductance amplifier.",
+      "provenance": "Sedra & Smith Microelectronic Circuits / Standard gm-C OTA Formulation",
+      "aliases": [
+        "OTA"
+      ],
+      "parameters": [
+        {
+          "key": "G",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "S",
+          "description": "Small-signal transconductance"
+        },
+        {
+          "key": "IOUT_MAX",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "A",
+          "description": "Maximum output sink/source current"
+        },
+        {
+          "key": "ROUT",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "Ohm",
+          "description": "Output resistance"
+        }
+      ],
+      "wasmKernel": "A_OTA",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "A_MODULATE",
+    "kind": "spice_device_model",
+    "namePath": "spice:A_MODULATE",
+    "exports": [
+      "MARK",
+      "SPACE",
+      "VAMP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Voltage-Controlled AM/FM Oscillator Modulator (A-Device)",
+      "category": "Digital / Mixed-Signal",
+      "domain": "electrical",
+      "description": "Phase-continuous voltage-controlled oscillator with linear FM frequency interpolation and AM scaling.",
+      "provenance": "Proakis & Salehi Communication Systems / Continuous-Phase VCO Formulation",
+      "aliases": [
+        "MODULATE",
+        "VCO"
+      ],
+      "parameters": [
+        {
+          "key": "MARK",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "Hz",
+          "description": "Frequency when FM input = 1 V"
+        },
+        {
+          "key": "SPACE",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "Hz",
+          "description": "Frequency when FM input = 0 V"
+        },
+        {
+          "key": "VAMP",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V",
+          "description": "Default carrier amplitude when AM input is unconnected"
+        }
+      ],
+      "wasmKernel": "A_MODULATE",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "B_VSRC",
+    "kind": "spice_device_model",
+    "namePath": "spice:B_VSRC",
+    "exports": [
+      "GAIN",
+      "OFFSET",
+      "VMAX",
+      "VMIN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Arbitrary Behavioral Voltage Source (B-Device)",
+      "category": "Behavioral / Switch",
+      "domain": "electrical",
+      "description": "SPICE3 / PSpice / LTspice behavioral controlled voltage source with gain, offset, and clamping.",
+      "provenance": "UC Berkeley SPICE3F5 Arbitrary Dependent Source (B-Element) Specification",
+      "aliases": [
+        "BV",
+        "B_VOLTAGE"
+      ],
+      "parameters": [
+        {
+          "key": "GAIN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "V/V",
+          "description": "Linear voltage gain"
+        },
+        {
+          "key": "OFFSET",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "DC offset voltage"
+        },
+        {
+          "key": "VMAX",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "V",
+          "description": "Upper output clamp"
+        },
+        {
+          "key": "VMIN",
+          "type": "real",
+          "defaultValue": -1000000,
+          "unit": "V",
+          "description": "Lower output clamp"
+        }
+      ],
+      "wasmKernel": "B_VSRC",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "B_ISRC",
+    "kind": "spice_device_model",
+    "namePath": "spice:B_ISRC",
+    "exports": [
+      "GAIN",
+      "OFFSET",
+      "IMAX",
+      "IMIN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Arbitrary Behavioral Current Source (B-Device)",
+      "category": "Behavioral / Switch",
+      "domain": "electrical",
+      "description": "SPICE3 / PSpice / LTspice behavioral controlled current source with transconductance and clamping.",
+      "provenance": "UC Berkeley SPICE3F5 Arbitrary Dependent Source (B-Element) Specification",
+      "aliases": [
+        "BI",
+        "B_CURRENT"
+      ],
+      "parameters": [
+        {
+          "key": "GAIN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "A/V",
+          "description": "Linear transconductance gain"
+        },
+        {
+          "key": "OFFSET",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "A",
+          "description": "DC offset current"
+        },
+        {
+          "key": "IMAX",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "A",
+          "description": "Upper current clamp"
+        },
+        {
+          "key": "IMIN",
+          "type": "real",
+          "defaultValue": -1000000,
+          "unit": "A",
+          "description": "Lower current clamp"
+        }
+      ],
+      "wasmKernel": "B_ISRC",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "S_VSWITCH",
+    "kind": "spice_device_model",
+    "namePath": "spice:S_VSWITCH",
+    "exports": [
+      "RON",
+      "ROFF",
+      "VT",
+      "VH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Smooth Voltage-Controlled Switch (S-Device)",
+      "category": "Behavioral / Switch",
+      "domain": "electrical",
+      "description": "Continuously differentiable tanh-smoothed voltage-controlled switch transitioning between Ron and Roff.",
+      "provenance": "UC Berkeley SPICE3F5 Switch Model (SW) with C-infinity Hyperbolic-Tangent Smoothing",
+      "aliases": [
+        "VSWITCH",
+        "SW"
+      ],
+      "parameters": [
+        {
+          "key": "RON",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Ohm",
+          "description": "Closed (on-state) resistance"
+        },
+        {
+          "key": "ROFF",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "Ohm",
+          "description": "Open (off-state) resistance"
+        },
+        {
+          "key": "VT",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "V",
+          "description": "Control threshold voltage"
+        },
+        {
+          "key": "VH",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "V",
+          "description": "Smooth transition half-width"
+        }
+      ],
+      "wasmKernel": "S_VSWITCH",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "W_CSWITCH",
+    "kind": "spice_device_model",
+    "namePath": "spice:W_CSWITCH",
+    "exports": [
+      "RON",
+      "ROFF",
+      "IT",
+      "IH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Smooth Current-Controlled Switch (W-Device)",
+      "category": "Behavioral / Switch",
+      "domain": "electrical",
+      "description": "Continuously differentiable tanh-smoothed current-controlled switch transitioning between Ron and Roff.",
+      "provenance": "UC Berkeley SPICE3F5 Current-Controlled Switch Model (CSW)",
+      "aliases": [
+        "CSWITCH",
+        "CSW"
+      ],
+      "parameters": [
+        {
+          "key": "RON",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Ohm",
+          "description": "Closed (on-state) resistance"
+        },
+        {
+          "key": "ROFF",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "Ohm",
+          "description": "Open (off-state) resistance"
+        },
+        {
+          "key": "IT",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "A",
+          "description": "Control threshold current"
+        },
+        {
+          "key": "IH",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "A",
+          "description": "Smooth transition half-width"
+        }
+      ],
+      "wasmKernel": "W_CSWITCH",
+      "archetypeId": 61
+    }
+  },
+  {
+    "name": "OPAMP_UNIVERSAL",
+    "kind": "spice_device_model",
+    "namePath": "spice:OPAMP_UNIVERSAL",
+    "exports": [
+      "AVOL",
+      "GBW",
+      "SLEW",
+      "VRAIL_P",
+      "VRAIL_N",
+      "ROUT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Universal Single-Pole Behavioral Op-Amp",
+      "category": "Op-Amp / Regulator",
+      "domain": "electrical",
+      "description": "Single-pole dominant-frequency operational amplifier with finite DC gain, GBW, slew rate, and supply rail clamping.",
+      "provenance": "Sedra & Smith Microelectronic Circuits / Boyle (1974) Op-Amp Macromodel",
+      "aliases": [
+        "UniversalOpamp2",
+        "OPAMP"
+      ],
+      "parameters": [
+        {
+          "key": "AVOL",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "V/V",
+          "description": "Open-loop DC voltage gain"
+        },
+        {
+          "key": "GBW",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "Hz",
+          "description": "Gain-bandwidth product"
+        },
+        {
+          "key": "SLEW",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "V/s",
+          "description": "Output slew-rate limit"
+        },
+        {
+          "key": "VRAIL_P",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "V",
+          "description": "Positive output saturation rail"
+        },
+        {
+          "key": "VRAIL_N",
+          "type": "real",
+          "defaultValue": -15,
+          "unit": "V",
+          "description": "Negative output saturation rail"
+        },
+        {
+          "key": "ROUT",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "Ohm",
+          "description": "Open-loop output resistance"
+        }
+      ],
+      "wasmKernel": "OPAMP_UNIVERSAL",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "OPAMP_LM741",
+    "kind": "spice_device_model",
+    "namePath": "spice:OPAMP_LM741",
+    "exports": [
+      "AVOL",
+      "GBW",
+      "SLEW",
+      "VRAIL_P",
+      "VRAIL_N",
+      "ROUT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "LM741 General-Purpose Bipolar Op-Amp Macromodel",
+      "category": "Op-Amp / Regulator",
+      "domain": "electrical",
+      "description": "Classic internally compensated bipolar operational amplifier (1 MHz GBW, 0.5 V/us slew rate).",
+      "provenance": "Boyle et al. (1974) IEEE JSSC Op-Amp Macromodel / Public uA741/LM741 Parameters",
+      "aliases": [
+        "LM741",
+        "uA741"
+      ],
+      "parameters": [
+        {
+          "key": "AVOL",
+          "type": "real",
+          "defaultValue": 200000,
+          "unit": "V/V",
+          "description": "Open-loop DC voltage gain"
+        },
+        {
+          "key": "GBW",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "Hz",
+          "description": "Gain-bandwidth product"
+        },
+        {
+          "key": "SLEW",
+          "type": "real",
+          "defaultValue": 500000,
+          "unit": "V/s",
+          "description": "Output slew-rate limit"
+        },
+        {
+          "key": "VRAIL_P",
+          "type": "real",
+          "defaultValue": 13.5,
+          "unit": "V",
+          "description": "Positive output saturation rail (+/-15V supply)"
+        },
+        {
+          "key": "VRAIL_N",
+          "type": "real",
+          "defaultValue": -13.5,
+          "unit": "V",
+          "description": "Negative output saturation rail (+/-15V supply)"
+        },
+        {
+          "key": "ROUT",
+          "type": "real",
+          "defaultValue": 75,
+          "unit": "Ohm",
+          "description": "Open-loop output resistance"
+        }
+      ],
+      "wasmKernel": "OPAMP_LM741",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "OPAMP_TL072",
+    "kind": "spice_device_model",
+    "namePath": "spice:OPAMP_TL072",
+    "exports": [
+      "AVOL",
+      "GBW",
+      "SLEW",
+      "VRAIL_P",
+      "VRAIL_N",
+      "ROUT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TL072 Low-Noise JFET-Input Op-Amp Macromodel",
+      "category": "Op-Amp / Regulator",
+      "domain": "electrical",
+      "description": "High-slew-rate JFET-input operational amplifier (3 MHz GBW, 13 V/us slew rate).",
+      "provenance": "Boyle et al. (1974) IEEE JSSC Op-Amp Macromodel / Public TL072 Parameters",
+      "aliases": [
+        "TL072",
+        "TL071",
+        "TL074"
+      ],
+      "parameters": [
+        {
+          "key": "AVOL",
+          "type": "real",
+          "defaultValue": 200000,
+          "unit": "V/V",
+          "description": "Open-loop DC voltage gain"
+        },
+        {
+          "key": "GBW",
+          "type": "real",
+          "defaultValue": 3000000,
+          "unit": "Hz",
+          "description": "Gain-bandwidth product"
+        },
+        {
+          "key": "SLEW",
+          "type": "real",
+          "defaultValue": 13000000,
+          "unit": "V/s",
+          "description": "Output slew-rate limit"
+        },
+        {
+          "key": "VRAIL_P",
+          "type": "real",
+          "defaultValue": 13.5,
+          "unit": "V",
+          "description": "Positive output saturation rail"
+        },
+        {
+          "key": "VRAIL_N",
+          "type": "real",
+          "defaultValue": -13.5,
+          "unit": "V",
+          "description": "Negative output saturation rail"
+        },
+        {
+          "key": "ROUT",
+          "type": "real",
+          "defaultValue": 125,
+          "unit": "Ohm",
+          "description": "Open-loop output resistance"
+        }
+      ],
+      "wasmKernel": "OPAMP_TL072",
+      "archetypeId": 70
+    }
+  },
+  {
+    "name": "REG_LM7805",
+    "kind": "spice_device_model",
+    "namePath": "spice:REG_LM7805",
+    "exports": [
+      "VOUT_NOM",
+      "VDROPOUT",
+      "IMAX",
+      "ROUT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "LM7805 +5V 1.5A Linear Voltage Regulator",
+      "category": "Op-Amp / Regulator",
+      "domain": "electrical",
+      "description": "Three-terminal fixed +5V linear series voltage regulator with dropout and load regulation.",
+      "provenance": "Sedra & Smith Linear Series Regulator Model / Public 7805 Specification",
+      "aliases": [
+        "LM7805",
+        "7805"
+      ],
+      "parameters": [
+        {
+          "key": "VOUT_NOM",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "V",
+          "description": "Nominal regulated output voltage"
+        },
+        {
+          "key": "VDROPOUT",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "V",
+          "description": "Minimum input-to-output dropout voltage"
+        },
+        {
+          "key": "IMAX",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "A",
+          "description": "Current limit ceiling"
+        },
+        {
+          "key": "ROUT",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "Ohm",
+          "description": "Closed-loop output impedance"
+        }
+      ],
+      "wasmKernel": "REG_LM7805",
+      "archetypeId": 80
+    }
+  }
+]

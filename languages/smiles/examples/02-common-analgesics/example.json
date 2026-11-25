@@ -1,0 +1,11 @@
+{
+  "id": "smiles-02-common-analgesics",
+  "lang": "smiles",
+  "subFormats": ["smiles"],
+  "difficulty": 2,
+  "title": "Common Analgesics and NSAIDs",
+  "description": "Over-the-counter analgesic and anti-inflammatory small-molecule drugs including Aspirin, Ibuprofen, Acetaminophen, Naproxen, and Caffeine.",
+  "category": "Medicinal Chemistry",
+  "tags": ["smiles", "analgesics", "nsaids", "pharma"],
+  "activeFile": "analgesics.smi"
+}

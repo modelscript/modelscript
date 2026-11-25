@@ -1,0 +1,12 @@
+{
+  "id": "epanet-01-reservoir-pump-tank-loop",
+  "lang": "epanet",
+  "subFormats": ["inp"],
+  "difficulty": 1,
+  "title": "Reservoir-Pump-Tank Elevation Loop",
+  "description": "Single-zone pumped water supply system lifting flow from a clearwell reservoir through a centrifugal booster pump to an elevated storage tank and demand junction.",
+  "category": "Water Distribution Hydraulics",
+  "tags": ["epanet", "pump-curve", "elevated-tank", "hazen-williams"],
+  "activeFile": "pump_tank_loop.inp",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "qif-03-bolt-circle-true-position",
+  "lang": "qif",
+  "subFormats": ["qif"],
+  "difficulty": 3,
+  "title": "Bolt-Circle True Position Composite GD&T CMM Plan",
+  "description": "Composite positional tolerance QIF 3.0 plan for a four-hole mounting flange pattern with MMC material condition modifiers and datum reference frame A|B.",
+  "category": "GD&T Metrology",
+  "tags": ["qif", "true-position", "mmc", "composite-gdt", "bolt-circle"],
+  "activeFile": "bolt_circle.qif"
+}

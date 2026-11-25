@@ -1,0 +1,1382 @@
+[
+  {
+    "namePath": "powerworld:GENROU",
+    "aliases": [
+      "genrou"
+    ],
+    "label": "Round-Rotor Synchronous Generator (Quadratic Saturation)",
+    "category": "Generator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">GEN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GENROU</text></svg>",
+    "ports": [
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:GENSAL",
+    "aliases": [
+      "gensal"
+    ],
+    "label": "Salient-Pole Synchronous Generator",
+    "category": "Generator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">GEN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GENSAL</text></svg>",
+    "ports": [
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:GENCLS",
+    "aliases": [
+      "gencls"
+    ],
+    "label": "Classical Constant-Voltage-Behind-Xd' Generator",
+    "category": "Generator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">GEN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GENCLS</text></svg>",
+    "ports": [
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:GENTPF",
+    "aliases": [
+      "gentpf"
+    ],
+    "label": "WECC Round/Salient Generator with Improved Saturation (GENTPF)",
+    "category": "Generator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">GEN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GENTPF</text></svg>",
+    "ports": [
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:GENTPJ",
+    "aliases": [
+      "gentpj"
+    ],
+    "label": "WECC Synchronous Generator with Stator-Current-Dependent Saturation (GENTPJ)",
+    "category": "Generator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">GEN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GENTPJ</text></svg>",
+    "ports": [
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:EXST1",
+    "aliases": [
+      "exst1"
+    ],
+    "label": "IEEE Type ST1 Static Potential-Source Exciter",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EXST1</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:ESST1A",
+    "aliases": [
+      "esst1a"
+    ],
+    "label": "IEEE Type ST1A Potential-Source Controlled-Rectifier Exciter",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ESST1A</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:ESST4B",
+    "aliases": [
+      "esst4b"
+    ],
+    "label": "IEEE Type ST4B Potential/Compound-Source Static Exciter",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ESST4B</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:SEXS",
+    "aliases": [
+      "sexs"
+    ],
+    "label": "Simplified Excitation System (SEXS)",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">SEXS</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:ESAC1A",
+    "aliases": [
+      "esac1a"
+    ],
+    "label": "IEEE Type AC1A Alternator-Rectifier Exciter",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ESAC1A</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:ESDC1A",
+    "aliases": [
+      "esdc1a"
+    ],
+    "label": "IEEE Type DC1A DC Commutator Exciter",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ESDC1A</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:EXAC1",
+    "aliases": [
+      "exac1"
+    ],
+    "label": "IEEE 1981 Type AC1 Alternator-Rectifier Exciter",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EXAC1</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:EXDC1",
+    "aliases": [
+      "exdc1"
+    ],
+    "label": "IEEE 1981 Type DC1 DC Commutator Exciter",
+    "category": "Exciter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">EXC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EXDC1</text></svg>",
+    "ports": [
+      {
+        "name": "eterm",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "efd",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:TGOV1",
+    "aliases": [
+      "tgov1"
+    ],
+    "label": "Simple Steam Turbine-Governor (TGOV1)",
+    "category": "Governor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">TGOV1</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:HYGOV",
+    "aliases": [
+      "hygov"
+    ],
+    "label": "Hydro Turbine-Governor (HYGOV)",
+    "category": "Governor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">HYGOV</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:GAST",
+    "aliases": [
+      "gast"
+    ],
+    "label": "Gas Turbine-Governor (GAST)",
+    "category": "Governor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GAST</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:GGOV1",
+    "aliases": [
+      "ggov1"
+    ],
+    "label": "WECC General Governor / Turbine Model (GGOV1)",
+    "category": "Governor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GGOV1</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:IEESGO",
+    "aliases": [
+      "ieesgo"
+    ],
+    "label": "IEEE Standard Steam Governor (IEESGO)",
+    "category": "Governor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IEESGO</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:IEEEG1",
+    "aliases": [
+      "ieeeg1"
+    ],
+    "label": "IEEE Type 1 Tandem-Compound Steam Turbine-Governor (IEEEG1)",
+    "category": "Governor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IEEEG1</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:PIDGOV",
+    "aliases": [
+      "pidgov"
+    ],
+    "label": "Hydro PID Turbine-Governor (PIDGOV)",
+    "category": "Governor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">GOV</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">PIDGOV</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pmech",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:PSS2A",
+    "aliases": [
+      "pss2a"
+    ],
+    "label": "IEEE Type PSS2A Dual-Input Power System Stabilizer",
+    "category": "Stabilizer",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">PSS2A</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:PSS2B",
+    "aliases": [
+      "pss2b"
+    ],
+    "label": "IEEE Type PSS2B Dual-Input Power System Stabilizer",
+    "category": "Stabilizer",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">PSS2B</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:IEEEST",
+    "aliases": [
+      "ieeest"
+    ],
+    "label": "IEEE Type PSS1A / IEEEST Single-Input Stabilizer",
+    "category": "Stabilizer",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IEEEST</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:STAB1",
+    "aliases": [
+      "stab1"
+    ],
+    "label": "Speed-Sensitive Power System Stabilizer (STAB1)",
+    "category": "Stabilizer",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">PSS</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">STAB1</text></svg>",
+    "ports": [
+      {
+        "name": "dw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "vs",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:REGCA1",
+    "aliases": [
+      "regca1",
+      "regc_a",
+      "REGC_A"
+    ],
+    "label": "WECC Renewable Energy Generator/Converter Model A (REGCA1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">REGCA1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:REGCB1",
+    "aliases": [
+      "regcb1",
+      "regc_b",
+      "REGC_B"
+    ],
+    "label": "WECC Voltage-Source Converter Model B (REGCB1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">REGCB1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:REECA1",
+    "aliases": [
+      "reeca1",
+      "reec_a",
+      "REEC_A"
+    ],
+    "label": "WECC Renewable Energy Electrical Control Model A (REECA1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">REECA1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:REECB1",
+    "aliases": [
+      "reecb1",
+      "reec_b",
+      "REEC_B"
+    ],
+    "label": "WECC Large-Scale PV Electrical Control Model B (REECB1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">REECB1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:REECC1",
+    "aliases": [
+      "reecc1",
+      "reec_c",
+      "REEC_C"
+    ],
+    "label": "WECC Battery Energy Storage Electrical Control Model C (REECC1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">REECC1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:REPCA1",
+    "aliases": [
+      "repca1",
+      "repc_a",
+      "REPC_A"
+    ],
+    "label": "WECC Renewable Energy Plant Controller Model A (REPCA1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">REPCA1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:DER_A",
+    "aliases": [
+      "der_a",
+      "DERA1",
+      "dera1"
+    ],
+    "label": "WECC / NERC Distributed Energy Resource Aggregate Model (DER_A)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">DER_A</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:WT3G1",
+    "aliases": [
+      "wt3g1",
+      "wt3g"
+    ],
+    "label": "WECC Type-3 Doubly-Fed Induction Wind Generator (WT3G1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">WT3G1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:WT4G1",
+    "aliases": [
+      "wt4g1",
+      "wt4g"
+    ],
+    "label": "WECC Type-4 Full-Converter Wind Generator (WT4G1)",
+    "category": "Renewable / IBR",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">IBR</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">WT4G1</text></svg>",
+    "ports": [
+      {
+        "name": "pref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "qref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:CMPLDW",
+    "aliases": [
+      "cmpldw"
+    ],
+    "label": "WECC Composite Load Model (CMPLDW)",
+    "category": "Load / Motor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">LOD</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">CMPLDW</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:CLODBL",
+    "aliases": [
+      "clodbl",
+      "clod"
+    ],
+    "label": "Complex Load Model (CLODBL)",
+    "category": "Load / Motor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">LOD</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">CLODBL</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:CIM5BL",
+    "aliases": [
+      "cim5bl",
+      "cim5"
+    ],
+    "label": "Fifth-Order Induction Motor Load Model (CIM5BL)",
+    "category": "Load / Motor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">LOD</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">CIM5BL</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:IEEEL",
+    "aliases": [
+      "ieeel"
+    ],
+    "label": "IEEE Static Polynomial (ZIP) + Frequency Load Model (IEEEL)",
+    "category": "Load / Motor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b2323\" stroke=\"#f87171\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">LOD</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">IEEEL</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:SVSMO1",
+    "aliases": [
+      "svsmo1"
+    ],
+    "label": "WECC Static Var System / SVC Model (SVSMO1)",
+    "category": "FACTS / HVDC",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">FAC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">SVSMO1</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:CDC4T",
+    "aliases": [
+      "cdc4t"
+    ],
+    "label": "Two-Terminal LCC HVDC Link Model (CDC4T)",
+    "category": "FACTS / HVDC",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">FAC</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">CDC4T</text></svg>",
+    "ports": [
+      {
+        "name": "bus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:LDSHBL",
+    "aliases": [
+      "ldshbl",
+      "lshd1"
+    ],
+    "label": "Under-Frequency Load Shedding Relay (LDSHBL)",
+    "category": "Protection / Limiter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">LDSHBL</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:LVSHBL",
+    "aliases": [
+      "lvshbl",
+      "vtrp"
+    ],
+    "label": "Under-Voltage Load Shedding Relay (LVSHBL)",
+    "category": "Protection / Limiter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">LVSHBL</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:OEL1",
+    "aliases": [
+      "oel1",
+      "OEL2C"
+    ],
+    "label": "IEEE Over-Excitation Limiter (OEL1)",
+    "category": "Protection / Limiter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">OEL1</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "powerworld:UEL1",
+    "aliases": [
+      "uel1",
+      "UEL2C"
+    ],
+    "label": "IEEE Under-Excitation Limiter (UEL1)",
+    "category": "Protection / Limiter",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">UEL1</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

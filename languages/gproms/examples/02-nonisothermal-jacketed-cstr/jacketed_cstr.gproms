@@ -1,0 +1,55 @@
+DECLARE
+  TYPE
+    Concentration = 1.0 : 0.0 : 100.0 UNIT = "mol/L"
+    Temperature   = 350.0 : 250.0 : 600.0 UNIT = "K"
+    FlowRate      = 1.0 : 0.0 : 100.0 UNIT = "L/s"
+    ReactionRate  = 0.0 : -1000.0 : 1000.0 UNIT = "mol/(L*s)"
+  END
+END
+
+MODEL JacketedCSTR
+  PARAMETER
+    V     AS REAL DEFAULT 100.0
+    k0    AS REAL DEFAULT 7.2e6
+    E_R   AS REAL DEFAULT 5500.0
+    dH_rx AS REAL DEFAULT -50000.0
+    rhoCp AS REAL DEFAULT 4184.0
+    UA    AS REAL DEFAULT 5000.0
+
+  VARIABLE
+    C_A    AS Concentration
+    T      AS Temperature
+    F      AS FlowRate
+    C_A_in AS Concentration
+    T_in   AS Temperature
+    T_cool AS Temperature
+    r      AS ReactionRate
+
+  EQUATION
+    r = k0 * EXP(-E_R / T) * C_A ;
+    $C_A = (F / V) * (C_A_in - C_A) - r ;
+    $T = (F / V) * (T_in - T) + (-dH_rx / rhoCp) * r - (UA / (V * rhoCp)) * (T - T_cool) ;
+END
+
+PROCESS JacketedCstrRun
+  UNIT
+    R201 AS JacketedCSTR
+  SET
+    R201.V := 100.0 ;
+    R201.k0 := 7.2e6 ;
+    R201.E_R := 5500.0 ;
+    R201.dH_rx := -50000.0 ;
+    R201.rhoCp := 4184.0 ;
+    R201.UA := 5000.0 ;
+  ASSIGN
+    R201.F := 1.5 ;
+    R201.C_A_in := 2.0 ;
+    R201.T_in := 330.0 ;
+    R201.T_cool := 300.0 ;
+  INITIAL
+    R201.C_A := 1.0 ;
+    R201.T := 340.0 ;
+  SOLUTIONPARAMETERS
+    ReportingInterval := 0.5 ;
+    TotalTime := 60.0 ;
+END

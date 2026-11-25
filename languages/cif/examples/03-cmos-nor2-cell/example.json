@@ -1,0 +1,11 @@
+{
+  "id": "cif-03-cmos-nor2-cell",
+  "lang": "cif",
+  "subFormats": ["cif"],
+  "difficulty": 3,
+  "title": "CMOS 2-Input NOR Standard Cell",
+  "description": "Static CMOS 2-input NOR standard cell in CIF 2.0 with N-Well PMOS series pull-up stack, parallel NMOS pull-down diffusion, dual polysilicon gates, and Metal-1 routing.",
+  "category": "Standard Cell Layout",
+  "tags": ["cif", "cmos", "nor2", "nwell", "standard-cell"],
+  "activeFile": "cmos_nor2.cif"
+}

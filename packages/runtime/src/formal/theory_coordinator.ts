@@ -77,10 +77,10 @@ export interface FunctionApplicationTerm {
 export interface TheoryLiteral {
   id: number;
   predicate: string;
-  args: any[];
+  args: unknown[];
   isNegated?: boolean | undefined;
   domain?: TheoryDomain | undefined;
-  sourceContext?: any;
+  sourceContext?: unknown;
   /** Optional partitioned 32-bit `SymbolId` identifying the source model element that asserted this literal. */
   originSymbolId?: number | undefined;
 }
@@ -121,7 +121,7 @@ export interface CoordinatorSatResult {
   isSat: boolean;
   conflict?: ConflictClause | undefined;
   sharedEqualities: SharedEquality[];
-  models?: Record<string, any> | undefined;
+  models?: Record<string, unknown> | undefined;
   iterations: number;
   durationMs: number;
   reason?: string | undefined;
@@ -216,7 +216,7 @@ export interface TheoryOracle {
   pushLevel?(): void;
   popLevel?(): void;
   reset(): void;
-  getModel?(): Record<string, any>;
+  getModel?(): Record<string, unknown>;
 }
 
 /**
@@ -1188,7 +1188,8 @@ export class SemanticTheoryCoordinator {
         for (const a of args[2]) if (typeof a === "string") vars.push(a);
       } else {
         for (let i = 2; i < args.length; i++) {
-          if (typeof args[i] === "string") vars.push(args[i]);
+          const arg = args[i];
+          if (typeof arg === "string") vars.push(arg);
         }
       }
       return vars;
@@ -1210,21 +1211,25 @@ export class SemanticTheoryCoordinator {
       return vars;
     }
 
-    const extractVarsFromExprNode = (node: any, out: string[]): void => {
+    const extractVarsFromExprNode = (node: unknown, out: string[]): void => {
       if (!node || typeof node !== "object") return;
-      if (node.kind === "var" && typeof node.name === "string") {
-        out.push(node.name);
+      const obj = node as Record<string, unknown>;
+      if (obj["kind"] === "var" && typeof obj["name"] === "string") {
+        out.push(obj["name"]);
       }
-      if (node.left) extractVarsFromExprNode(node.left, out);
-      if (node.right) extractVarsFromExprNode(node.right, out);
-      if (node.child) extractVarsFromExprNode(node.child, out);
+      if (obj["left"]) extractVarsFromExprNode(obj["left"], out);
+      if (obj["right"]) extractVarsFromExprNode(obj["right"], out);
+      if (obj["child"]) extractVarsFromExprNode(obj["child"], out);
     };
 
     if ((predicate === "nonlinear" || predicate === "expr") && args[0] && typeof args[0] === "object") {
-      const expr = args[0].expr ?? args[0];
+      const arg0 = args[0] as Record<string, unknown>;
+      const expr = arg0["expr"] ?? arg0;
       extractVarsFromExprNode(expr, vars);
-      if (Array.isArray(args[0].vars)) {
-        vars.push(...args[0].vars);
+      if (Array.isArray(arg0["vars"])) {
+        for (const v of arg0["vars"]) {
+          if (typeof v === "string") vars.push(v);
+        }
       }
       return vars;
     }
@@ -1368,13 +1373,14 @@ export class SemanticTheoryCoordinator {
       fullLit.args[0] &&
       typeof fullLit.args[0] === "object"
     ) {
-      if (fullLit.args[0].expr && fullLit.args[0].rel) {
-        const purified = this.purifyExprNode(fullLit.args[0].expr, fullLit.domain);
+      const arg0 = fullLit.args[0] as Record<string, unknown>;
+      if (arg0["expr"] && arg0["rel"]) {
+        const purified = this.purifyExprNode(arg0["expr"] as Parameters<typeof this.purifyExprNode>[0], fullLit.domain);
         if (purified.changed) {
-          fullLit.args[0] = { ...fullLit.args[0], expr: purified.expr };
+          fullLit.args[0] = { ...arg0, expr: purified.expr };
         }
-      } else if (fullLit.args[0].kind) {
-        const purified = this.purifyExprNode(fullLit.args[0], fullLit.domain);
+      } else if (arg0["kind"]) {
+        const purified = this.purifyExprNode(arg0 as Parameters<typeof this.purifyExprNode>[0], fullLit.domain);
         if (purified.changed) {
           fullLit.args[0] = purified.expr;
         }
@@ -1431,10 +1437,15 @@ export class SemanticTheoryCoordinator {
 
     if (fullLit.predicate === "nonlinear" || fullLit.predicate === "expr") {
       if (fullLit.args[0] && typeof fullLit.args[0] === "object") {
-        if (fullLit.args[0].expr && fullLit.args[0].rel) {
-          fullLit.args[0] = SimplificationWaterfall.simplifyConstraint(fullLit.args[0]);
-        } else if (fullLit.args[0].kind) {
-          fullLit.args[0] = SimplificationWaterfall.simplifyExpr(fullLit.args[0]);
+        const arg0 = fullLit.args[0] as Record<string, unknown>;
+        if (arg0["expr"] && arg0["rel"]) {
+          fullLit.args[0] = SimplificationWaterfall.simplifyConstraint(
+            arg0 as unknown as Parameters<typeof SimplificationWaterfall.simplifyConstraint>[0],
+          );
+        } else if (arg0["kind"]) {
+          fullLit.args[0] = SimplificationWaterfall.simplifyExpr(
+            arg0 as unknown as Parameters<typeof SimplificationWaterfall.simplifyExpr>[0],
+          );
         }
       }
     } else if (fullLit.predicate === "hyperplane" && fullLit.args[0] && typeof fullLit.args[0] === "object") {
@@ -2080,10 +2091,10 @@ export class SemanticTheoryCoordinator {
    */
   private isCancelled(token?: CancellationTokenLike): boolean {
     if (!token) return false;
-    if ("isCancellationRequested" in token && Boolean((token as any).isCancellationRequested)) {
+    if ("isCancellationRequested" in token && Boolean(token.isCancellationRequested)) {
       return true;
     }
-    if ("aborted" in token && Boolean((token as any).aborted)) {
+    if ("aborted" in token && Boolean(token.aborted)) {
       return true;
     }
     return false;
@@ -2857,7 +2868,7 @@ export class SemanticTheoryCoordinator {
           if (filterToInterface && !this.isSharedInterfaceVar(eq.varA) && !this.isSharedInterfaceVar(eq.varB)) {
             continue;
           }
-          const justs = eq.justifications ?? (eq as any).justification ?? [];
+          const justs = eq.justifications ?? eq.justification ?? [];
           this.enqueueEvent({
             kind: "equality",
             varA: eq.varA,
@@ -2900,7 +2911,7 @@ export class SemanticTheoryCoordinator {
     }
 
     // Combine models across all oracles
-    const combinedModels: Record<string, any> = {};
+    const combinedModels: Record<string, unknown> = {};
     for (const oracle of this.oracles.values()) {
       if (oracle.getModel) {
         combinedModels[oracle.name] = oracle.getModel();

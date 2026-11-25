@@ -1,0 +1,48 @@
+[IBIS Ver] 6.1
+[File Name] bga_package.pkg
+[File Rev] 1.0
+[Date] November 24, 2026
+[Define Package Model] BGA484_SUBSTRATE
+[Manufacturer] Ansatz Silicon Corp
+[OEM] Ansatz Packaging Lab
+[Description] Coupled RLC Package Parasitic Model for BGA484 High-Speed Pins
+[Number Of Pins] 4
+[Pin Numbers]
+B1
+B2
+C1
+C2
+[Model Data]
+[Resistance Matrix] Banded_matrix
+[Bandwidth] 1
+[Row] B1
+0.115  0.004
+[Row] B2
+0.118  0.003
+[Row] C1
+0.088  0.005
+[Row] C2
+0.089
+[Inductance Matrix] Banded_matrix
+[Bandwidth] 1
+[Row] B1
+1.82e-9  2.40e-10
+[Row] B2
+1.85e-9  1.90e-10
+[Row] C1
+1.42e-9  3.10e-10
+[Row] C2
+1.44e-9
+[Capacitance Matrix] Banded_matrix
+[Bandwidth] 1
+[Row] B1
+0.78e-12 -0.09e-12
+[Row] B2
+0.80e-12 -0.07e-12
+[Row] C1
+0.64e-12 -0.14e-12
+[Row] C2
+0.65e-12
+[End Model Data]
+[End Package Model]
+[End]

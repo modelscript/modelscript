@@ -1,0 +1,11 @@
+{
+  "id": "pypsa-02-three-bus-congestion",
+  "lang": "pypsa",
+  "subFormats": ["pypsa"],
+  "difficulty": 2,
+  "title": "3-Bus Meshed Grid with Transmission Congestion & LMPs",
+  "description": "Three-bus 230 kV triangular meshed network demonstrating Kirchhoff loop flows, binding thermal line limits, and locational marginal price (LMP) separation.",
+  "category": "Energy Systems Optimization",
+  "tags": ["pypsa", "congestion", "lmp", "kirchhoff", "3-bus"],
+  "activeFile": "mesh3_congestion.pypsa"
+}

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "spice-01-rc-lowpass-filter",
+    "lang": "spice",
+    "subFormats": ["sp"],
+    "difficulty": 1,
+    "title": "First-Order RC Low-Pass Filter (AC & Transient)",
+    "description": "1.59 kHz passive RC low-pass filter driven by a step/AC voltage source with valid DC ground path and both AC frequency sweep and transient analysis.",
+    "category": "Analog Filters",
+    "tags": ["spice", "rc-filter", "ac-analysis", "transient"],
+    "activeFile": "rc_lowpass.sp",
+    "fileNames": ["rc_lowpass.sp"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "* First-Order RC Low-Pass Filter (fc = 1.59 kHz)\nV1 in 0 DC 0 AC 1 PULSE(0 5 1u 10n 10n 500u 1m)\nR1 in out 1k\nC1 out 0 100n\nRload out 0 100k\n\n.AC DEC 20 10 1Meg\n.TRAN 1u 2m\n.END\n"
+  },
+  {
+    "id": "spice-02-full-wave-bridge-rectifier",
+    "lang": "spice",
+    "subFormats": ["sp"],
+    "difficulty": 2,
+    "title": "Full-Wave Diode Bridge Rectifier with Smoothing Capacitor",
+    "description": "60 Hz AC mains full-wave Graetz bridge rectifier using 1N4007 silicon diodes, bulk electrolytic smoothing capacitor, and resistive DC load.",
+    "category": "Power Electronics",
+    "tags": ["spice", "rectifier", "diode-bridge", "power-supply"],
+    "activeFile": "bridge_rectifier.sp",
+    "fileNames": ["bridge_rectifier.sp"],
+    "fileCount": 1,
+    "code": "* Full-Wave Diode Bridge Rectifier with Ripple Filter\nVac ac_p ac_n SIN(0 17 60)\nRref ac_n 0 100k\n\nD1 ac_p vdc_p D1N4007\nD2 ac_n vdc_p D1N4007\nD3 0 ac_p D1N4007\nD4 0 ac_n D1N4007\n\nCfilt vdc_p 0 470u\nRload vdc_p 0 100\n\n.MODEL D1N4007 D(IS=7.02e-9 RS=0.034 N=1.80 BV=1000 IBV=5u CJO=15p)\n.TRAN 100u 50m\n.END\n"
+  },
+  {
+    "id": "spice-03-common-emitter-bjt-amp",
+    "lang": "spice",
+    "subFormats": ["sp", "lib"],
+    "difficulty": 3,
+    "title": "Common-Emitter BJT Small-Signal Amplifier",
+    "description": "Voltage-divider biased 2N2222 NPN common-emitter audio amplifier with emitter degeneration and companion BJT model library.",
+    "category": "Analog Amplifiers",
+    "tags": ["spice", "bjt", "amplifier", "library", "multi-file"],
+    "activeFile": "ce_amp.sp",
+    "fileNames": ["ce_amp.sp", "lib/bjt_models.lib"],
+    "fileCount": 2,
+    "code": "* Common-Emitter NPN BJT Small-Signal Amplifier\n.include lib/bjt_models.lib\n\nVcc vcc 0 DC 12\nVin in 0 DC 0 AC 10m SIN(0 10m 1k)\nRs in in_s 600\nCin in_s base 10u\n\nR1 vcc base 47k\nR2 base 0 10k\nRc vcc coll 2.2k\nRe emit 0 470\nCe emit 0 100u\n\nQ1 coll base emit Q2N2222\nCout coll out 10u\nRload out 0 10k\n\n.MODEL Q2N2222 NPN(IS=14.34f BF=255.9 VAF=74.03 IKF=0.2847 RB=10 RC=1 RE=0.5 CJE=22.01p CJC=7.306p TF=411.1p)\n.OP\n.AC DEC 20 10 10Meg\n.TRAN 10u 5m\n.END\n",
+    "files": {
+      "ce_amp.sp": "* Common-Emitter NPN BJT Small-Signal Amplifier\n.include lib/bjt_models.lib\n\nVcc vcc 0 DC 12\nVin in 0 DC 0 AC 10m SIN(0 10m 1k)\nRs in in_s 600\nCin in_s base 10u\n\nR1 vcc base 47k\nR2 base 0 10k\nRc vcc coll 2.2k\nRe emit 0 470\nCe emit 0 100u\n\nQ1 coll base emit Q2N2222\nCout coll out 10u\nRload out 0 10k\n\n.MODEL Q2N2222 NPN(IS=14.34f BF=255.9 VAF=74.03 IKF=0.2847 RB=10 RC=1 RE=0.5 CJE=22.01p CJC=7.306p TF=411.1p)\n.OP\n.AC DEC 20 10 10Meg\n.TRAN 10u 5m\n.END\n",
+      "lib/bjt_models.lib": "* Companion Standard Small-Signal BJT Device Library\n.MODEL Q2N3904 NPN(IS=6.734f BF=416.4 VAF=74.03 RB=10 RC=1 RE=0.5 CJE=4.493p CJC=3.638p TF=301.2p)\n.MODEL Q2N3906 PNP(IS=1.41f BF=180.7 VAF=18.7 RB=10 RC=1 RE=0.5 CJE=8.063p CJC=6.512p TF=179.3p)\n"
+    }
+  },
+  {
+    "id": "spice-04-sallen-key-butterworth-filter",
+    "lang": "spice",
+    "subFormats": ["sp", "lib"],
+    "difficulty": 4,
+    "title": "2nd-Order Sallen-Key Active Butterworth Filter",
+    "description": "Unity-gain 10 kHz second-order Sallen-Key Butterworth low-pass filter using a macromodel op-amp subcircuit library.",
+    "category": "Active Filters",
+    "tags": ["spice", "sallen-key", "opamp", "subckt", "multi-file"],
+    "activeFile": "active_filter.sp",
+    "fileNames": ["active_filter.sp", "lib/opamp_subckt.lib"],
+    "fileCount": 2,
+    "code": "* 2nd-Order Sallen-Key Butterworth Low-Pass Filter (fc = 10 kHz)\n.include lib/opamp_subckt.lib\n\nVin in 0 DC 0 AC 1\nR1 in n1 10k\nR2 n1 n2 10k\nC1 n1 out 2.25n\nC2 n2 0 1.12n\n\nXop1 n2 out out OPAMP_IDEAL\nRload out 0 10k\n\n.SUBCKT OPAMP_IDEAL inp inm out\nRin inp inm 1Meg\nEgain nint 0 inp inm 100k\nRout nint out 50\n.ENDS OPAMP_IDEAL\n\n.AC DEC 40 100 1Meg\n.END\n",
+    "files": {
+      "active_filter.sp": "* 2nd-Order Sallen-Key Butterworth Low-Pass Filter (fc = 10 kHz)\n.include lib/opamp_subckt.lib\n\nVin in 0 DC 0 AC 1\nR1 in n1 10k\nR2 n1 n2 10k\nC1 n1 out 2.25n\nC2 n2 0 1.12n\n\nXop1 n2 out out OPAMP_IDEAL\nRload out 0 10k\n\n.SUBCKT OPAMP_IDEAL inp inm out\nRin inp inm 1Meg\nEgain nint 0 inp inm 100k\nRout nint out 50\n.ENDS OPAMP_IDEAL\n\n.AC DEC 40 100 1Meg\n.END\n",
+      "lib/opamp_subckt.lib": "* Companion Precision Operational Amplifier Subcircuit Library\n.SUBCKT OPAMP_POLE inp inm out\nRin inp inm 2Meg\nEgain n1 0 inp inm 100k\nRp n1 n2 1k\nCp n2 0 15.9u\nEbuf n3 0 n2 0 1\nRout n3 out 75\n.ENDS OPAMP_POLE\n"
+    }
+  },
+  {
+    "id": "spice-05-buck-dcdc-converter",
+    "lang": "spice",
+    "subFormats": ["sp", "lib", "sub"],
+    "difficulty": 5,
+    "title": "Synchronous Buck DC-DC Switching Converter",
+    "description": "48V-to-12V 100 kHz buck DC-DC power converter with power MOSFET model, freewheeling Schottky diode, LC output filter, and companion library files.",
+    "category": "Switched-Mode Power Supplies",
+    "tags": ["spice", "buck-converter", "mosfet", "smps", "multi-file"],
+    "activeFile": "buck_conv.sp",
+    "fileNames": ["buck_conv.sp", "lib/power_mosfet.lib", "lib/pwm_ctrl.sub"],
+    "fileCount": 3,
+    "code": "* 48V-to-12V 100 kHz Buck DC-DC Switching Converter\n.include lib/power_mosfet.lib\n.include lib/pwm_ctrl.sub\n\nVin vin 0 DC 48\nVpwm gate_drv 0 PULSE(0 12 0 20n 20n 2.5u 10u)\nRg gate_drv gate 10\n\nM1 vin gate sw sw NMOS_PWR\nD1 0 sw D_SCHOTTKY\nL1 sw vout 47u\nRl_esr vout vout_c 0.05\nCout vout_c 0 220u\nRload vout_c 0 2.4\n\n.MODEL NMOS_PWR NMOS(LEVEL=1 VTO=3.0 KP=12.0 RD=0.04 RS=0.02 CBD=400p CBS=400p)\n.MODEL D_SCHOTTKY D(IS=2e-6 RS=0.03 N=1.15 BV=60 CJO=180p)\n.TRAN 50n 2m\n.END\n",
+    "files": {
+      "buck_conv.sp": "* 48V-to-12V 100 kHz Buck DC-DC Switching Converter\n.include lib/power_mosfet.lib\n.include lib/pwm_ctrl.sub\n\nVin vin 0 DC 48\nVpwm gate_drv 0 PULSE(0 12 0 20n 20n 2.5u 10u)\nRg gate_drv gate 10\n\nM1 vin gate sw sw NMOS_PWR\nD1 0 sw D_SCHOTTKY\nL1 sw vout 47u\nRl_esr vout vout_c 0.05\nCout vout_c 0 220u\nRload vout_c 0 2.4\n\n.MODEL NMOS_PWR NMOS(LEVEL=1 VTO=3.0 KP=12.0 RD=0.04 RS=0.02 CBD=400p CBS=400p)\n.MODEL D_SCHOTTKY D(IS=2e-6 RS=0.03 N=1.15 BV=60 CJO=180p)\n.TRAN 50n 2m\n.END\n",
+      "lib/power_mosfet.lib": "* Power Semiconductor Device Models\n.MODEL NMOS_60V NMOS(LEVEL=1 VTO=2.8 KP=18.0 RD=0.025 RS=0.015 CBD=500p CBS=500p)\n.MODEL D_FAST D(IS=1e-7 RS=0.04 N=1.35 BV=100 CJO=95p)\n",
+      "lib/pwm_ctrl.sub": "* Gate Driver Buffer Subcircuit\n.SUBCKT GATE_DRIVER in out gnd\nRin in gnd 100k\nEdrv n1 gnd in gnd 1.0\nRdrv n1 out 4.7\n.ENDS GATE_DRIVER\n"
+    }
+  }
+]

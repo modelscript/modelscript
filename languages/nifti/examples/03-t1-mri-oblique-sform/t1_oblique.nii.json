@@ -1,0 +1,22 @@
+{
+  "nifti_version": 1,
+  "sizeof_hdr": 348,
+  "magic": "n+1",
+  "descrip": "3T MPRAGE T1w Brain MRI (15 deg AC-PC Oblique Pitch, RAS+)",
+  "dim": [3, 256, 256, 176, 1, 1, 1, 1],
+  "pixdim": [1.0, 0.9, 0.9, 1.0, 2.3, 0.0, 0.0, 0.0],
+  "datatype": "FLOAT32",
+  "scl_slope": 1.0,
+  "scl_inter": 0.0,
+  "qform_code": 1,
+  "sform_code": 1,
+  "quatern_b": 0.130526,
+  "quatern_c": 0.0,
+  "quatern_d": 0.0,
+  "qoffset_x": -115.2,
+  "qoffset_y": -118.4,
+  "qoffset_z": -84.0,
+  "srow_x": [0.9, 0.0, 0.0, -115.2],
+  "srow_y": [0.0, 0.869333, -0.258819, -118.4],
+  "srow_z": [0.0, 0.232937, 0.965926, -84.0]
+}

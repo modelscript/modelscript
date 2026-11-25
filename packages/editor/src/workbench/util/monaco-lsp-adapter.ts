@@ -7,7 +7,7 @@
  */
 
 import type * as Monaco from "monaco-editor";
-import { ALL_MORSEL_LANGUAGES, MORSEL_LANGUAGES, type MorselSyntaxFamily } from "../constants";
+import { ALL_ANSATZ_LANGUAGES, ANSATZ_LANGUAGES, type AnsatzSyntaxFamily } from "../constants";
 import { startLsp } from "./lsp-worker";
 
 // ────────────────────────────────────────────────────────────────────
@@ -110,12 +110,143 @@ function lspCompletionKindToMonaco(monaco: typeof Monaco, kind?: number): Monaco
   return (kind !== undefined ? map[kind] : undefined) ?? K.Text;
 }
 
-function convertLocationOrLink(monaco: typeof Monaco, item: any): Monaco.languages.Location | null {
+interface LspPosition {
+  line: number;
+  character: number;
+}
+
+interface LspRange {
+  start: LspPosition;
+  end: LspPosition;
+}
+
+interface LspLocationOrLink {
+  uri?: string;
+  range?: LspRange;
+  targetUri?: string;
+  targetRange?: LspRange;
+  targetSelectionRange?: LspRange;
+}
+
+interface LspTextEdit {
+  range: LspRange;
+  newText: string;
+}
+
+interface LspWorkspaceEdit {
+  changes?: Record<string, LspTextEdit[]>;
+  documentChanges?: Array<{
+    textDocument?: { uri?: string };
+    edits?: LspTextEdit[];
+  }>;
+}
+
+interface LspCompletionItem {
+  label: string;
+  kind?: number;
+  detail?: string;
+  documentation?: string | Monaco.IMarkdownString;
+  insertText?: string;
+  insertTextFormat?: number;
+  textEdit?: { range?: LspRange; newText?: string };
+  sortText?: string;
+  filterText?: string;
+  commitCharacters?: string[];
+  additionalTextEdits?: LspTextEdit[];
+}
+
+interface LspCompletionResult {
+  items?: LspCompletionItem[];
+}
+
+interface LspHoverResult {
+  contents?: string | { value: string } | Array<string | { value: string }>;
+  range?: LspRange;
+}
+
+interface LspSemanticTokensResult {
+  data?: number[];
+}
+
+interface LspColorInfo {
+  range: LspRange;
+  color: Monaco.languages.IColor;
+}
+
+interface LspColorPresentation {
+  label: string;
+  textEdit?: LspTextEdit;
+}
+
+interface LspSignatureHelpResult {
+  signatures: Array<{
+    label: string;
+    documentation?: string | Monaco.IMarkdownString;
+    parameters?: Array<{ label: string | [number, number]; documentation?: string | Monaco.IMarkdownString }>;
+  }>;
+  activeSignature?: number;
+  activeParameter?: number;
+}
+
+interface LspDocumentSymbolItem {
+  name: string;
+  detail?: string;
+  kind: Monaco.languages.SymbolKind;
+  tags?: Monaco.languages.SymbolTag[];
+  range?: LspRange;
+  selectionRange?: LspRange;
+  location?: { range: LspRange };
+  children?: LspDocumentSymbolItem[];
+}
+
+interface LspDocumentHighlight {
+  range: LspRange;
+  kind?: Monaco.languages.DocumentHighlightKind;
+}
+
+interface LspPrepareRenameResult {
+  range?: LspRange;
+  placeholder?: string;
+  start?: LspPosition;
+  end?: LspPosition;
+}
+
+interface LspCodeActionItem {
+  title: string;
+  kind?: string;
+  isPreferred?: boolean;
+  edit?: LspWorkspaceEdit;
+  command?: { command?: string; title?: string; arguments?: unknown[] };
+}
+
+interface LspInlayHintItem {
+  position?: LspPosition;
+  label: string | Array<{ value?: string }>;
+  kind?: number;
+  paddingLeft?: boolean;
+  paddingRight?: boolean;
+}
+
+interface LspFoldingRangeItem {
+  startLine?: number;
+  endLine?: number;
+  kind?: string;
+}
+
+interface LspSelectionRangeItem {
+  range?: LspRange;
+  parent?: LspSelectionRangeItem;
+}
+
+function convertLocationOrLink(
+  monaco: typeof Monaco,
+  item: LspLocationOrLink | null | undefined,
+): Monaco.languages.Location | null {
   if (!item) return null;
   if (item.targetUri && (item.targetSelectionRange || item.targetRange)) {
     return {
       uri: monaco.Uri.parse(item.targetUri),
-      range: lspRangeToMonaco(item.targetSelectionRange ?? item.targetRange),
+      range: lspRangeToMonaco((item.targetSelectionRange ?? item.targetRange)!),
     };
   }
   if (item.uri && item.range) {
@@ -127,10 +258,13 @@ function convertLocationOrLink(monaco: typeof Monaco, item: any): Monaco.languag
   return null;
 }
 
-function convertWorkspaceEdit(monaco: typeof Monaco, edit: any): Monaco.languages.WorkspaceEdit {
+function convertWorkspaceEdit(
+  monaco: typeof Monaco,
+  edit: LspWorkspaceEdit | null | undefined,
+): Monaco.languages.WorkspaceEdit {
   const edits: Monaco.languages.IWorkspaceTextEdit[] = [];
   if (edit?.changes) {
-    for (const [uri, textEdits] of Object.entries<any[]>(edit.changes)) {
+    for (const [uri, textEdits] of Object.entries<LspTextEdit[]>(edit.changes)) {
       for (const te of textEdits ?? []) {
         edits.push({
           resource: monaco.Uri.parse(uri),
@@ -1031,7 +1165,7 @@ const PLAINTEXT_MONARCH: Monaco.languages.IMonarchLanguage = {
   },
 };
 
-function getMonarchForFamily(family: MorselSyntaxFamily | string): Monaco.languages.IMonarchLanguage {
+function getMonarchForFamily(family: AnsatzSyntaxFamily | string): Monaco.languages.IMonarchLanguage {
   switch (family) {
     case "modelica":
       return MODELICA_MONARCH;
@@ -1080,16 +1214,16 @@ export function registerAllModelscriptLanguages(monaco: typeof Monaco): void {
     id: string;
     name: string;
     extensions: string[];
-    family: MorselSyntaxFamily | string;
+    family: AnsatzSyntaxFamily | string;
   }> = [];
   const seenLangIds = new Set<string>();
-  const addLang = (lang: { id: string; name: string; extensions: string[]; family: MorselSyntaxFamily | string }) => {
+  const addLang = (lang: { id: string; name: string; extensions: string[]; family: AnsatzSyntaxFamily | string }) => {
     if (seenLangIds.has(lang.id)) return;
     seenLangIds.add(lang.id);
     languagesToRegister.push(lang);
   };
 
-  for (const lang of ALL_MORSEL_LANGUAGES) {
+  for (const lang of ALL_ANSATZ_LANGUAGES) {
     addLang(lang);
     if (lang.id === "sysml2") {
       addLang({
@@ -1100,7 +1234,7 @@ export function registerAllModelscriptLanguages(monaco: typeof Monaco): void {
       });
     }
   }
-  for (const lang of MORSEL_LANGUAGES) {
+  for (const lang of ANSATZ_LANGUAGES) {
     addLang(lang);
   }
   if (!seenLangIds.has("sysml")) {
@@ -1178,9 +1312,9 @@ export interface MonacoLspAdapterCallbacks {
 export function setupMonacoLspAdapter(
   monaco: typeof Monaco,
   connection: {
-    onNotification: (method: string, handler: (params: any) => void) => Monaco.IDisposable;
-    sendRequest: (method: string, params?: any) => Promise<any>;
-    onRequest?: (method: string, handler: (params: unknown) => unknown) => Monaco.IDisposable;
+    onNotification<P = unknown>(method: string, handler: (params: P) => void): Monaco.IDisposable;
+    sendRequest<R = unknown>(method: string, params?: unknown): Promise<R>;
+    onRequest?<P = unknown, R = unknown>(method: string, handler: (params: P) => R): Monaco.IDisposable;
   },
   _documentUri?: string,
   callbacks?: MonacoLspAdapterCallbacks,
@@ -1203,12 +1337,9 @@ export function setupMonacoLspAdapter(
           const action = match3 ? match3[2] : match2![1];
           const languageId = ns && ns !== "action" ? ns : undefined;
           const arg0 = args[0];
-          const uri =
-            typeof arg0 === "string"
-              ? arg0
-              : arg0 && typeof arg0 === "object" && "uri" in arg0 && typeof (arg0 as any).uri === "string"
-                ? (arg0 as any).uri
-                : _documentUri;
+          const arg0Uri =
+            arg0 && typeof arg0 === "object" && "uri" in arg0 ? (arg0 as { uri?: unknown }).uri : undefined;
+          const uri = typeof arg0 === "string" ? arg0 : typeof arg0Uri === "string" ? arg0Uri : _documentUri;
           const model = uri ? monaco.editor.getModels().find((m) => m.uri.toString() === uri) : undefined;
           await connection.sendRequest("modelscript/executeAction", {
             actionId: action,
@@ -1224,7 +1355,7 @@ export function setupMonacoLspAdapter(
     disposables.push(cmdDisp);
   };
   const languageSelector = Array.from(
-    new Set([...ALL_MORSEL_LANGUAGES.map((l) => l.id), ...MORSEL_LANGUAGES.map((l) => l.id), "sysml", "modelscript"]),
+    new Set([...ALL_ANSATZ_LANGUAGES.map((l) => l.id), ...ANSATZ_LANGUAGES.map((l) => l.id), "sysml", "modelscript"]),
   );
 
   // ── Status notifications ──
@@ -1279,15 +1410,18 @@ export function setupMonacoLspAdapter(
       triggerCharacters: [".", ":", "$", "@"],
       provideCompletionItems: async (model, position, context) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/completion", {
-            textDocument: { uri: model.uri.toString() },
-            position: monacoPositionToLsp(position),
-            context: {
-              triggerKind: context.triggerKind,
-              triggerCharacter: context.triggerCharacter,
+          const result = await connection.sendRequest<LspCompletionItem[] | LspCompletionResult | null>(
+            "textDocument/completion",
+            {
+              textDocument: { uri: model.uri.toString() },
+              position: monacoPositionToLsp(position),
+              context: {
+                triggerKind: context.triggerKind,
+                triggerCharacter: context.triggerCharacter,
+              },
             },
-          });
-          const items: any[] = Array.isArray(result) ? result : (result?.items ?? []);
+          );
+          const items: LspCompletionItem[] = Array.isArray(result) ? result : (result?.items ?? []);
           const word = model.getWordUntilPosition(position);
           const defaultRange: Monaco.IRange = {
             startLineNumber: position.lineNumber,
@@ -1296,7 +1430,7 @@ export function setupMonacoLspAdapter(
             endColumn: word.endColumn,
           };
 
-          const suggestions: Monaco.languages.CompletionItem[] = items.map((item: any) => {
+          const suggestions: Monaco.languages.CompletionItem[] = items.map((item) => {
             const ci: Monaco.languages.CompletionItem = {
               label: item.label,
               kind: lspCompletionKindToMonaco(monaco, item.kind),
@@ -1314,7 +1448,7 @@ export function setupMonacoLspAdapter(
               ci.commitCharacters = item.commitCharacters;
             }
             if (Array.isArray(item.additionalTextEdits)) {
-              ci.additionalTextEdits = item.additionalTextEdits.map((edit: any) => ({
+              ci.additionalTextEdits = item.additionalTextEdits.map((edit) => ({
                 range: lspRangeToMonaco(edit.range),
                 text: edit.newText,
               }));
@@ -1334,7 +1468,7 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerHoverProvider(languageSelector, {
       provideHover: async (model, position) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/hover", {
+          const result = await connection.sendRequest<LspHoverResult | null>("textDocument/hover", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
           });
@@ -1343,7 +1477,7 @@ export function setupMonacoLspAdapter(
           const contents: Monaco.IMarkdownString[] = [];
           if (typeof result.contents === "string") {
             contents.push({ value: result.contents });
-          } else if (result.contents.value !== undefined) {
+          } else if (!Array.isArray(result.contents) && result.contents.value !== undefined) {
             contents.push({ value: result.contents.value });
           } else if (Array.isArray(result.contents)) {
             for (const c of result.contents) {
@@ -1382,9 +1516,12 @@ export function setupMonacoLspAdapter(
       provideDocumentSemanticTokens: async (model) => {
         const uri = model.uri.toString();
         try {
-          const result: any = await connection.sendRequest("textDocument/semanticTokens/full", {
-            textDocument: { uri },
-          });
+          const result = await connection.sendRequest<LspSemanticTokensResult | null>(
+            "textDocument/semanticTokens/full",
+            {
+              textDocument: { uri },
+            },
+          );
           if (!result?.data) {
             const cached = lastSemanticTokensCache.get(uri);
             return cached ? { data: cached } : null;
@@ -1439,11 +1576,11 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerDocumentFormattingEditProvider(languageSelector, {
       provideDocumentFormattingEdits: async (model, options) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/formatting", {
+          const result = await connection.sendRequest<LspTextEdit[] | null>("textDocument/formatting", {
             textDocument: { uri: model.uri.toString() },
             options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
           });
-          return (result ?? []).map((edit: any) => ({
+          return (result ?? []).map((edit) => ({
             range: lspRangeToMonaco(edit.range),
             text: edit.newText,
           }));
@@ -1459,14 +1596,11 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerDocumentRangeFormattingEditProvider(languageSelector, {
       provideDocumentRangeFormattingEdits: async (model, range, options) => {
         try {
-          const result = (await connection.sendRequest("textDocument/rangeFormatting", {
+          const result = await connection.sendRequest<LspTextEdit[] | null>("textDocument/rangeFormatting", {
             textDocument: { uri: model.uri.toString() },
             range: monacoRangeToLsp(range),
             options: { tabSize: options.tabSize, insertSpaces: options.insertSpaces },
-          })) as Array<{
-            range: { start: { line: number; character: number }; end: { line: number; character: number } };
-            newText: string;
-          }> | null;
+          });
           return (result ?? []).map((edit) => ({
             range: lspRangeToMonaco(edit.range),
             text: edit.newText,
@@ -1483,10 +1617,10 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerColorProvider(languageSelector, {
       provideDocumentColors: async (model) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/documentColor", {
+          const result = await connection.sendRequest<LspColorInfo[] | null>("textDocument/documentColor", {
             textDocument: { uri: model.uri.toString() },
           });
-          return (result ?? []).map((ci: any) => ({
+          return (result ?? []).map((ci) => ({
             range: lspRangeToMonaco(ci.range),
             color: ci.color,
           }));
@@ -1496,12 +1630,12 @@ export function setupMonacoLspAdapter(
       },
       provideColorPresentations: async (_model, colorInfo) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/colorPresentation", {
+          const result = await connection.sendRequest<LspColorPresentation[] | null>("textDocument/colorPresentation", {
             textDocument: { uri: _model.uri.toString() },
             color: colorInfo.color,
             range: monacoRangeToLsp(colorInfo.range),
           });
-          return (result ?? []).map((cp: any) => ({
+          return (result ?? []).map((cp) => ({
             label: cp.label,
             textEdit: cp.textEdit
               ? { range: lspRangeToMonaco(cp.textEdit.range), text: cp.textEdit.newText }
@@ -1520,7 +1654,7 @@ export function setupMonacoLspAdapter(
       signatureHelpTriggerCharacters: ["(", ","],
       provideSignatureHelp: async (model, position, _token, context) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/signatureHelp", {
+          const result = await connection.sendRequest<LspSignatureHelpResult | null>("textDocument/signatureHelp", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
             context: {
@@ -1532,10 +1666,10 @@ export function setupMonacoLspAdapter(
           if (!result) return null;
           return {
             value: {
-              signatures: result.signatures.map((s: any) => ({
+              signatures: result.signatures.map((s) => ({
                 label: s.label,
                 documentation: s.documentation,
-                parameters: s.parameters?.map((p: any) => ({
+                parameters: (s.parameters ?? []).map((p) => ({
                   label: p.label,
                   documentation: p.documentation,
                 })),
@@ -1557,16 +1691,17 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerDocumentSymbolProvider(languageSelector, {
       provideDocumentSymbols: async (model) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/documentSymbol", {
+          const result = await connection.sendRequest<LspDocumentSymbolItem[] | null>("textDocument/documentSymbol", {
             textDocument: { uri: model.uri.toString() },
           });
-          const convertSymbol = (s: any): any => ({
+          const fallbackRange: LspRange = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+          const convertSymbol = (s: LspDocumentSymbolItem): Monaco.languages.DocumentSymbol => ({
             name: s.name,
             detail: s.detail ?? "",
             kind: s.kind,
             tags: s.tags ?? [],
-            range: lspRangeToMonaco(s.range ?? s.location?.range),
-            selectionRange: lspRangeToMonaco(s.selectionRange ?? s.range ?? s.location?.range),
+            range: lspRangeToMonaco(s.range ?? s.location?.range ?? fallbackRange),
+            selectionRange: lspRangeToMonaco(s.selectionRange ?? s.range ?? s.location?.range ?? fallbackRange),
             children: s.children?.map(convertSymbol),
           });
           return (result ?? []).map(convertSymbol);
@@ -1582,11 +1717,11 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerDocumentHighlightProvider(languageSelector, {
       provideDocumentHighlights: async (model, position) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/documentHighlight", {
+          const result = await connection.sendRequest<LspDocumentHighlight[] | null>("textDocument/documentHighlight", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
           });
-          return (result ?? []).map((h: any) => ({
+          return (result ?? []).map((h) => ({
             range: lspRangeToMonaco(h.range),
             kind: h.kind,
           }));
@@ -1602,10 +1737,13 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerDefinitionProvider(languageSelector, {
       provideDefinition: async (model, position) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/definition", {
-            textDocument: { uri: model.uri.toString() },
-            position: monacoPositionToLsp(position),
-          });
+          const result = await connection.sendRequest<LspLocationOrLink | LspLocationOrLink[] | null>(
+            "textDocument/definition",
+            {
+              textDocument: { uri: model.uri.toString() },
+              position: monacoPositionToLsp(position),
+            },
+          );
           if (!result) return null;
           const items = Array.isArray(result) ? result : [result];
           return items
@@ -1623,10 +1761,13 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerTypeDefinitionProvider(languageSelector, {
       provideTypeDefinition: async (model, position) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/typeDefinition", {
-            textDocument: { uri: model.uri.toString() },
-            position: monacoPositionToLsp(position),
-          });
+          const result = await connection.sendRequest<LspLocationOrLink | LspLocationOrLink[] | null>(
+            "textDocument/typeDefinition",
+            {
+              textDocument: { uri: model.uri.toString() },
+              position: monacoPositionToLsp(position),
+            },
+          );
           if (!result) return null;
           const items = Array.isArray(result) ? result : [result];
           return items
@@ -1644,7 +1785,7 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerReferenceProvider(languageSelector, {
       provideReferences: async (model, position, context) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/references", {
+          const result = await connection.sendRequest<LspLocationOrLink[] | null>("textDocument/references", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
             context: { includeDeclaration: context.includeDeclaration },
@@ -1665,7 +1806,7 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerRenameProvider(languageSelector, {
       provideRenameEdits: async (model, position, newName) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/rename", {
+          const result = await connection.sendRequest<LspWorkspaceEdit | null>("textDocument/rename", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
             newName,
@@ -1678,7 +1819,7 @@ export function setupMonacoLspAdapter(
       },
       resolveRenameLocation: async (model, position) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/prepareRename", {
+          const result = await connection.sendRequest<LspPrepareRenameResult | null>("textDocument/prepareRename", {
             textDocument: { uri: model.uri.toString() },
             position: monacoPositionToLsp(position),
           });
@@ -1689,7 +1830,16 @@ export function setupMonacoLspAdapter(
               rejectReason: "Cannot rename this symbol",
             };
           }
-          const range = lspRangeToMonaco(result.range ?? result);
+          const rawRange: LspRange | undefined =
+            result.range ?? (result.start && result.end ? { start: result.start, end: result.end } : undefined);
+          if (!rawRange) {
+            return {
+              range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+              text: "",
+              rejectReason: "Cannot rename this symbol",
+            };
+          }
+          const range = lspRangeToMonaco(rawRange);
           const text = result.placeholder ?? model.getValueInRange(range);
           return { range, text };
         } catch {
@@ -1709,7 +1859,7 @@ export function setupMonacoLspAdapter(
       provideCodeActions: async (model, range, context) => {
         try {
           const only = context.only ? (Array.isArray(context.only) ? context.only : [context.only]) : undefined;
-          const result: any = await connection.sendRequest("textDocument/codeAction", {
+          const result = await connection.sendRequest<LspCodeActionItem[] | null>("textDocument/codeAction", {
             textDocument: { uri: model.uri.toString() },
             range: monacoRangeToLsp(range),
             context: {
@@ -1723,7 +1873,7 @@ export function setupMonacoLspAdapter(
               ...(only ? { only } : {}),
             },
           });
-          const actions: Monaco.languages.CodeAction[] = (result ?? []).map((ca: any) => {
+          const actions: Monaco.languages.CodeAction[] = (result ?? []).map((ca) => {
             if (ca.command?.command) {
               ensureCommandRegistered(ca.command.command);
             }
@@ -1847,11 +1997,11 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerInlayHintsProvider(languageSelector, {
       provideInlayHints: async (model, range) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/inlayHint", {
+          const result = await connection.sendRequest<LspInlayHintItem[] | null>("textDocument/inlayHint", {
             textDocument: { uri: model.uri.toString() },
             range: monacoRangeToLsp(range),
           });
-          const hints: Monaco.languages.InlayHint[] = (result ?? []).map((ih: any) => ({
+          const hints: Monaco.languages.InlayHint[] = (result ?? []).map((ih) => ({
             position: {
               lineNumber: (ih.position?.line ?? 0) + 1,
               column: (ih.position?.character ?? 0) + 1,
@@ -1860,7 +2010,7 @@ export function setupMonacoLspAdapter(
               typeof ih.label === "string"
                 ? ih.label
                 : Array.isArray(ih.label)
-                  ? ih.label.map((part: any) => part.value ?? "").join("")
+                  ? ih.label.map((part) => part.value ?? "").join("")
                   : "",
             kind: ih.kind === 1 ? monaco.languages.InlayHintKind.Type : monaco.languages.InlayHintKind.Parameter,
             paddingLeft: ih.paddingLeft,
@@ -1879,10 +2029,10 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerFoldingRangeProvider(languageSelector, {
       provideFoldingRanges: async (model) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/foldingRange", {
+          const result = await connection.sendRequest<LspFoldingRangeItem[] | null>("textDocument/foldingRange", {
             textDocument: { uri: model.uri.toString() },
           });
-          return (result ?? []).map((fr: any) => ({
+          return (result ?? []).map((fr) => ({
             start: (fr.startLine ?? 0) + 1,
             end: (fr.endLine ?? 0) + 1,
             kind:
@@ -1904,14 +2054,14 @@ export function setupMonacoLspAdapter(
     monaco.languages.registerSelectionRangeProvider(languageSelector, {
       provideSelectionRanges: async (model, positions) => {
         try {
-          const result: any = await connection.sendRequest("textDocument/selectionRange", {
+          const result = await connection.sendRequest<LspSelectionRangeItem[] | null>("textDocument/selectionRange", {
             textDocument: { uri: model.uri.toString() },
             positions: positions.map(monacoPositionToLsp),
           });
           if (!Array.isArray(result)) return [];
-          return result.map((sr: any) => {
+          return result.map((sr) => {
             const list: Monaco.languages.SelectionRange[] = [];
-            let curr = sr;
+            let curr: LspSelectionRangeItem | undefined = sr;
             while (curr && curr.range) {
               list.push({ range: lspRangeToMonaco(curr.range) });
               curr = curr.parent;
@@ -1938,5 +2088,5 @@ export async function registerMonacoLspProviders(
   callbacks?: MonacoLspAdapterCallbacks,
 ): Promise<Monaco.IDisposable> {
   const connection = await startLsp(initialLanguageId);
-  return setupMonacoLspAdapter(monaco, connection as any, undefined, callbacks);
+  return setupMonacoLspAdapter(monaco, connection, undefined, callbacks);
 }

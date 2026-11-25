@@ -1,0 +1,11 @@
+{
+  "id": "arinc429-04-fadec-turbofan-engine",
+  "lang": "arinc429",
+  "subFormats": ["arinc429-high"],
+  "difficulty": 4,
+  "title": "FADEC Turbofan Engine N1, N2, EGT & Fuel-Flow Bus",
+  "description": "High-speed ARINC 429 FADEC propulsion telemetry bus streaming fan speed N1 (346), core speed N2 (344), exhaust gas temperature EGT (345), and fuel mass flow (244) at cruise thrust.",
+  "category": "Propulsion Avionics",
+  "tags": ["arinc429", "fadec", "turbofan", "egt", "engine"],
+  "activeFile": "fadec_eng1.a429"
+}

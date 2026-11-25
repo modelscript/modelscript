@@ -1,0 +1,18 @@
+Flow Title=Mixed-Flow Tributary Confluence Profile
+Boundary for River Reach & Node=SnakeRiver,MainStem,1500
+Boundary Type=Flow Hydrograph
+Hydrograph Data= 2
+0, 420.0  24, 420.0
+
+Boundary for River Reach & Node=SnakeRiver,MainStem,0
+Boundary Type=Normal Depth
+Friction Slope=0.0026
+
+Boundary for River Reach & Node=PineCreek,Tributary,800
+Boundary Type=Flow Hydrograph
+Hydrograph Data= 2
+0, 135.0  24, 135.0
+
+Boundary for River Reach & Node=PineCreek,Tributary,0
+Boundary Type=Normal Depth
+Friction Slope=0.0068

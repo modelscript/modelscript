@@ -1,0 +1,18 @@
+Project: Cascade River Basin Full Model
+     Description: Multi-Subbasin Regional River Basin with Snowmelt and Flood Control Dam
+     Version: 4.11
+     Filepath Separator: /
+     DSS File Name: basin_full.dss
+End:
+
+Basin: Cascade_Basin_Full
+     Filename: basin_full.basin
+End:
+
+Precipitation: Spring_RainOnSnow
+     Filename: storm.met
+End:
+
+Control: Calibration_Run
+     Filename: run.control
+End:

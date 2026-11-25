@@ -108,7 +108,10 @@ jobs:
       - name: Push Release Commit & Tag Before External Publishing
         run: |
           git push origin HEAD:main
-          git push origin "refs/tags/v${{ steps.version.outputs.version }}" --force
+          TAG="v${{ steps.version.outputs.version }}"
+          if ! git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            git push origin "refs/tags/${TAG}"
+          fi
 
       # --- Publish to npm (Idempotent) ---
       - name: Publish to npm

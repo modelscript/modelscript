@@ -1,0 +1,11 @@
+{
+  "id": "sdl-05-safety-plc-interlock",
+  "lang": "sdl",
+  "subFormats": ["sdl"],
+  "difficulty": 5,
+  "title": "Multi-Block Industrial Safety PLC Interlock Architecture",
+  "description": "Three-block IEC 61508 industrial process safety interlock architecture in SDL-88 coordinating pressure/temperature sensor monitoring, safety PLC voting logic, and emergency shutdown valve actuation.",
+  "category": "Industrial Safety & PLC",
+  "tags": ["sdl", "safety-plc", "interlock", "esd", "multi-block"],
+  "activeFile": "safety_plc.sdl"
+}

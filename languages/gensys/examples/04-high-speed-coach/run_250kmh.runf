@@ -1,0 +1,8 @@
+# GENSYS Run Control File: 250 km/h Mainline Stability & Ride Quality
+# Simulation parameters for coach.tsimf
+set v_kmh = 250.0
+set t_start = 0.0
+set t_stop = 20.0
+set dt_out = 0.005
+sub coach
+sub track_irreg

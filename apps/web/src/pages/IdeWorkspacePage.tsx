@@ -8,7 +8,7 @@ import styled from "styled-components";
 import { getArtifactView, getPopularRepos, getPost, getRepos } from "../api";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
-import { ComposeContext } from "../components/ComposeContext";
+import { ComposeContext, type ComposeInitialState } from "../components/ComposeContext";
 import { VsCodeIcon } from "../components/icons/VsCodeIcon";
 import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
@@ -409,15 +409,35 @@ export const IdeWorkspacePage: React.FC = () => {
       const rawTitle = titleParam || `ScratchModel${ext}`;
       const fileName = rawTitle.includes(".") ? rawTitle : `${rawTitle.replace(/\s+/g, "_")}${ext}`;
       const modelName = rawTitle.replace(/\.[^/.]+$/, "");
+      let handoffFiles: Record<string, string> | undefined;
+      let handoffPrimary: string | undefined;
+      if (searchParams.get("handoff") === "1") {
+        try {
+          const rawHandoff = sessionStorage.getItem("modelscript.ansatz_handoff_files");
+          if (rawHandoff) {
+            const parsed = JSON.parse(rawHandoff) as {
+              files?: Record<string, string>;
+              primaryFile?: string;
+            };
+            if (parsed.files && typeof parsed.files === "object" && Object.keys(parsed.files).length > 0) {
+              handoffFiles = parsed.files;
+              handoffPrimary = parsed.primaryFile || Object.keys(parsed.files)[0];
+            }
+          }
+        } catch {
+          // ignore corrupted sessionStorage entry
+        }
+      }
       const meta: IdeArtifactMetadata = {
         id: fromArtifactParam || "scratch",
-        title: fileName,
+        title: handoffPrimary || fileName,
         viewType: dialect === "sysml2" ? "sysml" : "modelica-code",
         viewConfig: {
           code: sourceParam,
           model: modelName,
           dialect,
-          primaryFile: fileName,
+          primaryFile: handoffPrimary || fileName,
+          ...(handoffFiles ? { files: handoffFiles } : {}),
         },
       };
       setArtifactMetadata(meta);
@@ -601,34 +621,58 @@ export const IdeWorkspacePage: React.FC = () => {
   const pendingShareTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openComposeWithEnrichedPayload = useCallback(
-    (incomingPayload?: any) => {
+    (incomingPayload?: {
+      content?: string | undefined;
+      codeSnippet?: string | undefined;
+      dialect?: string | undefined;
+      title?: string | undefined;
+      isMultiFile?: boolean | undefined;
+      files?: Record<string, string> | undefined;
+      primaryFile?: string | undefined;
+      ansatzPayload?:
+        | {
+            title?: string | undefined;
+            code?: string | undefined;
+            dialect?: string | undefined;
+            isMultiFile?: boolean | undefined;
+            files?: Record<string, string> | undefined;
+            primaryFile?: string | undefined;
+          }
+        | undefined;
+    }) => {
       if (pendingShareTimeoutRef.current) {
         clearTimeout(pendingShareTimeoutRef.current);
         pendingShareTimeoutRef.current = null;
       }
 
       const forkedId = resolveForkedFromId();
-      const baseMorsel = incomingPayload?.morselPayload || {};
-      const filesMap = incomingPayload?.files || baseMorsel.files || artifactMetadata?.viewConfig?.files;
+      const numericForkedId = forkedId !== undefined && !Number.isNaN(Number(forkedId)) ? Number(forkedId) : undefined;
+      const baseAnsatz = incomingPayload?.ansatzPayload || {};
+      const rawArtifactFiles = artifactMetadata?.viewConfig?.files;
+      const artifactFiles =
+        rawArtifactFiles && typeof rawArtifactFiles === "object" && !Array.isArray(rawArtifactFiles)
+          ? (rawArtifactFiles as Record<string, string>)
+          : undefined;
+      const filesMap = incomingPayload?.files || baseAnsatz.files || artifactFiles;
       const isMulti =
         incomingPayload?.isMultiFile ??
-        baseMorsel.isMultiFile ??
+        baseAnsatz.isMultiFile ??
         (filesMap && typeof filesMap === "object" && Object.keys(filesMap).length > 1) ??
         isMultiFileArtifact(artifactMetadata);
 
       const code =
         incomingPayload?.codeSnippet ??
-        baseMorsel.code ??
+        baseAnsatz.code ??
         (typeof artifactMetadata?.viewConfig?.code === "string" ? artifactMetadata.viewConfig.code : "");
 
       const dialect =
         incomingPayload?.dialect ||
-        baseMorsel.dialect ||
+        baseAnsatz.dialect ||
         langParam ||
         inferDialectFromArtifact(artifactMetadata, displayTitle);
 
       const cleanTitle =
-        baseMorsel.title || incomingPayload?.title || displayTitle.replace(/\.[^/.]+$/, "") || "Workspace";
+        baseAnsatz.title || incomingPayload?.title || displayTitle.replace(/\.[^/.]+$/, "") || "Workspace";
 
       const defaultContent = editPostId
         ? (editPostContent ?? undefined)
@@ -639,18 +683,18 @@ export const IdeWorkspacePage: React.FC = () => {
               ? `Forked and modified **${cleanTitle}** (from Artifact #${forkedId}) in Studio! 🚀`
               : `Check out my workspace in Studio: **${cleanTitle}** 🚀`);
 
-      const composeInit: any = {
+      const composeInit: ComposeInitialState = {
         ...(defaultContent !== undefined ? { content: defaultContent } : {}),
-        morselPayload: {
+        ansatzPayload: {
           title: cleanTitle,
           code,
           dialect,
           isMultiFile: Boolean(isMulti),
           ...(filesMap && typeof filesMap === "object" ? { files: filesMap } : {}),
-          ...(incomingPayload?.primaryFile || baseMorsel.primaryFile
-            ? { primaryFile: incomingPayload?.primaryFile || baseMorsel.primaryFile }
+          ...(incomingPayload?.primaryFile || baseAnsatz.primaryFile
+            ? { primaryFile: incomingPayload?.primaryFile || baseAnsatz.primaryFile }
             : {}),
-          ...(forkedId ? { forkedFromArtifactId: forkedId } : {}),
+          ...(numericForkedId !== undefined ? { forkedFromArtifactId: numericForkedId } : {}),
         },
         ...(forkedId ? { forkedFromArtifactId: forkedId } : {}),
         ...(editPostId !== undefined && !Number.isNaN(editPostId) ? { editPostId } : {}),
@@ -668,8 +712,13 @@ export const IdeWorkspacePage: React.FC = () => {
   useEffect(() => {
     let lastHandledShareTimestamp = 0;
 
-    const processMessageData = (data: any) => {
-      if (!data || typeof data !== "object") return;
+    const processMessageData = (rawData: unknown) => {
+      if (!rawData || typeof rawData !== "object") return;
+      const data = rawData as {
+        type?: string | undefined;
+        payload?: Parameters<typeof openComposeWithEnrichedPayload>[0] | undefined;
+        path?: string | undefined;
+      };
 
       switch (data.type) {
         case "MODELSCRIPT_READY":
@@ -683,7 +732,7 @@ export const IdeWorkspacePage: React.FC = () => {
             return;
           }
           lastHandledShareTimestamp = now;
-          openComposeWithEnrichedPayload(data.payload as any);
+          openComposeWithEnrichedPayload(data.payload);
           break;
         }
 
@@ -770,9 +819,9 @@ export const IdeWorkspacePage: React.FC = () => {
     handleLaunchVsCodeUrl(workbenchUrl);
   };
 
-  const canOpenInPlayground = !namespace && !project && !isMultiFileArtifact(artifactMetadata);
+  const canOpenInAnsatz = !namespace && !project && !isMultiFileArtifact(artifactMetadata);
 
-  const handleOpenInPlayground = () => {
+  const handleOpenInAnsatzEditor = () => {
     const url = buildEditorUrlForArtifact({
       artifactId: resolveForkedFromId(),
       viewType: artifactMetadata?.viewType,
@@ -886,7 +935,7 @@ export const IdeWorkspacePage: React.FC = () => {
               Studio
             </Heading>
             <Text style={{ fontSize: "13px", color: "var(--color-text-muted)" }}>
-              Engineering creation suite — interactive in-browser morsel modeling and full VS Code workspaces
+              Engineering creation suite — interactive in-browser ansatz modeling and full VS Code workspaces
             </Text>
           </Box>
 
@@ -957,10 +1006,10 @@ export const IdeWorkspacePage: React.FC = () => {
                 <span>↗</span>
               </LaunchButton>
 
-              {canOpenInPlayground && (
+              {canOpenInAnsatz && (
                 <button
                   type="button"
-                  onClick={handleOpenInPlayground}
+                  onClick={handleOpenInAnsatzEditor}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",

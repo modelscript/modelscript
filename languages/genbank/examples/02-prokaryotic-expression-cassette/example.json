@@ -1,0 +1,11 @@
+{
+  "id": "genbank-02-prokaryotic-expression-cassette",
+  "lang": "genbank",
+  "subFormats": ["genbank"],
+  "difficulty": 2,
+  "title": "Validated Prokaryotic Expression Cassette",
+  "description": "Annotated linear GenBank expression cassette containing a bacterial promoter, ribosome binding site, verified GFP open reading frame, and terminator.",
+  "category": "Bioinformatics & Genomics",
+  "tags": ["genbank", "expression-cassette", "orf", "e-coli"],
+  "activeFile": "expression_cassette.gb"
+}

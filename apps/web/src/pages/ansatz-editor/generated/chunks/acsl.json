@@ -1,0 +1,77 @@
+[
+  {
+    "id": "acsl-01-thermal-cooling",
+    "lang": "acsl",
+    "subFormats": ["csl"],
+    "difficulty": 1,
+    "title": "First-Order Thermal Cooling",
+    "description": "Newton's law of cooling for a heated metallic billet immersed in an ambient convective bath using an ACSL DERIVATIVE integrator.",
+    "category": "Thermal Systems",
+    "tags": ["acsl", "thermal", "first-order", "ode"],
+    "activeFile": "thermal_cooling.csl",
+    "fileNames": ["thermal_cooling.csl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "PROGRAM THERMAL_COOLING\n  ! First-order lumped-capacitance convective cooling of an aluminum billet\n  INITIAL\n    CONSTANT tau = 12.5      ! Thermal time constant (s)\n    CONSTANT tamb = 293.15   ! Ambient bath temperature (K)\n    CONSTANT temp0 = 473.15  ! Initial billet temperature (K)\n    CINTERVAL cint = 1.0\n    MAXTERVAL maxt = 0.25\n    ALGORITHM ialg = 5\n  END\n\n  DYNAMIC\n    DERIVATIVE\n      dtemp = -(temp - tamb) / tau\n      temp = INTEG(dtemp, temp0)\n      heat_loss = (temp - tamb) / tau\n    END\n\n    TERMT(t .GE. 60.0, 'Cooling transient complete')\n  END\n\n  TERMINAL\n    final_delta_t = temp - tamb\n  END\nEND\n"
+  },
+  {
+    "id": "acsl-02-spring-mass-oscillator",
+    "lang": "acsl",
+    "subFormats": ["csl"],
+    "difficulty": 2,
+    "title": "Damped Spring-Mass Oscillator with Energy Procedural",
+    "description": "Second-order linear mechanical oscillator with viscous damping and an ACSL PROCEDURAL block computing kinetic, potential, and total mechanical energy.",
+    "category": "Mechanical Dynamics",
+    "tags": ["acsl", "oscillator", "procedural", "mechanics"],
+    "activeFile": "spring_mass.csl",
+    "fileNames": ["spring_mass.csl"],
+    "fileCount": 1,
+    "code": "PROGRAM SPRING_MASS_OSCILLATOR\n  ! Damped spring-mass oscillator with energy conservation procedural block\n  INITIAL\n    CONSTANT m = 2.0         ! Mass (kg)\n    CONSTANT c = 0.6         ! Viscous damping coefficient (N*s/m)\n    CONSTANT k = 18.0        ! Spring stiffness (N/m)\n    CONSTANT x0 = 0.5        ! Initial displacement (m)\n    CONSTANT v0 = 0.0        ! Initial velocity (m/s)\n    CINTERVAL cint = 0.05\n    MAXTERVAL maxt = 0.01\n    ALGORITHM ialg = 5\n  END\n\n  DYNAMIC\n    DERIVATIVE\n      accel = (-k * x - c * v) / m\n      v = INTEG(accel, v0)\n      x = INTEG(v, x0)\n\n      PROCEDURAL(energy = x, v)\n        ke = 0.5 * m * v**2\n        pe = 0.5 * k * x**2\n        energy = ke + pe\n      END\n    END\n\n    TERMT(t .GE. 10.0, 'Oscillator simulation complete')\n  END\n\n  TERMINAL\n    final_energy = 0.5 * m * v**2 + 0.5 * k * x**2\n  END\nEND\n"
+  },
+  {
+    "id": "acsl-03-ballistic-projectile",
+    "lang": "acsl",
+    "subFormats": ["csl"],
+    "difficulty": 3,
+    "title": "Ballistic Projectile with Aerodynamic Drag and Impact Schedule",
+    "description": "Two-dimensional nonlinear projectile trajectory with quadratic aerodynamic drag and an ACSL SCHEDULE discrete event capturing ground impact telemetry.",
+    "category": "Aerospace & Ballistics",
+    "tags": ["acsl", "ballistics", "drag", "schedule", "discrete"],
+    "activeFile": "projectile.csl",
+    "fileNames": ["projectile.csl"],
+    "fileCount": 1,
+    "code": "PROGRAM BALLISTIC_PROJECTILE\n  ! 2D projectile trajectory with quadratic air drag and scheduled telemetry\n  INITIAL\n    CONSTANT g = 9.80665     ! Gravitational acceleration (m/s^2)\n    CONSTANT cd = 0.47       ! Sphere drag coefficient\n    CONSTANT rho = 1.225     ! Sea-level air density (kg/m^3)\n    CONSTANT area = 0.015    ! Cross-sectional area (m^2)\n    CONSTANT mass = 4.5      ! Projectile mass (kg)\n    CONSTANT vx0 = 65.0      ! Initial horizontal velocity (m/s)\n    CONSTANT vy0 = 55.0      ! Initial vertical velocity (m/s)\n    CONSTANT x0 = 0.0\n    CONSTANT y0 = 1.5\n    LOGICAL landed = .FALSE.\n    CINTERVAL cint = 0.1\n    MAXTERVAL maxt = 0.02\n    ALGORITHM ialg = 5\n  END\n\n  DYNAMIC\n    DERIVATIVE\n      speed = SQRT(vx**2 + vy**2)\n      drag_k = 0.5 * rho * cd * area / mass\n      ax = -drag_k * speed * vx\n      ay = -g - drag_k * speed * vy\n      vx = INTEG(ax, vx0)\n      vy = INTEG(ay, vy0)\n      x = INTEG(vx, x0)\n      y = INTEG(vy, y0)\n      SCHEDULE impact_ev .AT. 8.0\n    END\n\n    DISCRETE impact_ev\n      landed = .TRUE.\n      impact_range = x\n      impact_speed = SQRT(vx**2 + vy**2)\n    END\n\n    TERMT(t .GE. 10.0, 'Trajectory integration complete')\n  END\n\n  TERMINAL\n    final_range = x\n  END\nEND\n"
+  },
+  {
+    "id": "acsl-04-cstr-limit-cycle",
+    "lang": "acsl",
+    "subFormats": ["csl"],
+    "difficulty": 4,
+    "title": "Chemical CSTR Exothermic Limit Cycle",
+    "description": "Coupled mass and energy balances for a non-isothermal continuous stirred-tank reactor (CSTR) with Arrhenius reaction kinetics and jacket cooling.",
+    "category": "Chemical Engineering",
+    "tags": ["acsl", "cstr", "nonlinear", "arrhenius", "limit-cycle"],
+    "activeFile": "cstr_reactor.csl",
+    "fileNames": ["cstr_reactor.csl"],
+    "fileCount": 1,
+    "code": "PROGRAM CSTR_LIMIT_CYCLE\n  ! Non-isothermal exothermic CSTR with Arrhenius kinetics and jacket cooling\n  INITIAL\n    CONSTANT q_flow = 100.0   ! Volumetric flow rate (L/min)\n    CONSTANT vol = 100.0      ! Reactor volume (L)\n    CONSTANT caf = 1.0        ! Feed concentration of species A (mol/L)\n    CONSTANT tf = 350.0       ! Feed temperature (K)\n    CONSTANT tc = 300.0       ! Cooling jacket temperature (K)\n    CONSTANT k0 = 7.2e10      ! Pre-exponential factor (1/min)\n    CONSTANT ear = 8750.0     ! Activation energy / R (K)\n    CONSTANT dh_rcp = 209.2   ! (-DeltaH) / (rho * Cp) (K*L/mol)\n    CONSTANT ua_vrcp = 2.092  ! U*A / (V * rho * Cp) (1/min)\n    CONSTANT ca0 = 0.5        ! Initial concentration (mol/L)\n    CONSTANT temp0 = 350.0    ! Initial reactor temperature (K)\n    CINTERVAL cint = 0.05\n    MAXTERVAL maxt = 0.005\n    ALGORITHM ialg = 5\n  END\n\n  DYNAMIC\n    DERIVATIVE\n      rate = k0 * EXP(-ear / temp) * ca\n      dca = (q_flow / vol) * (caf - ca) - rate\n      dtemp = (q_flow / vol) * (tf - temp) + dh_rcp * rate - ua_vrcp * (temp - tc)\n      ca = INTEG(dca, ca0)\n      temp = INTEG(dtemp, temp0)\n      conversion = (caf - ca) / caf\n    END\n\n    TERMT(t .GE. 15.0, 'CSTR transient complete')\n  END\n\n  TERMINAL\n    final_conversion = (caf - ca) / caf\n  END\nEND\n"
+  },
+  {
+    "id": "acsl-05-pitch-autopilot",
+    "lang": "acsl",
+    "subFormats": ["csl", "csv"],
+    "difficulty": 5,
+    "title": "Pilot-in-the-Loop Pitch Autopilot with Aerodynamic Table",
+    "description": "Short-period longitudinal aircraft pitch autopilot with ACSL TABLE aerodynamic lookup, elevator actuator lag, discrete flight-computer sampling, and companion aerodynamic dataset.",
+    "category": "Aerospace Control",
+    "tags": ["acsl", "autopilot", "aerospace", "table", "multi-file"],
+    "activeFile": "autopilot.csl",
+    "fileNames": ["autopilot.csl", "aero_table.csv"],
+    "fileCount": 2,
+    "code": "PROGRAM PITCH_AUTOPILOT\n  ! Short-period longitudinal pitch autopilot with TABLE lookup and discrete FCS\n  INITIAL\n    CONSTANT za = -1.15       ! Normal force derivative Z_alpha (1/s)\n    CONSTANT ma = -3.85       ! Pitch stiffness M_alpha (1/s^2)\n    CONSTANT mq = -0.92       ! Pitch damping M_q (1/s)\n    CONSTANT mde = -12.4      ! Elevator control effectiveness M_delta_e (1/s^2)\n    CONSTANT tau_act = 0.05   ! Elevator hydraulic actuator time constant (s)\n    CONSTANT kp = 1.8         ! Proportional pitch gain\n    CONSTANT kd = 0.45        ! Pitch rate damping gain\n    CONSTANT theta_cmd = 0.10 ! Commanded pitch attitude (rad)\n    TABLE cm_tab, 1, 5 / -0.2, -0.1, 0.0, 0.1, 0.2, 0.04, 0.02, 0.0, -0.02, -0.04 /\n    CINTERVAL cint = 0.02\n    MAXTERVAL maxt = 0.005\n    ALGORITHM ialg = 5\n  END\n\n  DYNAMIC\n    DERIVATIVE\n      err_theta = theta_cmd - theta\n      de_cmd = kp * err_theta - kd * q_rate\n      dde = (de_cmd - delta_e) / tau_act\n      delta_e = INTEG(dde, 0.0)\n\n      dalpha = za * alpha + q_rate\n      dq = ma * alpha + mq * q_rate + mde * delta_e\n      dtheta = q_rate\n\n      alpha = INTEG(dalpha, 0.0)\n      q_rate = INTEG(dq, 0.0)\n      theta = INTEG(dtheta, 0.0)\n\n      SCHEDULE fcs_tick .AT. 0.5\n    END\n\n    DISCRETE fcs_tick\n      INTERVAL dt_fcs = 0.1\n      logged_theta = theta\n      logged_alpha = alpha\n    END\n\n    TERMT(t .GE. 6.0, 'Autopilot step response complete')\n  END\n\n  TERMINAL\n    steady_err = theta_cmd - theta\n  END\nEND\n",
+    "files": {
+      "autopilot.csl": "PROGRAM PITCH_AUTOPILOT\n  ! Short-period longitudinal pitch autopilot with TABLE lookup and discrete FCS\n  INITIAL\n    CONSTANT za = -1.15       ! Normal force derivative Z_alpha (1/s)\n    CONSTANT ma = -3.85       ! Pitch stiffness M_alpha (1/s^2)\n    CONSTANT mq = -0.92       ! Pitch damping M_q (1/s)\n    CONSTANT mde = -12.4      ! Elevator control effectiveness M_delta_e (1/s^2)\n    CONSTANT tau_act = 0.05   ! Elevator hydraulic actuator time constant (s)\n    CONSTANT kp = 1.8         ! Proportional pitch gain\n    CONSTANT kd = 0.45        ! Pitch rate damping gain\n    CONSTANT theta_cmd = 0.10 ! Commanded pitch attitude (rad)\n    TABLE cm_tab, 1, 5 / -0.2, -0.1, 0.0, 0.1, 0.2, 0.04, 0.02, 0.0, -0.02, -0.04 /\n    CINTERVAL cint = 0.02\n    MAXTERVAL maxt = 0.005\n    ALGORITHM ialg = 5\n  END\n\n  DYNAMIC\n    DERIVATIVE\n      err_theta = theta_cmd - theta\n      de_cmd = kp * err_theta - kd * q_rate\n      dde = (de_cmd - delta_e) / tau_act\n      delta_e = INTEG(dde, 0.0)\n\n      dalpha = za * alpha + q_rate\n      dq = ma * alpha + mq * q_rate + mde * delta_e\n      dtheta = q_rate\n\n      alpha = INTEG(dalpha, 0.0)\n      q_rate = INTEG(dq, 0.0)\n      theta = INTEG(dtheta, 0.0)\n\n      SCHEDULE fcs_tick .AT. 0.5\n    END\n\n    DISCRETE fcs_tick\n      INTERVAL dt_fcs = 0.1\n      logged_theta = theta\n      logged_alpha = alpha\n    END\n\n    TERMT(t .GE. 6.0, 'Autopilot step response complete')\n  END\n\n  TERMINAL\n    steady_err = theta_cmd - theta\n  END\nEND\n",
+      "aero_table.csv": "alpha_rad,cl,cd,cm_pitch\n-0.20,-0.92,0.082,0.040\n-0.10,-0.46,0.031,0.020\n0.00,0.00,0.018,0.000\n0.10,0.48,0.033,-0.020\n0.20,0.94,0.086,-0.040\n"
+    }
+  }
+]

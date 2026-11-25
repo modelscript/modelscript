@@ -1,0 +1,11 @@
+{
+  "id": "topas-02-photon-linac-pdd",
+  "lang": "topas",
+  "subFormats": ["topas"],
+  "difficulty": 2,
+  "title": "6 MV Photon Linac Percentage Depth-Dose Curve",
+  "description": "Clinical 6 MV X-ray linear accelerator beam traversing a tungsten primary collimator and aluminum flattening filter into a water tank with bone heterogeneity insert.",
+  "category": "Medical Physics & Monte Carlo",
+  "tags": ["topas", "linac", "photon", "pdd", "dosimetry"],
+  "activeFile": "linac_pdd.topas"
+}

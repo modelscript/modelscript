@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DicomRtPlan
+  planId="PROSTATE-IMRT-7B"
+  planLabel="Prostate_IMRT_78Gy_39Fx"
+  patientId="PT-30891"
+  frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.303"
+  structFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.303"
+  doseFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.303"
+  prescribedDoseGy="78.0"
+  fractions="39"
+>
+  <StructureSet frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.303">
+    <ROI roiNumber="1" name="PTV_Prostate_78" interpretedType="PTV" volumeCc="112.5" color="255,40,40">
+      <Contour z="-15.0" geometricType="CLOSED_PLANAR" points="-20,-18,-15; 20,-18,-15; 20,18,-15; -20,18,-15" />
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-24,-22,0; 24,-22,0; 24,22,0; -24,22,0" />
+      <Contour z="15.0" geometricType="CLOSED_PLANAR" points="-20,-18,15; 20,-18,15; 20,18,15; -20,18,15" />
+    </ROI>
+    <ROI roiNumber="2" name="Rectum" interpretedType="ORGAN" volumeCc="64.0" maxDoseLimitGy="75.0" meanDoseLimitGy="48.0" color="165,95,40">
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-15,-45,0; 15,-45,0; 15,-24,0; -15,-24,0" />
+    </ROI>
+    <ROI roiNumber="3" name="Bladder" interpretedType="ORGAN" volumeCc="195.0" maxDoseLimitGy="80.0" meanDoseLimitGy="50.0" color="255,220,30">
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-22,24,0; 22,24,0; 22,58,0; -22,58,0" />
+    </ROI>
+  </StructureSet>
+  <BeamSequence>
+    <Beam beamNumber="1" name="IMRT_G0" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="88.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="0.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-24.0" bankB_mm="24.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-26.0" bankB_mm="26.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="0.5" gantryAngleDeg="0.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-18.0" bankB_mm="18.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-20.0" bankB_mm="20.0" />
+      </ControlPoint>
+      <ControlPoint index="2" cumulativeMetersetWeight="1.0" gantryAngleDeg="0.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-14.0" bankB_mm="14.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-16.0" bankB_mm="16.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="2" name="IMRT_G51" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="84.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="51.0" collimatorAngleDeg="10.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-22.0" bankB_mm="22.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="51.0" collimatorAngleDeg="10.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-16.0" bankB_mm="16.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="3" name="IMRT_G102" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="92.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="102.0" collimatorAngleDeg="10.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-22.0" bankB_mm="20.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="102.0" collimatorAngleDeg="10.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-16.0" bankB_mm="14.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="4" name="IMRT_G154" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="79.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="154.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-20.0" bankB_mm="20.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="154.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-14.0" bankB_mm="14.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="5" name="IMRT_G206" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="79.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="206.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-20.0" bankB_mm="20.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="206.0" collimatorAngleDeg="0.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-14.0" bankB_mm="14.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="6" name="IMRT_G258" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="92.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="258.0" collimatorAngleDeg="350.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-20.0" bankB_mm="22.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="258.0" collimatorAngleDeg="350.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-14.0" bankB_mm="16.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="7" name="IMRT_G309" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="84.0" doseRateMuPerMin="600.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="309.0" collimatorAngleDeg="350.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-22.0" bankB_mm="22.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="309.0" collimatorAngleDeg="350.0" couchAngleDeg="0.0" jawX_mm="-40,40" jawY_mm="-40,40">
+        <MLCLeafPair pairIndex="1" bankA_mm="-16.0" bankB_mm="16.0" />
+      </ControlPoint>
+    </Beam>
+  </BeamSequence>
+  <DoseDistribution frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.303">
+    <DVH roiNumber="1" roiName="PTV_Prostate_78" d98Gy="75.0" d95Gy="76.4" d50Gy="78.5" d2Gy="80.9" meanDoseGy="78.3" maxDoseGy="81.4" minDoseGy="73.2" v20GyPercent="100.0">
+      <DoseBin doseGy="0.0" volumePercent="100.0" />
+      <DoseBin doseGy="75.0" volumePercent="98.0" />
+      <DoseBin doseGy="76.4" volumePercent="95.0" />
+      <DoseBin doseGy="78.5" volumePercent="50.0" />
+      <DoseBin doseGy="80.9" volumePercent="2.0" />
+      <DoseBin doseGy="81.4" volumePercent="0.0" />
+    </DVH>
+    <DVH roiNumber="2" roiName="Rectum" d98Gy="11.0" d95Gy="14.5" d50Gy="34.0" d2Gy="69.5" meanDoseGy="38.2" maxDoseGy="72.4" minDoseGy="7.5" v20GyPercent="68.0" />
+    <DVH roiNumber="3" roiName="Bladder" d98Gy="9.0" d95Gy="12.0" d50Gy="29.0" d2Gy="73.0" meanDoseGy="34.6" maxDoseGy="76.2" minDoseGy="6.0" v20GyPercent="61.0" />
+  </DoseDistribution>
+</DicomRtPlan>

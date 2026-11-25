@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>AccSwcs</SHORT-NAME>
+      <ELEMENTS>
+        <APPLICATION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>AccControllerSwc</SHORT-NAME>
+          <PORTS>
+            <R-PORT-PROTOTYPE>
+              <SHORT-NAME>TrackIn</SHORT-NAME>
+              <REQUIRED-INTERFACE-TREF DEST="SENDER-RECEIVER-INTERFACE">/AccInterfaces/RadarTrackIf</REQUIRED-INTERFACE-TREF>
+            </R-PORT-PROTOTYPE>
+            <P-PORT-PROTOTYPE>
+              <SHORT-NAME>DecelReqOut</SHORT-NAME>
+              <PROVIDED-INTERFACE-TREF DEST="CLIENT-SERVER-INTERFACE">/AccInterfaces/DecelRequestIf</PROVIDED-INTERFACE-TREF>
+            </P-PORT-PROTOTYPE>
+          </PORTS>
+          <INTERNAL-BEHAVIORS>
+            <SWC-INTERNAL-BEHAVIOR>
+              <SHORT-NAME>AccController_IB</SHORT-NAME>
+              <RUNNABLES>
+                <RUNNABLE-ENTITY>
+                  <SHORT-NAME>RE_AccHeadwayControl</SHORT-NAME>
+                  <EXECUTION-TIME-WCET>0.0032</EXECUTION-TIME-WCET>
+                </RUNNABLE-ENTITY>
+              </RUNNABLES>
+              <EVENTS>
+                <TIMING-EVENT>
+                  <SHORT-NAME>TE_Acc_20ms</SHORT-NAME>
+                  <START-ON-EVENT-REF>RE_AccHeadwayControl</START-ON-EVENT-REF>
+                  <PERIOD>0.020</PERIOD>
+                </TIMING-EVENT>
+              </EVENTS>
+            </SWC-INTERNAL-BEHAVIOR>
+          </INTERNAL-BEHAVIORS>
+        </APPLICATION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

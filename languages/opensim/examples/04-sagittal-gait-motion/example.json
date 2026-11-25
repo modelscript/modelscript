@@ -1,0 +1,11 @@
+{
+  "id": "opensim-04-sagittal-gait-motion",
+  "lang": "opensim",
+  "subFormats": ["osim", "mot"],
+  "difficulty": 4,
+  "title": "2D Sagittal Gait Model with Motion File",
+  "description": "Planar sagittal gait musculoskeletal model with pelvis, bilateral thigh/shank segments, hip-knee-ankle Hill muscles, and companion inverse-kinematics walk_cycle.mot trajectory.",
+  "category": "Musculoskeletal Biomechanics",
+  "tags": ["opensim", "gait", "motion-file", "sagittal", "multi-file"],
+  "activeFile": "gait2d.osim"
+}

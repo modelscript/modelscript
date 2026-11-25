@@ -1,0 +1,11 @@
+{
+  "id": "cgmes-04-hvdc-ac-corridor",
+  "lang": "cgmes",
+  "subFormats": ["cgmes", "xml"],
+  "difficulty": 4,
+  "title": "HVDC Link + Parallel AC Corridor Steady-State",
+  "description": "400 kV bulk transmission corridor combining parallel double-circuit AC overhead lines with shunt reactive compensation and complete EQ/TP/SSH/SV state profiles.",
+  "category": "Bulk Transmission",
+  "tags": ["cgmes", "hvdc", "corridor", "400kv", "multi-file"],
+  "activeFile": "EQ.xml"
+}

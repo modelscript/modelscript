@@ -1,0 +1,556 @@
+[
+  {
+    "name": "PRES",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.PRES",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PRES (Atmospheric Pressure)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 1: Atmospheric static pressure in Pascals.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "PRESSURE",
+        "P",
+        "WMO_1"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Reference atmospheric pressure"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 1,
+      "wmoCode": 1,
+      "unit": "Pa"
+    }
+  },
+  {
+    "name": "PRMSL",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.PRMSL",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PRMSL (Mean Sea Level Pressure)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 2: Pressure reduced to mean sea level in Pascals.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "MSLP",
+        "PMSL",
+        "WMO_2"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Standard sea-level pressure"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 2,
+      "wmoCode": 2,
+      "unit": "Pa"
+    }
+  },
+  {
+    "name": "HGT",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.HGT",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "HGT (Geopotential Height)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 7: Geopotential height in geopotential meters (gpm).",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "GH",
+        "GEOPOTENTIAL_HEIGHT",
+        "Z",
+        "WMO_7"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 7,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 5500,
+          "unit": "gpm",
+          "description": "Typical 500 hPa geopotential height"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 7,
+      "wmoCode": 7,
+      "unit": "gpm"
+    }
+  },
+  {
+    "name": "TMP",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.TMP",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TMP (Air Temperature)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 11: Atmospheric air temperature in Kelvin.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "TEMP",
+        "TEMPERATURE",
+        "T",
+        "WMO_11"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 11,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 288.15,
+          "unit": "K",
+          "description": "ISA sea-level standard temperature"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 11,
+      "wmoCode": 11,
+      "unit": "K"
+    }
+  },
+  {
+    "name": "UGRD",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.UGRD",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "UGRD (Zonal Wind U)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 33: Eastward (u) wind velocity component in m/s.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "U",
+        "UWIND",
+        "WMO_33"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 33,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m/s",
+          "description": "Reference zonal wind"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 33,
+      "wmoCode": 33,
+      "unit": "m/s"
+    }
+  },
+  {
+    "name": "VGRD",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.VGRD",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "VGRD (Meridional Wind V)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 34: Northward (v) wind velocity component in m/s.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "V",
+        "VWIND",
+        "WMO_34"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 34,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m/s",
+          "description": "Reference meridional wind"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 34,
+      "wmoCode": 34,
+      "unit": "m/s"
+    }
+  },
+  {
+    "name": "RH",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.RH",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RH (Relative Humidity)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 52: Atmospheric relative humidity in percent.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "RELH",
+        "HUMIDITY",
+        "WMO_52"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 52,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "%",
+          "description": "Mid-troposphere nominal RH"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 52,
+      "wmoCode": 52,
+      "unit": "%"
+    }
+  },
+  {
+    "name": "APCP",
+    "kind": "grib_parameter",
+    "namePath": "GRIB.WMO.Table2.APCP",
+    "exports": [
+      "code",
+      "reference"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "APCP (Total Precipitation)",
+      "category": "WMO Parameter",
+      "domain": "meteorology",
+      "description": "WMO Table 2 code 61: Accumulated total precipitation in kg/m^2 (mm).",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 2",
+      "aliases": [
+        "PRECIP",
+        "TP",
+        "WMO_61"
+      ],
+      "parameters": [
+        {
+          "key": "code",
+          "type": "real",
+          "defaultValue": 61,
+          "unit": "id",
+          "description": "WMO Table 2 parameter indicator"
+        },
+        {
+          "key": "reference",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kg/m^2",
+          "description": "Baseline precipitation"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 61,
+      "wmoCode": 61,
+      "unit": "kg/m^2"
+    }
+  },
+  {
+    "name": "SFC",
+    "kind": "grib_level",
+    "namePath": "GRIB.WMO.Table3.SFC",
+    "exports": [
+      "levelType"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SFC (Ground/Water Surface)",
+      "category": "Vertical Level",
+      "domain": "meteorology",
+      "description": "WMO Table 3 code 1: Ground or water surface level.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 3",
+      "aliases": [
+        "SURFACE",
+        "LVL_1"
+      ],
+      "parameters": [
+        {
+          "key": "levelType",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "id",
+          "description": "WMO Table 3 level indicator"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 101,
+      "wmoCode": 1,
+      "unit": "1"
+    }
+  },
+  {
+    "name": "ISBL",
+    "kind": "grib_level",
+    "namePath": "GRIB.WMO.Table3.ISBL",
+    "exports": [
+      "levelType",
+      "levelValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ISBL (Isobaric Pressure Level)",
+      "category": "Vertical Level",
+      "domain": "meteorology",
+      "description": "WMO Table 3 code 100: Constant pressure isobaric surface in hPa.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 3",
+      "aliases": [
+        "ISOBARIC",
+        "PRESSURE_LEVEL",
+        "LVL_100"
+      ],
+      "parameters": [
+        {
+          "key": "levelType",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "id",
+          "description": "WMO Table 3 level indicator"
+        },
+        {
+          "key": "levelValue",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "hPa",
+          "description": "Isobaric pressure level"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 100,
+      "wmoCode": 100,
+      "unit": "hPa"
+    }
+  },
+  {
+    "name": "MSL",
+    "kind": "grib_level",
+    "namePath": "GRIB.WMO.Table3.MSL",
+    "exports": [
+      "levelType"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MSL (Mean Sea Level)",
+      "category": "Vertical Level",
+      "domain": "meteorology",
+      "description": "WMO Table 3 code 102: Mean sea level surface.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 3",
+      "aliases": [
+        "MEAN_SEA_LEVEL",
+        "LVL_102"
+      ],
+      "parameters": [
+        {
+          "key": "levelType",
+          "type": "real",
+          "defaultValue": 102,
+          "unit": "id",
+          "description": "WMO Table 3 level indicator"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 102,
+      "wmoCode": 102,
+      "unit": "m"
+    }
+  },
+  {
+    "name": "TGL",
+    "kind": "grib_level",
+    "namePath": "GRIB.WMO.Table3.TGL",
+    "exports": [
+      "levelType",
+      "levelValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TGL (Height Above Ground)",
+      "category": "Vertical Level",
+      "domain": "meteorology",
+      "description": "WMO Table 3 code 105: Specified height level above ground in meters.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 3",
+      "aliases": [
+        "HTGL",
+        "AGL",
+        "LVL_105"
+      ],
+      "parameters": [
+        {
+          "key": "levelType",
+          "type": "real",
+          "defaultValue": 105,
+          "unit": "id",
+          "description": "WMO Table 3 level indicator"
+        },
+        {
+          "key": "levelValue",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Altitude above ground"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 105,
+      "wmoCode": 105,
+      "unit": "m"
+    }
+  },
+  {
+    "name": "TROP",
+    "kind": "grib_level",
+    "namePath": "GRIB.WMO.Table3.TROP",
+    "exports": [
+      "levelType"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TROP (Tropopause)",
+      "category": "Vertical Level",
+      "domain": "meteorology",
+      "description": "WMO Table 3 code 7: Atmospheric tropopause level.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 3",
+      "aliases": [
+        "TROPOPAUSE",
+        "LVL_7"
+      ],
+      "parameters": [
+        {
+          "key": "levelType",
+          "type": "real",
+          "defaultValue": 7,
+          "unit": "id",
+          "description": "WMO Table 3 level indicator"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 107,
+      "wmoCode": 7,
+      "unit": "1"
+    }
+  },
+  {
+    "name": "MAXW",
+    "kind": "grib_level",
+    "namePath": "GRIB.WMO.Table3.MAXW",
+    "exports": [
+      "levelType"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "MAXW (Maximum Wind Level)",
+      "category": "Vertical Level",
+      "domain": "meteorology",
+      "description": "WMO Table 3 code 6: Maximum wind speed level.",
+      "provenance": "WMO FM 92-VIII Ext. GRIB Table 3",
+      "aliases": [
+        "MAX_WIND",
+        "LVL_6"
+      ],
+      "parameters": [
+        {
+          "key": "levelType",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "id",
+          "description": "WMO Table 3 level indicator"
+        }
+      ],
+      "wasmKernel": "gribEval",
+      "archetypeId": 106,
+      "wmoCode": 6,
+      "unit": "1"
+    }
+  }
+]

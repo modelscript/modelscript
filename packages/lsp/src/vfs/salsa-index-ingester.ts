@@ -4,15 +4,29 @@ import { deserializeMemo, type Memo, type QueryCacheStore, type SymbolEntry } fr
 import { createRequire } from "node:module";
 import initSqlJs from "sql.js";
 
-let sqlPromise: Promise<any> | null = null;
-function getSqlInstance(): Promise<any> {
+type SqlJsStatic = Awaited<ReturnType<typeof initSqlJs>>;
+
+export interface SalsaQueryEngineLike {
+  index?:
+    | {
+        symbols: Map<number, SymbolEntry>;
+        byName?: Map<string, number[]> | undefined;
+        childrenOf?: Map<number | null, number[]> | undefined;
+        symbolsByResource?: Map<string, number[]> | undefined;
+      }
+    | undefined;
+  hydrateMemos?: ((memos: Map<number, Memo>) => void) | undefined;
+}
+
+let sqlPromise: Promise<SqlJsStatic> | null = null;
+function getSqlInstance(): Promise<SqlJsStatic> {
   if (!sqlPromise) {
     let wasmBinary: ArrayBuffer | undefined;
     try {
       if (typeof process !== "undefined" && process.versions?.node) {
         const req = createRequire(import.meta.url);
         const wasmPath = req.resolve("sql.js/dist/sql-wasm.wasm");
-        const fs = req("node:fs");
+        const fs = req("node:fs") as { readFileSync(p: string): Buffer };
         const buf: Buffer = fs.readFileSync(wasmPath);
         const copy = new Uint8Array(buf.length);
         copy.set(buf);
@@ -26,7 +40,7 @@ function getSqlInstance(): Promise<any> {
       ...(wasmBinary ? { wasmBinary } : {}),
       useOldExtensionFunctions: false,
       locateFile: (file: string) => {
-        const base = (globalThis as any).serverDistBase;
+        const base = (globalThis as { serverDistBase?: string }).serverDistBase;
         if (base) {
           return `${base}/${file}`;
         }
@@ -43,7 +57,7 @@ function getSqlInstance(): Promise<any> {
 export async function ingestSalsaIndex(
   buffer: ArrayBuffer,
   cacheStore: QueryCacheStore,
-  queryEngine?: any,
+  queryEngine?: SalsaQueryEngineLike,
 ): Promise<{ symbols: number; memos: number }> {
   const SQL = await getSqlInstance();
 
@@ -52,21 +66,22 @@ export async function ingestSalsaIndex(
   try {
     // Check schema version
     const metaRows = db.exec("SELECT value FROM meta WHERE key = 'schema_version'");
-    const version = metaRows.length > 0 && metaRows[0].values.length > 0 ? metaRows[0].values[0][0] : null;
+    const version = metaRows[0]?.values[0]?.[0] ?? null;
     if (version !== "1") {
-      throw new Error(`Unsupported salsa-index schema version: ${version}`);
+      throw new Error(`Unsupported salsa-index schema version: ${String(version)}`);
     }
 
     // Stream symbols into queryEngine.index with collision-safe ID remapping
     let symbolCount = 0;
     const symbolRows = db.exec("SELECT id, data FROM symbols");
-    if (symbolRows.length > 0 && queryEngine?.index?.symbols) {
+    const symTable = symbolRows[0];
+    if (symTable && queryEngine?.index?.symbols) {
       const parsedEntries: Array<{ rawId: number; entry: SymbolEntry }> = [];
       let hasCollision = false;
-      for (const row of symbolRows[0].values) {
+      for (const row of symTable.values) {
         try {
           const rawId = Number(row[0]);
-          const entry = JSON.parse(row[1] as string) as SymbolEntry;
+          const entry = JSON.parse(String(row[1])) as SymbolEntry;
           if (queryEngine.index.symbols.has(rawId)) {
             hasCollision = true;
           }
@@ -135,11 +150,12 @@ export async function ingestSalsaIndex(
     // Stream memos into cache store
     const memoRows = db.exec("SELECT key, data FROM memos");
     const memos = new Map<number, Memo>();
-    if (memoRows.length > 0) {
-      for (const row of memoRows[0].values) {
+    const memoTable = memoRows[0];
+    if (memoTable) {
+      for (const row of memoTable.values) {
         try {
           const key = Number(row[0]);
-          const data = deserializeMemo(JSON.parse(row[1] as string));
+          const data = deserializeMemo(JSON.parse(String(row[1])) as Parameters<typeof deserializeMemo>[0]);
           memos.set(key, data);
         } catch {
           // Ignore malformed memos

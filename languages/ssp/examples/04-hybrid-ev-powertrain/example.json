@@ -1,0 +1,11 @@
+{
+  "id": "ssp-04-hybrid-ev-powertrain",
+  "lang": "ssp",
+  "subFormats": ["ssd", "ssv", "ssm"],
+  "difficulty": 4,
+  "title": "Hybrid EV Powertrain Multi-FMU Co-Simulation",
+  "description": "Electric vehicle traction powertrain co-simulation linking battery pack, traction inverter, and PMSM motor FMUs with separate SSV parameter files and SSM signal mapping.",
+  "category": "Automotive Powertrain",
+  "tags": ["ssp", "ev-powertrain", "battery", "inverter", "multi-file"],
+  "activeFile": "SystemStructure.ssd"
+}

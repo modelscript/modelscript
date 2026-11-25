@@ -178,7 +178,7 @@ export interface RtmElement {
     category?: string | undefined;
     allocatedTo?: string[] | undefined;
     iso14971?: Partial<Iso14971Hazard> | undefined;
-    [key: string]: any;
+    [key: string]: unknown;
   };
 }
 

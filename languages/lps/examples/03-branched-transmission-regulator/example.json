@@ -1,0 +1,11 @@
+{
+  "id": "lps-03-branched-transmission-regulator",
+  "lang": "lps",
+  "subFormats": ["lps"],
+  "difficulty": 3,
+  "title": "Branched Transmission Pipeline with Regulator Valve",
+  "description": "High-pressure main gas transmission line splitting into an industrial power-plant lateral and a pressure-regulated municipal distribution branch with preheater protection.",
+  "category": "Pipeline Hydraulics",
+  "tags": ["lps", "regulator", "branched-network", "preheater"],
+  "activeFile": "branched_regulator.lps"
+}

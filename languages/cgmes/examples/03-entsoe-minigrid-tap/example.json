@@ -1,0 +1,11 @@
+{
+  "id": "cgmes-03-entsoe-minigrid-tap",
+  "lang": "cgmes",
+  "subFormats": ["cgmes", "xml"],
+  "difficulty": 3,
+  "title": "ENTSO-E MiniGrid 5-Bus with Tap-Changing Transformer",
+  "description": "5-bus 380/110 kV ENTSO-E MiniGrid with parallel transmission lines, a ratio tap-changing autotransformer, two generators, and full EQ/TP/SSH/SV profiles.",
+  "category": "Transmission Modeling",
+  "tags": ["cgmes", "entsoe", "tap-changer", "minigrid", "multi-file"],
+  "activeFile": "EQ.xml"
+}

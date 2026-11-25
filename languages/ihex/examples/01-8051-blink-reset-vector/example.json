@@ -1,0 +1,12 @@
+{
+  "id": "ihex-01-8051-blink-reset-vector",
+  "lang": "ihex",
+  "subFormats": ["i8hex"],
+  "difficulty": 1,
+  "title": "8051 LED Blink Reset Vector & Delay Routine (I8HEX)",
+  "description": "Clean 64-byte I8HEX firmware image for an Intel 8051 microcontroller containing reset/timer vectors, Port 1 LED toggle main loop, and nested software delay subroutine.",
+  "category": "Embedded Firmware",
+  "tags": ["ihex", "i8hex", "8051", "firmware", "checksum"],
+  "activeFile": "blink8051.hex",
+  "isDefaultStarter": true
+}

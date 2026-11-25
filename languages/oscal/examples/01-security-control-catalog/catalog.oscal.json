@@ -1,0 +1,47 @@
+{
+  "catalog": {
+    "uuid": "11111111-1111-4111-8111-111111111101",
+    "metadata": {
+      "title": "Industrial Automation Baseline Security Catalog",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "groups": [
+      {
+        "id": "ac",
+        "title": "Access Control",
+        "controls": [
+          {
+            "id": "ac-3",
+            "title": "Access Enforcement",
+            "parts": [
+              {
+                "id": "ac-3_smt",
+                "name": "statement",
+                "prose": "Enforce approved authorizations for logical access to control-network information and system resources."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sc",
+        "title": "System and Communications Protection",
+        "controls": [
+          {
+            "id": "sc-7",
+            "title": "Boundary Protection",
+            "parts": [
+              {
+                "id": "sc-7_smt",
+                "name": "statement",
+                "prose": "Monitor and control communications at external managed interfaces and key internal OT/IT network boundaries."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

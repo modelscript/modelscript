@@ -1,0 +1,11 @@
+{
+  "id": "rinex-03-dual-frequency-iono-free",
+  "lang": "rinex",
+  "subFormats": ["rinex-2.11-obs", "rinex-2.11-nav"],
+  "difficulty": 3,
+  "title": "Dual-Frequency L1/L2 Ionosphere-Free Code & Carrier Phase",
+  "description": "Dual-frequency (L1/L2) geodetic receiver RINEX v2.11 observation set with C1, P2, L1, and L2 observables plus broadcast ephemeris for ionosphere-free linear combination.",
+  "category": "Precision Geodesy",
+  "tags": ["rinex", "dual-frequency", "l1-l2", "ionosphere-free", "carrier-phase"],
+  "activeFile": "dual_freq.obs"
+}

@@ -1,0 +1,89 @@
+[
+  {
+    "id": "usd-01-rigid-cube-physics",
+    "lang": "usd",
+    "subFormats": ["usda"],
+    "difficulty": 1,
+    "title": "Rigid-Body Cube on Ground Plane (UsdPhysics)",
+    "description": "Minimal OpenUSD ASCII stage defining a dynamic UsdPhysics rigid-body cube with mass and inertia over a static collision ground plane.",
+    "category": "3D Physics Scene",
+    "tags": ["usd", "usda", "usdphysics", "rigid-body", "scene"],
+    "activeFile": "rigid_cube.usda",
+    "fileNames": ["rigid_cube.usda"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "#usda 1.0\n(\n    defaultPrim = \"World\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\ndef Xform \"World\"\n{\n    def PhysicsScene \"physicsScene\"\n    {\n        vector3f physics:gravityDirection = (0.0, 0.0, -1.0)\n        float physics:gravityMagnitude = 9.81\n    }\n\n    def Cube \"GroundPlane\" (\n        prepend apiSchemas = [\"PhysicsCollisionAPI\"]\n    )\n    {\n        double size = 1.0\n        double3 xformOp:scale = (20.0, 20.0, 0.2)\n        double3 xformOp:translate = (0.0, 0.0, -0.1)\n        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:scale\"]\n    }\n\n    def Cube \"DropBox\" (\n        prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsMassAPI\", \"PhysicsCollisionAPI\"]\n    )\n    {\n        double size = 0.5\n        bool physics:rigidBodyEnabled = true\n        float physics:mass = 2.5\n        float3 physics:diagonalInertia = (0.104, 0.104, 0.104)\n        double3 xformOp:translate = (0.0, 0.0, 2.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n}\n"
+  },
+  {
+    "id": "usd-02-articulated-pendulum",
+    "lang": "usd",
+    "subFormats": ["usda"],
+    "difficulty": 2,
+    "title": "Articulated Pendulum with PhysicsRevoluteJoint",
+    "description": "OpenUSD articulated mechanism linking a fixed pivot stanchion to a swinging pendulum arm via a bounded UsdPhysics revolute joint.",
+    "category": "Multibody Physics",
+    "tags": ["usd", "pendulum", "revolute-joint", "usdphysics", "kinematics"],
+    "activeFile": "pendulum.usda",
+    "fileNames": ["pendulum.usda"],
+    "fileCount": 1,
+    "code": "#usda 1.0\n(\n    defaultPrim = \"PendulumRig\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\ndef Xform \"PendulumRig\" (\n    kind = \"assembly\"\n)\n{\n    def Xform \"pivot_base\" (\n        prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsMassAPI\"]\n    )\n    {\n        bool physics:rigidBodyEnabled = false\n        float physics:mass = 15.0\n        float3 physics:diagonalInertia = (0.5, 0.5, 0.5)\n\n        def Cube \"stand\"\n        {\n            double size = 0.2\n            double3 xformOp:translate = (0.0, 0.0, 1.5)\n            uniform token[] xformOpOrder = [\"xformOp:translate\"]\n        }\n    }\n\n    def Xform \"swing_arm\" (\n        prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsMassAPI\"]\n    )\n    {\n        bool physics:rigidBodyEnabled = true\n        float physics:mass = 3.2\n        float3 physics:diagonalInertia = (0.35, 0.35, 0.04)\n\n        def Cylinder \"rod\"\n        {\n            double radius = 0.025\n            double height = 1.0\n            double3 xformOp:translate = (0.0, 0.0, 1.0)\n            uniform token[] xformOpOrder = [\"xformOp:translate\"]\n        }\n    }\n\n    def PhysicsRevoluteJoint \"pivot_joint\"\n    {\n        rel physics:body0 = </PendulumRig/pivot_base>\n        rel physics:body1 = </PendulumRig/swing_arm>\n        uniform token physics:axis = \"Y\"\n        float physics:lowerLimit = -2.8\n        float physics:upperLimit = 2.8\n    }\n}\n"
+  },
+  {
+    "id": "usd-03-warehouse-rack-composition",
+    "lang": "usd",
+    "subFormats": ["usda"],
+    "difficulty": 3,
+    "title": "Warehouse Pallet & Shelving Asset Composition",
+    "description": "Multi-file OpenUSD scene composing reusable pallet-rack geometry and PBR material layers via USD subLayers and asset references.",
+    "category": "Scene Composition",
+    "tags": ["usd", "composition", "sublayers", "warehouse", "multi-file"],
+    "activeFile": "scene.usda",
+    "fileNames": ["scene.usda", "materials.usda", "rack_asset.usda"],
+    "fileCount": 3,
+    "code": "#usda 1.0\n(\n    defaultPrim = \"WarehouseAisle\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n    subLayers = [\n        @./materials.usda@\n    ]\n)\n\ndef Xform \"WarehouseAisle\"\n{\n    def Xform \"Rack_A1\" (\n        prepend references = @./rack_asset.usda@\n    )\n    {\n        double3 xformOp:translate = (0.0, 0.0, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n\n    def Xform \"Rack_A2\" (\n        prepend references = @./rack_asset.usda@\n    )\n    {\n        double3 xformOp:translate = (2.6, 0.0, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n}\n",
+    "files": {
+      "scene.usda": "#usda 1.0\n(\n    defaultPrim = \"WarehouseAisle\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n    subLayers = [\n        @./materials.usda@\n    ]\n)\n\ndef Xform \"WarehouseAisle\"\n{\n    def Xform \"Rack_A1\" (\n        prepend references = @./rack_asset.usda@\n    )\n    {\n        double3 xformOp:translate = (0.0, 0.0, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n\n    def Xform \"Rack_A2\" (\n        prepend references = @./rack_asset.usda@\n    )\n    {\n        double3 xformOp:translate = (2.6, 0.0, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n}\n",
+      "materials.usda": "#usda 1.0\n(\n    defaultPrim = \"Materials\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\ndef Scope \"Materials\"\n{\n    def Material \"RackSteel\"\n    {\n        color3f inputs:diffuseColor = (0.12, 0.25, 0.58)\n        float inputs:metallic = 0.85\n        float inputs:roughness = 0.35\n    }\n\n    def Material \"PalletWood\"\n    {\n        color3f inputs:diffuseColor = (0.62, 0.45, 0.26)\n        float inputs:metallic = 0.0\n        float inputs:roughness = 0.78\n    }\n}\n",
+      "rack_asset.usda": "#usda 1.0\n(\n    defaultPrim = \"PalletRack\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\ndef Xform \"PalletRack\" (\n    kind = \"component\"\n)\n{\n    def Cube \"LeftUpright\"\n    {\n        double size = 1.0\n        double3 xformOp:scale = (0.1, 1.0, 3.0)\n        double3 xformOp:translate = (-1.2, 0.0, 1.5)\n        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:scale\"]\n    }\n\n    def Cube \"RightUpright\"\n    {\n        double size = 1.0\n        double3 xformOp:scale = (0.1, 1.0, 3.0)\n        double3 xformOp:translate = (1.2, 0.0, 1.5)\n        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:scale\"]\n    }\n\n    def Cube \"ShelfDeck\"\n    {\n        double size = 1.0\n        double3 xformOp:scale = (2.4, 1.0, 0.08)\n        double3 xformOp:translate = (0.0, 0.0, 1.4)\n        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:scale\"]\n    }\n}\n"
+    }
+  },
+  {
+    "id": "usd-04-amr-factory-floor",
+    "lang": "usd",
+    "subFormats": ["usda"],
+    "difficulty": 4,
+    "title": "Autonomous Mobile Robot Factory Floor Scene",
+    "description": "Multi-file OpenUSD industrial simulation scene integrating an articulated differential-drive AMR robot asset, factory floor collision plane, and studio lighting layer.",
+    "category": "Robotics Simulation",
+    "tags": ["usd", "amr", "factory", "robotics", "multi-file"],
+    "activeFile": "floor.usda",
+    "fileNames": ["floor.usda", "amr_robot.usda", "lighting.usda"],
+    "fileCount": 3,
+    "code": "#usda 1.0\n(\n    defaultPrim = \"FactoryFloor\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n    subLayers = [\n        @./lighting.usda@\n    ]\n)\n\ndef Xform \"FactoryFloor\"\n{\n    def Cube \"ConcreteSlab\" (\n        prepend apiSchemas = [\"PhysicsCollisionAPI\"]\n    )\n    {\n        double size = 1.0\n        double3 xformOp:scale = (40.0, 30.0, 0.2)\n        double3 xformOp:translate = (0.0, 0.0, -0.1)\n        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:scale\"]\n    }\n\n    def Xform \"AMR_Unit_01\" (\n        prepend references = @./amr_robot.usda@\n    )\n    {\n        double3 xformOp:translate = (2.0, 1.5, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n\n    def Xform \"AMR_Unit_02\" (\n        prepend references = @./amr_robot.usda@\n    )\n    {\n        double3 xformOp:translate = (-4.0, -2.0, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n}\n",
+    "files": {
+      "floor.usda": "#usda 1.0\n(\n    defaultPrim = \"FactoryFloor\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n    subLayers = [\n        @./lighting.usda@\n    ]\n)\n\ndef Xform \"FactoryFloor\"\n{\n    def Cube \"ConcreteSlab\" (\n        prepend apiSchemas = [\"PhysicsCollisionAPI\"]\n    )\n    {\n        double size = 1.0\n        double3 xformOp:scale = (40.0, 30.0, 0.2)\n        double3 xformOp:translate = (0.0, 0.0, -0.1)\n        uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:scale\"]\n    }\n\n    def Xform \"AMR_Unit_01\" (\n        prepend references = @./amr_robot.usda@\n    )\n    {\n        double3 xformOp:translate = (2.0, 1.5, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n\n    def Xform \"AMR_Unit_02\" (\n        prepend references = @./amr_robot.usda@\n    )\n    {\n        double3 xformOp:translate = (-4.0, -2.0, 0.0)\n        uniform token[] xformOpOrder = [\"xformOp:translate\"]\n    }\n}\n",
+      "amr_robot.usda": "#usda 1.0\n(\n    defaultPrim = \"AmrRobot\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\ndef Xform \"AmrRobot\" (\n    kind = \"assembly\"\n)\n{\n    def Xform \"chassis\" (\n        prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsMassAPI\"]\n    )\n    {\n        bool physics:rigidBodyEnabled = true\n        float physics:mass = 45.0\n        float3 physics:diagonalInertia = (2.1, 3.4, 4.2)\n\n        def Cube \"body\"\n        {\n            double size = 1.0\n            double3 xformOp:scale = (0.85, 0.62, 0.28)\n            double3 xformOp:translate = (0.0, 0.0, 0.20)\n            uniform token[] xformOpOrder = [\"xformOp:translate\", \"xformOp:scale\"]\n        }\n    }\n\n    def Xform \"wheel_left\" (\n        prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsMassAPI\"]\n    )\n    {\n        bool physics:rigidBodyEnabled = true\n        float physics:mass = 2.5\n        float3 physics:diagonalInertia = (0.04, 0.07, 0.04)\n\n        def Cylinder \"tire\"\n        {\n            double radius = 0.12\n            double height = 0.06\n            double3 xformOp:translate = (0.0, 0.34, 0.12)\n            uniform token[] xformOpOrder = [\"xformOp:translate\"]\n        }\n    }\n\n    def PhysicsRevoluteJoint \"left_drive_joint\"\n    {\n        rel physics:body0 = </AmrRobot/chassis>\n        rel physics:body1 = </AmrRobot/wheel_left>\n        uniform token physics:axis = \"Y\"\n        float physics:lowerLimit = -3.14\n        float physics:upperLimit = 3.14\n    }\n}\n",
+      "lighting.usda": "#usda 1.0\n(\n    defaultPrim = \"FactoryLights\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\ndef Xform \"FactoryLights\"\n{\n    def DistantLight \"HighBaySun\"\n    {\n        float inputs:intensity = 1200.0\n        color3f inputs:color = (1.0, 0.98, 0.95)\n    }\n\n    def DomeLight \"AmbientFill\"\n    {\n        float inputs:intensity = 350.0\n    }\n}\n"
+    }
+  },
+  {
+    "id": "usd-05-multilayer-digital-twin",
+    "lang": "usd",
+    "subFormats": ["usda"],
+    "difficulty": 5,
+    "title": "Multi-Layer Digital Twin Assembly with Variants & Physics",
+    "description": "Four-layer OpenUSD digital twin separating base geometry, UsdPhysics mass/joint dynamics, PBR shading, and root stage composition with variant sets.",
+    "category": "Digital Twin Composition",
+    "tags": ["usd", "digital-twin", "sublayers", "variants", "multi-file"],
+    "activeFile": "root.usda",
+    "fileNames": ["root.usda", "geom_layer.usda", "physics_layer.usda", "shading_layer.usda"],
+    "fileCount": 4,
+    "code": "#usda 1.0\n(\n    defaultPrim = \"ActuatorCell\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n    subLayers = [\n        @./physics_layer.usda@,\n        @./shading_layer.usda@,\n        @./geom_layer.usda@\n    ]\n)\n\ndef Xform \"ActuatorCell\" (\n    kind = \"assembly\"\n)\n{\n    float custom:ratedTorqueNm = 45.0\n    float custom:overdriveTorqueNm = 68.0\n    string custom:operatingMode = \"nominal\"\n}\n",
+    "files": {
+      "root.usda": "#usda 1.0\n(\n    defaultPrim = \"ActuatorCell\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n    subLayers = [\n        @./physics_layer.usda@,\n        @./shading_layer.usda@,\n        @./geom_layer.usda@\n    ]\n)\n\ndef Xform \"ActuatorCell\" (\n    kind = \"assembly\"\n)\n{\n    float custom:ratedTorqueNm = 45.0\n    float custom:overdriveTorqueNm = 68.0\n    string custom:operatingMode = \"nominal\"\n}\n",
+      "geom_layer.usda": "#usda 1.0\n(\n    defaultPrim = \"ActuatorCell\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\ndef Xform \"ActuatorCell\" (\n    kind = \"assembly\"\n)\n{\n    def Xform \"stator_housing\"\n    {\n        def Cylinder \"outer_shell\"\n        {\n            double radius = 0.14\n            double height = 0.35\n        }\n    }\n\n    def Xform \"rotor_shaft\"\n    {\n        def Cylinder \"shaft_core\"\n        {\n            double radius = 0.04\n            double height = 0.55\n        }\n    }\n}\n",
+      "physics_layer.usda": "#usda 1.0\n(\n    defaultPrim = \"ActuatorCell\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\nover \"ActuatorCell\"\n{\n    over \"stator_housing\" (\n        prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsMassAPI\"]\n    )\n    {\n        bool physics:rigidBodyEnabled = false\n        float physics:mass = 18.5\n        float3 physics:diagonalInertia = (0.42, 0.42, 0.31)\n    }\n\n    over \"rotor_shaft\" (\n        prepend apiSchemas = [\"PhysicsRigidBodyAPI\", \"PhysicsMassAPI\"]\n    )\n    {\n        bool physics:rigidBodyEnabled = true\n        float physics:mass = 4.2\n        float3 physics:diagonalInertia = (0.11, 0.11, 0.015)\n    }\n\n    def PhysicsRevoluteJoint \"rotor_bearing_joint\"\n    {\n        rel physics:body0 = </ActuatorCell/stator_housing>\n        rel physics:body1 = </ActuatorCell/rotor_shaft>\n        uniform token physics:axis = \"Z\"\n        float physics:lowerLimit = -3.14159\n        float physics:upperLimit = 3.14159\n    }\n}\n",
+      "shading_layer.usda": "#usda 1.0\n(\n    defaultPrim = \"ActuatorCell\"\n    metersPerUnit = 1.0\n    upAxis = \"Z\"\n)\n\nover \"ActuatorCell\"\n{\n    def Scope \"Looks\"\n    {\n        def Material \"AnodizedAluminum\"\n        {\n            color3f inputs:diffuseColor = (0.76, 0.78, 0.82)\n            float inputs:metallic = 0.92\n            float inputs:roughness = 0.24\n        }\n\n        def Material \"HardenedSteel\"\n        {\n            color3f inputs:diffuseColor = (0.48, 0.50, 0.54)\n            float inputs:metallic = 0.96\n            float inputs:roughness = 0.18\n        }\n    }\n}\n"
+    }
+  }
+]

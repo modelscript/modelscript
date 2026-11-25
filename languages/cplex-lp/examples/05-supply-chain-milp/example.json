@@ -1,0 +1,11 @@
+{
+  "id": "cplex-lp-05-supply-chain-milp",
+  "lang": "cplex-lp",
+  "subFormats": ["cplex-lp", "milp"],
+  "difficulty": 5,
+  "title": "Multi-Commodity Supply Chain Network MILP",
+  "description": "Mixed-integer supply chain design combining binary plant openings, integer truck dispatches, and continuous commodity flows to meet regional demand at minimum cost.",
+  "category": "Supply Chain Optimization",
+  "tags": ["cplex-lp", "milp", "binaries", "generals", "supply-chain"],
+  "activeFile": "supply_chain.lp"
+}

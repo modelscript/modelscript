@@ -1,0 +1,27 @@
+# AIRS Atmospheric Vertical Sounding Vdata & Profile SDS
+HDF4 AIRS_Sounding_L2 VERSION="4.2"
+  ATTR Mission = "Aqua"
+  ATTR Instrument = "AIRS"
+
+  VDATA SoundingLevels CLASS="AtmosProfile" REF=20
+    FIELD pressure_hPa : FLOAT32
+    FIELD altitude_m : FLOAT32
+    FIELD temperature_K : FLOAT32
+    FIELD rh_percent : FLOAT32
+    DATA [1000.0, 110.0, 290.5, 68.0]
+    DATA [850.0, 1480.0, 281.2, 61.5]
+    DATA [700.0, 3040.0, 272.0, 48.0]
+    DATA [500.0, 5620.0, 255.4, 34.0]
+    DATA [250.0, 10420.0, 222.8, 18.0]
+  END
+
+  SDS PressureGrid TYPE=FLOAT32 REF=21 UNIT="hPa"
+    DIM levels = 5
+    DATA [1000.0, 850.0, 700.0, 500.0, 250.0]
+  END
+
+  VGROUP SoundingProduct CLASS="PROFILE" REF=30
+    MEMBER VDATA SoundingLevels
+    MEMBER SDS PressureGrid
+  END
+END

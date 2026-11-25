@@ -1,0 +1,11 @@
+{
+  "id": "fiber-05-municipal-fttx-osp",
+  "lang": "fiber",
+  "subFormats": ["geojson", "csv"],
+  "difficulty": 5,
+  "title": "Multi-District Municipal FTTx Outside Plant + Splice Schedule",
+  "description": "Multi-file municipal fiber outside-plant workspace uniting a multi-closure GeoJSON distribution topology with a TIA-598-D field splice schedule CSV.",
+  "category": "Municipal Broadband OSP",
+  "tags": ["fiber", "fttx", "municipal", "splice-schedule", "multi-file"],
+  "activeFile": "osp_network.geojson"
+}

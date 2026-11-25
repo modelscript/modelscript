@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/* eslint-disable */
 import React, { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
@@ -14,7 +13,8 @@ import Box from "./Box";
 import FederatedDomainPill from "./FederatedDomainPill";
 import VerifiedAccountBadge from "./VerifiedAccountBadge";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport =
+  (styledImport as unknown as { default?: typeof styledImport }).default ?? styledImport;
 
 const PopoverContainer = styled.div`
   position: absolute;
@@ -60,7 +60,7 @@ const Avatar = styled.div<AvatarProps>`
   flex-shrink: 0;
 
   &::after {
-    content: "${(props: any) => (!props.$url && props.$letter ? props.$letter : "")}";
+    content: "${(props) => (!props.$url && props.$letter ? props.$letter : "")}";
   }
 `;
 
@@ -188,6 +188,17 @@ const ModalCard = styled.div`
   flex-direction: column;
 `;
 
+type HoverProfileData = {
+  username: string;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  banner_url?: string | null | undefined;
+  bio?: string | null | undefined;
+  signing_verified?: boolean | number | undefined;
+  follower_count?: number | undefined;
+  following_count?: number | undefined;
+};
+
 export default function ProfileHoverCard({
   username,
   children,
@@ -200,14 +211,14 @@ export default function ProfileHoverCard({
   const [show, setShow] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<HoverProfileData | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
   const [showUnblockModal, setShowUnblockModal] = useState(false);
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   React.useEffect(() => {
     return () => {
@@ -228,10 +239,12 @@ export default function ProfileHoverCard({
     if (data && data.username === username) return;
     try {
       const json = await getUserProfile(username);
-      setData(json.profile);
+      setData((json.profile as HoverProfileData | undefined) ?? null);
       setIsFollowing(Boolean(user && json.isFollowing));
       setIsBlocked(Boolean(user && json.isBlocked));
-    } catch (e) {}
+    } catch {
+      // ignore hover profile fetch errors
+    }
   };
 
   const handleMouseEnter = () => {
@@ -241,7 +254,7 @@ export default function ProfileHoverCard({
     }
     timerRef.current = setTimeout(() => {
       setShow(true);
-      fetchProfile();
+      void fetchProfile();
     }, 400);
   };
 
@@ -266,9 +279,11 @@ export default function ProfileHoverCard({
       const nextFollowing = typeof json?.following === "boolean" ? json.following : !isFollowing;
       setIsFollowing(nextFollowing);
       if (data) {
-        setData({ ...data, follower_count: Math.max(0, data.follower_count + (nextFollowing ? 1 : -1)) });
+        setData({ ...data, follower_count: Math.max(0, (data.follower_count ?? 0) + (nextFollowing ? 1 : -1)) });
       }
-    } catch (err) {}
+    } catch {
+      // ignore follow toggle errors
+    }
   };
 
   const handleBlockClick = async (e: React.MouseEvent) => {
@@ -281,7 +296,9 @@ export default function ProfileHoverCard({
         await blockUser(username);
         setIsBlocked(true);
         setIsFollowing(false);
-      } catch (err) {}
+      } catch {
+        // ignore block errors
+      }
     }
   };
 
@@ -292,7 +309,9 @@ export default function ProfileHoverCard({
       await unblockUser(username);
       setIsBlocked(false);
       setShowUnblockModal(false);
-    } catch (err) {}
+    } catch {
+      // ignore unblock errors
+    }
   };
 
   let finalTop = rect ? rect.bottom + window.scrollY : 0;

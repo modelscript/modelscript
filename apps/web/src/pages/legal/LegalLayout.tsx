@@ -18,7 +18,7 @@ import { Link, useNavigate } from "react-router-dom";
 import styledImport from "styled-components";
 import { useInstanceBranding, type InstanceBrandingState } from "../../InstanceBrandingContext";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 export interface TocItem {
   id: string;

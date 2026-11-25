@@ -1,0 +1,11 @@
+{
+  "id": "srec-05-ecu-multibank-boot-cal",
+  "lang": "srec",
+  "subFormats": ["s37"],
+  "difficulty": 5,
+  "title": "Multi-Bank Automotive ECU Bootloader, App & Calibration S37 Image",
+  "description": "Three-region 32-bit Motorola S37 flash image uniting a bootloader (0x00000000), engine control application (0x00000400), fuel-map calibration table (0x00000800), S5 count, and S7 entry.",
+  "category": "Automotive ECU Firmware",
+  "tags": ["srec", "s37", "bootloader", "calibration", "multi-bank"],
+  "activeFile": "ecu_multibank.srec"
+}

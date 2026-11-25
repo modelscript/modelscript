@@ -84,9 +84,9 @@ export const OscalPanel: React.FC<LanguagePanelProps> = ({
                 Export SVG
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "oscal", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "oscal", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

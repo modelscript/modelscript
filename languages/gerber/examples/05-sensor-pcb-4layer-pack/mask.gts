@@ -1,0 +1,13 @@
+G04 4-Layer Mixed-Signal Sensor PCB — Top Soldermask Openings*
+%TF.FileFunction,Soldermask,Top*%
+%FSLAX34Y34*%
+%MOMM*%
+%ADD10C,1.800*%
+%LPD*%
+G01*
+D10*
+X40000Y40000D03*
+X360000Y40000D03*
+X360000Y260000D03*
+X40000Y260000D03*
+M02*

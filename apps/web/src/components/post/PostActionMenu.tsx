@@ -21,11 +21,15 @@ import { buildEditorUrlForArtifact, isEditableCodeOrModelArtifact } from "../../
 import Box from "../Box";
 import { DraftingTriangleIcon } from "../icons";
 import { useToast } from "../ToastContext";
-import { MenuButton } from "./styles";
+import { MenuButton, parsePostMetadata, type PostRecord } from "./styles";
 
 const { blockUser, followUser, muteUser, reportPost, reportUser } = apiModule;
+const apiPostActions = apiModule as Partial<{
+  deletePost: (id: string | number) => Promise<unknown>;
+  updatePost: (id: string | number, payload: Record<string, unknown>) => Promise<unknown>;
+}>;
 const deletePost =
-  (apiModule as any).deletePost ||
+  apiPostActions.deletePost ||
   (async (id: string | number) => (await apiModule.api.delete(`/social/posts/${id}`)).data);
 
 export interface PostActionMenuProps {
@@ -36,7 +40,7 @@ export interface PostActionMenuProps {
   onOpenEditModal: () => void;
   onOpenRevisionModal?: (() => void) | undefined;
   onPostDeleted?: (() => void) | undefined;
-  displayPost: any;
+  displayPost: PostRecord;
   token: string | null;
   onOpenLoginModal: () => void;
   remoteOriginUrl: string | null;
@@ -67,14 +71,9 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
   const [reportDetails, setReportDetails] = React.useState("");
   const [alsoBlockAuthor, setAlsoBlockAuthor] = React.useState(false);
 
+  const postMeta = parsePostMetadata(displayPost?.metadata);
   const isPostPinned =
-    isPinned ??
-    Boolean(
-      displayPost?.is_pinned ||
-      displayPost?.pinned ||
-      displayPost?.metadata?.is_pinned ||
-      displayPost?.metadata?.pinned,
-    );
+    isPinned ?? Boolean(displayPost?.is_pinned || displayPost?.pinned || postMeta.is_pinned || postMeta.pinned);
 
   React.useEffect(() => {
     if (!isOpen) {
@@ -269,12 +268,12 @@ export const PostActionMenu: React.FC<PostActionMenuProps> = ({
                     }),
                   );
                 }
-                if (token && displayPost?.id != null && typeof (apiModule as any).updatePost === "function") {
+                if (token && displayPost?.id != null && typeof apiPostActions.updatePost === "function") {
                   try {
-                    await (apiModule as any).updatePost(Number(displayPost.id), {
+                    await apiPostActions.updatePost(Number(displayPost.id), {
                       content: displayPost.content,
                       is_pinned: nextPinned,
-                      metadata: { ...(displayPost.metadata || {}), is_pinned: nextPinned },
+                      metadata: { ...postMeta, is_pinned: nextPinned },
                     });
                   } catch {
                     // ignore

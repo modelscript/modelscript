@@ -1,0 +1,39 @@
+{
+  "chargingStationId": "Depot_DCFC_Smart03",
+  "evseId": 1,
+  "connectorId": 1,
+  "transactionId": "TX-SMART-3001",
+  "chargingProfile": {
+    "chargingProfileId": 301,
+    "stackLevel": 2,
+    "chargingProfilePurpose": "TxProfile",
+    "chargingProfileKind": "Absolute",
+    "chargingSchedule": {
+      "chargingScheduleId": 601,
+      "chargingRateUnit": "kW",
+      "duration": 7200,
+      "chargingSchedulePeriod": [
+        {
+          "startPeriod": 0,
+          "limit": 150.0,
+          "numberPhases": 3
+        },
+        {
+          "startPeriod": 1800,
+          "limit": 90.0,
+          "numberPhases": 3
+        },
+        {
+          "startPeriod": 3600,
+          "limit": 60.0,
+          "numberPhases": 3
+        },
+        {
+          "startPeriod": 5400,
+          "limit": 120.0,
+          "numberPhases": 3
+        }
+      ]
+    }
+  }
+}

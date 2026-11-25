@@ -1,0 +1,54 @@
+DECLARE
+  TYPE
+    MoleFraction = 0.5 : 0.0 : 1.0 UNIT = "mol/mol"
+    MolarFlow    = 10.0 : 0.0 : 500.0 UNIT = "mol/s"
+  END
+END
+
+MODEL BinaryDistillationColumn
+  PARAMETER
+    alpha AS REAL DEFAULT 2.4
+    M_reb AS REAL DEFAULT 50.0
+    M_tr  AS REAL DEFAULT 20.0
+    M_con AS REAL DEFAULT 30.0
+
+  VARIABLE
+    x_reb AS MoleFraction
+    x_tr  AS MoleFraction
+    x_con AS MoleFraction
+    y_reb AS MoleFraction
+    y_tr  AS MoleFraction
+    F_in  AS MolarFlow
+    z_in  AS MoleFraction
+    L_ref AS MolarFlow
+    V_boil AS MolarFlow
+
+  EQUATION
+    y_reb = (alpha * x_reb) / (1.0 + (alpha - 1.0) * x_reb) ;
+    y_tr  = (alpha * x_tr) / (1.0 + (alpha - 1.0) * x_tr) ;
+    M_reb * $x_reb = (L_ref + F_in) * x_tr - V_boil * y_reb - (L_ref + F_in - V_boil) * x_reb ;
+    M_tr  * $x_tr  = F_in * z_in + L_ref * x_con + V_boil * y_reb - (L_ref + F_in) * x_tr - V_boil * y_tr ;
+    M_con * $x_con = V_boil * y_tr - L_ref * x_con - (V_boil - L_ref) * x_con ;
+END
+
+PROCESS DistillationStartup
+  UNIT
+    C401 AS BinaryDistillationColumn
+  SET
+    C401.alpha := 2.4 ;
+    C401.M_reb := 50.0 ;
+    C401.M_tr  := 20.0 ;
+    C401.M_con := 30.0 ;
+  ASSIGN
+    C401.F_in   := 10.0 ;
+    C401.z_in   := 0.50 ;
+    C401.L_ref  := 15.0 ;
+    C401.V_boil := 20.0 ;
+  INITIAL
+    C401.x_reb := 0.50 ;
+    C401.x_tr  := 0.50 ;
+    C401.x_con := 0.50 ;
+  SOLUTIONPARAMETERS
+    ReportingInterval := 0.5 ;
+    TotalTime := 40.0 ;
+END

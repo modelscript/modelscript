@@ -1,0 +1,11 @@
+{
+  "id": "chemkin-04-nox-thermal-zeldovich",
+  "lang": "chemkin",
+  "subFormats": ["inp", "dat"],
+  "difficulty": 4,
+  "title": "Extended Zeldovich Thermal NOx Formation Mechanism",
+  "description": "High-temperature post-flame extended Zeldovich NOx formation mechanism (N2 + O, N + O2, N + OH, NO + O2, NO2) with NASA-7 polynomials for nitrogen oxides and radical species.",
+  "category": "Combustion & Chemical Kinetics",
+  "tags": ["chemkin", "nox", "zeldovich", "multi-file"],
+  "activeFile": "nox_chem.inp"
+}

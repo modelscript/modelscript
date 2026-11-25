@@ -1,0 +1,11 @@
+{
+  "id": "jedec-04-gal22v10-sync-counter",
+  "lang": "jedec",
+  "subFormats": ["jesd3"],
+  "difficulty": 4,
+  "title": "GAL22V10 Registered Synchronous 4-Bit Binary Counter",
+  "description": "Registered-mode GAL22V10 JESD3 fuse map configuring four clocked D-flip-flop macrocells with synchronous clear and clocked test vectors (C-clock stimulus).",
+  "category": "Sequential Programmable Logic",
+  "tags": ["jedec", "gal22v10", "counter", "registered", "sequential"],
+  "activeFile": "gal22v10_counter.jed"
+}

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="inverter_lib" version="5.1.0" Target="Library">
+  <paramlist name="Settings">
+    <param name="description" value="Custom Grid-Forming BESS Inverter Library"/>
+  </paramlist>
+  <definitions>
+    <definition name="BESS_Droop_Inverter" type="module">
+      <paramlist name="Parameters">
+        <param name="Srated" value="4.0"/>
+        <param name="Vnom" value="13.8"/>
+        <param name="Mp" value="0.04"/>
+        <param name="Nq" value="0.05"/>
+      </paramlist>
+      <schematic>
+        <User classid="UserCmp" defn="master:source_3" id="INT_VSC" x="100" y="100" orient="0">
+          <param name="Name" value="ControlledVSC"/>
+          <param name="V" value="13.8"/>
+          <param name="MVA" value="4.0"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

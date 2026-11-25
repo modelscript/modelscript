@@ -106,8 +106,8 @@ export default function ProfilePosts({
       if (unpinnedIds.has(id)) return false;
       if (pinnedIds.has(id)) return true;
       if (pinnedPostId != null && String(pinnedPostId) === id) return true;
-      const anyPost = post as Record<string, any>;
-      return Boolean(anyPost.is_pinned || anyPost.pinned || post.metadata?.is_pinned || post.metadata?.pinned);
+      const postRecord = post as Record<string, unknown>;
+      return Boolean(postRecord.is_pinned || postRecord.pinned || post.metadata?.is_pinned || post.metadata?.pinned);
     },
     [pinnedIds, unpinnedIds, pinnedPostId],
   );
@@ -186,8 +186,8 @@ export default function ProfilePosts({
   }, [username, posts, isPostPinned, handleTogglePin]);
 
   useEffect(() => {
-    const handleUserMutedOrBlocked = (e: any) => {
-      const blockedUsername = e?.detail?.username;
+    const handleUserMutedOrBlocked = (e: Event) => {
+      const blockedUsername = (e as CustomEvent<{ username?: string } | undefined>).detail?.username;
       if (blockedUsername && blockedUsername === username) {
         setPosts([]);
       }

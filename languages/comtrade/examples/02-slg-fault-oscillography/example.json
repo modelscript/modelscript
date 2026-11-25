@@ -1,0 +1,11 @@
+{
+  "id": "comtrade-02-slg-fault-oscillography",
+  "lang": "comtrade",
+  "subFormats": ["cfg", "dat"],
+  "difficulty": 2,
+  "title": "Single-Line-to-Ground Fault Oscillography",
+  "description": "Phase-A-to-ground transmission fault capture exhibiting voltage sag, decaying DC offset fault current, and 50/51 overcurrent pickup assertion.",
+  "category": "Fault Recording",
+  "tags": ["comtrade", "slg-fault", "dc-offset", "protection", "multi-file"],
+  "activeFile": "slg_fault.cfg"
+}

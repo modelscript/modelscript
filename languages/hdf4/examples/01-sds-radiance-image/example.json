@@ -1,0 +1,12 @@
+{
+  "id": "hdf4-01-sds-radiance-image",
+  "lang": "hdf4",
+  "subFormats": ["ddl"],
+  "difficulty": 1,
+  "title": "Single 2D Scientific Data Set (SDS) Radiance Image",
+  "description": "Minimal NASA HDF4 DDL archive defining a 3x4 FLOAT32 top-of-atmosphere radiance Scientific Data Set with physical units and fill value.",
+  "category": "Remote Sensing",
+  "tags": ["hdf4", "sds", "radiance", "earth-observation"],
+  "activeFile": "radiance_sds.hdf",
+  "isDefaultStarter": true
+}

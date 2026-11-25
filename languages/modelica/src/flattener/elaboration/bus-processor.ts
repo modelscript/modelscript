@@ -11,7 +11,7 @@ import {
   Variability,
   VarType,
 } from "@modelscript/runtime";
-import { Cst } from "../../../src-gen/bindings.js";
+import { Cst, type SyntaxNode } from "../../../src-gen/bindings.js";
 import { ModelicaErrorCode } from "../../errors.js";
 import { type CstNodeLike, tokenizeCommentStrippedWords } from "../expressions/cst-utils.js";
 
@@ -43,10 +43,10 @@ export function isExpandableConnectorClass(db: QueryDB, classId: SymbolId): bool
   if (!classId) return false;
   const sym = db.symbol(classId);
   if (!sym) return false;
-  const meta = (sym.metadata as any) || {};
+  const meta = (sym.metadata ?? {}) as { classPrefixes?: string; classKind?: string };
   const words = tokenizeCommentStrippedWords(String(meta.classPrefixes ?? meta.classKind ?? ""));
   if (words.includes("expandable") && words.includes("connector")) return true;
-  const cst = db.cstNode(classId) as any;
+  const cst = db.cstNode(classId) as SyntaxNode | null;
   if (cst) {
     const pfx = Cst.ClassDefinition.classPrefixes(cst);
     if (pfx) {

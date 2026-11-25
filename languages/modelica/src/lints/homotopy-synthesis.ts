@@ -100,15 +100,38 @@ export function deriveSimplification(
 }
 
 /**
+ * Minimal structural interface for CST/AST nodes traversed during homotopy synthesis.
+ * Compatible with WASM `SyntaxNode` instances as well as lightweight AST node shapes.
+ */
+export interface HomotopyCstNode {
+  readonly type?: string | undefined;
+  readonly text?: string | undefined;
+  readonly children?: readonly HomotopyCstNode[] | undefined;
+  readonly childCount?: number | undefined;
+  readonly child?: ((index: number) => HomotopyCstNode | null | undefined) | undefined;
+  readonly startIndex?: number | undefined;
+  readonly startOffset?: number | undefined;
+  readonly from?: number | undefined;
+  readonly endIndex?: number | undefined;
+  readonly endOffset?: number | undefined;
+  readonly to?: number | undefined;
+}
+
+function isHomotopyCstNode(value: unknown): value is HomotopyCstNode {
+  return typeof value === "object" && value !== null;
+}
+
+/**
  * Recursively searches a CST node or text for equations containing steep nonlinearities
  * that do not already use the `homotopy()` operator (rule M5010 `homotopy-recommended`).
  *
  * @param cst - Root CST node of the class definition or equation section to inspect.
  * @returns Array of `NonlinearTermInfo` descriptors for all un-wrapped nonlinear terms found.
  */
-export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
+export function findNonlinearTermsInCst(cst: unknown): NonlinearTermInfo[] {
   const results: NonlinearTermInfo[] = [];
-  if (!cst) return results;
+  if (!isHomotopyCstNode(cst)) return results;
+  const rootCst: HomotopyCstNode = cst;
 
   const isWordChar = (ch: string | undefined): boolean =>
     Boolean(ch && ((ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch === "_"));
@@ -143,18 +166,22 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
 
   // Collect declared parameter/constant variable names at class scope to suppress M5010 noise on constant math
   const constParamVars = new Set<string>();
-  const collectConstParams = (node: any): void => {
+  const collectConstParams = (node: HomotopyCstNode | null | undefined): void => {
     if (!node) return;
     const nt = node.type || "";
-    if (node !== cst && (nt === "class_definition" || nt === "ClassDefinition")) return;
+    if (node !== rootCst && (nt === "class_definition" || nt === "ClassDefinition")) return;
     if (nt === "component_clause" || nt === "ComponentClause") {
       const clauseText = (node.text || "").trimStart();
       if (/^(parameter|constant)\b/.test(clauseText)) {
-        const declList = node.children?.find((c: any) => c.type === "component_list" || c.type === "ComponentList");
-        const scanDecls = (dNode: any): void => {
+        const declList = node.children?.find(
+          (c: HomotopyCstNode) => c.type === "component_list" || c.type === "ComponentList",
+        );
+        const scanDecls = (dNode: HomotopyCstNode | null | undefined): void => {
           if (!dNode) return;
           if (dNode.type === "declaration" || dNode.type === "Declaration") {
-            const firstId = dNode.children?.find((c: any) => c.type === "identifier" || c.type === "Identifier");
+            const firstId = dNode.children?.find(
+              (c: HomotopyCstNode) => c.type === "identifier" || c.type === "Identifier",
+            );
             const idText = firstId?.text?.trim();
             if (idText) constParamVars.add(idText);
             return;
@@ -165,13 +192,13 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       }
       return;
     }
-    if (typeof node.childCount === "number") {
+    if (typeof node.childCount === "number" && typeof node.child === "function") {
       for (let i = 0; i < node.childCount; i++) collectConstParams(node.child(i));
     } else if (Array.isArray(node.children)) {
       for (const ch of node.children) collectConstParams(ch);
     }
   };
-  collectConstParams(cst);
+  collectConstParams(rootCst);
 
   const BUILTIN_FN_NAMES = new Set([
     "exp",
@@ -204,11 +231,11 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
   };
 
   // Find all equation sections and simple equations without crossing into nested class definitions
-  function walk(node: any) {
+  function walk(node: HomotopyCstNode | null | undefined): void {
     if (!node) return;
 
     const nodeType = node.type || "";
-    if (node !== cst && (nodeType === "class_definition" || nodeType === "ClassDefinition")) {
+    if (node !== rootCst && (nodeType === "class_definition" || nodeType === "ClassDefinition")) {
       return;
     }
     if (
@@ -249,10 +276,10 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
 
       // Check for nonlinear patterns in equation CST first, then fallback to text
       let eqStart = node.startIndex ?? node.startOffset ?? node.from ?? 0;
-      if (eqStart === 0 && cst.text && text) {
-        const posInCst = cst.text.indexOf(text);
+      if (eqStart === 0 && rootCst.text && text) {
+        const posInCst = rootCst.text.indexOf(text);
         if (posInCst >= 0) {
-          const cstStart = cst.startIndex ?? cst.startOffset ?? cst.from ?? 0;
+          const cstStart = rootCst.startIndex ?? rootCst.startOffset ?? rootCst.from ?? 0;
           eqStart = cstStart + posInCst;
         }
       }
@@ -341,7 +368,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
         return undefined;
       }
 
-      const walkExprCst = (exprNode: any) => {
+      const walkExprCst = (exprNode: HomotopyCstNode | null | undefined): void => {
         if (!exprNode) return;
         const et = exprNode.type || "";
         const eText = (exprNode.text || "").trim();
@@ -395,7 +422,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
             }
           }
         }
-        if (typeof exprNode.childCount === "number") {
+        if (typeof exprNode.childCount === "number" && typeof exprNode.child === "function") {
           for (let i = 0; i < exprNode.childCount; i++) walkExprCst(exprNode.child(i));
         } else if (Array.isArray(exprNode.children)) {
           for (const ch of exprNode.children) walkExprCst(ch);
@@ -496,7 +523,7 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
       return; // Do not recurse deeper into simple_equation children once handled
     }
 
-    if (typeof node.childCount === "number") {
+    if (typeof node.childCount === "number" && typeof node.child === "function") {
       for (let i = 0; i < node.childCount; i++) {
         walk(node.child(i));
       }
@@ -507,6 +534,6 @@ export function findNonlinearTermsInCst(cst: any): NonlinearTermInfo[] {
     }
   }
 
-  walk(cst);
+  walk(rootCst);
   return results;
 }

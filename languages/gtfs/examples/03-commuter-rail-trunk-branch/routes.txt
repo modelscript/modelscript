@@ -1,0 +1,3 @@
+route_id,agency_id,route_short_name,route_long_name,route_type
+CR_NORTH,REG_RAIL,CR-N,Northvale Commuter Rail,2
+CR_SOUTH,REG_RAIL,CR-S,Southport Commuter Rail,2

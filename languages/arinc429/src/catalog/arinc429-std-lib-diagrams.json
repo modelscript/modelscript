@@ -1,0 +1,295 @@
+[
+  {
+    "namePath": "arinc429:ADC_ALTITUDE_203",
+    "aliases": [
+      "203",
+      "PRESSURE_ALTITUDE",
+      "BARO_ALT"
+    ],
+    "label": "ADC Label 203 (ALTITUDE)",
+    "category": "Air Data Computer",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ADC</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L203</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">ALTITUDE</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:ADC_MACH_205",
+    "aliases": [
+      "205",
+      "MACH_NUMBER"
+    ],
+    "label": "ADC Label 205 (MACH)",
+    "category": "Air Data Computer",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ADC</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L205</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">MACH</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:ADC_AIRSPEED_206",
+    "aliases": [
+      "206",
+      "CAS",
+      "COMPUTED_AIRSPEED"
+    ],
+    "label": "ADC Label 206 (AIRSPEED)",
+    "category": "Air Data Computer",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ADC</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L206</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">AIRSPEED</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:ADC_TAT_211",
+    "aliases": [
+      "211",
+      "TAT"
+    ],
+    "label": "ADC Label 211 (TOTAL_AIR_TEMP)",
+    "category": "Air Data Computer",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">ADC</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L211</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">TOTAL_AIR_</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:IRS_LATITUDE_310",
+    "aliases": [
+      "310",
+      "PPOS_LAT"
+    ],
+    "label": "IRS Label 310 (LATITUDE)",
+    "category": "Inertial Reference System",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">IRS</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L310</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">LATITUDE</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:IRS_LONGITUDE_311",
+    "aliases": [
+      "311",
+      "PPOS_LON"
+    ],
+    "label": "IRS Label 311 (LONGITUDE)",
+    "category": "Inertial Reference System",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">IRS</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L311</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">LONGITUDE</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:IRS_HEADING_314",
+    "aliases": [
+      "314",
+      "TRUE_HEADING"
+    ],
+    "label": "IRS Label 314 (HEADING)",
+    "category": "Inertial Reference System",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">IRS</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L314</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">HEADING</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:IRS_PITCH_324",
+    "aliases": [
+      "324",
+      "PITCH_ANGLE"
+    ],
+    "label": "IRS Label 324 (PITCH)",
+    "category": "Inertial Reference System",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">IRS</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L324</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">PITCH</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:IRS_ROLL_325",
+    "aliases": [
+      "325",
+      "ROLL_ANGLE"
+    ],
+    "label": "IRS Label 325 (ROLL)",
+    "category": "Inertial Reference System",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">IRS</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L325</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">ROLL</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "arinc429:LRRA_RADIO_ALT_164",
+    "aliases": [
+      "164",
+      "RADIO_HEIGHT",
+      "LRRA"
+    ],
+    "label": "LRRA Label 164 (RADIO_ALTITUDE)",
+    "category": "Radio Altimeter",
+    "domain": "aerospace",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#14332a\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"32\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"22\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">LRRA</text><text x=\"72\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#fde68a\">L164</text><text x=\"48\" y=\"38\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">RADIO_ALTI</text></svg>",
+    "ports": [
+      {
+        "name": "sensor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "a429_tx",
+        "kind": "bus",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  }
+]

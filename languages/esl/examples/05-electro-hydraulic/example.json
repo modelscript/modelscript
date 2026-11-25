@@ -1,0 +1,11 @@
+{
+  "id": "esl-05-electro-hydraulic",
+  "lang": "esl",
+  "subFormats": ["esl"],
+  "difficulty": 5,
+  "title": "Modular Electro-Hydraulic Actuator",
+  "description": "Multi-file ESA ESL electro-hydraulic flight-control actuator combining a proportional spool-valve submodel, hydraulic chamber compressibility, and piston load dynamics.",
+  "category": "Fluid Power & Aerospace",
+  "tags": ["esl", "hydraulic", "actuator", "submodel", "multi-file"],
+  "activeFile": "system.esl"
+}

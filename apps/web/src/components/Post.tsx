@@ -7,12 +7,13 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { bookmarkPost, likePost, recordPostView, repostPost } from "../api";
 import { useAuth } from "../AuthContext";
+import { asRecord } from "../util/error";
 import { parseFederatedHandle } from "../util/federation";
-import { safeJsonParse } from "../util/json";
 import {
   estimateReadingTimeMinutes,
   extractNotebookHeadings,
   isNotebookPost,
+  type NotebookMetadata,
   parseNotebookFromContent,
 } from "../util/notebook";
 import { setupPostDwellObservation } from "../util/post-dwell";
@@ -27,8 +28,8 @@ import { PostBodyContent } from "./post/PostBodyContent";
 import { PostQuotedPost } from "./post/PostQuotedPost";
 import { PostRevisionHistoryModal } from "./post/PostRevisionHistoryModal";
 import { PostSignatureModal } from "./post/PostSignatureModal";
-import type { PostProps } from "./post/styles";
-import { HoverAvatar, PostWrapper, ProfileNameLink } from "./post/styles";
+import type { PostProps, PostRecord } from "./post/styles";
+import { HoverAvatar, parsePostMetadata, PostWrapper, ProfileNameLink } from "./post/styles";
 import ProfileHoverCard from "./ProfileHoverCard";
 import { useToast } from "./ToastContext";
 
@@ -42,6 +43,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
   const { token, user } = useAuth();
   const toast = useToast();
   const basePost = post.repost_post || post;
+  const rawPostMeta = parsePostMetadata(post.metadata);
   const isPinned =
     isPinnedProp ??
     Boolean(
@@ -49,35 +51,31 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
       post.pinned ||
       basePost.is_pinned ||
       basePost.pinned ||
-      post.metadata?.is_pinned ||
-      post.metadata?.pinned,
+      rawPostMeta.is_pinned ||
+      rawPostMeta.pinned,
     );
-  const [editedOverrides, setEditedOverrides] = useState<Record<string, any>>({});
+  const [editedOverrides, setEditedOverrides] = useState<Partial<PostRecord>>({});
   useEffect(() => {
     setEditedOverrides({});
   }, [basePost.id, basePost.content]);
-  const displayPost = useMemo(() => ({ ...basePost, ...editedOverrides }), [basePost, editedOverrides]);
-  const canEditPost = Boolean(
-    token && user && (user.username === displayPost.username || (user as any)?.role === "admin"),
-  );
+  const displayPost = useMemo<PostRecord>(() => ({ ...basePost, ...editedOverrides }), [basePost, editedOverrides]);
+  const canEditPost = Boolean(token && user && (user.username === displayPost.username || user.role === "admin"));
 
   const [liked, setLiked] = useState(Boolean(token && displayPost.liked));
-  const [likeCount, setLikeCount] = useState(displayPost.like_count);
+  const [likeCount, setLikeCount] = useState(displayPost.like_count ?? 0);
   const [reposted, setReposted] = useState(Boolean(token && displayPost.reposted));
-  const [repostCount, setRepostCount] = useState(displayPost.repost_count);
+  const [repostCount, setRepostCount] = useState(displayPost.repost_count ?? 0);
   const [bookmarked, setBookmarked] = useState(Boolean(token && displayPost.bookmarked));
   const [bookmarkCount, setBookmarkCount] = useState(displayPost.bookmark_count || 0);
-  const [impressions, setImpressions] = useState<number>(
-    displayPost.view_count ?? (displayPost as any).views_count ?? 0,
-  );
+  const [impressions, setImpressions] = useState<number>(displayPost.view_count ?? displayPost.views_count ?? 0);
   const [isDeleted, setIsDeleted] = useState(false);
 
-  const legacyViewsCount = (displayPost as { views_count?: number }).views_count;
+  const legacyViewsCount = displayPost.views_count;
   useEffect(() => {
     setLiked(Boolean(token && displayPost.liked));
-    setLikeCount(displayPost.like_count);
+    setLikeCount(displayPost.like_count ?? 0);
     setReposted(Boolean(token && displayPost.reposted));
-    setRepostCount(displayPost.repost_count);
+    setRepostCount(displayPost.repost_count ?? 0);
     setBookmarked(Boolean(token && displayPost.bookmarked));
     setBookmarkCount(displayPost.bookmark_count || 0);
     setImpressions(displayPost.view_count ?? legacyViewsCount ?? 0);
@@ -149,52 +147,38 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
     return null;
   }, [displayPost.url, displayPost.ap_id]);
 
-  const postMeta = useMemo<Record<string, any>>(() => {
-    if (typeof displayPost.metadata === "string") {
-      return safeJsonParse<Record<string, any>>(displayPost.metadata, {});
-    }
-    return displayPost.metadata && typeof displayPost.metadata === "object"
-      ? (displayPost.metadata as Record<string, any>)
-      : {};
-  }, [displayPost.metadata]);
+  const postMeta = useMemo<Record<string, unknown>>(
+    () => parsePostMetadata(displayPost.metadata),
+    [displayPost.metadata],
+  );
+  const postProof = useMemo(() => asRecord(postMeta.proof), [postMeta]);
 
-  const signatureDigest =
-    (displayPost as any).signature ||
-    displayPost.client_signature ||
-    postMeta?.client_signature ||
-    postMeta?.clientSignature ||
-    postMeta?.proof?.proofValue ||
-    postMeta?.proof?.signature ||
-    postMeta?.signature ||
-    displayPost.metadata?.client_signature ||
-    displayPost.metadata?.clientSignature ||
-    displayPost.metadata?.proof?.proofValue ||
-    displayPost.metadata?.proof?.signature ||
-    displayPost.metadata?.signature ||
-    "";
+  const signatureDigest = String(
+    displayPost.signature ||
+      displayPost.client_signature ||
+      postMeta.client_signature ||
+      postMeta.clientSignature ||
+      postProof?.proofValue ||
+      postProof?.signature ||
+      postMeta.signature ||
+      "",
+  );
 
   const hasSignature = Boolean(signatureDigest);
 
-  const signatureScheme =
-    postMeta?.proof?.cryptosuite || displayPost.metadata?.proof?.cryptosuite
-      ? `Data Integrity (${postMeta?.proof?.cryptosuite || displayPost.metadata?.proof?.cryptosuite})`
-      : displayPost.client_signature ||
-          postMeta?.client_signature ||
-          postMeta?.clientSignature ||
-          displayPost.metadata?.client_signature ||
-          displayPost.metadata?.clientSignature
-        ? "WebCrypto RSASSA-PKCS1-v1_5 / SHA-256"
-        : "ActivityPub RFC 9421 / Cavage HTTP Signatures";
+  const signatureScheme = postProof?.cryptosuite
+    ? `Data Integrity (${String(postProof.cryptosuite)})`
+    : displayPost.client_signature || postMeta.client_signature || postMeta.clientSignature
+      ? "WebCrypto RSASSA-PKCS1-v1_5 / SHA-256"
+      : "ActivityPub RFC 9421 / Cavage HTTP Signatures";
 
-  const keyIdentifier =
+  const keyIdentifier = String(
     displayPost.key_id_string ||
-    postMeta?.key_id_string ||
-    postMeta?.keyIdString ||
-    postMeta?.proof?.verificationMethod ||
-    displayPost.metadata?.key_id_string ||
-    displayPost.metadata?.keyIdString ||
-    displayPost.metadata?.proof?.verificationMethod ||
-    (displayPost.ap_id ? `${displayPost.ap_id}#main-key` : `@${displayPost.username} device-key`);
+      postMeta.key_id_string ||
+      postMeta.keyIdString ||
+      postProof?.verificationMethod ||
+      (displayPost.ap_id ? `${displayPost.ap_id}#main-key` : `@${displayPost.username} device-key`),
+  );
 
   const postContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -224,16 +208,10 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
       ? String(displayPost.artifact_view_id)
       : undefined;
   const isNotebook = isNotebookPost(displayPost);
+  const existingNotebookMeta = asRecord(postMeta.notebook) as Partial<NotebookMetadata> | undefined;
   const notebookData = useMemo(
-    () =>
-      isNotebook
-        ? parseNotebookFromContent(
-            displayPost.content,
-            validArtifactId,
-            postMeta?.notebook || displayPost.metadata?.notebook,
-          )
-        : null,
-    [isNotebook, displayPost.content, validArtifactId, postMeta?.notebook, displayPost.metadata?.notebook],
+    () => (isNotebook ? parseNotebookFromContent(displayPost.content, validArtifactId, existingNotebookMeta) : null),
+    [isNotebook, displayPost.content, validArtifactId, existingNotebookMeta],
   );
   const notebookHeadings = useMemo(
     () => (notebookData ? extractNotebookHeadings(notebookData.cells) : []),
@@ -483,11 +461,8 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
             content: displayPost.content,
             initialContent: displayPost.content,
             contentWarning:
-              (typeof (displayPost as any).content_warning === "string" &&
-                (displayPost as any).content_warning.trim()) ||
-              (typeof (displayPost.metadata as any)?.contentWarning === "string" &&
-                (displayPost.metadata as any).contentWarning.trim()) ||
-              (typeof postMeta?.contentWarning === "string" && postMeta.contentWarning.trim()) ||
+              (typeof displayPost.content_warning === "string" && displayPost.content_warning.trim()) ||
+              (typeof postMeta.contentWarning === "string" && postMeta.contentWarning.trim()) ||
               "",
             artifactId: displayPost.artifact_view_id,
             notebookMode: isNotebook,
@@ -593,7 +568,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
           {!isEditorialDetail && <PostAuthorHeader {...authorHeaderProps} />}
           <PostBodyContent {...bodyContentProps} />
           {displayPost.quote_post && (
-            <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor as any} />
+            <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor} />
           )}
           <PostActionsBar {...actionsBarProps} />
           {errorBanner}
@@ -703,7 +678,7 @@ const Post: React.FC<PostProps> = ({ post, isDetail, isThread, isPinned: isPinne
                 <PostAuthorHeader {...authorHeaderProps} />
                 <PostBodyContent {...bodyContentProps} />
                 {displayPost.quote_post && (
-                  <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor as any} />
+                  <PostQuotedPost quotePost={displayPost.quote_post} parsedQuoteAuthor={parsedQuoteAuthor} />
                 )}
                 <PostActionsBar {...actionsBarProps} />
                 {errorBanner}

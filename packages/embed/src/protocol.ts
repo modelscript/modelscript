@@ -69,7 +69,7 @@ export interface UniversalEmbedPayload {
   /** Indicates if this payload is part of a multi-file package */
   isMultiFile?: boolean | undefined;
   artifactId?: string | number | undefined;
-  morselId?: string | undefined;
+  ansatzId?: string | undefined;
   embedToken?: string | undefined;
 }
 
@@ -92,4 +92,4 @@ export type EmbedToHostMessage =
   | { type: "SIMULATION_STATUS"; status: "running" | "completed" | "error"; error?: string }
   | { type: "SIMULATION_RESULTS"; variables: string[]; data: Record<string, number | string>[] }
   | { type: "EXPORTED_SVG"; svg: string }
-  | { type: "OPEN_TARGET_REQUESTED"; target: "playground" | "ide"; url: string };
+  | { type: "OPEN_TARGET_REQUESTED"; target: "ansatz" | "ide"; url: string };

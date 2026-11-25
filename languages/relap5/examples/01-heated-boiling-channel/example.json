@@ -1,0 +1,12 @@
+{
+  "id": "relap5-01-heated-boiling-channel",
+  "lang": "relap5",
+  "subFormats": ["r5"],
+  "difficulty": 1,
+  "title": "Single Heated Boiling Channel",
+  "description": "Vertical heated boiling pipe channel coupled to a cylindrical fuel heat structure between inlet and outlet boundary plenums for subcooled-to-saturated boiling analysis.",
+  "category": "Nuclear Thermal-Hydraulics",
+  "tags": ["relap5", "boiling-channel", "heat-structure", "two-phase"],
+  "activeFile": "boiling_channel.r5",
+  "isDefaultStarter": true
+}

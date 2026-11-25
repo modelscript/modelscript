@@ -25,6 +25,7 @@ import {
   updateSpaceIssue,
 } from "../../api/spaces.js";
 import { useToast } from "../../components/ToastContext.js";
+import { getApiErrorMessage } from "../../util/error.js";
 
 // ── Styled Components (Adhering to @primer/style & Spaces Cockpit) ───────────
 
@@ -273,8 +274,8 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
       setNewIssueDesc("");
       setNewIssueLinkedPr("");
       toast.success(`Created Issue #${res.issue.issue_number}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to create issue");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to create issue"));
     } finally {
       setSubmittingNewIssue(false);
     }
@@ -303,8 +304,8 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
       }
       toast.success(`Synchronized ${res.synced} Jira tickets (${res.created} new, ${res.updated} updated)!`);
       setShowJiraModal(false);
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || (err instanceof Error ? err.message : String(err));
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, String(err));
       toast.error(`Jira synchronization failed: ${msg}`);
     } finally {
       setIsSyncingJira(false);
@@ -321,8 +322,8 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
       setActiveIssueDetail((prev) => (prev ? { ...prev, status: newStatus } : null));
       onIssueUpdated?.(res.issue, res.issues);
       toast.success(newStatus === "closed" ? "Issue closed" : "Issue reopened");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to update issue status");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to update issue status"));
     }
   };
 
@@ -340,8 +341,8 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
       setActiveIssueDetail(res.issue);
       setCommentInput("");
       toast.success("Comment added");
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to add comment");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to add comment"));
     } finally {
       setSubmittingComment(false);
     }
@@ -1461,7 +1462,7 @@ export const SpaceIssuesTab: React.FC<SpaceIssuesTabProps> = ({
                   </label>
                   <select
                     value={newIssueSeverity}
-                    onChange={(e) => setNewIssueSeverity(e.target.value as any)}
+                    onChange={(e) => setNewIssueSeverity(e.target.value as SpaceIssueRecord["severity"])}
                     style={{
                       width: "100%",
                       padding: "8px 10px",

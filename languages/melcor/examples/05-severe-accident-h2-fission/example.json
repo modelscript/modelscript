@@ -1,0 +1,11 @@
+{
+  "id": "melcor-05-severe-accident-h2-fission",
+  "lang": "melcor",
+  "subFormats": ["melcor2", "radionuclides"],
+  "difficulty": 5,
+  "title": "Severe Accident Containment Hydrogen and Fission Product Transport",
+  "description": "Full severe accident MELCOR deck with core oxidation hydrogen generation, radionuclide aerosol release classes (Xe, Cs, Ba, I2), and companion radionuclide inventory table.",
+  "category": "Nuclear Severe Accident Analysis",
+  "tags": ["melcor", "hydrogen", "radionuclides", "rn1", "multi-file"],
+  "activeFile": "sbo_full.mel"
+}

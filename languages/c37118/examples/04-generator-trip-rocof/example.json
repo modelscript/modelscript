@@ -1,0 +1,11 @@
+{
+  "id": "c37118-04-generator-trip-rocof",
+  "lang": "c37118",
+  "subFormats": ["c37118"],
+  "difficulty": 4,
+  "title": "Generator Trip Under-Frequency & RoCoF Event Capture",
+  "description": "High-resolution 60 Hz PMU event record capturing inertial frequency decline, negative Rate-of-Change-of-Frequency (RoCoF), and primary governor arrest following a 650 MW unit trip.",
+  "category": "Wide-Area Grid Monitoring",
+  "tags": ["c37118", "rocof", "under-frequency", "inertia", "generator-trip"],
+  "activeFile": "gen_trip_rocof.c37118"
+}

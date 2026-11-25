@@ -1,0 +1,73 @@
+[
+  {
+    "id": "sinda-01-conduction-rod-steady",
+    "lang": "sinda",
+    "subFormats": ["sinda-g"],
+    "difficulty": 1,
+    "title": "1D Steady-State Conduction Rod with Fixed Boundary Nodes",
+    "description": "Four-node aluminum conduction bar connecting a heated base to a fixed 300 K thermal sink solved for steady-state temperatures with STDSTL.",
+    "category": "Thermal Network Analysis",
+    "tags": ["sinda", "conduction", "steady-state", "thermal-network"],
+    "activeFile": "conduction_rod.sin",
+    "fileNames": ["conduction_rod.sin"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "C 1D Steady-State Aluminum Conduction Rod\nHEADER OPTIONS DATA\n  TITLE = \"1D Steady-State Conduction Rod\"\n  ABSZRO = 0.0\nHEADER NODE DATA, ROD\n  1, 350.0, 45.0   $ Heated end diffusion node\n  2, 330.0, 45.0   $ Mid-rod node A\n  3, 315.0, 45.0   $ Mid-rod node B\n  -4, 300.0, 0.0   $ Fixed cold-plate boundary node (300 K)\nHEADER CONDUCTOR DATA, ROD\n  10, 1, 2, 4.0    $ Linear conduction G = kA/L (W/K)\n  20, 2, 3, 4.0\n  30, 3, 4, 4.0\nHEADER SOURCE DATA, ROD\n  1, 40.0          $ Applied heater load (W)\nHEADER CONSTANTS DATA\n  TIMEO = 0.0, TIMEND = 200.0, DTIMEI = 1.0\n  DRLXCA = 1.0E-6, NLOOP = 100\nHEADER EXECUTION\n  CALL STDSTL\nHEADER OUTPUT CALLS\n  CALL TPRINT\nEND OF DATA\n"
+  },
+  {
+    "id": "sinda-02-pcb-finned-heatsink",
+    "lang": "sinda",
+    "subFormats": ["sinda-g"],
+    "difficulty": 2,
+    "title": "Electronics PCB Finned Heatsink Convection Network",
+    "description": "Power MOSFET junction-to-ambient thermal resistance network modeling TIM interface, aluminum heatsink base, parallel convective fins, and PCB copper spread.",
+    "category": "Electronics Thermal Management",
+    "tags": ["sinda", "heatsink", "pcb", "convection"],
+    "activeFile": "pcb_heatsink.sin",
+    "fileNames": ["pcb_heatsink.sin"],
+    "fileCount": 1,
+    "code": "C Power Electronics PCB and Finned Heatsink Thermal Network\nHEADER OPTIONS DATA\n  TITLE = \"Electronics PCB Finned Heatsink Network\"\n  ABSZRO = 0.0\nHEADER NODE DATA, ELEC\n  1, 355.0, 12.0   $ Power MOSFET junction\n  2, 340.0, 35.0   $ TO-247 case and TIM interface\n  3, 330.0, 180.0  $ Aluminum heatsink baseplate\n  4, 322.0, 95.0   $ Fin array outer surface\n  5, 325.0, 65.0   $ FR-4 PCB copper ground plane\n  -99, 298.15, 0.0 $ Forced-air ambient sink (25 C)\nHEADER CONDUCTOR DATA, ELEC\n  10, 1, 2, 1.8    $ Junction-to-case conductance (W/K)\n  11, 2, 3, 3.2    $ TIM interface conductance (W/K)\n  12, 3, 4, 12.5   $ Base-to-fin conduction (W/K)\n  13, 4, 99, 2.4   $ Forced convection off fins (W/K)\n  14, 2, 5, 0.65   $ Leadframe conduction to PCB (W/K)\n  15, 5, 99, 0.45  $ Natural convection from PCB (W/K)\nHEADER SOURCE DATA, ELEC\n  1, 45.0          $ MOSFET switching and conduction loss (W)\nHEADER CONSTANTS DATA\n  TIMEO = 0.0, TIMEND = 300.0, DTIMEI = 1.0\n  DRLXCA = 1.0E-6, NLOOP = 150\nHEADER EXECUTION\n  CALL STDSTL\n  CALL CRANKN\nHEADER OUTPUT CALLS\n  CALL TPRINT\nEND OF DATA\n"
+  },
+  {
+    "id": "sinda-03-spacecraft-radiator-panel",
+    "lang": "sinda",
+    "subFormats": ["sinda-fluint", "radiation"],
+    "difficulty": 3,
+    "title": "Spacecraft Radiator Panel Solar-Flux and Space-Sink Radiation",
+    "description": "Spacecraft avionics box coupled through heat pipes to a white-paint Z-93 radiator panel rejecting heat via Stefan-Boltzmann radiation to 4 K deep space.",
+    "category": "Spacecraft Thermal Control",
+    "tags": ["sinda", "spacecraft", "radiator", "radiation"],
+    "activeFile": "radiator_panel.sin",
+    "fileNames": ["radiator_panel.sin"],
+    "fileCount": 1,
+    "code": "C Spacecraft Avionics Radiator Panel with Space-Sink Radiation\nHEADER OPTIONS DATA\n  TITLE = \"Spacecraft Radiator Panel Thermal Network\"\n  ABSZRO = 0.0\n  SIGMA = 5.670374419D-8\nHEADER NODE DATA, RAD\n  1, 310.0, 1200.0 $ Avionics payload baseplate\n  2, 305.0, 450.0  $ Embedded ammonia heat pipe saddle\n  3, 295.0, 680.0  $ Honeycomb radiator facesheet (1.5 m2)\n  4, 290.0, 0.0    $ Radiator arithmetic surface node\n  -100, 4.0, 0.0   $ Deep space radiation sink (4 K)\nHEADER CONDUCTOR DATA, RAD\n  10, 1, 2, 18.0   $ Bolted interface conductance (W/K)\n  11, 2, 3, 25.0   $ Heat-pipe effective conductance (W/K)\n  12, 3, 4, 42.0   $ Facesheet through-thickness conduction\n  -20, 4, 100, 1.38 $ Radiation RADK = eps*A*F (0.92 * 1.5 * 1.0)\nHEADER SOURCE DATA, RAD\n  1, 240.0         $ Avionics internal dissipation (W)\n  4, 65.0          $ Absorbed solar + Earth IR environmental load (W)\nHEADER CONSTANTS DATA\n  TIMEO = 0.0, TIMEND = 1800.0, DTIMEI = 5.0\n  DRLXCA = 1.0E-6, NLOOP = 200\nHEADER EXECUTION\n  CALL STDSTL\n  CALL CRANKN\nHEADER OUTPUT CALLS\n  CALL TPRINT\nEND OF DATA\n"
+  },
+  {
+    "id": "sinda-04-cubesat-orbital-eclipse",
+    "lang": "sinda",
+    "subFormats": ["sinda-fluint", "transient"],
+    "difficulty": 4,
+    "title": "CubeSat 6-Face Orbital Eclipse Transient Thermal Model",
+    "description": "3U CubeSat six-face aluminum chassis and internal Li-ion battery pack cycling through a 90-minute LEO sunlit-to-eclipse orbit with radiation to space.",
+    "category": "Spacecraft Thermal Control",
+    "tags": ["sinda", "cubesat", "transient", "eclipse", "orbit"],
+    "activeFile": "cubesat_orbit.sin",
+    "fileNames": ["cubesat_orbit.sin"],
+    "fileCount": 1,
+    "code": "C 3U CubeSat 6-Face Orbital Eclipse Transient Thermal Model\nHEADER OPTIONS DATA\n  TITLE = \"3U CubeSat 6-Face LEO Orbital Thermal Model\"\n  ABSZRO = 0.0\n  SIGMA = 5.670374419D-8\nHEADER NODE DATA, CUBESAT\n  1, 295.0, 140.0  $ +X solar panel face\n  2, 285.0, 140.0  $ -X nadir face\n  3, 290.0, 140.0  $ +Y ram face\n  4, 288.0, 140.0  $ -Y wake face\n  5, 292.0, 60.0   $ +Z zenith endcap\n  6, 286.0, 60.0   $ -Z nadir endcap\n  10, 298.0, 420.0 $ Internal battery and OBC stack\n  -999, 3.0, 0.0   $ Deep space radiation boundary (3 K)\nHEADER CONDUCTOR DATA, CUBESAT\n  101, 1, 10, 0.45 $ Frame rail conduction\n  102, 2, 10, 0.45\n  103, 3, 10, 0.45\n  104, 4, 10, 0.45\n  105, 5, 10, 0.30\n  106, 6, 10, 0.30\n  107, 1, 3, 0.25  $ Panel edge contact\n  108, 2, 4, 0.25\n  -201, 1, 999, 0.0255 $ +X radiation to space (0.03 m2 * 0.85)\n  -202, 2, 999, 0.0255\n  -203, 3, 999, 0.0255\n  -204, 4, 999, 0.0255\n  -205, 5, 999, 0.0085 $ +Z radiation to space (0.01 m2 * 0.85)\n  -206, 6, 999, 0.0085\nHEADER SOURCE DATA, CUBESAT\n  1, 14.5          $ Absorbed solar load on +X array (W)\n  2, 3.2           $ Earth IR + albedo on nadir face (W)\n  10, 8.5          $ OBC, transceiver, and battery dissipation (W)\nHEADER ARRAY DATA\n  101, 0.0, 1800.0, 3300.0, 3360.0, 5400.0\n  102, 14.5, 14.5, 14.5, 0.0, 0.0\nHEADER CONSTANTS DATA\n  TIMEO = 0.0, TIMEND = 5400.0, DTIMEI = 10.0\n  DRLXCA = 1.0E-6, NLOOP = 200\nHEADER EXECUTION\n  CALL STDSTL\n  CALL CRANKN\nHEADER OUTPUT CALLS\n  CALL TPRINT\nEND OF DATA\n"
+  },
+  {
+    "id": "sinda-05-cryogenic-telescope-mli",
+    "lang": "sinda",
+    "subFormats": ["sinda-fluint", "cryogenics"],
+    "difficulty": 5,
+    "title": "Deep-Space Cryogenic Telescope MLI Thermal Bus",
+    "description": "Sunshielded deep-space infrared telescope thermal architecture linking a 290 K spacecraft bus through multi-layer insulation (MLI) and V-groove shields to a 40 K focal-plane detector.",
+    "category": "Cryogenic Spacecraft Thermal",
+    "tags": ["sinda", "cryogenic", "mli", "telescope", "radiation"],
+    "activeFile": "cryo_telescope.sin",
+    "fileNames": ["cryo_telescope.sin"],
+    "fileCount": 1,
+    "code": "C Deep-Space Infrared Telescope Multi-Layer Insulation (MLI) Bus\nHEADER OPTIONS DATA\n  TITLE = \"Deep-Space Cryogenic Telescope MLI Bus\"\n  ABSZRO = 0.0\n  SIGMA = 5.670374419D-8\nHEADER NODE DATA, CRYO\n  1, 290.0, 4500.0 $ Warm spacecraft service bus (290 K)\n  2, 210.0, 320.0  $ Sunshield layer 1 (warm side)\n  3, 140.0, 260.0  $ Sunshield layer 2 (intermediate)\n  4, 85.0,  220.0  $ Sunshield layer 3 (cold side)\n  5, 58.0,  850.0  $ Telescope optical baffle tube\n  6, 42.0,  180.0  $ SiC primary mirror assembly\n  7, 38.0,  45.0   $ Infrared focal-plane array (FPA)\n  -100, 3.0, 0.0   $ Deep space radiative sink (3 K)\n  -200, 35.0, 0.0  $ Pulse-tube cryocooler cold tip (35 K)\nHEADER CONDUCTOR DATA, CRYO\n  10, 1, 2, 0.08   $ Low-conductivity G10 bipod struts (W/K)\n  11, 2, 3, 0.05\n  12, 3, 4, 0.04\n  13, 4, 5, 0.025\n  14, 5, 6, 0.15   $ Baffle-to-mirror mount\n  15, 6, 7, 0.06   $ Mirror-to-FPA thermal strap\n  16, 7, 200, 1.25 $ Copper braid to cryocooler cold tip\n  -20, 1, 2, 0.045 $ MLI effective radiation e*=0.015 * 3.0 m2\n  -21, 2, 3, 0.030\n  -22, 3, 4, 0.025\n  -23, 4, 5, 0.018\n  -24, 1, 100, 1.85 $ Warm bus radiator to space\n  -25, 2, 100, 0.40 $ V-groove edge radiation to space\n  -26, 3, 100, 0.40\n  -27, 4, 100, 0.45\n  -28, 5, 100, 1.20 $ Cold baffle exterior radiation to space\nHEADER SOURCE DATA, CRYO\n  1, 420.0         $ Bus electronics + solar input (W)\n  2, 18.0          $ Residual solar absorption on shield 1 (W)\n  7, 0.35          $ FPA detector readout dissipation (W)\nHEADER CONSTANTS DATA\n  TIMEO = 0.0, TIMEND = 3600.0, DTIMEI = 15.0\n  DRLXCA = 1.0E-7, NLOOP = 300\nHEADER EXECUTION\n  CALL STDSTL\n  CALL CRANKN\nHEADER OUTPUT CALLS\n  CALL TPRINT\nEND OF DATA\n"
+  }
+]

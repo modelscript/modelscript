@@ -1,0 +1,11 @@
+{
+  "id": "relap5-05-two-loop-pwr-safety-injection",
+  "lang": "relap5",
+  "subFormats": ["r5", "i"],
+  "difficulty": 5,
+  "title": "Two-Loop PWR Plant with Reactor Trip & Safety Injection",
+  "description": "Two-loop Pressurized Water Reactor primary plant with intact and broken loops, pressurizer surge line, HPSI safety injection, point kinetics, and companion trip logic card deck.",
+  "category": "Nuclear Safety Analysis",
+  "tags": ["relap5", "two-loop-pwr", "safety-injection", "multi-file", "trip-logic"],
+  "activeFile": "pwr_plant.r5"
+}

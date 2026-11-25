@@ -1,0 +1,11 @@
+{
+  "id": "sparql-02-thermal-budget-filter",
+  "lang": "sparql",
+  "subFormats": ["rq", "ttl"],
+  "difficulty": 2,
+  "title": "Satellite Thermal Margin & Over-Budget Filter",
+  "description": "SPARQL 1.1 query using FILTER expressions to identify spacecraft avionics units whose peak dissipation exceeds their allocated radiator thermal budget.",
+  "category": "Knowledge Graphs & MBSE",
+  "tags": ["sparql", "filter", "thermal-budget", "spacecraft", "multi-file"],
+  "activeFile": "thermal_check.rq"
+}

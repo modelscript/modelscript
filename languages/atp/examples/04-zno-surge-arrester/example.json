@@ -1,0 +1,11 @@
+{
+  "id": "atp-04-zno-surge-arrester",
+  "lang": "atp",
+  "subFormats": ["atp", "lib"],
+  "difficulty": 4,
+  "title": "ZnO Surge Arrester Substation Insulation Coordination",
+  "description": "345 kV GIS substation switching surge insulation coordination referencing an external ZnO metal-oxide surge arrester library via $INCLUDE.",
+  "category": "Power Systems EMT",
+  "tags": ["atp", "surge-arrester", "zno", "insulation-coordination", "multi-file"],
+  "activeFile": "substation.atp"
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssm:ParameterMapping xmlns:ssm="http://ssp-standard.org/SSP1/SystemStructureParameterMapping"
+                      version="1.0">
+  <ssm:MappingEntry source="f_nom_hz" target="GridFeeder.f_nom" />
+  <ssm:MappingEntry source="p_rated_kw" target="BessInverter.P_rated" />
+  <ssm:MappingEntry source="droop_pf" target="BessInverter.mp" />
+  <ssm:MappingEntry source="droop_qv" target="BessInverter.nq" />
+</ssm:ParameterMapping>

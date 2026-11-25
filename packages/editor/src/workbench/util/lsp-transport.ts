@@ -17,7 +17,7 @@ import {
 import type { ProtocolConnection } from "vscode-languageserver-protocol/browser";
 import { getLsp, startLsp } from "./lsp-worker";
 
-export type MorselLspTransport = EditorLspTransport;
+export type AnsatzLspTransport = EditorLspTransport;
 export {
   createHttpLspTransport,
   getCustomEditorLspTransport as getCustomLspTransport,

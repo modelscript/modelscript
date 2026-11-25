@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ThreePhase_RLC_Fault" version="5.0.0" type="normal">
+  <param name="time_step" value="25.0"/>
+  <param name="time_duration" value="0.35"/>
+  <param name="start_type" value="0"/>
+  <param name="f_base" value="60.0"/>
+  <hierarchy>
+    <call name="Main" link="10001"/>
+  </hierarchy>
+  <definitions>
+    <definition name="Main" type="module">
+      <schematic>
+        <User classid="UserCmp" defn="master:source_3" id="SRC3P" x="80" y="180" orient="0">
+          <param name="Name" value="Grid_230kV"/>
+          <param name="V" value="230.0"/>
+          <param name="MVA" value="1500.0"/>
+          <param name="f" value="60.0"/>
+          <param name="X_R" value="12.0"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <Bus name="Substation_A" id="B1" x="140" y="180" length="60" vbase="230.0"/>
+
+        <User classid="UserCmp" defn="master:breaker3" id="CB1" x="260" y="180" orient="0">
+          <param name="Name" value="LineBreaker_230kV"/>
+          <param name="Rclosed" value="0.002"/>
+          <param name="Ropen" value="1.0e6"/>
+          <param name="Topen" value="0.183"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:tline_3p" id="TL1" x="380" y="180" orient="0">
+          <param name="Name" value="Corridor_Line_80km"/>
+          <param name="Length" value="80.0"/>
+          <param name="R" value="0.032"/>
+          <param name="L" value="0.00105"/>
+          <param name="C" value="1.15e-8"/>
+          <port name="in" pos="[-40, 0]"/>
+          <port name="out" pos="[40, 0]"/>
+        </User>
+
+        <Bus name="Substation_B" id="B2" x="480" y="180" length="60" vbase="230.0"/>
+
+        <User classid="UserCmp" defn="master:tpflt" id="FLT1" x="510" y="260" orient="0">
+          <param name="Name" value="BusB_3Ph_Fault"/>
+          <param name="Rf" value="0.01"/>
+          <param name="Ton" value="0.10"/>
+          <param name="Duration" value="0.083"/>
+          <port name="in" pos="[0, -20]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:fixed_load" id="LD1" x="620" y="180" orient="0">
+          <param name="Name" value="BulkLoad_120MW"/>
+          <param name="P" value="120.0"/>
+          <param name="Q" value="35.0"/>
+          <param name="V" value="230.0"/>
+          <port name="in" pos="[-20, 0]"/>
+        </User>
+
+        <Wire>
+          <vertex x="100" y="180"/>
+          <vertex x="140" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="200" y="180"/>
+          <vertex x="240" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="280" y="180"/>
+          <vertex x="340" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="420" y="180"/>
+          <vertex x="480" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="510" y="180"/>
+          <vertex x="510" y="240"/>
+        </Wire>
+        <Wire>
+          <vertex x="540" y="180"/>
+          <vertex x="600" y="180"/>
+        </Wire>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

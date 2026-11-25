@@ -601,9 +601,11 @@ export const getGitlabBranches = async (
 
   if (provider === "github") {
     try {
-      const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}/branches?per_page=30`);
+      const { data } = await axios.get<Array<{ name: string; protected?: boolean; commit?: { sha?: string } }>>(
+        `https://api.github.com/repos/${projectIdOrPath}/branches?per_page=30`,
+      );
       if (Array.isArray(data) && data.length > 0) {
-        return data.map((b: any) => ({
+        return data.map((b) => ({
           name: b.name,
           default: b.name === fb.defaultBranch,
           protected: Boolean(b.protected),
@@ -630,9 +632,11 @@ export const getGitlabTags = async (projectIdOrPath: string, provider: string = 
 
   if (provider === "github") {
     try {
-      const { data } = await axios.get(`https://api.github.com/repos/${projectIdOrPath}/tags?per_page=20`);
+      const { data } = await axios.get<Array<{ name: string; commit?: { sha?: string } }>>(
+        `https://api.github.com/repos/${projectIdOrPath}/tags?per_page=20`,
+      );
       if (Array.isArray(data) && data.length > 0) {
-        return data.map((t: any) => ({
+        return data.map((t) => ({
           name: t.name,
           commit_sha: (t.commit?.sha || "").slice(0, 8),
         }));
@@ -883,9 +887,12 @@ export const getGitlabTree = async (
       const url = encodedPath
         ? `https://api.github.com/repos/${projectIdOrPath}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`
         : `https://api.github.com/repos/${projectIdOrPath}/contents?ref=${encodeURIComponent(ref)}`;
-      const { data } = await axios.get(url);
+      const { data } = await axios.get<
+        | { sha: string; name: string; type: string; path: string }
+        | Array<{ sha: string; name: string; type: string; path: string }>
+      >(url);
       const items = Array.isArray(data) ? data : [data];
-      const mapped = items.map((item: any) => ({
+      const mapped = items.map((item) => ({
         id: item.sha,
         name: item.name,
         type: (item.type === "dir" ? "tree" : "blob") as "tree" | "blob",
@@ -1015,13 +1022,16 @@ export const getGitlabCommits = async (
 
   if (provider === "github") {
     try {
-      const { data } = await axios.get(
-        `https://api.github.com/repos/${projectIdOrPath}/commits?sha=${encodeURIComponent(refName)}&per_page=15`,
-      );
-      const remote = data.map((c: any) => ({
+      const { data } = await axios.get<
+        Array<{
+          sha: string;
+          commit: { message: string; author: { name: string; email: string; date: string } };
+        }>
+      >(`https://api.github.com/repos/${projectIdOrPath}/commits?sha=${encodeURIComponent(refName)}&per_page=15`);
+      const remote = data.map((c) => ({
         id: c.sha,
         short_id: c.sha.substring(0, 8),
-        title: c.commit.message.split("\n")[0],
+        title: c.commit.message.split("\n")[0] || "",
         message: c.commit.message,
         author_name: c.commit.author.name,
         author_email: c.commit.author.email,
@@ -1133,12 +1143,29 @@ export const getGitlabPipelines = async (
 ): Promise<GitlabPipeline[]> => {
   if (provider === "github") {
     try {
-      const { data } = await axios.get(
+      const { data } = await axios.get<{
+        workflow_runs?: Array<{
+          id: number;
+          run_number?: number;
+          repository?: { id?: number };
+          status?: string;
+          conclusion?: string | null;
+          event?: string;
+          name?: string;
+          display_title?: string;
+          head_commit?: { message?: string };
+          head_branch?: string;
+          head_sha?: string;
+          html_url?: string;
+          created_at: string;
+          updated_at: string;
+        }>;
+      }>(
         `https://api.github.com/repos/${projectIdOrPath}/actions/runs?branch=${encodeURIComponent(refName)}&per_page=20`,
       );
       const runs = Array.isArray(data?.workflow_runs) ? data.workflow_runs : [];
       if (runs.length > 0) {
-        return runs.map((run: any) => ({
+        return runs.map((run) => ({
           id: run.id,
           iid: run.run_number || run.id,
           project_id: run.repository?.id || 0,
@@ -1208,12 +1235,23 @@ export const getGitlabPipelineJobs = async (
 ): Promise<GitlabJob[]> => {
   if (provider === "github") {
     try {
-      const { data } = await axios.get(
-        `https://api.github.com/repos/${projectIdOrPath}/actions/runs/${pipelineId}/jobs`,
-      );
+      const { data } = await axios.get<{
+        jobs?: Array<{
+          id: number;
+          status?: string;
+          conclusion?: string | null;
+          workflow_name?: string;
+          name?: string;
+          head_branch?: string;
+          created_at?: string;
+          started_at?: string | null;
+          completed_at?: string | null;
+          html_url?: string;
+        }>;
+      }>(`https://api.github.com/repos/${projectIdOrPath}/actions/runs/${pipelineId}/jobs`);
       const jobs = Array.isArray(data?.jobs) ? data.jobs : [];
       if (jobs.length > 0) {
-        return jobs.map((job: any) => ({
+        return jobs.map((job) => ({
           id: job.id,
           status:
             job.status === "completed"
@@ -1228,7 +1266,7 @@ export const getGitlabPipelineJobs = async (
           stage: job.workflow_name || "verify",
           name: job.name || `Job #${job.id}`,
           ref: job.head_branch || "main",
-          created_at: job.created_at || job.started_at,
+          created_at: job.created_at || job.started_at || "",
           started_at: job.started_at || null,
           finished_at: job.completed_at || null,
           duration:
@@ -1815,4 +1853,3 @@ export const getMergeRequestFileBlobs = async (
     return null;
   }
 };
-

@@ -1,0 +1,11 @@
+{
+  "id": "olga-02-inclined-gas-condensate-tieback",
+  "lang": "olga",
+  "subFormats": ["opi"],
+  "difficulty": 2,
+  "title": "Inclined Gas-Condensate Tieback with Liquid Holdup",
+  "description": "Undulating offshore gas-condensate pipeline with uphill and downhill terrain segments modeling condensate accumulation, pressure drop, and thermal heat loss.",
+  "category": "Multiphase Flow Assurance",
+  "tags": ["olga", "gas-condensate", "liquid-holdup", "inclined-pipe"],
+  "activeFile": "condensate_tieback.opi"
+}

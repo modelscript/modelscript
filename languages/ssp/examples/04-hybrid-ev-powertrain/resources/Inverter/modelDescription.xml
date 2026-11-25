@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="TractionInverter" guid="{44444444-4444-4444-4444-444444444402}">
+  <CoSimulation modelIdentifier="TractionInverter" />
+  <ModelVariables>
+    <ScalarVariable name="v_dc" valueReference="0" causality="input"><Real start="800.0" /></ScalarVariable>
+    <ScalarVariable name="tau_ref" valueReference="1" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="i_dc" valueReference="2" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="i_q" valueReference="3" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

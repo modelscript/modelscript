@@ -1,0 +1,25 @@
+# Architectural Pavilion Material Library
+newmtl ArchitecturalConcrete
+Ka 0.25 0.25 0.24
+Kd 0.68 0.67 0.64
+Ks 0.12 0.12 0.12
+Ns 18.0
+d 1.0
+illum 2
+
+newmtl DarkSteel
+Ka 0.08 0.09 0.10
+Kd 0.22 0.24 0.26
+Ks 0.72 0.75 0.78
+Ns 210.0
+d 1.0
+illum 2
+
+newmtl ArchitecturalGlass
+Ka 0.10 0.15 0.18
+Kd 0.80 0.92 0.96
+Ks 0.95 0.98 1.00
+Ns 400.0
+Tr 0.70
+Ni 1.52
+illum 4

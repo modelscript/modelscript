@@ -39,7 +39,7 @@ export const gribLanguage = language({
         shortTitle: "GRIB1",
         selector: ["*.grb", "*.grib", "*.grib1"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/GribPanel.tsx",
         artifactViewTypes: ["grib", "grib1", "grb"],
       },

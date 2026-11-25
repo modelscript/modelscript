@@ -1,0 +1,13 @@
+( CIF 2.0 DRC-Clean Polysilicon-to-Metal-1 Contact Cut, 1 lambda = 100 CIF units );
+DS 1 100/1;
+  9 POLY_M1_CONTACT;
+  L CPG;
+  B 6 6 3 3;
+  L CCP;
+  B 3 3 3 3;
+  L CMF;
+  B 6 6 3 3;
+  94 VIA_PIN 3 3 CMF;
+DF;
+C 1;
+E

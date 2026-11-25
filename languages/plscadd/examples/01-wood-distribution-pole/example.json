@@ -1,0 +1,12 @@
+{
+  "id": "plscadd-01-wood-distribution-pole",
+  "lang": "plscadd",
+  "subFormats": ["pol"],
+  "difficulty": 1,
+  "title": "Single Wood Distribution Tangent Pole Span",
+  "description": "12.47 kV overhead distribution span strung with 4/0 Penguin ACSR conductor between two Class-3 wood tangent poles verifying NESC ground clearance.",
+  "category": "Transmission Line Structural",
+  "tags": ["plscadd", "wood-pole", "distribution", "sag-tension", "clearance"],
+  "activeFile": "wood_pole.pol",
+  "isDefaultStarter": true
+}

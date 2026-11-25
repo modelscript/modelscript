@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="ReversibleIsomerization" name="First-Order Reversible Isomerization">
+    <listOfCompartments>
+      <compartment id="reactor" name="Well-Mixed Reactor" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="A" name="Reactant Isomer A" compartment="reactor" initialConcentration="10.0" constant="false"/>
+      <species id="B" name="Product Isomer B" compartment="reactor" initialConcentration="0.0" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="kf" name="Forward Rate Constant" value="0.35" constant="true"/>
+      <parameter id="kr" name="Reverse Rate Constant" value="0.12" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_isom" name="Reversible Isomerization" reversible="true">
+        <listOfReactants>
+          <speciesReference species="A" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="B" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <formula>reactor * (kf * A - kr * B)</formula>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

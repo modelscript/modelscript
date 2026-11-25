@@ -89,7 +89,7 @@ export const PostNotebookHeader: React.FC<PostNotebookHeaderProps> = ({
   const displayPost = authorHeaderProps?.displayPost;
   const postMeta =
     typeof displayPost?.metadata === "string"
-      ? safeJsonParse<Record<string, any>>(displayPost.metadata, {})
+      ? safeJsonParse<Record<string, unknown>>(displayPost.metadata, {})
       : displayPost?.metadata || {};
 
   const editArticleButton = canEditPost ? (

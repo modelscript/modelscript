@@ -33,6 +33,7 @@ import {
   isOldFrontendActive,
   isPartialTypeComponentInScope,
   VARIABILITY_CONTINUOUS,
+  type ModelicaGrammarSymbols,
 } from "./helpers.js";
 
 /**
@@ -85,7 +86,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "info",
     code: 2097,
     message: () => `From here:`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Emit source-location note at the modifier site when a protected member is modified externally
       if (isOldFrontendActive(db, $)) return;
 
@@ -151,7 +152,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const mText = modText && modText.text !== "0" && modText.text !== "" ? modText.text : target.text;
       return `Protected element '${eName}' may not be modified, got '${mText}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check component modifications (excluding `extends` modifications) for protected target members
       if (isOldFrontendActive(db, $)) return;
 
@@ -213,7 +214,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4006,
     message: (target) => `Element '${target.text}' is not allowed in function context with algorithm section.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if the enclosing class definition also contains an `algorithm_section`
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
@@ -241,7 +242,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4007,
     message: (node, varName) =>
       `Invalid public variable ${varName && varName.text ? varName.text : node.text}, function variables that are not input/output must be protected.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (isOldFrontendActive(db, $)) return;
       // Flag public component declarations in functions that lack `input`, `output`, or `constant`
       for (const cls of db.ast.getAncestors(node, 0)) {
@@ -280,7 +281,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4011,
     message: (node, varName) =>
       `Invalid protected variable ${varName && varName.text ? varName.text : node.text}, function variables that are input/output must be public.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Disallow `input` or `output` causality prefixes inside a function's `protected` section
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
@@ -313,7 +314,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4013,
     message: () => `Nested when statements are not allowed.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if any ancestor of `node` is another `when_statement` or `when_equation`
       let outerWhen: u32 = 0;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -352,7 +353,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
           : ""
       }`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Reject subscripted tuple expressions `(a, b)[1]` (only check the immediate parent `primary`,
       // never enclosing calls like `foo((1, 2), arr[1])`) and tuples outside statement/equation LHS.
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -418,7 +419,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const kindStr = kind == 1 ? "record" : kind == 2 ? "type" : kind == 3 ? "package" : "connector";
       return isAlg ? `Algorithm sections are not allowed in ${kindStr}.` : `Equations are not allowed in ${kindStr}.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check enclosing class specialization; only non-initial `algorithm` sections are valid in `function`
       // (Connectors are handled by M4065/M4066 on the section keyword so they are not double-reported.)
       for (const cls of db.ast.getAncestors(node, 0)) {
@@ -474,7 +475,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "info",
     code: 2096,
     message: () => `From here:`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Emit source-location note at the component/extends declaration containing the illegal redeclare
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -571,7 +572,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
       return `Redeclaration with a new type requires '${eName}' to be replaceable.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (isIgnoreReplaceableActive(db, $)) return;
       // Verify that any `redeclare` changing a member's type targets an element with the `replaceable` prefix
       let isNestedMod = false;
@@ -666,7 +667,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
       return `Invalid redeclaration of ${eName}, a redeclare may not have a condition attribute.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Flag `condition_attribute` (`if expr`) when placed on a redeclared component declaration
       for (const compDecl of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(compDecl) == $.component_declaration) {
@@ -726,7 +727,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }
       return `Base class targeted by class extends ${eName} not found in the inherited classes.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Ensure `redeclare class extends <Name>` refers to a class inherited via `extends`
       let hasRedeclare = false;
       if (db.ast.startsWith(node, "redeclare")) {
@@ -806,7 +807,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
       return `Illegal redeclare of element ${eName}, no inherited element with that name exists.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check that a standalone `redeclare` element in a class body overrides an element from an `extends` clause
       let hasRedeclare = false;
       if (db.ast.startsWith(node, "redeclare")) {
@@ -917,7 +918,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4022,
     message: (target) => `Range of type enumeration '${target.text}' may not specify a step size.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Detect three-part range expressions `e1:step:e2` whose endpoints are enumeration literals
       if (isEnumStepRangeExpr(db, node, $)) {
         db.diagnostic(node);
@@ -933,7 +934,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4023,
     message: (target) => `connect may not be used inside when-equations (found ${target.text}).`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Disallow `connect_equation` nested inside any `when_equation` or `when_statement`
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.when_equation || db.ast.getType(anc) == $.when_statement) {
@@ -952,7 +953,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4024,
     message: () => `Connect equations are not allowed in initial equation sections.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if the enclosing `equation_section` begins with the `initial` keyword
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.equation_section) {
@@ -974,7 +975,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "notification",
     code: 2090,
     message: () => `From here:`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Point to the original `final` declaration inside the target class when modified
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -1087,7 +1088,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       }
       return `Trying to override final element ${eName} with modifier '${mText}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Reject value modifications targeting an element declared `final` in its class
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -1193,7 +1194,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "info",
     code: 2091,
     message: () => `From here:`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Emit source-location note at the declaration site containing the illegal redeclare of a final element
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -1264,7 +1265,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
       return `Redeclaration of final component ${eName} is not allowed.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Disallow `redeclare` clauses targeting an element marked `final`
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -1328,7 +1329,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "info",
     code: 2092,
     message: () => `From here:`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Emit source-location note at the declaration site containing the illegal redeclare of a constant
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -1399,7 +1400,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const eName = elementName && elementName.text !== "0" && elementName.text !== "" ? elementName.text : target.text;
       return `Redeclaration of constant component ${eName} is not allowed.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (!isOldFrontendActive(db, $)) return;
       // Disallow `redeclare` clauses targeting an element declared with the `constant` prefix
       let isNestedMod = false;
@@ -1474,7 +1475,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4032,
     message: (target) => `Invalid prefix '${target.text}' on formal parameter in function.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Reject `flow` and `stream` prefixes on components declared inside a `function`
       for (const cls of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(cls) == $.class_definition) {
@@ -1502,7 +1503,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const name = nameNode && nameNode.text !== "0" && nameNode.text !== "" ? nameNode.text : "";
       return `Function ${name} has more than one algorithm section or external declaration.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Count direct and inherited `algorithm_section` and `external_clause` nodes in a `function`
       if (!isClassKind(db, node, "function")) return;
       const isOldFrontend: u32 = isOldFrontendActive(db, $) ? 1 : 0;
@@ -1587,7 +1588,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "warning",
     code: 4038,
     message: () => `Prefix 'flow' used outside connector declaration.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Warn when `flow` is used inside a class whose specialization is not `connector`
       if (db.ast.textEquals(node, "flow")) {
         for (const cls of db.ast.getAncestors(node, 0)) {
@@ -1610,7 +1611,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4042,
     message: (target) => `Constant '${target.text}' has no value.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Ensure top-level non-replaceable primitive `constant` declarations specify a binding or equation
       let constantComp: u32 = 0;
       for (const comp of db.ast.getAncestors(node, $.component_clause)) {
@@ -1731,7 +1732,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4047,
     message: () => `cardinality may only be used in the condition of an if-statement/equation or an assert.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Allow `cardinality(...)` only when enclosed by an `if_equation` or `if_statement`
       const name = db.ast.getChildByFieldId(node, "name");
       if (name != 0 && db.ast.textEquals(name, "cardinality")) {
@@ -1753,7 +1754,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     code: 4025,
     message: (target) =>
       `connect may not be used inside if-equations with non-parametric conditions (found ${target.text}).`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check enclosing `if_equation` condition variability and reject continuous/time-varying conditions
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.if_equation) {
@@ -1782,7 +1783,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4028,
     message: (target) => `Component '${target.text}' has partial type.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Disallow non-replaceable component declarations whose resolved type is `partial` in a concrete class
       if (isPartialTypeComponentInScope(db, node, $)) {
         let nameNode: u32 = 0;
@@ -1805,7 +1806,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4048,
     message: (target) => `Expected ${target.text} to be a component, but found class instead.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Report when the argument passed to `cardinality(arg)` resolves to a class rather than a component
       if (isCardinalityClassArg(db, node, $)) {
         for (const arg of db.ast.getDescendants(node, $.function_argument)) {
@@ -1828,7 +1829,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const kindStr = k == 1 ? "record" : k == 2 ? "type" : "connector";
       return `Protected sections are not allowed in ${kindStr}.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if a `connector`, `record`, or `type` composition contains a `protected` keyword
       const encClass = getEnclosingClass(db, node, $);
       if (encClass != 0) {
@@ -1860,7 +1861,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4065,
     message: () => `Equations are not allowed in connector.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Reject `equation_section` inside any `connector` class
       const encClass = getEnclosingClass(db, node, $);
       if (encClass != 0 && isClassKind(db, encClass, "connector")) {
@@ -1885,7 +1886,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4066,
     message: () => `Algorithm sections are not allowed in connector.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Reject `algorithm_section` inside any `connector` class
       const encClass = getEnclosingClass(db, node, $);
       if (encClass != 0 && isClassKind(db, encClass, "connector")) {
@@ -1910,7 +1911,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 5017,
     message: () => `A when-statement may not be used inside a function or a while, if, or for-clause.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Skip nested `when` (already reported by M4013) and check for enclosing `if`/`for`/`while` or `function`
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (anc != node && (db.ast.getType(anc) == $.when_statement || db.ast.getType(anc) == $.when_equation)) {
@@ -1950,7 +1951,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4079,
     message: () => `'return' may not be used outside function.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Verify that any `return` statement is enclosed by a `function` class definition
       let isReturn = false;
       let ch = db.ast.getFirstChild(node);
@@ -1986,7 +1987,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4091,
     message: () => `'break' may only be used in a while- or for-loop.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Ensure `break` has a `for_statement`, `while_statement`, or `for_equation` ancestor in the current class
       let isBreak = false;
       let ch = db.ast.getFirstChild(node);
@@ -2024,7 +2025,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4020,
     message: () => `time is not allowed in a function.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Disallow references to `time` in function bodies or redeclarations inside a function
       if (!db.ast.textEquals(node, "time")) return;
       let inDecl = false;
@@ -2060,7 +2061,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4078,
     message: () => `terminate is not allowed in a function.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Flag `terminate(...)` calls appearing inside a `function` class definition
       let isTerminate = false;
       let nameNode = db.ast.getChildByFieldId(node, "name");
@@ -2105,7 +2106,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
       const name = nameNode && nameNode.text ? nameNode.text : "component";
       return `Negative dimension index (${dim}) for component ${name}.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check declared array subscripts (not subscripts inside binding expressions) for negative integer dimension expressions
       if ($.array_subscripts == 0 || $.subscript == 0) return;
       const subsNode = getDeclaredArraySubscripts(db, node, $);
@@ -2160,7 +2161,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
                     : "class";
       return `Class specialization violation: ${name} is a ${kindStr}, which may not contain an external declaration.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Verify that the directly enclosing `class_definition` of an `external_clause` is a `function`
       for (const anc of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(anc) == $.class_definition) {
@@ -2189,7 +2190,7 @@ export const modelicaSyntaxLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 2008,
     message: () => `Identifier time is reserved for the built-in element with the same name.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Disallow declaring any component named `time`
       for (const decl of db.ast.getDescendants(node, $.declaration)) {
         const nameNode = db.ast.getChildByFieldId(decl, "name");

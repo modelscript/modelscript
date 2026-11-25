@@ -1395,7 +1395,7 @@ export async function preprocessModelicaArtifact(
 
       if (adapter) {
         // ── Stage 1: Modelica Diagram (if non-empty) ─────────────────────────
-        let diagData = await buildDiagramData(adapter);
+        let diagData = await buildDiagramData(adapter as unknown as Parameters<typeof buildDiagramData>[0]);
         // If the model has explicit connect(...) equations between sub-components that omitted Placement annotations,
         // allow buildDiagramData to auto-layout those connected non-primitive sub-components.
         if ((diagData.nodes?.length ?? 0) === 0 && (adapter.connectEquations?.length ?? 0) > 0) {
@@ -1405,7 +1405,9 @@ export async function preprocessModelicaArtifact(
             db: undefined,
             entry: adapter.entry ? { ...adapter.entry, resourceId: undefined } : undefined,
           };
-          const autoDiag = await buildDiagramData(autoLayoutAdapter);
+          const autoDiag = await buildDiagramData(
+            autoLayoutAdapter as unknown as Parameters<typeof buildDiagramData>[0],
+          );
           if ((autoDiag.nodes?.length ?? 0) > 0) {
             diagData = autoDiag;
           }
@@ -1458,7 +1460,8 @@ export async function preprocessModelicaArtifact(
         }
 
         // ── Stage 2: Modelica Icon (if non-empty, e.g. for a shared component) ─
-        const rawIconSvg = getClassIconSvg(adapter, 240, true) ?? "";
+        const rawIconSvg =
+          getClassIconSvg(adapter as unknown as Parameters<typeof getClassIconSvg>[0], 240, true) ?? "";
         if (hasVisualElements(rawIconSvg)) {
           const description =
             typeof adapter.entry?.metadata?.["description"] === "string" ? adapter.entry.metadata["description"] : null;

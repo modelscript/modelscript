@@ -1,0 +1,11 @@
+{
+  "id": "olga-03-subsea-riser-severe-slugging",
+  "lang": "olga",
+  "subFormats": ["opi"],
+  "difficulty": 3,
+  "title": "Subsea S-Curve Riser Severe Slugging Analysis",
+  "description": "Deepwater seabed tieback feeding a steep catenary riser equipped with a PID topside anti-slug choke controller to mitigate severe riser-base terrain slugging.",
+  "category": "Multiphase Flow Assurance",
+  "tags": ["olga", "severe-slugging", "riser", "pid-controller"],
+  "activeFile": "riser_slugging.opi"
+}

@@ -374,7 +374,7 @@ jobs:
         if: steps.check-docs.outputs.run_docs == 'true'
         run: pnpm --filter @modelscript/docs run check
       - name: Package VS Code Extension
-        run: npx --yes @vscode/vsce package --no-dependencies --allow-star-activation
+        run: npx --yes @vscode/vsce@3.3.2 package --no-dependencies --allow-star-activation
         working-directory: dist/extension
       - name: Upload VSIX Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -1,0 +1,11 @@
+{
+  "id": "molfile-04-caffeine-alkaloid-structure",
+  "lang": "molfile",
+  "subFormats": ["mol"],
+  "difficulty": 4,
+  "title": "Caffeine Heterocyclic Purine-Dione Alkaloid",
+  "description": "Fused bicyclic 1,3,7-trimethylxanthine (caffeine, C8H10N4O2) structure with 14 heavy atoms, 15 bonds, two fused pyrimidine-imidazole rings, exocyclic carbonyl oxygens, and N-methyl substituents.",
+  "category": "Cheminformatics & Molecular Structure",
+  "tags": ["molfile", "caffeine", "heterocycle", "bicyclic"],
+  "activeFile": "caffeine.mol"
+}

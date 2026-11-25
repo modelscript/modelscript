@@ -1,0 +1,11 @@
+{
+  "id": "gproms-04-binary-distillation-startup",
+  "lang": "gproms",
+  "subFormats": ["gproms"],
+  "difficulty": 4,
+  "title": "Multi-Stage Binary Distillation Dynamic Startup",
+  "description": "Dynamic three-section benzene-toluene distillation column (reboiler, feed tray, condenser) with constant relative volatility vapor-liquid equilibrium.",
+  "category": "Separation Processes",
+  "tags": ["gproms", "distillation", "vle", "separation"],
+  "activeFile": "distillation.gproms"
+}

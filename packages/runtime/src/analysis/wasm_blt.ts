@@ -58,17 +58,22 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
   } else {
     if (isNodeOrBun) {
       // In Node.js, read from file system relative to dist/ or src/
-      const getBuiltin = (process as any)?.getBuiltinModule?.bind(process);
+      const procWithBuiltin = process as { getBuiltinModule?: (id: string) => unknown };
+      const getBuiltin = procWithBuiltin.getBuiltinModule?.bind(process);
       const pathId = "node:path";
       const fsId = "node:fs";
-      const { join } = getBuiltin ? getBuiltin(pathId) : await import(/* @vite-ignore */ pathId);
-      const { existsSync } = getBuiltin ? getBuiltin(fsId) : await import(/* @vite-ignore */ fsId);
+      const { join } = (getBuiltin ? getBuiltin(pathId) : await import(/* @vite-ignore */ pathId)) as {
+        join: (...parts: string[]) => string;
+      };
+      const { existsSync } = (getBuiltin ? getBuiltin(fsId) : await import(/* @vite-ignore */ fsId)) as {
+        existsSync: (p: string) => boolean;
+      };
       const candidate1 = join(import.meta.dirname, "..", "build", "release.wasm");
       const candidate2 = join(import.meta.dirname, "..", "..", "build", "release.wasm");
       url = existsSync(candidate1) ? candidate1 : candidate2;
     } else {
       // In browser context, use relative URL from serverDistBase or current module
-      const serverDist = (globalThis as any).serverDistBase;
+      const serverDist = (globalThis as { serverDistBase?: string }).serverDistBase;
       if (serverDist) {
         url = `${serverDist}/release.wasm`;
       } else {
@@ -89,10 +94,13 @@ export async function initBltWasm(urlOverride?: string | URL): Promise<void> {
 
   let module: WebAssembly.Module;
   if (isNodeOrBun) {
-    const getBuiltin = (process as any)?.getBuiltinModule?.bind(process);
+    const procWithBuiltin = process as { getBuiltinModule?: (id: string) => unknown };
+    const getBuiltin = procWithBuiltin.getBuiltinModule?.bind(process);
     const fsPromisesId = "node:fs/promises";
-    const fs = getBuiltin ? getBuiltin(fsPromisesId) : await import(/* @vite-ignore */ fsPromisesId);
-    module = await globalThis.WebAssembly.compile(await fs.readFile(url));
+    const fs = (getBuiltin ? getBuiltin(fsPromisesId) : await import(/* @vite-ignore */ fsPromisesId)) as {
+      readFile: (path: string | URL) => Promise<Uint8Array>;
+    };
+    module = await globalThis.WebAssembly.compile((await fs.readFile(url)) as BufferSource);
   } else {
     module = await globalThis.WebAssembly.compileStreaming(globalThis.fetch(url));
   }
@@ -779,15 +787,32 @@ function hashVarSet(set?: Set<string | number>): string {
  * Performs Block Lower Triangular (BLT) transformation natively on the DAEBuilder
  * by constructing adjacency matrices directly from arena expression graphs.
  */
+interface CachedArenaBlt extends ArenaBltResult {
+  varCount: number;
+  eqCount: number;
+  stateKey: string;
+  dummyKey: string;
+}
+
+interface ArenaBltInternals {
+  cachedBlt?: CachedArenaBlt;
+  _renamedVars?: { size: number };
+  forMeta?: { size: number };
+  removedEquations?: Set<number>;
+  varExpressions?: Map<number, number>;
+  syncWasmStringPool?: () => void;
+}
+
 export function performBltTransformationArena(
   arena: DAEBuilder,
   stateVars?: Set<string | number>,
   dummyDerivatives?: Set<string | number>,
   parameterVars?: Set<number>,
 ): ArenaBltResult {
+  const arenaInternal = arena as unknown as ArenaBltInternals;
   const stateKey = hashVarSet(stateVars);
   const dummyKey = hashVarSet(dummyDerivatives);
-  const cached = (arena as any).cachedBlt;
+  const cached = arenaInternal.cachedBlt;
   if (
     cached &&
     cached.varCount === arena.varCount &&
@@ -804,7 +829,8 @@ export function performBltTransformationArena(
 
   // Identify variables produced by FMU subsystems (known at each step, solved outside Modelica algebraic loops)
   const fmuOutputVarIndices = new Set<number>();
-  const fmuInstances = arena.extensionMetadata?.fmuInstances as any[] | undefined;
+  const fmuInstances = arena.extensionMetadata?.fmuInstances as
+    { instanceName?: string; outputs?: string[] }[] | undefined;
   if (Array.isArray(fmuInstances)) {
     for (const fmu of fmuInstances) {
       for (const outName of fmu.outputs || []) {
@@ -818,8 +844,8 @@ export function performBltTransformationArena(
   // Zero-crossing in-WASM CSR + BLT path operating directly on `arena.ptr`
   if (
     arena.ptr !== 0 &&
-    (arena as any)._renamedVars?.size === 0 &&
-    (arena as any).forMeta?.size === 0 &&
+    arenaInternal._renamedVars?.size === 0 &&
+    arenaInternal.forMeta?.size === 0 &&
     typeof arena.exports?.computeBltFromArena === "function" &&
     typeof arena.exports?.alloc === "function" &&
     typeof arena.exports?.free === "function"
@@ -830,8 +856,12 @@ export function performBltTransformationArena(
       return { sortedEquations: [], blocks: [] };
     }
 
-    if ((arena as any).removedEquations?.size > 0 && typeof arena.exports?.dae_setEqRemoved === "function") {
-      for (const remEq of (arena as any).removedEquations as Set<number>) {
+    if (
+      arenaInternal.removedEquations &&
+      arenaInternal.removedEquations.size > 0 &&
+      typeof arena.exports?.dae_setEqRemoved === "function"
+    ) {
+      for (const remEq of arenaInternal.removedEquations) {
         arena.exports.dae_setEqRemoved(arena.ptr, remEq, true);
       }
     }
@@ -842,7 +872,7 @@ export function performBltTransformationArena(
     const blocks: ArenaBltBlock[] = [];
 
     try {
-      const hasVarExpressions = !parameterVars && (arena as any).varExpressions?.size > 0;
+      const hasVarExpressions = !parameterVars && (arenaInternal.varExpressions?.size ?? 0) > 0;
       const needsMask =
         fmuOutputVarIndices.size > 0 ||
         (stateVars && stateVars.size > 0) ||
@@ -873,8 +903,8 @@ export function performBltTransformationArena(
           for (const pVar of parameterVars) {
             if (pVar >= 0 && pVar < totalVars) maskView[pVar]! |= 4;
           }
-        } else if (hasVarExpressions) {
-          for (const vIdx of (arena as any).varExpressions.keys() as Iterable<number>) {
+        } else if (hasVarExpressions && arenaInternal.varExpressions) {
+          for (const vIdx of arenaInternal.varExpressions.keys()) {
             if (vIdx >= 0 && vIdx < totalVars && (maskView[vIdx]! & 1) === 0) {
               maskView[vIdx]! |= 4;
             }
@@ -882,8 +912,8 @@ export function performBltTransformationArena(
         }
       }
 
-      if (typeof (arena as any).syncWasmStringPool === "function") {
-        (arena as any).syncWasmStringPool();
+      if (typeof arenaInternal.syncWasmStringPool === "function") {
+        arenaInternal.syncWasmStringPool();
       }
 
       resPtr = arena.exports.computeBltFromArena(arena.ptr, maskPtr, parameterVars ? 1 : 0, stateVars ? 1 : 0);
@@ -935,7 +965,7 @@ export function performBltTransformationArena(
       blocks,
     };
 
-    (arena as any).cachedBlt = {
+    arenaInternal.cachedBlt = {
       ...result,
       varCount: arena.varCount,
       eqCount: arena.eqCount,
@@ -1121,7 +1151,7 @@ export function performBltTransformationArena(
     blocks,
   };
 
-  (arena as any).cachedBlt = {
+  arenaInternal.cachedBlt = {
     ...result,
     varCount: arena.varCount,
     eqCount: arena.eqCount,

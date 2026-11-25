@@ -1,0 +1,19 @@
+<simpack_model name="DampedDoublePendulum">
+  <!-- Upper and lower pendulum links with valid positive-definite inertia tensors -->
+  <body id="link_upper" name="UpperLink" mass="3.2" ixx="0.065" iyy="0.065" izz="0.025" />
+  <body id="link_lower" name="LowerLink" mass="2.1" ixx="0.042" iyy="0.042" izz="0.018" />
+
+  <!-- Markers -->
+  <marker id="m_ground_pivot" body="$inertial" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_upper_top" body="link_upper" x="0.0" y="0.0" z="0.25" />
+  <marker id="m_upper_tip" body="link_upper" x="0.0" y="0.0" z="-0.25" />
+  <marker id="m_lower_top" body="link_lower" x="0.0" y="0.0" z="0.20" />
+
+  <!-- Kinematic Revolute Joints (2 bodies = 12 DOF, 2 revolute = 10 constraints => 2 DOF) -->
+  <joint id="j_shoulder" type="revolute" from="m_ground_pivot" to="m_upper_top" />
+  <joint id="j_elbow" type="revolute" from="m_upper_tip" to="m_lower_top" />
+
+  <!-- Viscous joint damping -->
+  <spring id="d_shoulder" from="m_ground_pivot" to="m_upper_top" kx="0" ky="0" kz="0" cx="0" cy="0.35" cz="0" />
+  <spring id="d_elbow" from="m_upper_tip" to="m_lower_top" kx="0" ky="0" kz="0" cx="0" cy="0.20" cz="0" />
+</simpack_model>

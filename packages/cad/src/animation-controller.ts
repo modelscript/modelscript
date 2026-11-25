@@ -4,7 +4,7 @@
  * @modelscript/cad — Unified Animation Controller for 3D CAD Co-Simulation.
  *
  * Transport-agnostic kinematics and animation controller that drives real-time 3D CAD
- * components across Morsel Playground, VS Code Web IDE, and CLI renderers.
+ * components across Ansatz Editor, VS Code Web IDE, and CLI renderers.
  *
  * Supports:
  *  - Post-simulation scrub/replay with binary search and Hermite spline interpolation

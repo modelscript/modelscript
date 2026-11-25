@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
-// ModelScript IDE 2-Level Tile Landing Page
+// Ansatz Studio 2-Level Tile Landing Page
 // Styled with the unified ModelScript Docs design system (Space Grotesk, Plus Jakarta Sans,
 // JetBrains Mono, CAD blueprint grid, and domain tone chips).
 
@@ -1894,7 +1894,7 @@ export function renderLandingPageHtml(): string {
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <title>ModelScript IDE — 66-Language Polyglot Engineering &amp; Simulation Environment</title>
+  <title>Ansatz Studio — 66-Language Polyglot Engineering &amp; Simulation Environment</title>
   <link rel="icon" href="/favicon.ico" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />

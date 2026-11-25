@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="Integrator" guid="{11111111-1111-1111-1111-111111111102}">
+  <CoSimulation modelIdentifier="Integrator" />
+  <ModelVariables>
+    <ScalarVariable name="u" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="y" valueReference="1" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="y0" valueReference="2" causality="parameter" variability="fixed"><Real start="0.0" /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

@@ -1,0 +1,16 @@
+@prefix arch: <http://modelscript.dev/ontology/arch#> .
+@prefix req: <http://modelscript.dev/ontology/req#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+arch:VehicleArchitecture a owl:Ontology .
+arch:SubsystemComponent a owl:Class .
+arch:satisfies a owl:ObjectProperty .
+
+arch:BrakeActuatorUnit a arch:SubsystemComponent ;
+  rdfs:label "Electro-Hydraulic Brake Actuator" ;
+  arch:satisfies req:REQ_BRAKE_01 .
+
+arch:BatteryCoolingLoop a arch:SubsystemComponent ;
+  rdfs:label "Liquid Cold-Plate Cooling Loop" ;
+  arch:satisfies req:REQ_THERM_02 .

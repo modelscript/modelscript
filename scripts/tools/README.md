@@ -1,6 +1,6 @@
 # `scripts/tools` — Developer, Compliance & Asset Utilities
 
-This directory contains standalone developer-experience (DX) utilities, the isolated single-language playground launcher, GDPR/CCPA user-data export tooling, and procedural CAD/icon asset generators.
+This directory contains standalone developer-experience (DX) utilities, the isolated single-language ansatz launcher, GDPR/CCPA user-data export tooling, and procedural CAD/icon asset generators.
 
 ## Quick Reference
 
@@ -8,7 +8,7 @@ This directory contains standalone developer-experience (DX) utilities, the isol
 | ---------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | [`dev-doctor.ts`](./dev-doctor.ts)                         | `npm run doctor:dev`                                      | Verify local Node version (`.nvmrc`), CPU/RAM, `asc`, `omc`, MSL 4.1.0, `data/`, Docker, and docs setup on onboarding. |
 | [`clean-scratch.ts`](./clean-scratch.ts)                   | `npm run clean:scratch`                                   | Delete untracked `scratch*` files/dirs, `blink.log`, and `asc_error.log` without touching git-tracked files.           |
-| [`language-playground.ts`](./language-playground.ts)       | `npm run playground -- <lang>`                            | Launch an isolated Vite + Monaco/Morsel + LSP dev server for a single language in `languages/<lang>/`.                 |
+| [`language-ansatz.ts`](./language-ansatz.ts)               | `npm run ansatz -- <lang>`                                | Launch an isolated Vite + Monaco/Ansatz + LSP dev server for a single language in `languages/<lang>/`.                 |
 | [`export-user-data.ts`](./export-user-data.ts)             | `npx tsx scripts/tools/export-user-data.ts [opts]`        | Batch-export GDPR Art. 20 / CCPA user data archives (`.zip` with offline HTML viewer or `.json`) from SQLite.          |
 | [`generate-drone-step.ts`](./generate-drone-step.ts)       | `npx tsx scripts/tools/generate-drone-step.ts [out.step]` | Procedurally generate an ISO-10303-21 (STEP AP214) quadcopter chassis B-Rep CAD fixture.                               |
 | [`generate-desktop-icons.py`](./generate-desktop-icons.py) | `python3 scripts/tools/generate-desktop-icons.py`         | Generate multi-size PNG/ICO/ICNS Tauri desktop icons from `languages/modelscript/assets/icon-dark.png`.                |
@@ -38,20 +38,20 @@ This directory contains standalone developer-experience (DX) utilities, the isol
 
 ---
 
-### [`language-playground.ts`](./language-playground.ts)
+### [`language-ansatz.ts`](./language-ansatz.ts)
 
-- **Purpose:** Starts an isolated Vite dev server rooted at [`scripts/playground/`](../playground/README.md) for a single language package (`languages/<lang>/`), wiring up `@modelscript/lsp/core` over HTTP, live WASM parser bindings, sample discovery, and source HMR aliases for `@modelscript/editor`, `@modelscript/react`, `@modelscript/diagram`, and `@modelscript/design-tokens`.
-- **When to use:** Run `npm run playground -- <lang>` (or `npm run playground` inside any `languages/<lang>/` directory) when iterating on a language's grammar, LSP, stencils, or `src/ui/*.tsx` panels without building the full 104-language web app.
+- **Purpose:** Starts an isolated Vite dev server rooted at [`scripts/ansatz/`](../ansatz-editor/README.md) for a single language package (`languages/<lang>/`), wiring up `@modelscript/lsp/core` over HTTP, live WASM parser bindings, sample discovery, and source HMR aliases for `@modelscript/editor`, `@modelscript/react`, `@modelscript/diagram`, and `@modelscript/design-tokens`.
+- **When to use:** Run `npm run ansatz -- <lang>` (or `npm run ansatz` inside any `languages/<lang>/` directory) when iterating on a language's grammar, LSP, stencils, or `src/ui/*.tsx` panels without building the full 104-language web app.
 - **How it works:**
-  - Uses `discoverSingleLanguage()` from `@modelscript/dsl` to load language metadata, UI panels, simulation cards, stencils, and toolbar buttons into the virtual module `virtual:modelscript-playground-lang`.
-  - Serves dev middleware endpoints: `GET /__playground/parser.wasm`, `GET /__playground/bindings.js`, `GET /__playground/sample`, `POST /__playground/lsp`, and `POST /__playground/rebuild-parser`.
-  - With `--morsel`, delegates to `@modelscript/web` at `/playground?lang=<id>&single=1`.
+  - Uses `discoverSingleLanguage()` from `@modelscript/dsl` to load language metadata, UI panels, simulation cards, stencils, and toolbar buttons into the virtual module `virtual:modelscript-ansatz-lang`.
+  - Serves dev middleware endpoints: `GET /__ansatz/parser.wasm`, `GET /__ansatz/bindings.js`, `GET /__ansatz/sample`, `POST /__ansatz/lsp`, and `POST /__ansatz/rebuild-parser`.
+  - With `--ansatz`, delegates to `@modelscript/web` at `/editor?lang=<id>&single=1`.
 - **CLI flags:**
   - `<language|path>` or `--lang, -l <target>` (defaults to `cwd` if inside `languages/*`).
-  - `--port, -p <num>` (default `5179`, or `5173` with `--morsel`), `--host <addr>` (default `127.0.0.1`).
-  - `--file, -f <path>`, `--mode, -m <workbench|inspector|artifact>`, `--theme, -t <dark|light>`, `--morsel`, `--open`, `--help, -h`.
-- **Callers:** Root `package.json` (`playground`) and 100+ `languages/*/package.json` `"playground"` scripts.
-- **Note:** `POST /__playground/rebuild-parser` currently references `scripts/build-language-parser.js` instead of `scripts/build/build-language-parser.js` after the `scripts/build/` reorganization; verify that path before relying on in-browser WASM rebuilds.
+  - `--port, -p <num>` (default `5179`, or `5173` with `--ansatz`), `--host <addr>` (default `127.0.0.1`).
+  - `--file, -f <path>`, `--mode, -m <workbench|inspector|artifact>`, `--theme, -t <dark|light>`, `--ansatz`, `--open`, `--help, -h`.
+- **Callers:** Root `package.json` (`ansatz`) and 100+ `languages/*/package.json` `"ansatz"` scripts.
+- **Note:** `POST /__ansatz/rebuild-parser` currently references `scripts/build-language-parser.js` instead of `scripts/build/build-language-parser.js` after the `scripts/build/` reorganization; verify that path before relying on in-browser WASM rebuilds.
 
 ---
 

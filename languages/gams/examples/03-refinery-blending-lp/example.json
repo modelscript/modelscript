@@ -1,0 +1,11 @@
+{
+  "id": "gams-03-refinery-blending-lp",
+  "lang": "gams",
+  "subFormats": ["gams", "lp", "blending"],
+  "difficulty": 3,
+  "title": "Blended Refinery Crude Processing LP",
+  "description": "Petroleum refinery crude-oil purchasing and gasoline/diesel/jet-fuel blending LP maximizing net operating profit subject to distillation yields and market caps.",
+  "category": "Process Systems Optimization",
+  "tags": ["gams", "lp", "refinery", "blending"],
+  "activeFile": "refinery.gms"
+}

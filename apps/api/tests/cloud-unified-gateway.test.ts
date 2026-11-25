@@ -152,7 +152,7 @@ test("Unified Cloud Gateway API Lifecycle", async (t) => {
     process.env["NODE_ENV"] = "production";
     try {
       const pageviewRes = await request(app).post("/api/v1/analytics/pageview").send({
-        path: "/morsel",
+        path: "/ansatz",
         referrer: "",
       });
       assert.equal(pageviewRes.status, 202);

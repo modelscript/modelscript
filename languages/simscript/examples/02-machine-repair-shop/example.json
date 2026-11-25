@@ -1,0 +1,11 @@
+{
+  "id": "simscript-02-machine-repair-shop",
+  "lang": "simscript",
+  "subFormats": ["sim"],
+  "difficulty": 2,
+  "title": "Parallel Machine Repair Shop with Breakdowns",
+  "description": "Industrial maintenance shop with multiple repair technicians servicing stochastic machine failures using Erlang repair durations and resource utilization accumulation.",
+  "category": "Reliability & Maintenance",
+  "tags": ["simscript", "maintenance", "repair", "erlang"],
+  "activeFile": "repair_shop.sim"
+}

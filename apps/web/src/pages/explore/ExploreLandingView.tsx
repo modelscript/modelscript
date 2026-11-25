@@ -327,27 +327,37 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
             ) : (
               <>
                 {packages.map((pkg) => {
-                  const anyPkg = pkg as any;
-                  const latestVer = anyPkg.latestVersion || pkg.version || "1.0.0";
+                  const pkgExt = pkg as PackageData & {
+                    latestVersion?: string | undefined;
+                    scope?: string | undefined;
+                    author?: string | undefined;
+                    domains?: string[] | undefined;
+                    publishedAt?: string | undefined;
+                    license?: string | undefined;
+                    totalDownloads?: number | undefined;
+                    dependentsCount?: number | undefined;
+                    recommendationReason?: string | undefined;
+                  };
+                  const latestVer = pkgExt.latestVersion || pkg.version || "1.0.0";
                   const targetUrl = latestVer ? `/packages/${pkg.name}/${latestVer}` : `/packages/${pkg.name}`;
                   const { scope, baseName } = splitScopedPackageName(pkg.name);
-                  const rawScope = scope ? scope.slice(1) : anyPkg.scope;
+                  const rawScope = scope ? scope.slice(1) : pkgExt.scope;
                   const distinctAuthor =
-                    anyPkg.author &&
-                    String(anyPkg.author).toLowerCase() !== pkg.name.toLowerCase() &&
-                    String(anyPkg.author).toLowerCase() !== String(rawScope || "").toLowerCase()
-                      ? `@${String(anyPkg.author).replace(/^@/, "")}`
+                    pkgExt.author &&
+                    String(pkgExt.author).toLowerCase() !== pkg.name.toLowerCase() &&
+                    String(pkgExt.author).toLowerCase() !== String(rawScope || "").toLowerCase()
+                      ? `@${String(pkgExt.author).replace(/^@/, "")}`
                       : null;
                   const domains = inferPackageDomains({
                     name: pkg.name,
-                    domains: anyPkg.domains,
+                    domains: pkgExt.domains,
                     description: pkg.description,
                   });
-                  const timeAgoText = formatTimeAgo(anyPkg.publishedAt);
-                  const license = anyPkg.license as string | undefined;
-                  const totalDownloads = typeof anyPkg.totalDownloads === "number" ? anyPkg.totalDownloads : 0;
-                  const dependentsCount = typeof anyPkg.dependentsCount === "number" ? anyPkg.dependentsCount : 0;
-                  const recommendationReason = anyPkg.recommendationReason as string | undefined;
+                  const timeAgoText = formatTimeAgo(pkgExt.publishedAt);
+                  const license = pkgExt.license;
+                  const totalDownloads = typeof pkgExt.totalDownloads === "number" ? pkgExt.totalDownloads : 0;
+                  const dependentsCount = typeof pkgExt.dependentsCount === "number" ? pkgExt.dependentsCount : 0;
+                  const recommendationReason = pkgExt.recommendationReason;
                   const hasVisibleRecommendation = Boolean(
                     recommendationReason &&
                     !recommendationReason.startsWith("Matches #") &&
@@ -507,14 +517,20 @@ export const ExploreLandingView: React.FC<ExploreLandingViewProps> = ({
             ) : (
               <>
                 {repos.map((r) => {
+                  const repoExt = r as RepoData & {
+                    default_branch?: string | undefined;
+                    star_count?: number | undefined;
+                    stars_count?: number | undefined;
+                    stargazers_count?: number | undefined;
+                  };
                   const provider = r.provider || "github";
-                  const branch = (r as any).default_branch || "main";
+                  const branch = repoExt.default_branch || "main";
                   const repoKey = `${r.namespace}/${r.project}`;
                   const repoUrl = `/repos/${provider}/${r.namespace}/${r.project}`;
                   const starCount =
-                    (r as any).star_count ??
-                    (r as any).stars_count ??
-                    (r as any).stargazers_count ??
+                    repoExt.star_count ??
+                    repoExt.stars_count ??
+                    repoExt.stargazers_count ??
                     getRepoFallbackStars(repoKey);
                   const domainTags = inferRepoDomainTags({
                     id: Number(r.id) || 0,

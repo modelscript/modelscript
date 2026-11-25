@@ -1,0 +1,12 @@
+{
+  "id": "touchstone-01-patch-antenna-s1p",
+  "lang": "touchstone",
+  "subFormats": ["s1p"],
+  "difficulty": 1,
+  "title": "1-Port 2.45 GHz Matched Patch Antenna",
+  "description": "Strictly passive 1-port Touchstone S11 return-loss sweep of a 2.45 GHz Wi-Fi microstrip patch antenna matched to 50 ohms.",
+  "category": "Antennas & RF Matching",
+  "tags": ["touchstone", "s1p", "antenna", "return-loss"],
+  "activeFile": "patch_2450mhz.s1p",
+  "isDefaultStarter": true
+}

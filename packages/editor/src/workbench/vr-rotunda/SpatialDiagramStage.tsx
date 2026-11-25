@@ -44,6 +44,8 @@ import {
   computeGrabOffset,
   computeSmoothingAlpha,
   isInsideDeleteRing,
+  predictTossIntoRecycleBin,
+  shouldTriggerForcePull,
   type GrabOffsetRigidTransform,
   type SpatialInteractionLock,
 } from "./spatial-interaction.js";
@@ -53,10 +55,35 @@ import type { ExtrudedWaferStyle } from "./svg-extruder.js";
 import { evaluateMaterializeTransition } from "./wrist-palette-logic.js";
 import { WristPaletteTool } from "./WristPaletteTool.js";
 import { evaluatePinchState } from "./xr-gestures.js";
+import {
+  applyStickDeadzone,
+  pointAlongRayPose,
+  readThumbstick,
+  releaseEventForBinding,
+  resolveXrPointerBinding,
+  sampleBindingPose,
+  springFollowStep,
+  type XrPointerBinding,
+} from "./xr-handle.js";
 import { getSharedXrStore, pulseXrHaptics, type RotundaCueKind } from "./xr-session.js";
 
 const DELETE_RING_STAGE_POS: [number, number, number] = [0.64, -0.34, 0.14];
 const SNAP_WELD_RADIUS_M = 0.068;
+const TOSS_GRAVITY = -3.6;
+/** Thumbstick telescoping speed for laser-held parts / plugs (m/s at full deflection). */
+const RAY_TELESCOPE_SPEED = 1.1;
+const RAY_MIN_DISTANCE = 0.12;
+const RAY_MAX_DISTANCE = 6;
+
+/**
+ * Reads the world-space pose of the pointer that emitted an XR pointer event
+ * (`@pmndrs/pointer-events` exposes `pointerPosition` / `pointerQuaternion`).
+ */
+function readEventPointerPose(e: unknown): { position: THREE.Vector3; quaternion: THREE.Quaternion } | null {
+  const ev = e as { pointerPosition?: THREE.Vector3; pointerQuaternion?: THREE.Quaternion };
+  if (!ev.pointerPosition || !ev.pointerQuaternion) return null;
+  return { position: ev.pointerPosition.clone(), quaternion: ev.pointerQuaternion.clone() };
+}
 
 export interface SpatialDiagramStageProps {
   visible: boolean;
@@ -101,25 +128,58 @@ export interface SpatialDiagramStageProps {
     | undefined;
 }
 
+/**
+ * Session drive mode:
+ *  - `"desktop"`    — mouse ray from the camera (only mode that ever reads `camera`).
+ *  - `"xr-hand"`    — bare-hand direct pinch (sampled from hand joints each frame).
+ *  - `"xr-pointer"` — controller / hand-laser pointer bound to its own XR input source.
+ */
+type SessionDriveMode = "desktop" | "xr-hand" | "xr-pointer";
+
 interface ActiveNodeGrabSession {
   nodeId: string;
-  mode: "desktop" | "xr-hand" | "xr-controller";
-  handedness?: "left" | "right";
+  mode: SessionDriveMode;
+  handedness?: "left" | "right" | undefined;
+  binding?: XrPointerBinding | undefined;
   dragPlane: THREE.Plane;
   planeOffset: THREE.Vector3;
   depthOffset: number;
   yawOffsetRad: number;
   grabOffset?: GrabOffsetRigidTransform | undefined;
+  /** Mutable rigid offset (pointer-local frame) for `xr-pointer` sessions; Z is telescoped by the thumbstick. */
+  xrOffsetPos?: THREE.Vector3 | undefined;
+  xrOffsetQuat?: THREE.Quaternion | undefined;
   targetPos: THREE.Vector3;
   targetQuat: THREE.Quaternion;
   smoothPos: THREE.Vector3;
   smoothQuat: THREE.Quaternion;
+  /** Spring velocity (stage-local m/s) giving held parts a subtle sense of weight. */
+  velocity: THREE.Vector3;
+  /** Smoothed stage-local release velocity (m/s) used for ballistic toss-to-delete. */
+  releaseVel: THREE.Vector3;
+  /** Previous frame world pointer position for Gravity-Gloves force-pull flick detection. */
+  prevPointerPos: THREE.Vector3;
+  hasPrevPointerPos: boolean;
+  /** Active force-pull reel-in animation pulling a distant part smoothly into the hand. */
+  forcePulling: boolean;
+}
+
+interface ActiveTossFlight {
+  nodeId: string;
+  pos: THREE.Vector3;
+  vel: THREE.Vector3;
+  elapsed: number;
+  duration: number;
+  handedness?: "left" | "right" | undefined;
 }
 
 interface ActiveWireSession {
   sourcePort: SpatialDiagramPort3D;
-  mode: "desktop" | "xr-hand" | "xr-controller";
-  handedness?: "left" | "right";
+  mode: SessionDriveMode;
+  handedness?: "left" | "right" | undefined;
+  binding?: XrPointerBinding | undefined;
+  /** Distance along the bound XR ray where the plug tip floats (telescoped by thumbstick). */
+  rayDistance: number;
   dragPlane: THREE.Plane;
   depthOffset: number;
   snappedKey: string | null;
@@ -130,8 +190,10 @@ interface ActiveWireSession {
 
 interface ActivePalettePullSession {
   item: GalleryComponentItem;
-  mode: "desktop" | "xr-hand" | "xr-controller";
-  handedness?: "left" | "right";
+  mode: SessionDriveMode;
+  handedness?: "left" | "right" | undefined;
+  binding?: XrPointerBinding | undefined;
+  rayDistance: number;
   panelOriginWorld: THREE.Vector3;
   panelNormalWorld: THREE.Vector3;
   panelQuatWorld: THREE.Quaternion;
@@ -178,6 +240,7 @@ export function SpatialDiagramStage({
 }: SpatialDiagramStageProps): React.ReactElement | null {
   const { camera, gl } = useThree();
   const xrOrigin = useXR((s) => s.origin);
+  const xrSession = useXR((s) => s.session);
   const rightHand = useXRInputSourceState("hand", "right");
   const leftHand = useXRInputSourceState("hand", "left");
   const rightController = useXRInputSourceState("controller", "right");
@@ -234,14 +297,25 @@ export function SpatialDiagramStage({
   const leftPinchWorldRef = useRef(new THREE.Vector3());
   const rightPinchWorldRef = useRef(new THREE.Vector3());
   const handQuatScratch = useRef(new THREE.Quaternion());
+  const leftWristQuatRef = useRef(new THREE.Quaternion());
+  const rightWristQuatRef = useRef(new THREE.Quaternion());
+  const pointerPosScratch = useRef(new THREE.Vector3());
+  const pointerQuatScratch = useRef(new THREE.Quaternion());
+  const yawQuatScratch = useRef(new THREE.Quaternion());
   const stageWorldPosScratch = useRef(new THREE.Vector3());
   const invStageMatScratch = useRef(new THREE.Matrix4());
   const invStageQuatScratch = useRef(new THREE.Quaternion());
   const stageWorldQuatScratch = useRef(new THREE.Quaternion());
   const rayHitScratch = useRef(new THREE.Vector3());
+  const prevSmoothPosScratch = useRef(new THREE.Vector3());
   const tmpVecA = useRef(new THREE.Vector3());
   const tmpVecB = useRef(new THREE.Vector3());
   const tmpNormal = useRef(new THREE.Vector3());
+  const lastApproachHapticMsRef = useRef(0);
+  const tossingNodeRef = useRef<ActiveTossFlight | null>(null);
+  const [tossingNodeId, setTossingNodeId] = useState<string | null>(null);
+  const disposalOuterRingRef = useRef<THREE.Mesh | null>(null);
+  const disposalInnerRingRef = useRef<THREE.Mesh | null>(null);
 
   // Two-hand world-frame stage navigation state
   const twoHandStageNavRef = useRef<{
@@ -392,9 +466,23 @@ export function SpatialDiagramStage({
   /*  Interaction Start / Finish Handlers (Desktop + XR Pointer Events)       */
   /* ------------------------------------------------------------------------ */
 
+  /**
+   * Resolves the input source behind a pointer event. Returns `null` for bare-hand
+   * near-field grab/touch pointers: those are handled by the joint-based pinch path
+   * below (more precise pinch midpoint + wrist orientation), so we avoid double sessions.
+   */
+  const bindPointer = useCallback((e: ThreeEvent<PointerEvent>): XrPointerBinding | null => {
+    const binding = resolveXrPointerBinding(e);
+    if (binding.isHand && (binding.kind === "grab" || binding.kind === "touch")) return null;
+    return binding;
+  }, []);
+
   const handleStartNodeGrab = useCallback(
     (nodeId: string, e: ThreeEvent<PointerEvent>) => {
+      if (nodeGrabRef.current || wireSessionRef.current || palettePullRef.current) return;
       if (!canAcquireInteractionLock(interactionLockRef.current, "node-grab")) return;
+      const binding = bindPointer(e);
+      if (!binding) return;
       const group = nodeGroupRefs.current.get(nodeId);
       const stage = stageGroupRef.current;
       if (!group || !stage) return;
@@ -404,16 +492,53 @@ export function SpatialDiagramStage({
 
       const nodeWorldPos = new THREE.Vector3();
       group.getWorldPosition(nodeWorldPos);
-
-      // Build camera-facing drag plane passing through nodeWorldPos
-      const planeNormal = new THREE.Vector3();
-      camera.getWorldDirection(planeNormal).negate();
-      const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, nodeWorldPos);
-      const planeOffset = nodeWorldPos.clone().sub(e.point);
+      const nodeWorldQuat = new THREE.Quaternion();
+      group.getWorldQuaternion(nodeWorldQuat);
 
       const curPose = diagramStateRef.current.poses[nodeId];
       const initPos = curPose ? new THREE.Vector3(...curPose.position) : group.position.clone();
       const initQuat = curPose ? new THREE.Quaternion(...curPose.quaternion) : group.quaternion.clone();
+
+      if (binding.kind !== "desktop") {
+        // XR: rigidly attach the part to the pointer pose (grip or laser) at the exact contact offset.
+        const pose = readEventPointerPose(e);
+        if (!pose) return;
+        const grabOffset = computeGrabOffset(pose.position, pose.quaternion, nodeWorldPos, nodeWorldQuat);
+        nodeGrabRef.current = {
+          nodeId,
+          mode: "xr-pointer",
+          handedness: binding.handedness,
+          binding,
+          dragPlane: new THREE.Plane(),
+          planeOffset: new THREE.Vector3(),
+          depthOffset: 0,
+          yawOffsetRad: 0,
+          grabOffset,
+          xrOffsetPos: new THREE.Vector3(...grabOffset.positionOffset),
+          xrOffsetQuat: new THREE.Quaternion(...grabOffset.rotationOffset),
+          targetPos: initPos.clone(),
+          targetQuat: initQuat.clone(),
+          smoothPos: initPos.clone(),
+          smoothQuat: initQuat.clone(),
+          velocity: new THREE.Vector3(),
+          releaseVel: new THREE.Vector3(),
+          prevPointerPos: pose.position.clone(),
+          hasPrevPointerPos: true,
+          forcePulling: false,
+        };
+        setLock("node-grab");
+        setGrabbedNodeId(nodeId);
+        setOverDeleteRing(false);
+        onCue?.("grab");
+        pulseXrHaptics(getSharedXrStore(), binding.kind === "grab" ? 0.4 : 0.28, 20, binding.handedness);
+        return;
+      }
+
+      // Desktop: build camera-facing drag plane passing through nodeWorldPos
+      const planeNormal = new THREE.Vector3();
+      camera.getWorldDirection(planeNormal).negate();
+      const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, nodeWorldPos);
+      const planeOffset = nodeWorldPos.clone().sub(e.point);
 
       nodeGrabRef.current = {
         nodeId,
@@ -426,16 +551,20 @@ export function SpatialDiagramStage({
         targetQuat: initQuat.clone(),
         smoothPos: initPos.clone(),
         smoothQuat: initQuat.clone(),
+        velocity: new THREE.Vector3(),
+        releaseVel: new THREE.Vector3(),
+        prevPointerPos: new THREE.Vector3(),
+        hasPrevPointerPos: false,
+        forcePulling: false,
       };
 
       setLock("node-grab");
       setGrabbedNodeId(nodeId);
       setOverDeleteRing(false);
       onCue?.("grab");
-      pulseXrHaptics(getSharedXrStore(), 0.28, 18);
       onHudStatusChange?.(`Moving ${nodeId} in 3D space (Shift/Wheel = Z-depth · R = Rotate 90°)`);
     },
-    [camera, interactionLockRef, setLock, onCue, onHudStatusChange],
+    [camera, interactionLockRef, bindPointer, setLock, onCue, onHudStatusChange],
   );
 
   const finishNodeGrab = useCallback(() => {
@@ -463,6 +592,31 @@ export function SpatialDiagramStage({
       return;
     }
 
+    // Job Simulator "Toss to Delete": if thrown toward the disposal chute, fly it along its parabolic arc into the bin!
+    const toss = predictTossIntoRecycleBin(
+      rawPos,
+      [sess.releaseVel.x, sess.releaseVel.y, sess.releaseVel.z],
+      DELETE_RING_STAGE_POS,
+      0.19,
+      0.55,
+      TOSS_GRAVITY,
+    );
+    if (toss.willHit) {
+      tossingNodeRef.current = {
+        nodeId: sess.nodeId,
+        pos: new THREE.Vector3(rawPos[0], rawPos[1], rawPos[2]),
+        vel: sess.releaseVel.clone(),
+        elapsed: 0,
+        duration: Math.max(0.14, Math.min(0.65, toss.impactTimeSec)),
+        handedness: sess.handedness,
+      };
+      setTossingNodeId(sess.nodeId);
+      onCue?.("whoosh");
+      pulseXrHaptics(getSharedXrStore(), 0.25, 16, sess.handedness);
+      onHudStatusChange?.(`Tossing ${sess.nodeId} into disposal chute…`);
+      return;
+    }
+
     const existing = diagramStateRef.current.poses[sess.nodeId];
     const constrained = applySpatialSnapConstraint(rawPos, rawQuat, snapMode, existing?.domainLayer ?? 1, true);
     const res = commitMoveSpatialNode(diagramStateRef.current, sess.nodeId, constrained);
@@ -473,16 +627,26 @@ export function SpatialDiagramStage({
 
   const handleStartPortWireDrag = useCallback(
     (port: SpatialDiagramPort3D, e: ThreeEvent<PointerEvent>) => {
+      if (nodeGrabRef.current || wireSessionRef.current || palettePullRef.current) return;
       if (!canAcquireInteractionLock(interactionLockRef.current, "wire-drag")) return;
+      const binding = bindPointer(e);
+      if (!binding) return;
+      const isXr = binding.kind !== "desktop";
 
       const planeNormal = new THREE.Vector3();
-      camera.getWorldDirection(planeNormal).negate();
-      const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, e.point);
+      if (!isXr) camera.getWorldDirection(planeNormal).negate();
+      const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+        isXr ? planeNormal.set(0, 0, 1) : planeNormal,
+        e.point,
+      );
       wireTipWorldPosRef.current.copy(e.point);
 
       const sess: ActiveWireSession = {
         sourcePort: port,
-        mode: "desktop",
+        mode: isXr ? "xr-pointer" : "desktop",
+        handedness: binding.handedness,
+        binding: isXr ? binding : undefined,
+        rayDistance: Math.max(RAY_MIN_DISTANCE, binding.hitDistance),
         dragPlane,
         depthOffset: 0,
         snappedKey: null,
@@ -509,10 +673,14 @@ export function SpatialDiagramStage({
       });
 
       onCue?.("grab");
-      pulseXrHaptics(getSharedXrStore(), 0.3, 18);
-      onHudStatusChange?.(`Wiring from ${port.nodeId}.${port.portId} — drag toward a compatible port to snap`);
+      if (isXr) pulseXrHaptics(getSharedXrStore(), 0.32, 18, binding.handedness);
+      onHudStatusChange?.(
+        isXr
+          ? `Wiring from ${port.nodeId}.${port.portId} — point the plug at a glowing port (thumbstick ↑/↓ = reach)`
+          : `Wiring from ${port.nodeId}.${port.portId} — drag toward a compatible port to snap`,
+      );
     },
-    [camera, interactionLockRef, setLock, onCue, onHudStatusChange],
+    [camera, interactionLockRef, bindPointer, setLock, onCue, onHudStatusChange],
   );
 
   const finishWireDrag = useCallback(() => {
@@ -553,13 +721,18 @@ export function SpatialDiagramStage({
       cardWorldPos: THREE.Vector3,
       panelWorldNormal: THREE.Vector3,
       panelWorldQuat: THREE.Quaternion,
-      _e: ThreeEvent<PointerEvent>,
+      e: ThreeEvent<PointerEvent>,
     ) => {
+      if (nodeGrabRef.current || wireSessionRef.current || palettePullRef.current) return;
       if (!canAcquireInteractionLock(interactionLockRef.current, "palette-pull")) return;
+      const binding = bindPointer(e);
+      if (!binding) return;
+      const isXr = binding.kind !== "desktop";
 
-      // Drag plane faces camera through the card spawn point (desktop users pull sideways & forward into stage)
+      // Desktop: drag plane faces camera through the card spawn point (pull sideways & forward into stage)
       const planeNormal = new THREE.Vector3();
-      camera.getWorldDirection(planeNormal).negate();
+      if (isXr) planeNormal.copy(panelWorldNormal);
+      else camera.getWorldDirection(planeNormal).negate();
       const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, cardWorldPos);
 
       previewWorldPosRef.current.copy(cardWorldPos);
@@ -569,7 +742,10 @@ export function SpatialDiagramStage({
 
       palettePullRef.current = {
         item,
-        mode: "desktop",
+        mode: isXr ? "xr-pointer" : "desktop",
+        handedness: binding.handedness,
+        binding: isXr ? binding : undefined,
+        rayDistance: Math.max(RAY_MIN_DISTANCE, binding.hitDistance),
         panelOriginWorld: cardWorldPos.clone(),
         panelNormalWorld: panelWorldNormal.clone(),
         panelQuatWorld: panelWorldQuat.clone(),
@@ -583,10 +759,14 @@ export function SpatialDiagramStage({
       setPullingItem(item);
       setSnapWeldVisual(null);
       onCue?.("grab");
-      pulseXrHaptics(getSharedXrStore(), 0.3, 18);
-      onHudStatusChange?.(`Pulling ${item.shortName} off library panel to materialize in 3D…`);
+      if (isXr) pulseXrHaptics(getSharedXrStore(), 0.3, 18, binding.handedness);
+      onHudStatusChange?.(
+        isXr
+          ? `Pulling ${item.shortName} — yank it toward you (or thumbstick ↓) to materialize`
+          : `Pulling ${item.shortName} off library panel to materialize in 3D…`,
+      );
     },
-    [camera, interactionLockRef, setLock, onCue, onHudStatusChange],
+    [camera, interactionLockRef, bindPointer, setLock, onCue, onHudStatusChange],
   );
 
   const finishPalettePull = useCallback(() => {
@@ -653,6 +833,22 @@ export function SpatialDiagramStage({
       }
     },
     [emitEdit, onCue, onHudStatusChange],
+  );
+
+  const handleUnplugEdgeToDrag = useCallback(
+    (edgeId: string, keptPort: SpatialDiagramPort3D, e: ThreeEvent<PointerEvent>) => {
+      if (nodeGrabRef.current || wireSessionRef.current || palettePullRef.current) return;
+      const res = commitDisconnectSpatialEdge(diagramStateRef.current, edgeId);
+      if (res.actions.length > 0) {
+        diagramStateRef.current = res.state;
+        emitEdit(res.state, res.actions);
+        onCue?.("wire-pop");
+        const binding = resolveXrPointerBinding(e);
+        pulseXrHaptics(getSharedXrStore(), 0.45, 22, binding.handedness);
+      }
+      handleStartPortWireDrag(keptPort, e);
+    },
+    [emitEdit, onCue, handleStartPortWireDrag],
   );
 
   const handleSelectEdge = useCallback((edgeId: string) => {
@@ -768,6 +964,55 @@ export function SpatialDiagramStage({
   ]);
 
   /* ------------------------------------------------------------------------ */
+  /*  XR Release Binding: end sessions on the SAME input source's select /    */
+  /*  squeeze end (window `pointerup` never fires inside immersive sessions). */
+  /* ------------------------------------------------------------------------ */
+
+  const finishSessionsForXrRelease = useCallback(
+    (matches: (binding: XrPointerBinding) => boolean) => {
+      const w = wireSessionRef.current;
+      if (w?.mode === "xr-pointer" && w.binding && matches(w.binding)) finishWireDrag();
+      const p = palettePullRef.current;
+      if (p?.mode === "xr-pointer" && p.binding && matches(p.binding)) finishPalettePull();
+      const n = nodeGrabRef.current;
+      if (n?.mode === "xr-pointer" && n.binding && matches(n.binding)) finishNodeGrab();
+    },
+    [finishWireDrag, finishPalettePull, finishNodeGrab],
+  );
+
+  useEffect(() => {
+    if (!xrSession) return;
+    const onEnd = (type: "selectend" | "squeezeend") => (ev: XRInputSourceEvent) => {
+      finishSessionsForXrRelease((b) => b.inputSource === ev.inputSource && releaseEventForBinding(b) === type);
+    };
+    const onSelectEnd = onEnd("selectend");
+    const onSqueezeEnd = onEnd("squeezeend");
+    const onSourcesChange = (ev: XRInputSourcesChangeEvent) => {
+      // Controller put down / tracking lost mid-grab → drop cleanly instead of freezing the lock.
+      if (ev.removed.length === 0) return;
+      finishSessionsForXrRelease((b) => b.inputSource != null && ev.removed.includes(b.inputSource));
+    };
+    xrSession.addEventListener("selectend", onSelectEnd);
+    xrSession.addEventListener("squeezeend", onSqueezeEnd);
+    xrSession.addEventListener("inputsourceschange", onSourcesChange);
+    return () => {
+      xrSession.removeEventListener("selectend", onSelectEnd);
+      xrSession.removeEventListener("squeezeend", onSqueezeEnd);
+      xrSession.removeEventListener("inputsourceschange", onSourcesChange);
+    };
+  }, [xrSession, finishSessionsForXrRelease]);
+
+  /** Pointer-up fallback (captured XR pointers bubble here); matches by pointerId. */
+  const handleRootPointerUp = useCallback(
+    (e: ThreeEvent<PointerEvent>) => {
+      const b = resolveXrPointerBinding(e);
+      if (b.kind === "desktop") return; // desktop handled by window listener
+      finishSessionsForXrRelease((sb) => sb.pointerId === b.pointerId);
+    },
+    [finishSessionsForXrRelease],
+  );
+
+  /* ------------------------------------------------------------------------ */
   /*  Unified 90Hz WebXR Bare-Hand, Controller & Desktop Manipulation Loop    */
   /* ------------------------------------------------------------------------ */
 
@@ -790,10 +1035,24 @@ export function SpatialDiagramStage({
 
       if (evalRes.justSnapped) {
         onCue?.("magnet-lock");
-        pulseXrHaptics(getSharedXrStore(), 0.55, 22, sess.handedness);
+        pulseXrHaptics(getSharedXrStore(), 0.62, 30, sess.handedness);
       } else if (evalRes.justRejected) {
         onCue?.("magnet-reject");
-        pulseXrHaptics(getSharedXrStore(), 0.2, 30, sess.handedness);
+        pulseXrHaptics(getSharedXrStore(), 0.22, 34, sess.handedness);
+      } else if (!evalRes.snappedTarget && evalRes.approachCandidates.length > 0 && sess.mode !== "desktop") {
+        // Magnetic attraction haptic ramp: gentle increasing ticks as the plug enters a compatible port's pull well
+        let maxProximity = 0;
+        for (const app of evalRes.approachCandidates) {
+          if (app.proximity01 > maxProximity) maxProximity = app.proximity01;
+        }
+        if (maxProximity > 0.22) {
+          const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
+          const intervalMs = 85 - maxProximity * 42;
+          if (nowMs - lastApproachHapticMsRef.current >= intervalMs) {
+            lastApproachHapticMsRef.current = nowMs;
+            pulseXrHaptics(getSharedXrStore(), 0.06 + maxProximity * 0.24, 9, sess.handedness);
+          }
+        }
       }
 
       const snapChanged = nextSnappedKey !== sess.snappedKey || nextRejectedKey !== sess.rejectedKey;
@@ -932,16 +1191,60 @@ export function SpatialDiagramStage({
     [collectWorldPortCandidates, onCue, onHudStatusChange],
   );
 
-  useFrame((_state, rawDelta, frame) => {
+  useFrame((state, rawDelta, frame) => {
     if (!visible) return;
     const delta = Math.min(rawDelta, 0.1);
     const stage = stageGroupRef.current;
     if (!stage) return;
 
-    // 1. Bare-Hand Direct Proximity Grab & Magnetic Wiring inside active WebXR sessions
+    // 0. Animate 3D Disposal Vortex Chute iris rings while visible
+    if (disposalOuterRingRef.current) {
+      disposalOuterRingRef.current.rotation.z =
+        state.clock.elapsedTime * (overDeleteRing || tossingNodeRef.current ? 3.2 : 1.1);
+    }
+    if (disposalInnerRingRef.current) {
+      disposalInnerRingRef.current.rotation.z =
+        -state.clock.elapsedTime * (overDeleteRing || tossingNodeRef.current ? 4.5 : 1.6);
+    }
+
+    // 0B. Step in-flight ballistic Toss-to-Delete animation (Job Simulator throw into bin)
+    if (tossingNodeRef.current) {
+      const toss = tossingNodeRef.current;
+      toss.elapsed += delta;
+      const tNorm = Math.min(1, toss.elapsed / toss.duration);
+      const grp = nodeGroupRefs.current.get(toss.nodeId);
+      if (grp) {
+        const t = toss.elapsed;
+        grp.position.set(
+          toss.pos.x + toss.vel.x * t,
+          toss.pos.y + toss.vel.y * t + 0.5 * TOSS_GRAVITY * t * t,
+          toss.pos.z + toss.vel.z * t,
+        );
+        grp.rotation.z += delta * 6.5;
+        grp.rotation.x += delta * 3.8;
+        const shrink = tNorm > 0.65 ? Math.max(0.15, 1 - ((tNorm - 0.65) / 0.35) * 0.85) : 1;
+        grp.scale.setScalar(shrink);
+      }
+      if (tNorm >= 1) {
+        tossingNodeRef.current = null;
+        setTossingNodeId(null);
+        const res = commitDeleteSpatialNode(diagramStateRef.current, toss.nodeId);
+        emitEdit(res.state, res.actions);
+        onCue?.("wire-pop");
+        pulseXrHaptics(getSharedXrStore(), 0.55, 34, toss.handedness);
+        onHudStatusChange?.(`Disposed ${toss.nodeId} (Undo available)`);
+      }
+    }
+
+    // 1. Bare-Hand Direct Proximity Grab & Magnetic Wiring inside active WebXR sessions (both hands supported)
     const refSpace = gl.xr.getReferenceSpace();
     if (frame && refSpace && (leftHand?.inputSource.hand || rightHand?.inputSource.hand)) {
-      const samplePinch = (xrHand: XRHand | undefined, prev: boolean, outPos: THREE.Vector3): boolean => {
+      const samplePinch = (
+        xrHand: XRHand | undefined,
+        prev: boolean,
+        outPos: THREE.Vector3,
+        outWristQuat?: THREE.Quaternion,
+      ): boolean => {
         if (!xrHand || typeof frame.getJointPose !== "function") return false;
         const thumb = xrHand.get("thumb-tip");
         const index = xrHand.get("index-finger-tip");
@@ -953,6 +1256,18 @@ export function SpatialDiagramStage({
         const dist = Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
         outPos.set((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
         if (xrOrigin) outPos.applyMatrix4(xrOrigin.matrixWorld);
+        if (outWristQuat) {
+          const wrist = xrHand.get("wrist");
+          const wp = wrist ? frame.getJointPose(wrist, refSpace) : undefined;
+          if (wp) {
+            const o = wp.transform.orientation;
+            outWristQuat.set(o.x, o.y, o.z, o.w);
+            if (xrOrigin) {
+              xrOrigin.getWorldQuaternion(yawQuatScratch.current);
+              outWristQuat.premultiply(yawQuatScratch.current);
+            }
+          }
+        }
         return evaluatePinchState(dist, prev);
       };
 
@@ -960,23 +1275,27 @@ export function SpatialDiagramStage({
         leftHand?.inputSource.hand,
         xrPinchPrevRef.current.left,
         leftPinchWorldRef.current,
+        leftWristQuatRef.current,
       );
       const rightPinched = samplePinch(
         rightHand?.inputSource.hand,
         xrPinchPrevRef.current.right,
         rightPinchWorldRef.current,
+        rightWristQuatRef.current,
       );
 
-      // Rising-edge Right Bare-Hand Direct Pinch: check Ports FIRST (highest priority), then Nodes
-      if (rightPinched && !xrPinchPrevRef.current.right && interactionLockRef.current === "none") {
+      const tryBareHandGrab = (handedness: "left" | "right", pinchPos: THREE.Vector3, wristQuat: THREE.Quaternion) => {
+        const anySessionActive = Boolean(nodeGrabRef.current || wireSessionRef.current || palettePullRef.current);
+        if (anySessionActive || interactionLockRef.current !== "none") return;
+
         const candidates = collectWorldPortCandidates();
         let hitPort: WorldPortCandidate | null = null;
-        let bestPortDist = 0.042;
+        let bestPortDist = 0.048;
         for (const c of candidates) {
           const d = Math.hypot(
-            c.worldPosition[0] - rightPinchWorldRef.current.x,
-            c.worldPosition[1] - rightPinchWorldRef.current.y,
-            c.worldPosition[2] - rightPinchWorldRef.current.z,
+            c.worldPosition[0] - pinchPos.x,
+            c.worldPosition[1] - pinchPos.y,
+            c.worldPosition[2] - pinchPos.z,
           );
           if (d < bestPortDist) {
             bestPortDist = d;
@@ -985,11 +1304,12 @@ export function SpatialDiagramStage({
         }
 
         if (hitPort) {
-          wireTipWorldPosRef.current.copy(rightPinchWorldRef.current);
+          wireTipWorldPosRef.current.copy(pinchPos);
           wireSessionRef.current = {
             sourcePort: hitPort.port,
             mode: "xr-hand",
-            handedness: "right",
+            handedness,
+            rayDistance: 0,
             dragPlane: new THREE.Plane(),
             depthOffset: 0,
             snappedKey: null,
@@ -1005,13 +1325,14 @@ export function SpatialDiagramStage({
             rejectedTarget: null,
           });
           onCue?.("grab");
+          pulseXrHaptics(getSharedXrStore(), 0.32, 18, handedness);
         } else {
           // Check direct node proximity grab
           let hitNodeId: string | null = null;
-          let bestNodeDist = 0.095;
+          let bestNodeDist = 0.1;
           for (const [nid, grp] of nodeGroupRefs.current.entries()) {
             grp.getWorldPosition(tmpVecA.current);
-            const d = tmpVecA.current.distanceTo(rightPinchWorldRef.current);
+            const d = tmpVecA.current.distanceTo(pinchPos);
             if (d < bestNodeDist) {
               bestNodeDist = d;
               hitNodeId = nid;
@@ -1021,16 +1342,11 @@ export function SpatialDiagramStage({
             const grp = nodeGroupRefs.current.get(hitNodeId)!;
             grp.getWorldPosition(tmpVecA.current);
             grp.getWorldQuaternion(handQuatScratch.current);
-            const grabOffset = computeGrabOffset(
-              rightPinchWorldRef.current,
-              new THREE.Quaternion(),
-              tmpVecA.current,
-              handQuatScratch.current,
-            );
+            const grabOffset = computeGrabOffset(pinchPos, wristQuat, tmpVecA.current, handQuatScratch.current);
             nodeGrabRef.current = {
               nodeId: hitNodeId,
               mode: "xr-hand",
-              handedness: "right",
+              handedness,
               dragPlane: new THREE.Plane(),
               planeOffset: new THREE.Vector3(),
               depthOffset: 0,
@@ -1040,12 +1356,25 @@ export function SpatialDiagramStage({
               targetQuat: grp.quaternion.clone(),
               smoothPos: grp.position.clone(),
               smoothQuat: grp.quaternion.clone(),
+              velocity: new THREE.Vector3(),
+              releaseVel: new THREE.Vector3(),
+              prevPointerPos: pinchPos.clone(),
+              hasPrevPointerPos: true,
+              forcePulling: false,
             };
             setLock("node-grab");
             setGrabbedNodeId(hitNodeId);
             onCue?.("grab");
           }
         }
+      };
+
+      // Rising-edge Bare-Hand Direct Pinch (right hand checked first, then left hand)
+      if (rightPinched && !xrPinchPrevRef.current.right) {
+        tryBareHandGrab("right", rightPinchWorldRef.current, rightWristQuatRef.current);
+      }
+      if (leftPinched && !xrPinchPrevRef.current.left) {
+        tryBareHandGrab("left", leftPinchWorldRef.current, leftWristQuatRef.current);
       }
 
       // Two-Hand Empty-Space Pinch -> World-Frame Stage Pan, Yaw & Scale!
@@ -1087,12 +1416,26 @@ export function SpatialDiagramStage({
         }
       }
 
-      // Release bare-hand sessions cleanly when pinch releases
-      if (!rightPinched && xrPinchPrevRef.current.right) {
-        if (wireSessionRef.current?.mode === "xr-hand") finishWireDrag();
-        if (nodeGrabRef.current?.mode === "xr-hand") finishNodeGrab();
-        if (palettePullRef.current?.mode === "xr-hand") finishPalettePull();
-      }
+      // Release bare-hand sessions cleanly when the owning hand's pinch releases
+      const releaseBareHand = (handedness: "left" | "right") => {
+        if (
+          wireSessionRef.current?.mode === "xr-hand" &&
+          (wireSessionRef.current.handedness ?? "right") === handedness
+        ) {
+          finishWireDrag();
+        }
+        if (nodeGrabRef.current?.mode === "xr-hand" && (nodeGrabRef.current.handedness ?? "right") === handedness) {
+          finishNodeGrab();
+        }
+        if (
+          palettePullRef.current?.mode === "xr-hand" &&
+          (palettePullRef.current.handedness ?? "right") === handedness
+        ) {
+          finishPalettePull();
+        }
+      };
+      if (!rightPinched && xrPinchPrevRef.current.right) releaseBareHand("right");
+      if (!leftPinched && xrPinchPrevRef.current.left) releaseBareHand("left");
 
       xrPinchPrevRef.current.left = leftPinched;
       xrPinchPrevRef.current.right = rightPinched;
@@ -1133,14 +1476,62 @@ export function SpatialDiagramStage({
       }
     }
 
-    // 2. Active Wire Drag Step (Desktop Ray or XR Hand/Controller)
+    // Shared XR pointer sampling for sessions bound to a controller / hand-laser input source.
+    const sampleBound = (binding: XrPointerBinding | undefined): boolean =>
+      Boolean(
+        binding &&
+        sampleBindingPose(binding, frame, refSpace, xrOrigin, pointerPosScratch.current, pointerQuatScratch.current),
+      );
+    const telescope = (binding: XrPointerBinding | undefined, distance: number): number => {
+      if (!binding || binding.kind !== "ray") return distance;
+      const push = -applyStickDeadzone(readThumbstick(binding).y);
+      if (push === 0) return distance;
+      return Math.max(RAY_MIN_DISTANCE, Math.min(RAY_MAX_DISTANCE, distance + push * RAY_TELESCOPE_SPEED * delta));
+    };
+
+    // 2. Active Wire Drag Step (plug tip follows the HAND / controller laser — never the head)
     if (wireSessionRef.current) {
       const sess = wireSessionRef.current;
       if (sess.mode === "xr-hand") {
-        evaluateWireMagneticStep(sess, rightPinchWorldRef.current);
-      } else if (sess.mode === "xr-controller" && rightController?.object) {
-        rightController.object.getWorldPosition(tmpVecA.current);
-        evaluateWireMagneticStep(sess, tmpVecA.current);
+        const handPos = sess.handedness === "left" ? leftPinchWorldRef.current : rightPinchWorldRef.current;
+        evaluateWireMagneticStep(sess, handPos);
+      } else if (sess.mode === "xr-pointer") {
+        if (sampleBound(sess.binding)) {
+          const target = tmpVecA.current;
+          if (sess.binding?.kind === "ray") {
+            sess.rayDistance = telescope(sess.binding, sess.rayDistance);
+            pointAlongRayPose(pointerPosScratch.current, pointerQuatScratch.current, sess.rayDistance, target);
+            // Ray magnet assist: if the laser passes near a port, slide the plug to that port's depth
+            // so far-field wiring is "just point at the target port".
+            const rayDir = tmpNormal.current.set(0, 0, -1).applyQuaternion(pointerQuatScratch.current);
+            let bestPerp = Infinity;
+            let bestT = -1;
+            for (const c of collectWorldPortCandidates()) {
+              if (c.port.nodeId === sess.sourcePort.nodeId && c.port.portId === sess.sourcePort.portId) continue;
+              rayHitScratch.current
+                .set(c.worldPosition[0], c.worldPosition[1], c.worldPosition[2])
+                .sub(pointerPosScratch.current);
+              const t = rayHitScratch.current.dot(rayDir);
+              if (t <= RAY_MIN_DISTANCE) continue;
+              const perp = Math.sqrt(Math.max(0, rayHitScratch.current.lengthSq() - t * t));
+              const capture = 0.035 + 0.025 * t; // wider capture cone farther away
+              if (perp < capture && perp < bestPerp) {
+                bestPerp = perp;
+                bestT = t;
+              }
+            }
+            if (bestT > 0) {
+              pointAlongRayPose(pointerPosScratch.current, pointerQuatScratch.current, bestT, target);
+            }
+          } else {
+            // Direct grip: plug sits just in front of the grip, like holding a real connector.
+            target.set(0, 0, -0.04).applyQuaternion(pointerQuatScratch.current).add(pointerPosScratch.current);
+          }
+          // Light smoothing kills long-lever laser jitter without perceptible lag.
+          const a = computeSmoothingAlpha(delta, sess.binding?.kind === "ray" ? 0.022 : 0.01);
+          tmpVecB.current.copy(wireTipWorldPosRef.current).lerp(target, a);
+          evaluateWireMagneticStep(sess, tmpVecB.current);
+        }
       } else {
         raycasterRef.current.setFromCamera(pointerNdcRef.current, camera);
         if (raycasterRef.current.ray.intersectPlane(sess.dragPlane, rayHitScratch.current)) {
@@ -1155,7 +1546,18 @@ export function SpatialDiagramStage({
     if (palettePullRef.current) {
       const sess = palettePullRef.current;
       if (sess.mode === "xr-hand") {
-        evaluatePalettePullStep(sess, rightPinchWorldRef.current);
+        const handPos = sess.handedness === "left" ? leftPinchWorldRef.current : rightPinchWorldRef.current;
+        evaluatePalettePullStep(sess, handPos);
+      } else if (sess.mode === "xr-pointer") {
+        if (sampleBound(sess.binding)) {
+          if (sess.binding?.kind === "ray") {
+            sess.rayDistance = telescope(sess.binding, sess.rayDistance);
+            pointAlongRayPose(pointerPosScratch.current, pointerQuatScratch.current, sess.rayDistance, tmpVecB.current);
+          } else {
+            tmpVecB.current.copy(pointerPosScratch.current);
+          }
+          evaluatePalettePullStep(sess, tmpVecB.current);
+        }
       } else {
         raycasterRef.current.setFromCamera(pointerNdcRef.current, camera);
         if (raycasterRef.current.ray.intersectPlane(sess.dragPlane, rayHitScratch.current)) {
@@ -1164,7 +1566,7 @@ export function SpatialDiagramStage({
       }
     }
 
-    // 4. Active 6DOF Component Grab Step (with smooth critically-damped anti-jitter filtering)
+    // 4. Active 6DOF Component Grab Step (spring-damped "weight", Gravity-Gloves force pull, & release velocity)
     if (nodeGrabRef.current) {
       const sess = nodeGrabRef.current;
       const grp = nodeGroupRefs.current.get(sess.nodeId);
@@ -1173,23 +1575,63 @@ export function SpatialDiagramStage({
         invStageMatScratch.current.copy(stage.matrixWorld).invert();
         stage.getWorldQuaternion(stageWorldQuatScratch.current);
         invStageQuatScratch.current.copy(stageWorldQuatScratch.current).invert();
+        prevSmoothPosScratch.current.copy(sess.smoothPos);
 
         if (sess.mode === "xr-hand" && sess.grabOffset) {
-          applyGrabOffset(
-            rightPinchWorldRef.current,
-            handQuatScratch.current.identity(),
-            sess.grabOffset,
-            tmpVecA.current,
-            sess.targetQuat,
-          );
+          const handPos = sess.handedness === "left" ? leftPinchWorldRef.current : rightPinchWorldRef.current;
+          const handQuat = sess.handedness === "left" ? leftWristQuatRef.current : rightWristQuatRef.current;
+          applyGrabOffset(handPos, handQuat, sess.grabOffset, tmpVecA.current, sess.targetQuat);
           sess.targetPos.copy(tmpVecA.current).applyMatrix4(invStageMatScratch.current);
           sess.targetQuat.premultiply(invStageQuatScratch.current);
-        } else {
-          // Desktop 3D ray grab (plus optional VR controller thumbstick telescoping)
-          const stickY = rightController?.gamepad["xr-standard-thumbstick"]?.yAxis ?? 0;
-          if (Math.abs(stickY) > 0.25) {
-            sess.depthOffset = Math.max(-0.65, Math.min(0.65, sess.depthOffset - stickY * delta * 0.8));
+        } else if (sess.mode === "xr-pointer" && sess.xrOffsetPos && sess.xrOffsetQuat) {
+          if (sampleBound(sess.binding)) {
+            // Far-field laser grab: thumbstick telescoping + Gravity-Gloves backward wrist-flick force pull
+            if (sess.binding?.kind === "ray") {
+              const curReach = -sess.xrOffsetPos.z;
+              const rayFwd = tmpNormal.current.set(0, 0, -1).applyQuaternion(pointerQuatScratch.current);
+              if (
+                !sess.forcePulling &&
+                sess.hasPrevPointerPos &&
+                shouldTriggerForcePull(
+                  [sess.prevPointerPos.x, sess.prevPointerPos.y, sess.prevPointerPos.z],
+                  [pointerPosScratch.current.x, pointerPosScratch.current.y, pointerPosScratch.current.z],
+                  [rayFwd.x, rayFwd.y, rayFwd.z],
+                  delta,
+                  curReach,
+                )
+              ) {
+                sess.forcePulling = true;
+                onCue?.("whoosh");
+                pulseXrHaptics(getSharedXrStore(), 0.35, 22, sess.handedness);
+                onHudStatusChange?.(`Force-pulled ${sess.nodeId} into hand!`);
+              }
+              if (sess.forcePulling) {
+                const nextReach = curReach + (0.2 - curReach) * computeSmoothingAlpha(delta, 0.045);
+                sess.xrOffsetPos.z = -nextReach;
+                sess.xrOffsetPos.x *= 1 - computeSmoothingAlpha(delta, 0.06);
+                sess.xrOffsetPos.y *= 1 - computeSmoothingAlpha(delta, 0.06);
+                if (Math.abs(nextReach - 0.2) < 0.015) {
+                  sess.forcePulling = false;
+                  pulseXrHaptics(getSharedXrStore(), 0.45, 24, sess.handedness);
+                }
+              } else {
+                const reach = telescope(sess.binding, curReach);
+                sess.xrOffsetPos.z = -reach;
+              }
+            }
+            sess.prevPointerPos.copy(pointerPosScratch.current);
+            sess.hasPrevPointerPos = true;
+
+            tmpVecA.current
+              .copy(sess.xrOffsetPos)
+              .applyQuaternion(pointerQuatScratch.current)
+              .add(pointerPosScratch.current);
+            sess.targetQuat.copy(sess.xrOffsetQuat).premultiply(pointerQuatScratch.current).normalize();
+            sess.targetPos.copy(tmpVecA.current).applyMatrix4(invStageMatScratch.current);
+            sess.targetQuat.premultiply(invStageQuatScratch.current);
           }
+        } else {
+          // Desktop 3D mouse-ray grab
           raycasterRef.current.setFromCamera(pointerNdcRef.current, camera);
           if (raycasterRef.current.ray.intersectPlane(sess.dragPlane, rayHitScratch.current)) {
             stageWorldPosScratch.current.copy(rayHitScratch.current).add(sess.planeOffset);
@@ -1200,15 +1642,34 @@ export function SpatialDiagramStage({
           sess.targetQuat.setFromAxisAngle(tmpVecB.current.set(0, 0, 1), sess.yawOffsetRad);
         }
 
-        // Smooth motion (eliminates hand-tracking jitter while keeping 90Hz responsiveness)
-        const alpha = computeSmoothingAlpha(delta, sess.mode === "xr-hand" ? 0.026 : 0.014);
-        sess.smoothPos.lerp(sess.targetPos, alpha);
-        sess.smoothQuat.slerp(sess.targetQuat, alpha);
+        if (
+          Number.isFinite(sess.targetPos.x) &&
+          Number.isFinite(sess.targetPos.y) &&
+          Number.isFinite(sess.targetPos.z)
+        ) {
+          if (sess.mode === "desktop") {
+            const alpha = computeSmoothingAlpha(delta, 0.014);
+            sess.smoothPos.lerp(sess.targetPos, alpha);
+            sess.smoothQuat.slerp(sess.targetQuat, alpha);
+          } else {
+            // Critically-damped spring: crisp in hand, a hint of mass, and lever-arm jitter removed on lasers.
+            const halfLife = sess.mode === "xr-hand" ? 0.03 : sess.binding?.kind === "ray" ? 0.045 : 0.022;
+            springFollowStep(sess.smoothPos, sess.velocity, sess.targetPos, delta, halfLife);
+            sess.smoothQuat.slerp(sess.targetQuat, computeSmoothingAlpha(delta, halfLife * 0.8));
+          }
+        }
+
+        // Track exponentially smoothed stage-local velocity for Toss-to-Delete release physics
+        if (delta > 1e-4) {
+          tmpVecB.current.copy(sess.smoothPos).sub(prevSmoothPosScratch.current).divideScalar(delta);
+          const velAlpha = computeSmoothingAlpha(delta, 0.032);
+          sess.releaseVel.lerp(tmpVecB.current, velAlpha);
+        }
 
         grp.position.copy(sess.smoothPos);
         grp.quaternion.copy(sess.smoothQuat);
 
-        // Live Delete Ring proximity detection
+        // Live Disposal Chute proximity detection
         const overDel = isInsideDeleteRing(
           [sess.smoothPos.x, sess.smoothPos.y, sess.smoothPos.z],
           DELETE_RING_STAGE_POS,
@@ -1229,7 +1690,7 @@ export function SpatialDiagramStage({
   const [hx, hy] = DIAGRAM_STAGE_HALF_EXTENTS;
 
   return (
-    <group name="spatial-diagram-editor-root">
+    <group name="spatial-diagram-editor-root" onPointerUp={handleRootPointerUp}>
       {/* Main 3D Volumetric Schematic Editing Stage */}
       <group ref={stageGroupRef} name="spatial-diagram-stage" position={DIAGRAM_STAGE_DEFAULT_CENTER}>
         {/* Subtle Holographic Volumetric Stage Corner Brackets */}
@@ -1291,8 +1752,8 @@ export function SpatialDiagramStage({
               waferStyle={waferStyle}
               dark={dark}
               selected={diagramState.selectedNodeIds.includes(nid)}
-              isGrabbed={grabbedNodeId === nid}
-              isOverDeleteRing={grabbedNodeId === nid && overDeleteRing}
+              isGrabbed={grabbedNodeId === nid || tossingNodeId === nid}
+              isOverDeleteRing={(grabbedNodeId === nid && overDeleteRing) || tossingNodeId === nid}
               spawnedAtMs={spawnedAtMapRef.current.get(nid)}
               portHighlights={portHighlights}
               registerGroupRef={registerGroupRef}
@@ -1303,7 +1764,7 @@ export function SpatialDiagramStage({
           );
         })}
 
-        {/* Committed 3D Insulated Cables + Live Infinite-Extending Magnetic Wire */}
+        {/* Committed 3D Insulated Cables + Live Physical Verlet Magnetic Wire */}
         <SpatialMagneticWires
           edges={diagramState.edges}
           stageGroupRef={stageGroupRef}
@@ -1314,32 +1775,58 @@ export function SpatialDiagramStage({
           isPlaying={isPlaying}
           onSelectEdge={handleSelectEdge}
           onDisconnectEdge={handleDisconnectEdge}
+          onUnplugEdgeToDrag={handleUnplugEdgeToDrag}
         />
 
-        {/* Tactile Crimson Recycle Delete Ring (only visible while actively carrying a component) */}
-        {grabbedNodeId && (
-          <group name="spatial-delete-ring" position={DELETE_RING_STAGE_POS}>
-            <mesh>
-              <torusGeometry args={[0.095, overDeleteRing ? 0.011 : 0.006, 12, 32]} />
-              <meshBasicMaterial
-                color={overDeleteRing ? "#f87171" : "#ef4444"}
-                transparent
-                opacity={overDeleteRing ? 0.96 : 0.62}
-                toneMapped={false}
-              />
-            </mesh>
-            <mesh>
-              <circleGeometry args={[0.09, 28]} />
-              <meshBasicMaterial
-                color="#dc2626"
-                transparent
-                opacity={overDeleteRing ? 0.38 : 0.14}
-                depthWrite={false}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-          </group>
-        )}
+        {/* Futuristic 3D Disposal Vortex Chute (pre-mounted & toggled via visible for zero mid-grab shader stalls) */}
+        <group
+          name="spatial-delete-ring"
+          position={DELETE_RING_STAGE_POS}
+          visible={Boolean(grabbedNodeId || tossingNodeId)}
+        >
+          {/* Outer chute rim */}
+          <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.028, 0]}>
+            <cylinderGeometry args={[0.105, 0.072, 0.068, 20, 1, true]} />
+            <meshBasicMaterial
+              color={overDeleteRing || tossingNodeId ? "#991b1b" : "#334155"}
+              transparent
+              opacity={0.62}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+          {/* Outer counter-rotating holographic disposal iris */}
+          <mesh ref={disposalOuterRingRef} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.106, overDeleteRing || tossingNodeId ? 0.011 : 0.006, 10, 24]} />
+            <meshBasicMaterial
+              color={overDeleteRing || tossingNodeId ? "#f87171" : "#ef4444"}
+              transparent
+              opacity={overDeleteRing || tossingNodeId ? 0.98 : 0.72}
+              toneMapped={false}
+            />
+          </mesh>
+          {/* Inner segmented vortex ring */}
+          <mesh ref={disposalInnerRingRef} rotation={[Math.PI / 2, 0, 0]} position={[0, -0.016, 0]}>
+            <torusGeometry args={[0.072, 0.004, 8, 18]} />
+            <meshBasicMaterial
+              color={overDeleteRing || tossingNodeId ? "#fca5a5" : "#f87171"}
+              transparent
+              opacity={overDeleteRing || tossingNodeId ? 0.85 : 0.45}
+              toneMapped={false}
+            />
+          </mesh>
+          {/* Glowing vortex aperture field */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.012, 0]}>
+            <circleGeometry args={[0.095, 24]} />
+            <meshBasicMaterial
+              color="#dc2626"
+              transparent
+              opacity={overDeleteRing || tossingNodeId ? 0.44 : 0.18}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        </group>
       </group>
 
       {/* Non-Dominant Left Wrist Micro-Dock (Summons Floating 2D Library Panel, Undo, Snap, Sim) */}

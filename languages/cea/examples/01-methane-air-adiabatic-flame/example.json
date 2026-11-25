@@ -1,0 +1,12 @@
+{
+  "id": "cea-01-methane-air-adiabatic-flame",
+  "lang": "cea",
+  "subFormats": ["cea2", "hp-combustion"],
+  "difficulty": 1,
+  "title": "Stoichiometric Methane-Air Adiabatic Flame (HP)",
+  "description": "Constant-enthalpy, constant-pressure (hp) equilibrium combustion of stoichiometric methane and dry air at 1 atm and 298.15 K to determine adiabatic flame temperature.",
+  "category": "Combustion & Chemical Equilibrium",
+  "tags": ["cea", "methane", "adiabatic-flame", "hp-equilibrium"],
+  "activeFile": "ch4_air_hp.cea",
+  "isDefaultStarter": true
+}

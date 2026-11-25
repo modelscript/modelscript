@@ -859,12 +859,34 @@ export function createMslPipeSurfaceMesh(
 
 // ── Arena Expression & Equation Evaluator ────────────────────────────────────
 
+export interface VisualizerArenaLike {
+  varCount: number;
+  eqCount?: number | undefined;
+  isVarRemoved?: ((idx: number) => boolean) | undefined;
+  getVarName(idx: number): string;
+  isEqRemoved?: ((idx: number) => boolean) | undefined;
+  getEqKind(idx: number): number;
+  getEqLhs(idx: number): number;
+  getEqRhs(idx: number): number;
+  getOrigEqRhs?: ((idx: number) => number) | undefined;
+  getExprKind(exprId: number): number;
+  getExprData1(exprId: number): number;
+  getExprLeft(exprId: number): number;
+  getExprRight(exprId: number): number;
+  getExprRealValue(exprId: number): number;
+  interner: { resolve(id: number): string | undefined };
+  getVarExpression?: ((varIdx: number) => number) | undefined;
+  getVarStartValue?: ((varIdx: number) => number) | undefined;
+  getVarAttrExprId?: ((varIdx: number, attr: string) => number | undefined) | undefined;
+  getVarCadAnnotation?: ((varIdx: number) => string | undefined) | undefined;
+}
+
 class ArenaVisualizerInspector {
   public varByName = new Map<string, number>();
   public eqRhsByVar = new Map<string, number>();
   public aliasByVar = new Map<string, string>();
 
-  constructor(public arena: any) {
+  constructor(public arena: VisualizerArenaLike) {
     const varCount = arena.varCount ?? 0;
     for (let i = 0; i < varCount; i++) {
       if (arena.isVarRemoved?.(i)) continue;
@@ -1299,7 +1321,7 @@ class ArenaVisualizerInspector {
 
 // ── Main Visualizer Extractor ────────────────────────────────────────────────
 
-export function extractArenaVisualizers(arena: any): ExtractedVisualizerComponent[] {
+export function extractArenaVisualizers(arena: VisualizerArenaLike | null | undefined): ExtractedVisualizerComponent[] {
   if (!arena || typeof arena.varCount !== "number") return [];
 
   const inspector = new ArenaVisualizerInspector(arena);

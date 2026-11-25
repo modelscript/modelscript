@@ -1,0 +1,11 @@
+{
+  "id": "comtrade-04-bolted-3ph-fault-breaker-trip",
+  "lang": "comtrade",
+  "subFormats": ["cfg", "dat"],
+  "difficulty": 4,
+  "title": "3-Phase Bolted Fault with Breaker Trip & 52a Auxiliary Status",
+  "description": "Four-cycle 3-phase bolted bus fault showing pre-fault load, relay trip coil energization, and arc extinction upon 52a circuit breaker opening.",
+  "category": "Breaker Clearing Verification",
+  "tags": ["comtrade", "3ph-fault", "breaker-trip", "52a", "multi-file"],
+  "activeFile": "trip_seq.cfg"
+}

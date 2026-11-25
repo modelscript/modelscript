@@ -1,0 +1,11 @@
+{
+  "id": "waterml-03-water-quality-telemetry",
+  "lang": "waterml",
+  "subFormats": ["waterml"],
+  "difficulty": 3,
+  "title": "Dissolved Oxygen & Water Temperature Quality Telemetry",
+  "description": "Multi-parameter WaterML 2.0 sonde telemetry collection capturing coupled diurnal dissolved oxygen (mg/L) and water temperature (degC) cycles in an estuarine river reach.",
+  "category": "Water Quality Telemetry",
+  "tags": ["waterml", "dissolved-oxygen", "temperature", "multi-parameter"],
+  "activeFile": "water_quality.waterml"
+}

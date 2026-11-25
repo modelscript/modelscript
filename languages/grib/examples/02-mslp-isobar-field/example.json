@@ -1,0 +1,11 @@
+{
+  "id": "grib-02-mslp-isobar-field",
+  "lang": "grib",
+  "subFormats": ["grib1"],
+  "difficulty": 2,
+  "title": "Mean Sea-Level Pressure Mid-Latitude Cyclone Field",
+  "description": "GRIB1 mean sea-level pressure (PRMSL) 4x3 synoptic grid depicting a 992 hPa extratropical low-pressure center over the North Atlantic.",
+  "category": "Synoptic Meteorology",
+  "tags": ["grib", "prmsl", "isobar", "cyclone"],
+  "activeFile": "north_atlantic_prmsl.grb"
+}

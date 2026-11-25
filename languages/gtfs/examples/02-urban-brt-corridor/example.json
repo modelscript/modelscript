@@ -1,0 +1,12 @@
+{
+  "id": "gtfs-02-urban-brt-corridor",
+  "lang": "gtfs",
+  "subFormats": ["gtfs", "txt"],
+  "difficulty": 2,
+  "title": "Urban Bus Rapid Transit Corridor with Peak Headways",
+  "description": "High-frequency articulated electric Bus Rapid Transit (BRT) corridor featuring five dedicated-lane stations, 10-minute morning peak headways, and a complete multi-table GTFS bundle.",
+  "category": "Urban Bus Rapid Transit",
+  "tags": ["gtfs", "brt", "peak-headway", "electric-bus", "multi-file"],
+  "activeFile": "feed.gtfs",
+  "fileOrder": ["feed.gtfs", "agency.txt", "stops.txt", "routes.txt", "trips.txt", "stop_times.txt", "calendar.txt"]
+}

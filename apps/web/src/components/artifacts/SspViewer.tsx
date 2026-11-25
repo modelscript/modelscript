@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import {
   CheckIcon,
   CodeIcon,
@@ -827,7 +827,7 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
 
   useEffect(() => {
     if (!loading && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [loading, rawText, sanitizedSvg]);
 
@@ -925,9 +925,9 @@ export const SspViewer: React.FC<SspViewerProps> = ({ viewConfig, isFullScreen =
               variant="primary"
               leadingVisual={DraftingTriangleIcon}
               onClick={() => {
-                const hash = compressMorselPayload({
+                const hash = compressAnsatzPayload({
                   v: 1,
-                  lang: "ssp" as any,
+                  lang: "ssp",
                   code: rawText || `<ssd:SystemStructureDescription name="${title}"/>\n`,
                   title,
                 });

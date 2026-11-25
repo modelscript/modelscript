@@ -1,0 +1,12 @@
+{
+  "id": "fiber-01-campus-duct-p2p",
+  "lang": "fiber",
+  "subFormats": ["geojson"],
+  "difficulty": 1,
+  "title": "Point-to-Point Campus Fiber Duct",
+  "description": "Minimal GeoJSON outside-plant (OSP) fiber link connecting a campus central office to a research building via a 24-strand underground duct cable.",
+  "category": "Campus Outside Plant",
+  "tags": ["fiber", "geojson", "osp", "campus"],
+  "activeFile": "campus_p2p.geojson",
+  "isDefaultStarter": true
+}

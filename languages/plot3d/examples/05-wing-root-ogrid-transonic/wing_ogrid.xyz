@@ -1,0 +1,20 @@
+# 3D Swept Wing-Root Structured Block (4 x 3 x 2, right-handed positive Jacobian)
+1
+4 3 2
+# X coordinates [m] (chordwise with 15-deg spanwise sweep)
+0.00 0.35 0.70 1.00
+0.00 0.35 0.70 1.00
+0.00 0.35 0.70 1.00
+0.15 0.50 0.85 1.15
+0.15 0.50 0.85 1.15
+0.15 0.50 0.85 1.15
+# Y coordinates [m] (airfoil upper surface curvature -> farfield)
+0.00 0.06 0.04 0.00
+0.25 0.28 0.27 0.25
+0.65 0.65 0.65 0.65
+0.00 0.05 0.03 0.00
+0.25 0.27 0.26 0.25
+0.65 0.65 0.65 0.65
+# Z coordinates [m] (spanwise station 0.0 -> 0.6 m)
+12*0.0
+12*0.6

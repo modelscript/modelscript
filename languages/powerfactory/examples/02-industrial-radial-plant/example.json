@@ -1,0 +1,11 @@
+{
+  "id": "powerfactory-02-industrial-radial-plant",
+  "lang": "powerfactory",
+  "subFormats": ["dgs"],
+  "difficulty": 2,
+  "title": "4-Bus Industrial Radial Plant with Transformer",
+  "description": "110/20 kV industrial power distribution plant featuring a Dyn11 step-down transformer, medium-voltage cable feeders, and process motor loads.",
+  "category": "Industrial Distribution",
+  "tags": ["powerfactory", "industrial", "transformer", "radial"],
+  "activeFile": "industrial_plant.dgs"
+}

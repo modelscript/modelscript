@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Model Title="Inclined Gas-Condensate Tieback" Author="FlowAssuranceTeam">
+  <Integration StartTime="0" EndTime="3600" MinDt="0.002" MaxDt="0.4" />
+
+  <Flowpath Name="CONDENSATE_TIEBACK">
+    <Pipe Label="WELLHEAD_DROP" Length="2500" Diameter="0.254" Elevation="-85" Roughness="4.5e-5" Discretization="10" />
+    <Pipe Label="SEABED_VALLEY" Length="3200" Diameter="0.254" Elevation="-25" Roughness="4.5e-5" Discretization="10" />
+    <Pipe Label="SHORE_APPROACH" Length="2800" Diameter="0.254" Elevation="115" Roughness="4.5e-5" Discretization="10" />
+    <Valve Name="INLET_CHOKE" AbsolutePosition="8450" Diameter="0.18" Opening="0.80" Cd="0.84" />
+    <Source Name="CONDENSATE_WELL" Position="0" TotalMassRate="48.5" GasMassFraction="0.62" WaterCut="0.06" Temperature="78C" Pressure="145bar" />
+    <HeatTransfer Type="WATER" AmbientTemperature="6C" AmbientHeatTransferCoeff="180">
+      <Layer Material="CARBON_STEEL" Thickness="0.019" Conductivity="45.0" />
+      <Layer Material="POLYPROPYLENE" Thickness="0.040" Conductivity="0.22" />
+    </HeatTransfer>
+  </Flowpath>
+
+  <Node Name="SUBSEA_TREE" Type="TERMINAL" Flowpath="CONDENSATE_TIEBACK" BoundaryPosition="0.0" MassRate="48.5" Temperature="78C" Pressure="145bar" />
+  <Node Name="SLUG_CATCHER" Type="PRESSURE" Flowpath="CONDENSATE_TIEBACK" BoundaryPosition="1.0" Pressure="42bar" Temperature="24C" />
+</Model>

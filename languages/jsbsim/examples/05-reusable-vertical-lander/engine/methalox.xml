@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<rocket_engine name="methalox">
+  <isp> 330.0 </isp>
+  <maxthrottle> 1.0 </maxthrottle>
+  <minthrottle> 0.25 </minthrottle>
+  <slfuelflowmax unit="LBS/SEC"> 165.0 </slfuelflowmax>
+  <sloxiflowmax unit="LBS/SEC"> 594.0 </sloxiflowmax>
+</rocket_engine>

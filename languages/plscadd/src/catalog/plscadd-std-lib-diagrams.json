@@ -1,0 +1,747 @@
+[
+  {
+    "namePath": "plscadd:WIR_ACSR_DRAKE_795",
+    "aliases": [
+      "DRAKE",
+      "ACSR_DRAKE",
+      "795_DRAKE",
+      "drake.wir"
+    ],
+    "label": "ACSR 795 kcmil 26/7 Drake",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACSR_DRAKE</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:WIR_ACSR_CARDINAL_954",
+    "aliases": [
+      "CARDINAL",
+      "ACSR_CARDINAL",
+      "954_CARDINAL",
+      "cardinal.wir"
+    ],
+    "label": "ACSR 954 kcmil 54/7 Cardinal",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACSR_CARDI</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:WIR_ACSR_RAIL_954",
+    "aliases": [
+      "RAIL",
+      "ACSR_RAIL",
+      "954_RAIL",
+      "rail.wir"
+    ],
+    "label": "ACSR 954 kcmil 45/7 Rail",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACSR_RAIL_</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:WIR_ACSR_BLUEBIRD_2156",
+    "aliases": [
+      "BLUEBIRD",
+      "ACSR_BLUEBIRD",
+      "2156_BLUEBIRD",
+      "bluebird.wir"
+    ],
+    "label": "ACSR 2156 kcmil 84/19 Bluebird",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACSR_BLUEB</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:WIR_ACSR_LINNET_336",
+    "aliases": [
+      "LINNET",
+      "ACSR_LINNET",
+      "336_LINNET",
+      "linnet.wir"
+    ],
+    "label": "ACSR 336.4 kcmil 26/7 Linnet",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACSR_LINNE</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:WIR_AAAC_GREELEY_927",
+    "aliases": [
+      "GREELEY",
+      "AAAC_GREELEY",
+      "927_GREELEY",
+      "greeley.wir"
+    ],
+    "label": "AAAC 927.2 kcmil 37-Strand Greeley",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">AAAC_GREEL</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:WIR_ACSS_DRAKE_795",
+    "aliases": [
+      "ACSS_DRAKE",
+      "DRAKE_ACSS",
+      "795_ACSS",
+      "acss_drake.wir"
+    ],
+    "label": "ACSS 795 kcmil 26/7 Drake HTLS",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACSS_DRAKE</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:WIR_OPGW_48F",
+    "aliases": [
+      "OPGW",
+      "OPGW_48",
+      "OPGW_48F",
+      "opgw48.wir"
+    ],
+    "label": "OPGW 48-Fiber Optical Ground Wire",
+    "category": "Conductor",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">WIR</text><path d=\"M 10 22 Q 40 34 70 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"2\" stroke-linecap=\"round\"/><circle cx=\"10\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><circle cx=\"70\" cy=\"22\" r=\"2.2\" fill=\"#60a5fa\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">OPGW_48F</text></svg>",
+    "ports": [
+      {
+        "name": "ahead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "back",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      },
+      {
+        "name": "weather",
+        "kind": "signal",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:STR_LATTICE_TANGENT_230kV",
+    "aliases": [
+      "LATTICE_230",
+      "TANGENT_230KV",
+      "230KV_LATTICE"
+    ],
+    "label": "230 kV Lattice Steel Tangent Tower",
+    "category": "Structure",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">STR</text><path d=\"M 40 12 L 32 34 M 40 12 L 48 34 M 28 19 L 52 19 M 34 26 L 46 26\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">LATTICE_TA</text></svg>",
+    "ports": [
+      {
+        "name": "wire_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "wire_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 18
+      },
+      {
+        "name": "foundation",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:STR_LATTICE_DE_500kV",
+    "aliases": [
+      "LATTICE_DE_500",
+      "DEADEND_500KV",
+      "500KV_DE"
+    ],
+    "label": "500 kV Lattice Steel Dead-End Tower",
+    "category": "Structure",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">STR</text><path d=\"M 40 12 L 32 34 M 40 12 L 48 34 M 28 19 L 52 19 M 34 26 L 46 26\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">LATTICE_DE</text></svg>",
+    "ports": [
+      {
+        "name": "wire_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "wire_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 18
+      },
+      {
+        "name": "foundation",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:STR_TUBULAR_STEEL_138kV",
+    "aliases": [
+      "MONOPOLE_138",
+      "TUBULAR_138KV",
+      "138KV_POLE"
+    ],
+    "label": "138 kV Tubular Steel Monopole",
+    "category": "Structure",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">STR</text><path d=\"M 40 12 L 32 34 M 40 12 L 48 34 M 28 19 L 52 19 M 34 26 L 46 26\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">TUBULAR_ST</text></svg>",
+    "ports": [
+      {
+        "name": "wire_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "wire_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 18
+      },
+      {
+        "name": "foundation",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:STR_HFRAME_WOOD_115kV",
+    "aliases": [
+      "HFRAME_115",
+      "WOOD_HFRAME",
+      "115KV_HFRAME"
+    ],
+    "label": "115 kV Wood H-Frame Tangent Structure",
+    "category": "Structure",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">STR</text><path d=\"M 40 12 L 32 34 M 40 12 L 48 34 M 28 19 L 52 19 M 34 26 L 46 26\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.6\" stroke-linecap=\"round\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">HFRAME_WOO</text></svg>",
+    "ports": [
+      {
+        "name": "wire_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 18
+      },
+      {
+        "name": "wire_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 80,
+        "dy": 18
+      },
+      {
+        "name": "foundation",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:INS_SUSPENSION_GLASS",
+    "aliases": [
+      "SUSP_GLASS",
+      "GLASS_INSULATOR",
+      "I_STRING"
+    ],
+    "label": "Toughened Glass Suspension Insulator String",
+    "category": "Insulator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">INS</text><line x1=\"40\" y1=\"12\" x2=\"40\" y2=\"33\" stroke=\"#c084fc\" stroke-width=\"1.6\"/><ellipse cx=\"40\" cy=\"17\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><ellipse cx=\"40\" cy=\"22.5\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><ellipse cx=\"40\" cy=\"28\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">SUSPENSION</text></svg>",
+    "ports": [
+      {
+        "name": "structure",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "conductor",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:INS_DEADEND_POLYMER",
+    "aliases": [
+      "DE_POLYMER",
+      "POLYMER_DEADEND",
+      "COMPOSITE_DE"
+    ],
+    "label": "Silicone Polymer Dead-End Insulator",
+    "category": "Insulator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">INS</text><line x1=\"40\" y1=\"12\" x2=\"40\" y2=\"33\" stroke=\"#c084fc\" stroke-width=\"1.6\"/><ellipse cx=\"40\" cy=\"17\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><ellipse cx=\"40\" cy=\"22.5\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><ellipse cx=\"40\" cy=\"28\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">DEADEND_PO</text></svg>",
+    "ports": [
+      {
+        "name": "structure",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "conductor",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:INS_VSTRING_500kV",
+    "aliases": [
+      "VSTRING_500",
+      "V_STRING",
+      "500KV_VSTRING"
+    ],
+    "label": "500 kV V-String Suspension Assembly",
+    "category": "Insulator",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">INS</text><line x1=\"40\" y1=\"12\" x2=\"40\" y2=\"33\" stroke=\"#c084fc\" stroke-width=\"1.6\"/><ellipse cx=\"40\" cy=\"17\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><ellipse cx=\"40\" cy=\"22.5\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><ellipse cx=\"40\" cy=\"28\" rx=\"8\" ry=\"2.2\" fill=\"none\" stroke=\"#c084fc\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">VSTRING_50</text></svg>",
+    "ports": [
+      {
+        "name": "structure",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 40,
+        "dy": 0
+      },
+      {
+        "name": "conductor",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 40,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:LOAD_NESC_HEAVY",
+    "aliases": [
+      "NESC_HEAVY",
+      "NESC_250B_HEAVY"
+    ],
+    "label": "NESC Rule 250B Heavy Loading",
+    "category": "Weather Load Case",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">WLC</text><path d=\"M 14 20 H 46 M 18 26 H 52 M 12 31 H 42\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><polygon points=\"62,16 66,22 62,28 58,22\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NESC_HEAVY</text></svg>",
+    "ports": [
+      {
+        "name": "conductor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:LOAD_NESC_MEDIUM",
+    "aliases": [
+      "NESC_MEDIUM",
+      "NESC_250B_MEDIUM"
+    ],
+    "label": "NESC Rule 250B Medium Loading",
+    "category": "Weather Load Case",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">WLC</text><path d=\"M 14 20 H 46 M 18 26 H 52 M 12 31 H 42\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><polygon points=\"62,16 66,22 62,28 58,22\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NESC_MEDIU</text></svg>",
+    "ports": [
+      {
+        "name": "conductor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:LOAD_NESC_LIGHT",
+    "aliases": [
+      "NESC_LIGHT",
+      "NESC_250B_LIGHT"
+    ],
+    "label": "NESC Rule 250B Light Loading",
+    "category": "Weather Load Case",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">WLC</text><path d=\"M 14 20 H 46 M 18 26 H 52 M 12 31 H 42\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><polygon points=\"62,16 66,22 62,28 58,22\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NESC_LIGHT</text></svg>",
+    "ports": [
+      {
+        "name": "conductor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:LOAD_NESC_EXTREME_WIND",
+    "aliases": [
+      "NESC_250C",
+      "EXTREME_WIND"
+    ],
+    "label": "NESC Rule 250C Extreme Wind",
+    "category": "Weather Load Case",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">WLC</text><path d=\"M 14 20 H 46 M 18 26 H 52 M 12 31 H 42\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><polygon points=\"62,16 66,22 62,28 58,22\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NESC_EXTRE</text></svg>",
+    "ports": [
+      {
+        "name": "conductor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:LOAD_NESC_ICE_WIND",
+    "aliases": [
+      "NESC_250D",
+      "EXTREME_ICE_WIND"
+    ],
+    "label": "NESC Rule 250D Extreme Ice w/ Wind",
+    "category": "Weather Load Case",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">WLC</text><path d=\"M 14 20 H 46 M 18 26 H 52 M 12 31 H 42\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><polygon points=\"62,16 66,22 62,28 58,22\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">NESC_ICE_W</text></svg>",
+    "ports": [
+      {
+        "name": "conductor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:LOAD_IEC_60826_WIND",
+    "aliases": [
+      "IEC_60826_WIND",
+      "IEC_WIND"
+    ],
+    "label": "IEC 60826 Extreme Wind Limit State",
+    "category": "Weather Load Case",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">WLC</text><path d=\"M 14 20 H 46 M 18 26 H 52 M 12 31 H 42\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><polygon points=\"62,16 66,22 62,28 58,22\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEC_60826_</text></svg>",
+    "ports": [
+      {
+        "name": "conductor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "plscadd:LOAD_IEC_60826_ICE",
+    "aliases": [
+      "IEC_60826_ICE",
+      "IEC_ICE_WIND"
+    ],
+    "label": "IEC 60826 Combined Ice & Wind",
+    "category": "Weather Load Case",
+    "domain": "electrical",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"5\" width=\"24\" height=\"11\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"13.5\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">WLC</text><path d=\"M 14 20 H 46 M 18 26 H 52 M 12 31 H 42\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.5\" stroke-linecap=\"round\"/><polygon points=\"62,16 66,22 62,28 58,22\" fill=\"none\" stroke=\"#fbbf24\" stroke-width=\"1.4\"/><text x=\"40\" y=\"42\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">IEC_60826_</text></svg>",
+    "ports": [
+      {
+        "name": "conductor_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "load_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

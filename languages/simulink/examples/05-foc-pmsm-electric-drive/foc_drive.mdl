@@ -1,0 +1,139 @@
+Model {
+  Name "FocPmsmDrive"
+  System {
+    Name "FocPmsmDrive"
+    Block {
+      BlockType Constant
+      Name "OmegaRef"
+      SID "1"
+      Value 314.16
+    }
+    Block {
+      BlockType Sum
+      Name "SpeedErr"
+      SID "2"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Gain
+      Name "SpeedKp"
+      SID "3"
+      Gain 0.65
+    }
+    Block {
+      BlockType Sum
+      Name "IqErr"
+      SID "4"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Gain
+      Name "CurrentKp"
+      SID "5"
+      Gain 12.0
+    }
+    Block {
+      BlockType Gain
+      Name "InvLq"
+      SID "6"
+      Gain 400.0
+    }
+    Block {
+      BlockType Integrator
+      Name "IqState"
+      SID "7"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Gain
+      Name "TorqueConstKt"
+      SID "8"
+      Gain 0.48
+    }
+    Block {
+      BlockType Gain
+      Name "InvRotorJ"
+      SID "9"
+      Gain 50.0
+    }
+    Block {
+      BlockType Integrator
+      Name "RotorOmega"
+      SID "10"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Scope
+      Name "DriveScope"
+      SID "11"
+    }
+    Line {
+      SrcBlock "OmegaRef"
+      SrcPort 1
+      DstBlock "SpeedErr"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "SpeedErr"
+      SrcPort 1
+      DstBlock "SpeedKp"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "SpeedKp"
+      SrcPort 1
+      DstBlock "IqErr"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "IqErr"
+      SrcPort 1
+      DstBlock "CurrentKp"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "CurrentKp"
+      SrcPort 1
+      DstBlock "InvLq"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "InvLq"
+      SrcPort 1
+      DstBlock "IqState"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "IqState"
+      SrcPort 1
+      DstBlock "TorqueConstKt"
+      DstPort 1
+      Branch {
+        DstBlock "IqErr"
+        DstPort 2
+      }
+    }
+    Line {
+      SrcBlock "TorqueConstKt"
+      SrcPort 1
+      DstBlock "InvRotorJ"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "InvRotorJ"
+      SrcPort 1
+      DstBlock "RotorOmega"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "RotorOmega"
+      SrcPort 1
+      DstBlock "DriveScope"
+      DstPort 1
+      Branch {
+        DstBlock "SpeedErr"
+        DstPort 2
+      }
+    }
+  }
+}

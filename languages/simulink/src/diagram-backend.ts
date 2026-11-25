@@ -19,7 +19,25 @@ import {
   type DiagramTextEdit as TextEdit,
 } from "@modelscript/diagram/protocol";
 
-function getUnifiedIndexFromDeps(backends: DiagramBackendHost): any {
+interface SimulinkBlockLike {
+  id?: string;
+  name?: string;
+  type: string;
+  subsystem?: SimulinkSystemLike;
+  parameters?: Map<string, unknown> | Record<string, unknown>;
+}
+
+interface SimulinkSystemLike {
+  name?: string;
+  blocks?: SimulinkBlockLike[] | Map<string, SimulinkBlockLike> | Record<string, SimulinkBlockLike>;
+}
+
+interface RawDiagramLike {
+  title?: string;
+  cells: Array<{ shape?: string; [key: string]: unknown }>;
+}
+
+function getUnifiedIndexFromDeps(backends: DiagramBackendHost): unknown {
   return (
     backends.getUnifiedIndex?.() ??
     backends.generic?.deps?.getUnifiedIndex?.() ??
@@ -31,7 +49,7 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
   const createDropBatchState = () => backends.crossLanguageDrop?.createDropBatchState?.() ?? {};
   const mergeCoincidentInsertEdits = (edits: TextEdit[]) =>
     backends.crossLanguageDrop?.mergeCoincidentInsertEdits?.(edits) ?? edits;
-  const computeSimulinkComponentDropEdits = (opts: any): TextEdit[] =>
+  const computeSimulinkComponentDropEdits = (opts: unknown): TextEdit[] =>
     backends.crossLanguageDrop?.computeSimulinkComponentDropEdits?.(opts) ?? [];
 
   const readSimulinkSource = async (targetUri: string): Promise<string | Buffer | null> => {
@@ -53,7 +71,7 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
     return null;
   };
 
-  const getSystemBlocks = (sys: any): any[] => {
+  const getSystemBlocks = (sys: SimulinkSystemLike | null | undefined): SimulinkBlockLike[] => {
     if (!sys || !sys.blocks) return [];
     if (Array.isArray(sys.blocks)) return sys.blocks;
     if (sys.blocks instanceof Map) return Array.from(sys.blocks.values());
@@ -61,9 +79,9 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
     return [];
   };
 
-  const formatSimulinkDiagramData = (rawDiagram: any, meta?: Record<string, any>): DiagramData => {
-    const nodes = rawDiagram.cells.filter((c: any) => c.shape !== "edge");
-    const edges = rawDiagram.cells.filter((c: any) => c.shape === "edge");
+  const formatSimulinkDiagramData = (rawDiagram: RawDiagramLike, meta?: Record<string, unknown>): DiagramData => {
+    const nodes = rawDiagram.cells.filter((c) => c.shape !== "edge");
+    const edges = rawDiagram.cells.filter((c) => c.shape === "edge");
     return {
       nodes,
       edges,
@@ -71,7 +89,7 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
       diagramBackground: null,
       cells: rawDiagram.cells,
       metadata: { title: rawDiagram.title, ...(meta ?? {}) },
-    } as any;
+    } as unknown as DiagramData;
   };
 
   return {
@@ -81,9 +99,9 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
         if (!raw) return null;
         const { parseSimulink, buildSimulinkDiagram } = await import("@modelscript/simulink");
         const model = parseSimulink(raw, params.uri);
-        let targetSystem: any = model.rootSystem;
+        let targetSystem: SimulinkSystemLike = model.rootSystem as unknown as SimulinkSystemLike;
         if (params.className && model.rootSystem) {
-          const findSubsystem = (sys: any, name: string): any => {
+          const findSubsystem = (sys: SimulinkSystemLike, name: string): SimulinkSystemLike | null => {
             const blks = getSystemBlocks(sys);
             for (const b of blks) {
               if (b.name === name && b.subsystem) return b.subsystem;
@@ -94,11 +112,14 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
             }
             return null;
           };
-          const found = findSubsystem(model.rootSystem, params.className);
+          const found = findSubsystem(targetSystem, params.className);
           if (found) targetSystem = found;
         }
-        const rawDiagram = buildSimulinkDiagram(targetSystem);
-        return formatSimulinkDiagramData(rawDiagram, { solver: model.solver, version: model.version });
+        const rawDiagram = buildSimulinkDiagram(targetSystem as unknown as Parameters<typeof buildSimulinkDiagram>[0]);
+        return formatSimulinkDiagramData(rawDiagram as unknown as RawDiagramLike, {
+          solver: model.solver,
+          version: model.version,
+        });
       } catch {
         return null;
       }
@@ -111,7 +132,7 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
         const { parseSimulink } = await import("@modelscript/simulink");
         const model = parseSimulink(raw, params.uri);
 
-        const findBlock = (sys: any, name: string): any => {
+        const findBlock = (sys: SimulinkSystemLike, name: string): SimulinkBlockLike | null => {
           const blks = getSystemBlocks(sys);
           for (const b of blks) {
             const bId = b.name || b.id;
@@ -124,7 +145,7 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
           return null;
         };
 
-        const blk = findBlock(model.rootSystem, params.componentName);
+        const blk = findBlock(model.rootSystem as unknown as SimulinkSystemLike, params.componentName);
         if (!blk) return null;
 
         const parameters: ComponentPropertyData["parameters"] = [
@@ -133,12 +154,12 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
         const fields: PropertyFieldConfig[] = [
           { key: "BlockType", label: "Block Type", kind: "string", defaultValue: blk.type },
         ];
-        const values: Record<string, any> = {
+        const values: Record<string, unknown> = {
           BlockType: blk.type,
         };
 
         if (blk.parameters) {
-          const pEntries: [string, any][] =
+          const pEntries: [string, unknown][] =
             blk.parameters instanceof Map ? Array.from(blk.parameters.entries()) : Object.entries(blk.parameters);
           for (const [k, v] of pEntries) {
             const strVal = String(v);
@@ -361,26 +382,33 @@ export function createSimulinkDiagramBackend(backends: DiagramBackendHost): Diag
         const targetName = params.className || params.componentName || params.nodeId || "";
         const cleanName = targetName.startsWith("block_") ? targetName.slice(6) : targetName;
 
-        const findSubsystem = (sys: any, name: string): { sys: any; path: string[] } | null => {
+        const findSubsystem = (
+          sys: SimulinkSystemLike,
+          name: string,
+        ): { sys: SimulinkSystemLike; path: string[] } | null => {
           const blks = getSystemBlocks(sys);
           for (const b of blks) {
             const bId = b.name || b.id;
             if ((bId === name || b.name === name) && b.subsystem) {
-              return { sys: b.subsystem, path: [model.rootSystem.name || "Root", b.name] };
+              return { sys: b.subsystem, path: [model.rootSystem.name || "Root", b.name ?? bId ?? name] };
             }
             if (b.subsystem) {
               const res = findSubsystem(b.subsystem, name);
-              if (res) return { sys: res.sys, path: [model.rootSystem.name || "Root", b.name, ...res.path.slice(1)] };
+              if (res)
+                return {
+                  sys: res.sys,
+                  path: [model.rootSystem.name || "Root", b.name ?? bId ?? name, ...res.path.slice(1)],
+                };
             }
           }
           return null;
         };
 
-        const found = findSubsystem(model.rootSystem, cleanName);
+        const found = findSubsystem(model.rootSystem as unknown as SimulinkSystemLike, cleanName);
         if (!found) return null;
-        const rawDiagram = buildSimulinkDiagram(found.sys);
+        const rawDiagram = buildSimulinkDiagram(found.sys as unknown as Parameters<typeof buildSimulinkDiagram>[0]);
         return {
-          data: formatSimulinkDiagramData(rawDiagram),
+          data: formatSimulinkDiagramData(rawDiagram as unknown as RawDiagramLike),
           breadcrumbs: found.path.map((p) => ({ id: p, label: p, uri: params.uri })),
           targetUri: params.uri,
           targetClassName: cleanName,

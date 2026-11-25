@@ -1,0 +1,11 @@
+{
+  "id": "pypsa-05-eu-renewable-capacity-expansion",
+  "lang": "pypsa",
+  "subFormats": ["pypsa", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Region European Renewable Capacity Expansion",
+  "description": "Multi-file four-region 380 kV AC + HVDC subsea interconnector PyPSA capacity expansion network paired with regional wind/solar capacity factors (wind_solar_cf.csv) and hourly regional loads (loads.csv).",
+  "category": "Energy Systems Optimization",
+  "tags": ["pypsa", "capacity-expansion", "hvdc", "renewables", "multi-file"],
+  "activeFile": "eu_expansion.pypsa"
+}

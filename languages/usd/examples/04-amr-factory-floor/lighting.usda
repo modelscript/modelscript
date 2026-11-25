@@ -1,0 +1,20 @@
+#usda 1.0
+(
+    defaultPrim = "FactoryLights"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+def Xform "FactoryLights"
+{
+    def DistantLight "HighBaySun"
+    {
+        float inputs:intensity = 1200.0
+        color3f inputs:color = (1.0, 0.98, 0.95)
+    }
+
+    def DomeLight "AmbientFill"
+    {
+        float inputs:intensity = 350.0
+    }
+}

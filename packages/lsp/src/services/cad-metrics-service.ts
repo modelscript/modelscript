@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { computeMeshVolumeAndArea, computeProjectedFrontalArea, ManifoldWorker } from "@modelscript/cad";
-import { ScadEvaluator } from "@modelscript/scad";
+import {
+  computeMeshVolumeAndArea,
+  computeProjectedFrontalArea,
+  ManifoldWorker,
+  type ManifoldSurfaceMesh,
+} from "@modelscript/cad";
+import { ScadEvaluator, type ScadCstNode } from "@modelscript/scad";
 import type { Connection } from "vscode-languageserver";
+
+export type CadMetricsConnectionLike = Connection | { sendRequest?: (method: string) => Promise<unknown> };
 
 /**
  * Watertight manifold mesh metrics evaluated from an OpenSCAD constructive solid geometry tree.
@@ -63,8 +70,8 @@ export class CadMetricsService {
   public getOrSchedule(
     uri: string,
     text: string,
-    rootNode: any,
-    connection?: Connection | { sendRequest?: (method: string) => Promise<any> },
+    rootNode: ScadCstNode | null | undefined,
+    connection?: CadMetricsConnectionLike,
     threadFallback?: { frontalArea?: number; mass?: number },
     options?: { syncFallback?: boolean },
   ): string | undefined {
@@ -108,8 +115,8 @@ export class CadMetricsService {
     uri: string,
     text: string,
     hash: string,
-    rootNode: any,
-    connection?: Connection | { sendRequest?: (method: string) => Promise<any> },
+    rootNode: ScadCstNode | null | undefined,
+    connection?: CadMetricsConnectionLike,
     debounceMs = 200,
   ): void {
     const existing = this.pendingDebounce.get(uri);
@@ -141,7 +148,12 @@ export class CadMetricsService {
    * Asynchronously evaluates the solid CSG tree on a background worker thread
    * (when running in Node), keeping LSP request handlers responsive.
    */
-  public async evaluateAsync(uri: string, text: string, hash: string, rootNode: any): Promise<CadCsgMetrics | null> {
+  public async evaluateAsync(
+    uri: string,
+    text: string,
+    hash: string,
+    rootNode: ScadCstNode | null | undefined,
+  ): Promise<CadCsgMetrics | null> {
     if (!rootNode) return null;
     try {
       const { evaluateSolidAsync } = await import("@modelscript/cad");
@@ -158,7 +170,12 @@ export class CadMetricsService {
   /**
    * Evaluates the solid CST node into a manifold mesh and extracts volume, frontal area, and mass.
    */
-  public computeSynchronously(uri: string, text: string, hash: string, rootNode: any): CadCsgMetrics | null {
+  public computeSynchronously(
+    uri: string,
+    text: string,
+    hash: string,
+    rootNode: ScadCstNode | null | undefined,
+  ): CadCsgMetrics | null {
     if (!rootNode) return null;
 
     try {
@@ -173,7 +190,7 @@ export class CadMetricsService {
     }
   }
 
-  private finalizeMetrics(uri: string, text: string, hash: string, mesh: any): CadCsgMetrics {
+  private finalizeMetrics(uri: string, text: string, hash: string, mesh: ManifoldSurfaceMesh): CadCsgMetrics {
     const { volume } = computeMeshVolumeAndArea(mesh);
     const frontalAreaM2 = computeProjectedFrontalArea(mesh, [0, 0, 1]);
 

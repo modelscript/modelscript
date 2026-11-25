@@ -1,0 +1,11 @@
+{
+  "id": "nifti-05-mri-tumor-mask-pair",
+  "lang": "nifti",
+  "subFormats": ["nii.json"],
+  "difficulty": 5,
+  "title": "Multi-Modal Brain MRI and Glioblastoma Segmentation Mask Pair",
+  "description": "Co-registered T1c post-contrast brain MRI volume and companion multi-label glioblastoma tumor segmentation mask sharing an identical right-handed RAS sform coordinate grid.",
+  "category": "Medical Imaging & Volumetric Formats",
+  "tags": ["nifti", "segmentation", "neuro-oncology", "registration", "multi-file"],
+  "activeFile": "t1_brain.nii.json"
+}

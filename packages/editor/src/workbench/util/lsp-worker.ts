@@ -17,7 +17,8 @@ let initPromise: Promise<ProtocolConnection> | null = null;
 function isDebugLsp(): boolean {
   return (
     typeof window !== "undefined" &&
-    (Boolean((window as any).__DEBUG_LSP__) || window.localStorage?.getItem("DEBUG_LSP") === "true")
+    (Boolean((window as unknown as { __DEBUG_LSP__?: boolean }).__DEBUG_LSP__) ||
+      window.localStorage?.getItem("DEBUG_LSP") === "true")
   );
 }
 
@@ -25,7 +26,7 @@ function isDebugLsp(): boolean {
  * Start the LSP WebWorker and send `initialize` + `initialized`.
  * Resolves once the server has acknowledged `initialize`.
  *
- * If the worker is already running (or a custom `MorselLspTransport` is active),
+ * If the worker is already running (or a custom `AnsatzLspTransport` is active),
  * the existing connection is returned.
  */
 export async function startLsp(initialLanguageId?: string): Promise<ProtocolConnection> {
@@ -105,7 +106,7 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
           console.debug(`[LSP-message] [type=${params.type}] ${params.message}`);
         }
       });
-      conn.onNotification("window/logMessage", (params: any) => {
+      conn.onNotification("window/logMessage", (params: { type?: number; message?: string }) => {
         if (params.type === 1) {
           console.error(`[LSP-server] ${params.message}`);
         } else if (params.type === 2) {
@@ -114,7 +115,7 @@ export async function startLsp(initialLanguageId?: string): Promise<ProtocolConn
           console.debug(`[LSP-server] [type=${params.type}] ${params.message}`);
         }
       });
-      conn.onNotification("modelscript/status", (params: any) => {
+      conn.onNotification("modelscript/status", (params: { state?: string; message?: string }) => {
         if (isDebugLsp()) {
           console.debug(`[LSP-status] state=${params.state} message=${params.message}`);
         }
@@ -281,9 +282,10 @@ export async function stopLsp(): Promise<void> {
 }
 
 if (typeof window !== "undefined") {
-  window.addEventListener("START_ZERO_COPY_LSP", (e: any) => {
-    if (e.detail && e.detail.canvas) {
-      passCanvasToLsp(e.detail.canvas, e.detail.uri, e.detail.className);
+  window.addEventListener("START_ZERO_COPY_LSP", (e: Event) => {
+    const detail = (e as CustomEvent<{ canvas?: OffscreenCanvas; uri?: string; className?: string }>).detail;
+    if (detail && detail.canvas) {
+      passCanvasToLsp(detail.canvas, detail.uri, detail.className);
     }
   });
 }

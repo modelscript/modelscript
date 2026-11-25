@@ -1,0 +1,11 @@
+{
+  "id": "usd-03-warehouse-rack-composition",
+  "lang": "usd",
+  "subFormats": ["usda"],
+  "difficulty": 3,
+  "title": "Warehouse Pallet & Shelving Asset Composition",
+  "description": "Multi-file OpenUSD scene composing reusable pallet-rack geometry and PBR material layers via USD subLayers and asset references.",
+  "category": "Scene Composition",
+  "tags": ["usd", "composition", "sublayers", "warehouse", "multi-file"],
+  "activeFile": "scene.usda"
+}

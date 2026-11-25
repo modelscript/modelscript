@@ -1,0 +1,9 @@
+<?xml version="1.0"?>
+<turboprop_engine name="pt6a">
+  <milthrust unit="LBS"> 1100.0 </milthrust>
+  <idlen1> 52.0 </idlen1>
+  <maxn1> 101.5 </maxn1>
+  <maxpower unit="HP"> 1173.0 </maxpower>
+  <psfc> 0.52 </psfc>
+  <n1idle_max_delay> 1.0 </n1idle_max_delay>
+</turboprop_engine>

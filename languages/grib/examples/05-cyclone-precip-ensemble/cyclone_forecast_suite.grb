@@ -1,0 +1,34 @@
+# T+00h Mean Sea-Level Pressure (Pa)
+GRIB edition=1
+  PDS { center = 7, parameter = PRMSL, levelType = MSL, level = 0, date = "2026-09-12T00:00", decimalScale = 0 }
+  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }
+  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 97000.0, values = [100600, 100200, 100500, 100100, 98400, 99900, 100400, 99800, 100700] }
+7777
+
+# T+06h Mean Sea-Level Pressure (Pa) - Storm Moving NW and Deepening
+GRIB edition=1
+  PDS { center = 7, parameter = PRMSL, levelType = MSL, level = 0, date = "2026-09-12T06:00", decimalScale = 0 }
+  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }
+  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 97000.0, values = [99600, 99100, 100100, 98200, 97800, 99600, 100200, 99900, 100900] }
+7777
+
+# T+06h 6-Hour Accumulated Total Precipitation (kg/m^2)
+GRIB edition=1
+  PDS { center = 7, parameter = APCP, levelType = SFC, level = 0, date = "2026-09-12T06:00", decimalScale = 1 }
+  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }
+  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 0.0, values = [18.5, 42.0, 12.4, 54.2, 78.6, 21.0, 9.8, 16.5, 4.2] }
+7777
+
+# T+12h Mean Sea-Level Pressure (Pa) - Post-Landfall Filling
+GRIB edition=1
+  PDS { center = 7, parameter = PRMSL, levelType = MSL, level = 0, date = "2026-09-12T12:00", decimalScale = 0 }
+  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }
+  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 97000.0, values = [98800, 99400, 100400, 99500, 99800, 100600, 100700, 100800, 101100] }
+7777
+
+# T+12h Accumulated Total Precipitation (kg/m^2)
+GRIB edition=1
+  PDS { center = 7, parameter = APCP, levelType = MSL, level = 0, date = "2026-09-12T12:00", decimalScale = 1 }
+  GDS { ni = 3, nj = 3, la1 = 32.0, lo1 = -82.0, la2 = 28.0, lo2 = -78.0, di = 2.0, dj = 2.0 }
+  BDS { bitsPerValue = 16, binaryScale = 0, referenceValue = 0.0, values = [62.4, 34.8, 8.1, 29.0, 15.2, 5.4, 3.0, 1.8, 0.5] }
+7777

@@ -626,9 +626,71 @@ function findFirstIdent(text: string): string | undefined {
   return undefined;
 }
 
+interface NonlinearSimpOptions {
+  startVal?: number | undefined;
+  power?: number | undefined;
+  arg?: string | undefined;
+}
+
+interface WorkspaceSymbolEntryLike {
+  id: number;
+  name: string;
+  kind: string;
+  parentId?: number | null | undefined;
+  resourceId?: string | undefined;
+  startOffset: number;
+  endOffset: number;
+}
+
+interface WorkspaceSymbolIndexLike {
+  symbols: Map<number, WorkspaceSymbolEntryLike>;
+  byName: Map<string, number[]>;
+  childrenOf?: Map<number | null, number[]> | undefined;
+  tggCorrespondenceIndexer?:
+    | {
+        getSlotsForSymbol?(id: number): number[];
+        hypergraph?: {
+          getRecord?(slot: number): { isRemoved?: boolean; domainNodes?: Record<string, unknown> } | null | undefined;
+        };
+      }
+    | undefined;
+}
+
+interface WorkspaceIndexSourceLike {
+  getIndexAsync?(): Promise<WorkspaceSymbolIndexLike | null | undefined>;
+  getIndex?(opts?: { eager?: boolean }): WorkspaceSymbolIndexLike | null | undefined;
+  symbols?: Map<number, WorkspaceSymbolEntryLike> | undefined;
+  byName?: Map<string, number[]> | undefined;
+  childrenOf?: Map<number | null, number[]> | undefined;
+}
+
+export interface WorkspaceDocTreeEntryLike {
+  text?: string | undefined;
+  tree?: (CstTreeLike & { rootNode: SyntaxNode & CstNodeLike }) | CstTreeLike | null | undefined;
+}
+
+export interface WorkspaceFeaturesManagerLike {
+  getWorkspaceIndex?(langId: string): WorkspaceIndexSourceLike | null | undefined;
+  allWorkspaceIndices?: ReadonlyMap<string, WorkspaceIndexSourceLike | null> | undefined;
+}
+
+interface ReasonerDiagnosticData {
+  suggestedValue?: number | string | undefined;
+  currentValue?: number | undefined;
+  param?: string | undefined;
+  counterpartLang?: string | undefined;
+  counterpartUri?: string | undefined;
+  counterpartRange?:
+    { start: { line: number; character: number }; end: { line: number; character: number } } | undefined;
+  requiredLimit?: number | string | undefined;
+  provenBound?: number | string | undefined;
+  standardClause?: string | undefined;
+  varName?: string | undefined;
+}
+
 function parseNonlinearSimplification(
   termText: string,
-  deriveSimp: (kind: string, varName: string, options?: any) => string,
+  deriveSimp: (kind: string, varName: string, options?: NonlinearSimpOptions) => string,
 ): string {
   const trimmed = termText.trim();
   const ident = readIdentAt(trimmed, 0);
@@ -685,32 +747,20 @@ function extractLineAfterLabel(text: string, label: string): string | undefined 
 export function registerWorkspaceFeaturesProvider(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  documentTrees: Map<string, any>,
+  documentTrees: ReadonlyMap<string, WorkspaceDocTreeEntryLike>,
   flushValidation: (uri: string) => Promise<void>,
-  getUnifiedIndex: (isSysML2: boolean) => Promise<any>,
-  getResolverOrIndex?: any,
-  getGlobalWorkspaceIndex?: () => any,
-  workspaceManager?: any,
+  getUnifiedIndex: (isSysML2: boolean) => Promise<WorkspaceSymbolIndexLike | null | undefined>,
+  getResolverOrIndex?: (() => WorkspaceIndexSourceLike | WorkspaceIndexSourceLike[] | null | undefined) | unknown,
+  getGlobalWorkspaceIndex?: () => WorkspaceIndexSourceLike | WorkspaceIndexSourceLike[] | null | undefined,
+  workspaceManager?: WorkspaceFeaturesManagerLike,
 ) {
-  const getWorkspaceIndex =
+  const getWorkspaceIndex: () => WorkspaceIndexSourceLike | WorkspaceIndexSourceLike[] | null | undefined =
     typeof getResolverOrIndex === "function" && getGlobalWorkspaceIndex === undefined
-      ? getResolverOrIndex
+      ? (getResolverOrIndex as () => WorkspaceIndexSourceLike | WorkspaceIndexSourceLike[] | null | undefined)
       : getGlobalWorkspaceIndex || (() => null);
 
-  type SymbolEntryLike = {
-    id: number;
-    name: string;
-    kind: string;
-    parentId?: number | null;
-    resourceId?: string;
-    startOffset: number;
-    endOffset: number;
-  };
-  type SymbolIndexLike = {
-    symbols: Map<number, SymbolEntryLike>;
-    byName: Map<string, number[]>;
-    childrenOf?: Map<number, number[]>;
-  };
+  type SymbolEntryLike = WorkspaceSymbolEntryLike;
+  type SymbolIndexLike = WorkspaceSymbolIndexLike;
 
   const isDecl = (entry: SymbolEntryLike): boolean => {
     return entry.kind !== "Reference" && entry.kind !== "ConnectEquation" && entry.kind !== "FunctionCall";
@@ -772,16 +822,18 @@ export function registerWorkspaceFeaturesProvider(
 
     const lowerUri = params.textDocument.uri.toLowerCase();
     const isSysML2 = lowerUri.endsWith(".sysml") || lowerUri.endsWith(".sysml2") || lowerUri.endsWith(".kerml");
-    let unifiedIndex: any = null;
+    let unifiedIndex: WorkspaceSymbolIndexLike | null | undefined = null;
     if (refPlugin?.id && refPlugin.id !== "modelica" && !isSysML2) {
-      const pluginWsIdx = refPlugin.workspaceIndex ?? workspaceManager?.getWorkspaceIndex?.(refPlugin.id);
+      const pluginWsIdx =
+        (refPlugin.workspaceIndex as WorkspaceIndexSourceLike | undefined) ??
+        workspaceManager?.getWorkspaceIndex?.(refPlugin.id);
       if (pluginWsIdx) {
         unifiedIndex =
           typeof pluginWsIdx.getIndexAsync === "function"
             ? await pluginWsIdx.getIndexAsync()
             : typeof pluginWsIdx.getIndex === "function"
               ? pluginWsIdx.getIndex()
-              : pluginWsIdx;
+              : (pluginWsIdx as WorkspaceSymbolIndexLike);
       }
     }
     if (!unifiedIndex) {
@@ -881,7 +933,7 @@ export function registerWorkspaceFeaturesProvider(
       const declEntry = unifiedIndex.symbols.get(declId);
       if (declEntry && declEntry.resourceId) {
         const declTree = documentTrees.get(declEntry.resourceId)?.tree;
-        const cstSpan = resolveCstNameSpan(declEntry, declTree);
+        const cstSpan = resolveCstNameSpan(declEntry as Parameters<typeof resolveCstNameSpan>[0], declTree);
         if (cstSpan) {
           addLocation(declEntry.resourceId, cstSpan.startOffset, cstSpan.endOffset);
         } else {
@@ -936,6 +988,7 @@ export function registerWorkspaceFeaturesProvider(
 
     const isSysML2 = /\.(sysml|sysml2|kerml)$/i.test(params.textDocument.uri);
     const unifiedIndex = isSysML2 ? await getUnifiedIndex(true) : await getUnifiedIndex(false);
+    if (!unifiedIndex?.symbols) return null;
     let targetEntry: SymbolEntryLike | null = null;
 
     for (const entry of unifiedIndex.symbols.values()) {
@@ -997,7 +1050,7 @@ export function registerWorkspaceFeaturesProvider(
       const declEntry = unifiedIndex.symbols.get(declId);
       if (declEntry && declEntry.resourceId && declEntry.name && !declEntry.name.startsWith("#")) {
         const declTree = documentTrees.get(declEntry.resourceId)?.tree;
-        const cstSpan = resolveCstNameSpan(declEntry, declTree);
+        const cstSpan = resolveCstNameSpan(declEntry as Parameters<typeof resolveCstNameSpan>[0], declTree);
         if (cstSpan) {
           addEdit(declEntry.resourceId, cstSpan.startOffset, cstSpan.endOffset);
         }
@@ -1217,7 +1270,9 @@ export function registerWorkspaceFeaturesProvider(
             child?: (i: number) => CstNodeLike | null;
             text?: string;
           };
-          const docRoot = documentTrees.get(params.textDocument.uri)?.tree?.rootNode;
+          const docRoot = documentTrees.get(params.textDocument.uri)?.tree?.rootNode as
+            | (CstNodeLike & { descendantForPosition?: (pos: { row: number; column: number }) => CstNodeLike | null })
+            | undefined;
           if (docRoot && typeof docRoot.descendantForPosition === "function") {
             let cur: CstNodeLike | null = docRoot.descendantForPosition({ row: lineIdx, column: colIdx });
             while (cur?.parent && cur.parent.startPosition?.row === lineIdx) {
@@ -1470,7 +1525,7 @@ export function registerWorkspaceFeaturesProvider(
         const lineStart = document.offsetAt({ line: diagnostic.range.start.line, character: 0 });
         const lineEnd = document.offsetAt({ line: diagnostic.range.start.line + 1, character: 0 });
         const lineContent = text.substring(lineStart, lineEnd);
-        const data = diagnostic.data as any;
+        const data = diagnostic.data as ReasonerDiagnosticData | undefined;
         const docRoot = documentTrees.get(params.textDocument.uri)?.tree?.rootNode;
         const diagStartOffset = document.offsetAt(diagnostic.range.start);
         const diagEndOffset = document.offsetAt(diagnostic.range.end);
@@ -1574,8 +1629,14 @@ export function registerWorkspaceFeaturesProvider(
                 const cEndOff = cDoc.offsetAt(cRange.end);
                 let cNewText = `${currentVal}`;
 
+                const targetSuggested =
+                  typeof suggestedVal === "number"
+                    ? suggestedVal
+                    : Number.isFinite(Number(suggestedVal))
+                      ? Number(suggestedVal)
+                      : undefined;
                 const cCstCandidates = collectNumericNodesInCstLine(cRoot, cStartOff, cEndOff, cRange.start.line);
-                const cBestNode = selectBestDriftNumericNode(cLineContent, cCstCandidates, suggestedVal);
+                const cBestNode = selectBestDriftNumericNode(cLineContent, cCstCandidates, targetSuggested);
                 const patchedCounterpart = cBestNode ? patchCstNodeValue(cBestNode.node, cNewText, cDoc) : null;
 
                 if (patchedCounterpart) {
@@ -1583,7 +1644,7 @@ export function registerWorkspaceFeaturesProvider(
                   cNewText = patchedCounterpart.newText;
                 } else {
                   const cMatches = scanNumericTokensInLine(cLineContent);
-                  const cBestMatch = selectBestDriftNumericSpan(cLineContent, cMatches, suggestedVal);
+                  const cBestMatch = selectBestDriftNumericSpan(cLineContent, cMatches, targetSuggested);
 
                   if (cBestMatch) {
                     cRange = {
@@ -2234,7 +2295,7 @@ export function registerWorkspaceFeaturesProvider(
         const termText = text.substring(startOffset, endOffset).trim();
 
         if (termText) {
-          const deriveSimp = (kind: string, varName: string, options?: any) => {
+          const deriveSimp = (kind: string, varName: string, options?: NonlinearSimpOptions) => {
             const startVal = options?.startVal ?? (varName.toLowerCase().startsWith("t") ? 300.0 : 1.0);
             switch (kind) {
               case "power": {
@@ -2365,8 +2426,8 @@ export function registerWorkspaceFeaturesProvider(
     const MAX_RESULTS = 100;
 
     // Collect all registered workspace indices (deduplicated)
-    const wsIndices = new Set<any>();
-    const addIndex = (idx: any) => {
+    const wsIndices = new Set<WorkspaceIndexSourceLike>();
+    const addIndex = (idx: WorkspaceIndexSourceLike | WorkspaceIndexSourceLike[] | null | undefined) => {
       if (!idx) return;
       if (Array.isArray(idx)) {
         for (const item of idx) {
@@ -2385,7 +2446,7 @@ export function registerWorkspaceFeaturesProvider(
     }
     for (const plugin of globalLanguageRegistry.getAllPlugins()) {
       if (plugin.workspaceIndex) {
-        addIndex(plugin.workspaceIndex);
+        addIndex(plugin.workspaceIndex as WorkspaceIndexSourceLike);
       }
     }
 

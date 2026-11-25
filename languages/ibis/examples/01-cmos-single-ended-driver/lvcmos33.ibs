@@ -1,0 +1,59 @@
+[IBIS Ver] 3.2
+[File Name] lvcmos33.ibs
+[File Rev] 1.0
+[Date] November 24, 2026
+
+[Component] LVCMOS33_BUFFER
+[Manufacturer] Ansatz Semiconductor
+[Package]
+| variable   typ          min          max
+R_pkg        0.1400       0.0800       0.2200
+L_pkg        2.800nH      1.400nH      4.500nH
+C_pkg        1.100pF      0.600pF      1.800pF
+
+[Pin] signal_name model_name R_pin L_pin C_pin
+1     VDD         POWER
+2     VSS         GND
+3     TX_OUT      LVCMOS33_OUT
+4     RX_IN       LVCMOS33_IN
+
+[Model] LVCMOS33_OUT
+Model_type Output
+Polarity Non-Inverting
+C_comp 2.4pF 1.8pF 3.1pF
+[Voltage Range] 3.3V 3.0V 3.6V
+
+[Pulldown]
+| Voltage   I(typ)       I(min)       I(max)
+-3.300      -0.0850      -0.0550      -0.1200
+ 0.000       0.0000       0.0000       0.0000
+ 0.400       0.0180       0.0110       0.0260
+ 1.650       0.0420       0.0280       0.0580
+ 3.300       0.0540       0.0360       0.0750
+
+[Pullup]
+| Voltage   I(typ)       I(min)       I(max)
+-3.300      -0.0750      -0.0480      -0.1050
+ 0.000       0.0000       0.0000       0.0000
+ 0.400       0.0160       0.0100       0.0240
+ 1.650       0.0380       0.0250       0.0540
+ 3.300       0.0500       0.0330       0.0680
+
+[GND Clamp]
+-1.000      -0.0550      -0.0320      -0.0850
+ 0.000       0.0000       0.0000       0.0000
+ 3.300       0.0000       0.0000       0.0000
+
+[Ramp]
+dV/dt_r 1.3V/0.75ns 0.95V/0.95ns 1.6V/0.55ns
+dV/dt_f 1.3V/0.75ns 0.95V/0.95ns 1.6V/0.55ns
+R_load 50
+
+[Model] LVCMOS33_IN
+Model_type Input
+C_comp 1.4pF 1.0pF 1.9pF
+[Voltage Range] 3.3V 3.0V 3.6V
+Vinl = 0.8V
+Vinh = 2.0V
+
+[End]

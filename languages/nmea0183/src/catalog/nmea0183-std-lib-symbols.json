@@ -1,0 +1,405 @@
+[
+  {
+    "name": "GGA",
+    "kind": "Class",
+    "namePath": "nmea0183.std.GGA",
+    "exports": [
+      "FIX_QUALITY",
+      "HDOP_MAX",
+      "ALTITUDE_M",
+      "GEOID_SEP_M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Global Positioning System Fix Data (GGA)",
+      "category": "GNSS Position & Fix",
+      "domain": "marine-navigation",
+      "description": "Time, 3D WGS-84 position, fix quality indicator, satellite count, HDOP, and orthometric altitude.",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "GPGGA",
+        "GNGGA",
+        "GLGGA",
+        "GAGGA"
+      ],
+      "parameters": [
+        {
+          "key": "FIX_QUALITY",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "enum",
+          "description": "0=Invalid, 1=GPS, 2=DGPS, 4=RTK Fixed, 5=Float RTK"
+        },
+        {
+          "key": "HDOP_MAX",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "1",
+          "description": "Horizontal dilution of precision warning threshold"
+        },
+        {
+          "key": "ALTITUDE_M",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Default antenna altitude above mean sea level"
+        },
+        {
+          "key": "GEOID_SEP_M",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Geoidal separation above WGS-84 ellipsoid"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "RMC",
+    "kind": "Class",
+    "namePath": "nmea0183.std.RMC",
+    "exports": [
+      "SOG_KNOTS",
+      "COG_DEG",
+      "MAG_VAR_DEG"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Recommended Minimum Specific GNSS Data (RMC)",
+      "category": "GNSS Position & Fix",
+      "domain": "marine-navigation",
+      "description": "UTC time/date, active/void status, latitude/longitude, speed over ground (knots), course over ground, and magnetic variation.",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "GPRMC",
+        "GNRMC",
+        "GLRMC",
+        "GARMC"
+      ],
+      "parameters": [
+        {
+          "key": "SOG_KNOTS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kn",
+          "description": "Speed over ground in knots"
+        },
+        {
+          "key": "COG_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Course over ground (true north)"
+        },
+        {
+          "key": "MAG_VAR_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Magnetic variation (east positive)"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "GSA",
+    "kind": "Class",
+    "namePath": "nmea0183.std.GSA",
+    "exports": [
+      "FIX_TYPE",
+      "PDOP",
+      "HDOP",
+      "VDOP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GNSS DOP and Active Satellites (GSA)",
+      "category": "GNSS Constellation & DOP",
+      "domain": "marine-navigation",
+      "description": "Operating mode, fix dimension (1=none, 2=2D, 3=3D), up to 12 active PRNs, and PDOP/HDOP/VDOP.",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "GPGSA",
+        "GNGSA",
+        "GLGSA",
+        "GAGSA"
+      ],
+      "parameters": [
+        {
+          "key": "FIX_TYPE",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "enum",
+          "description": "1=No Fix, 2=2D Fix, 3=3D Fix"
+        },
+        {
+          "key": "PDOP",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Position dilution of precision"
+        },
+        {
+          "key": "HDOP",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Horizontal dilution of precision"
+        },
+        {
+          "key": "VDOP",
+          "type": "real",
+          "defaultValue": 1.1,
+          "unit": "1",
+          "description": "Vertical dilution of precision"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "GSV",
+    "kind": "Class",
+    "namePath": "nmea0183.std.GSV",
+    "exports": [
+      "SATS_IN_VIEW",
+      "MIN_ELEV_DEG",
+      "MIN_SNR_DBHZ"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GNSS Satellites in View (GSV)",
+      "category": "GNSS Constellation & DOP",
+      "domain": "marine-navigation",
+      "description": "Multi-sentence constellation visibility table with PRN, elevation (0–90 deg), azimuth (0–360 deg), and SNR (dB-Hz).",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "GPGSV",
+        "GLGSV",
+        "GAGSV",
+        "GNGSV"
+      ],
+      "parameters": [
+        {
+          "key": "SATS_IN_VIEW",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "1",
+          "description": "Total satellites currently in view"
+        },
+        {
+          "key": "MIN_ELEV_DEG",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "deg",
+          "description": "Elevation mask angle"
+        },
+        {
+          "key": "MIN_SNR_DBHZ",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "dB-Hz",
+          "description": "Minimum carrier-to-noise ratio"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "VTG",
+    "kind": "Class",
+    "namePath": "nmea0183.std.VTG",
+    "exports": [
+      "COURSE_TRUE_DEG",
+      "COURSE_MAG_DEG",
+      "SPEED_KNOTS",
+      "SPEED_KMH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Course Over Ground and Ground Speed (VTG)",
+      "category": "Navigation & Kinematics",
+      "domain": "marine-navigation",
+      "description": "True and magnetic track made good along with ground speed in knots and km/h.",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "GPVTG",
+        "GNVTG",
+        "GLVTG",
+        "GAVTG"
+      ],
+      "parameters": [
+        {
+          "key": "COURSE_TRUE_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "True course over ground"
+        },
+        {
+          "key": "COURSE_MAG_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Magnetic course over ground"
+        },
+        {
+          "key": "SPEED_KNOTS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "kn",
+          "description": "Ground speed in knots"
+        },
+        {
+          "key": "SPEED_KMH",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "km/h",
+          "description": "Ground speed in km/h"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "HDG",
+    "kind": "Class",
+    "namePath": "nmea0183.std.HDG",
+    "exports": [
+      "HEADING_MAG_DEG",
+      "DEVIATION_DEG",
+      "VARIATION_DEG"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Heading, Deviation and Variation (HDG)",
+      "category": "Navigation & Kinematics",
+      "domain": "marine-navigation",
+      "description": "Magnetic sensor heading, magnetic compass deviation, and local magnetic variation for true heading calculation.",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "HCHDG",
+        "IIHDG",
+        "HEHDG"
+      ],
+      "parameters": [
+        {
+          "key": "HEADING_MAG_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Magnetic sensor heading"
+        },
+        {
+          "key": "DEVIATION_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Compass deviation (east positive)"
+        },
+        {
+          "key": "VARIATION_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Magnetic variation (east positive)"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "DBT",
+    "kind": "Class",
+    "namePath": "nmea0183.std.DBT",
+    "exports": [
+      "DEPTH_METERS",
+      "DRAFT_OFFSET_M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Depth Below Transducer (DBT)",
+      "category": "Marine Sensors",
+      "domain": "marine-navigation",
+      "description": "Acoustic echosounder water depth below transducer reported in feet, meters, and fathoms.",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "SDDBT",
+        "IIDBT"
+      ],
+      "parameters": [
+        {
+          "key": "DEPTH_METERS",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "m",
+          "description": "Water depth below transducer in meters"
+        },
+        {
+          "key": "DRAFT_OFFSET_M",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Transducer draft offset below waterline"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "MWV",
+    "kind": "Class",
+    "namePath": "nmea0183.std.MWV",
+    "exports": [
+      "WIND_ANGLE_DEG",
+      "WIND_SPEED_MPS",
+      "IS_TRUE_WIND"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Wind Speed and Angle (MWV)",
+      "category": "Marine Sensors",
+      "domain": "marine-navigation",
+      "description": "Apparent (relative) or true wind angle and speed measured by marine anemometer.",
+      "provenance": "NMEA 0183 v4.11 Standard Sentence",
+      "aliases": [
+        "WIMWV",
+        "IIMWV"
+      ],
+      "parameters": [
+        {
+          "key": "WIND_ANGLE_DEG",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Wind angle (0–360 deg)"
+        },
+        {
+          "key": "WIND_SPEED_MPS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m/s",
+          "description": "Wind speed in meters per second"
+        },
+        {
+          "key": "IS_TRUE_WIND",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "0=Relative (R), 1=True (T)"
+        }
+      ],
+      "wasmKernel": "nmea0183ModelStep",
+      "archetypeId": 8
+    }
+  }
+]

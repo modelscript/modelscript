@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>EvComCanFd</SHORT-NAME>
+      <ELEMENTS>
+        <I-SIGNAL-I-PDU>
+          <SHORT-NAME>CanFd_HvPowertrainStatus</SHORT-NAME>
+          <LENGTH>16</LENGTH>
+          <I-SIGNAL-TO-PDU-MAPPINGS>
+            <I-SIGNAL-TO-I-PDU-MAPPING>
+              <SHORT-NAME>Map_PackVoltageV</SHORT-NAME>
+              <START-POSITION>0</START-POSITION>
+              <LENGTH>16</LENGTH>
+              <I-SIGNAL-REF>Sig_PackVoltageV</I-SIGNAL-REF>
+            </I-SIGNAL-TO-I-PDU-MAPPING>
+            <I-SIGNAL-TO-I-PDU-MAPPING>
+              <SHORT-NAME>Map_PackCurrentA</SHORT-NAME>
+              <START-POSITION>16</START-POSITION>
+              <LENGTH>16</LENGTH>
+              <I-SIGNAL-REF>Sig_PackCurrentA</I-SIGNAL-REF>
+            </I-SIGNAL-TO-I-PDU-MAPPING>
+            <I-SIGNAL-TO-I-PDU-MAPPING>
+              <SHORT-NAME>Map_StateOfChargePct</SHORT-NAME>
+              <START-POSITION>32</START-POSITION>
+              <LENGTH>16</LENGTH>
+              <I-SIGNAL-REF>Sig_StateOfChargePct</I-SIGNAL-REF>
+            </I-SIGNAL-TO-I-PDU-MAPPING>
+            <I-SIGNAL-TO-I-PDU-MAPPING>
+              <SHORT-NAME>Map_MaxDischargePowerKw</SHORT-NAME>
+              <START-POSITION>48</START-POSITION>
+              <LENGTH>16</LENGTH>
+              <I-SIGNAL-REF>Sig_MaxDischargePowerKw</I-SIGNAL-REF>
+            </I-SIGNAL-TO-I-PDU-MAPPING>
+          </I-SIGNAL-TO-PDU-MAPPINGS>
+        </I-SIGNAL-I-PDU>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

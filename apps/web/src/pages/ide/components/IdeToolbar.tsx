@@ -20,7 +20,7 @@ export interface IdeToolbarProps {
   isDeprecated: boolean;
   lspStatus: LspStatusState | null;
   shareLabel?: string | undefined;
-  onOpenInPlayground?: (() => void) | undefined;
+  onOpenInAnsatzEditor?: (() => void) | undefined;
   onRestartLsp: () => void;
   onShare: () => void;
   onReload: () => void;
@@ -40,7 +40,7 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
   isDeprecated,
   lspStatus,
   shareLabel,
-  onOpenInPlayground,
+  onOpenInAnsatzEditor,
   onRestartLsp,
   onShare,
   onReload,
@@ -158,12 +158,12 @@ export const IdeToolbar: React.FC<IdeToolbarProps> = ({
           </span>
         )}
 
-        {onOpenInPlayground && (
+        {onOpenInAnsatzEditor && (
           <Button
             size="small"
             variant="default"
             leadingVisual={CodeIcon}
-            onClick={onOpenInPlayground}
+            onClick={onOpenInAnsatzEditor}
             title="Open in Ansatz"
           >
             <ToolbarText>Open in Ansatz</ToolbarText>

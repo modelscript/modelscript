@@ -1,0 +1,12 @@
+{
+  "id": "stl-01-calibration-cube",
+  "lang": "stl",
+  "subFormats": ["ascii-stl"],
+  "difficulty": 1,
+  "title": "Watertight 10 mm Additive Calibration Cube",
+  "description": "Manifold 12-triangle ASCII STL calibration cube (10 x 10 x 10 mm) with exact outward right-hand-rule vertex winding, unit normals, and zero open boundary edges.",
+  "category": "Additive Manufacturing",
+  "tags": ["stl", "cube", "watertight", "manifold", "calibration"],
+  "activeFile": "calibration_cube.stl",
+  "isDefaultStarter": true
+}

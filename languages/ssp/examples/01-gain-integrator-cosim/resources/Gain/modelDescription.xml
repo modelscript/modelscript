@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="Gain" guid="{11111111-1111-1111-1111-111111111101}">
+  <CoSimulation modelIdentifier="Gain" />
+  <ModelVariables>
+    <ScalarVariable name="u" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="y" valueReference="1" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="k" valueReference="2" causality="parameter" variability="tunable"><Real start="1.0" /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

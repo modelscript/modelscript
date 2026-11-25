@@ -1,0 +1,5 @@
+# Constant-Head Boundary Conditions (West 50m -> East 40m)
+BEGIN CHD6
+  1 1 1 50.0
+  1 1 10 40.0
+END CHD6

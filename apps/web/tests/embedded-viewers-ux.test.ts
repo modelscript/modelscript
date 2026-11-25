@@ -230,18 +230,18 @@ Model {
       );
     });
 
-    it("assigns unique LSP document URIs per Morsel instance and allows diagram-only edits", () => {
-      const morselSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Morsel.tsx"),
+    it("assigns unique LSP document URIs per Ansatz instance and allows diagram-only edits", () => {
+      const ansatzSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/AnsatzEditor.tsx"),
         "utf8",
       );
       assert.ok(
-        morselSrc.includes("file:///embed_${nextEmbedMorselId++}_document"),
-        "Morsel must assign a unique per-instance LSP URI to prevent cross-card AST collisions",
+        ansatzSrc.includes("file:///embed_${nextEmbedAnsatzId++}_document"),
+        "Ansatz must assign a unique per-instance LSP URI to prevent cross-card AST collisions",
       );
       assert.ok(
-        morselSrc.includes("applyLspTextEditsToString"),
-        "Morsel must apply LSP text edits directly to source state when Monaco is unmounted",
+        ansatzSrc.includes("applyLspTextEditsToString"),
+        "Ansatz must apply LSP text edits directly to source state when Monaco is unmounted",
       );
     });
 
@@ -280,7 +280,7 @@ Model {
       );
       assert.ok(
         dispatcherSrc.includes("standalone: false"),
-        "ViewerDispatcher must force standalone: false so embedded viewers do not duplicate CardFooter's Open in Playground button",
+        "ViewerDispatcher must force standalone: false so embedded viewers do not duplicate CardFooter's Open in Ansatz button",
       );
 
       const viewersWithoutTelemetrySidebar = [
@@ -307,10 +307,7 @@ Model {
         path.resolve(import.meta.dirname, "../src/components/artifacts/ReqifViewer.tsx"),
         "utf8",
       );
-      assert.ok(
-        !reqifSrc.includes("/morsel?m="),
-        "ReqifViewer must route to /playground#m= rather than legacy /morsel?m=",
-      );
+      assert.ok(!reqifSrc.includes("/ansatz?m="), "ReqifViewer must route to /editor#m= rather than legacy /ansatz?m=");
     });
 
     it("extracts primary simulatable Modelica class and ensures LSP parser readiness before simulation", async () => {
@@ -374,8 +371,8 @@ Model {
         "../src/components/artifacts/ArtifactViewCard.tsx",
         "../src/components/artifacts/card/CardFooter.tsx",
         "../src/components/artifacts/card/StudioHeader.tsx",
-        "../../../packages/editor/src/workbench/panels/MorselFloatingDock.tsx",
-        "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx",
+        "../../../packages/editor/src/workbench/panels/AnsatzFloatingDock.tsx",
+        "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
       ];
       for (const relPath of gatedFiles) {
         const src = fs.readFileSync(path.resolve(import.meta.dirname, relPath), "utf8");
@@ -477,10 +474,10 @@ Model {
       );
     });
 
-    it("supports multi-file maps, stateful view permalinks, and ?morsel=<id> parity across Playground and Embed", async () => {
-      const { compressMorselPayload, decompressMorselPayload, resolveMorselShortlink } =
+    it("supports multi-file maps, stateful view permalinks, and ?ansatz=<id> parity across Ansatz and Embed", async () => {
+      const { compressAnsatzPayload, decompressAnsatzPayload, resolveAnsatzShortlink } =
         await import("../../../packages/editor/src/workbench/util/permalink");
-      assert.strictEqual(typeof resolveMorselShortlink, "function");
+      assert.strictEqual(typeof resolveAnsatzShortlink, "function");
 
       const multiFilePayload = {
         v: 1,
@@ -495,33 +492,33 @@ Model {
         title: "Multi-File System",
         view: "simulation",
       };
-      const token = compressMorselPayload(multiFilePayload);
-      const decoded = decompressMorselPayload(`#m=${token}`);
-      assert.ok(decoded, "Must decompress multi-file morsel payload");
+      const token = compressAnsatzPayload(multiFilePayload);
+      const decoded = decompressAnsatzPayload(`#m=${token}`);
+      assert.ok(decoded, "Must decompress multi-file ansatz payload");
       assert.strictEqual(decoded?.activeFile, "Main.mo");
       assert.strictEqual(decoded?.view, "simulation");
       assert.deepStrictEqual(decoded?.files, multiFilePayload.files);
 
-      const playgroundSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx"),
+      const ansatzEditorSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/pages/AnsatzEditorPage.tsx"),
         "utf8",
       );
       const embedSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/pages/EmbedPlaygroundPage.tsx"),
+        path.resolve(import.meta.dirname, "../src/pages/EmbedAnsatzEditorPage.tsx"),
         "utf8",
       );
       assert.ok(
-        playgroundSrc.includes("resolveMorselShortlink") && embedSrc.includes("resolveMorselShortlink"),
-        "Both PlaygroundPage and EmbedPlaygroundPage must share resolveMorselShortlink for ?morsel=<id> parity",
+        ansatzEditorSrc.includes("resolveAnsatzShortlink") && embedSrc.includes("resolveAnsatzShortlink"),
+        "Both AnsatzEditorPage and EmbedAnsatzEditorPage must share resolveAnsatzShortlink for ?ansatz=<id> parity",
       );
       const sidebarSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselLeftSidebar.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/AnsatzLeftSidebar.tsx"),
         "utf8",
       );
       assert.ok(
-        (playgroundSrc.includes('aria-label="Project files"') || sidebarSrc.includes('aria-label="Project files"')) &&
-          playgroundSrc.includes("onActiveViewChange"),
-        "PlaygroundPage/MorselLeftSidebar must render multi-file project tabs and synchronize active view changes",
+        (ansatzEditorSrc.includes('aria-label="Project files"') || sidebarSrc.includes('aria-label="Project files"')) &&
+          ansatzEditorSrc.includes("onActiveViewChange"),
+        "AnsatzEditorPage/AnsatzLeftSidebar must render multi-file project tabs and synchronize active view changes",
       );
     });
 
@@ -531,10 +528,10 @@ Model {
         "utf8",
       );
       assert.ok(
-        codeViewerSrc.includes("MorselEditor") &&
+        codeViewerSrc.includes("AnsatzEditor") &&
           codeViewerSrc.includes('"simulate"') &&
           codeViewerSrc.includes('"split"'),
-        "ModelicaCodeViewer must support interactive Diagram, Simulate, and Split modes backed by MorselEditor",
+        "ModelicaCodeViewer must support interactive Diagram, Simulate, and Split modes backed by AnsatzEditor",
       );
 
       const simPlotSrc = fs.readFileSync(
@@ -700,15 +697,15 @@ Model {
         "CadStepViewer must support localClippingEnabled section planes and 3D surface point coordinate probing",
       );
 
-      const morselCadSrc = fs.readFileSync(
+      const ansatzCadSrc = fs.readFileSync(
         path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx"),
         "utf8",
       );
       assert.ok(
-        morselCadSrc.includes("clipAxis") &&
-          morselCadSrc.includes("explosionFactor") &&
-          morselCadSrc.includes("Assembly explode factor"),
-        "Morsel CadViewer must include interactive section cutting planes and assembly explosion slider",
+        ansatzCadSrc.includes("clipAxis") &&
+          ansatzCadSrc.includes("explosionFactor") &&
+          ansatzCadSrc.includes("Assembly explode factor"),
+        "Ansatz CadViewer must include interactive section cutting planes and assembly explosion slider",
       );
 
       const cmdPaletteSrc = fs.readFileSync(
@@ -717,18 +714,19 @@ Model {
       );
       assert.ok(
         cmdPaletteSrc.includes("action-eng-simulate") &&
-          cmdPaletteSrc.includes("modelscript:morsel-command") &&
+          cmdPaletteSrc.includes("modelscript:ansatz-command") &&
           cmdPaletteSrc.includes("Switch View: Simulation Oscilloscope"),
-        "CommandPalette must expose context-aware Engineering & Simulation actions on /playground and /render-artifact routes",
+        "CommandPalette must expose context-aware Engineering & Simulation actions on /editor and /render-artifact routes",
       );
 
-      const playgroundSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../src/pages/PlaygroundPage.tsx"),
+      const ansatzEditorSrc = fs.readFileSync(
+        path.resolve(import.meta.dirname, "../src/pages/AnsatzEditorPage.tsx"),
         "utf8",
       );
       assert.ok(
-        playgroundSrc.includes("handleParametersChange") && playgroundSrc.includes("externalParams={payload?.params}"),
-        "PlaygroundPage must synchronize parameter overrides into compressed #m=... permalinks",
+        ansatzEditorSrc.includes("handleParametersChange") &&
+          ansatzEditorSrc.includes("externalParams={payload?.params}"),
+        "AnsatzEditorPage must synchronize parameter overrides into compressed #m=... permalinks",
       );
     });
   });
@@ -836,7 +834,7 @@ end DoublePendulum3D;
       );
     });
 
-    it("wires procedural meshes, quaternion transforms, and 3D preview tabs across CadViewer, Morsel, and Post-Artifact Viewers", () => {
+    it("wires procedural meshes, quaternion transforms, and 3D preview tabs across CadViewer, Ansatz, and Post-Artifact Viewers", () => {
       const cadViewerSrc = fs.readFileSync(
         path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/cad-viewer/CadViewer.tsx"),
         "utf8",
@@ -858,14 +856,14 @@ end DoublePendulum3D;
       );
 
       const engineSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/hooks/useMorselEngine.ts"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/hooks/useAnsatzEngine.ts"),
         "utf8",
       );
       assert.ok(
         engineSrc.includes("parseSourceCadVariables") &&
           engineSrc.includes("...(comp.defaults ?? {})") &&
           engineSrc.includes("lastSimTrajectoryRef"),
-        "useMorselEngine must synchronously extract source 3D visualizers, pass MSL defaults to AnimationController, and retain simulation trajectory across async CAD resolution",
+        "useAnsatzEngine must synchronously extract source 3D visualizers, pass MSL defaults to AnimationController, and retain simulation trajectory across async CAD resolution",
       );
 
       const diagramViewerSrc = fs.readFileSync(
@@ -884,17 +882,17 @@ end DoublePendulum3D;
         "utf8",
       );
       assert.ok(
-        codeViewerSrc.includes('viewMode === "3d"') && codeViewerSrc.includes("initialView={morselInitialView}"),
-        "ModelicaCodeViewer must include a 3D animation tab wired to Morsel initialView={morselInitialView}",
+        codeViewerSrc.includes('viewMode === "3d"') && codeViewerSrc.includes("initialView={ansatzInitialView}"),
+        "ModelicaCodeViewer must include a 3D animation tab wired to Ansatz initialView={ansatzInitialView}",
       );
 
       const visualizerPaneSrc = fs.readFileSync(
-        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx"),
+        path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx"),
         "utf8",
       );
       assert.ok(
         visualizerPaneSrc.includes("getDiagramPalette"),
-        "MorselVisualizerPane must load diagram palette stencils via getDiagramPalette",
+        "AnsatzVisualizerPane must load diagram palette stencils via getDiagramPalette",
       );
       const modelicaLangSrc = fs.readFileSync(
         path.resolve(import.meta.dirname, "../../../languages/modelica/src/language.ts"),
@@ -1267,7 +1265,7 @@ end DoublePendulum3D;
       );
       assert.ok(
         qifViewerSrc.includes("Boolean(viewConfig?.standalone)"),
-        "QifViewer must gate Open in Playground header button behind viewConfig.standalone",
+        "QifViewer must gate Open in Ansatz header button behind viewConfig.standalone",
       );
       assert.ok(
         !qifViewerSrc.includes('width="335px"') && !qifViewerSrc.includes("top={10} left={10}"),

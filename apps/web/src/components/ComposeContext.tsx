@@ -3,6 +3,7 @@
 import React from "react";
 import type { NotebookCell, TutorialDifficulty } from "../util/notebook";
 import type { SpatialPin } from "./artifacts/spatial-pin";
+import type { ComposePostRef } from "./compose/types";
 
 export interface ComposeInitialState {
   editPostId?: number | string | null | undefined;
@@ -13,8 +14,8 @@ export interface ComposeInitialState {
   contentWarning?: string | undefined;
   artifactId?: number | string | null | undefined;
   artifactViewId?: number | string | null | undefined;
-  quotePost?: any;
-  replyToPost?: any;
+  quotePost?: ComposePostRef | null | undefined;
+  replyToPost?: ComposePostRef | null | undefined;
   pendingPin?: SpatialPin | undefined;
   forkedFromArtifactId?: number | string | null | undefined;
   notebookMode?: boolean | undefined;
@@ -30,7 +31,7 @@ export interface ComposeInitialState {
   initialDialect?: string | undefined;
   initialTitle?: string | undefined;
   companionRepo?: string | undefined;
-  morselPayload?:
+  ansatzPayload?:
     | {
         code: string;
         title?: string | undefined;

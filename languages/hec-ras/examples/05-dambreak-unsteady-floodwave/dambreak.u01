@@ -1,0 +1,9 @@
+Flow Title=Dam Breach Unsteady Inflow Hydrograph
+Boundary for River Reach & Node=CanyonRiver,BelowDam,3000
+Boundary Type=Flow Hydrograph
+Hydrograph Data= 6
+0, 120.0  1, 850.0  2, 3400.0  4, 2100.0  8, 650.0  16, 180.0
+
+Boundary for River Reach & Node=CanyonRiver,BelowDam,0
+Boundary Type=Normal Depth
+Friction Slope=0.0060

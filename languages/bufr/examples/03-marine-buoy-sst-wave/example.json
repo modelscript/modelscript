@@ -1,0 +1,11 @@
+{
+  "id": "bufr-03-marine-buoy-sst-wave",
+  "lang": "bufr",
+  "subFormats": ["bufr-ed4"],
+  "difficulty": 3,
+  "title": "Marine Drifting Buoy SST & Significant Wave Report",
+  "description": "Oceanographic BUFR bulletin reporting two moored/drifting North Pacific buoys with sea-surface temperature, significant wave height, dominant wave period, and barometric pressure.",
+  "category": "Marine Meteorology",
+  "tags": ["bufr", "buoy", "marine", "sst", "waves"],
+  "activeFile": "pacific_buoys.bufr"
+}

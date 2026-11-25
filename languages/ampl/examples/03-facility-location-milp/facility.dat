@@ -1,0 +1,24 @@
+set FAC := NORTH SOUTH EAST ;
+set CUST := C1 C2 C3 C4 ;
+
+param fixed_cost :=
+  NORTH 400
+  SOUTH 350
+  EAST  450 ;
+
+param capacity :=
+  NORTH 120
+  SOUTH 100
+  EAST  140 ;
+
+param demand :=
+  C1 40
+  C2 50
+  C3 45
+  C4 35 ;
+
+param ship_cost :
+          C1 C2 C3 C4 :=
+  NORTH    4  6  9  7
+  SOUTH    7  5  4  6
+  EAST     6  8  5  3 ;

@@ -1,0 +1,78 @@
+[
+  {
+    "id": "igtl-01-surgical-stylus-transform",
+    "lang": "igtl",
+    "subFormats": ["igtl"],
+    "difficulty": 1,
+    "title": "Single Surgical Stylus TRANSFORM Frame Stream",
+    "description": "OpenIGTLink surgical navigation message stream transmitting a calibrated rigid-body SE(3) StylusTip-to-Stylus and Stylus-to-Tracker transform chain.",
+    "category": "Image-Guided Surgery & Navigation",
+    "tags": ["igtl", "openigtlink", "transform", "stylus"],
+    "activeFile": "stylus.igtl",
+    "fileNames": ["stylus.igtl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<OpenIGTLinkStream version=\"3.0\">\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"StylusTipToStylus\" Matrix=\"1 0 0 0.0  0 1 0 0.0  0 0 1 148.5  0 0 0 1\" Error=\"0.32\" Timestamp=\"1732480000.100\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"StylusToTracker\" Matrix=\"1 0 0 42.5  0 1 0 -18.2  0 0 1 612.0  0 0 0 1\" Error=\"0.25\" Timestamp=\"1732480000.116\"/>\n</OpenIGTLinkStream>\n"
+  },
+  {
+    "id": "igtl-02-optical-tracker-tdata",
+    "lang": "igtl",
+    "subFormats": ["igtl"],
+    "difficulty": 2,
+    "title": "Optical Tracker Multi-Tool TDATA Coordinate Stream",
+    "description": "NDI Polaris optical tracker OpenIGTLink stream connecting StylusTip, Stylus, ReferenceFrame, and PatientRAS coordinate frames with verified SO(3) rotations and sub-millimeter RMS errors.",
+    "category": "Image-Guided Surgery & Navigation",
+    "tags": ["igtl", "polaris", "optical-tracker", "tdata", "se3"],
+    "activeFile": "tracker.igtl",
+    "fileNames": ["tracker.igtl"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<OpenIGTLinkStream version=\"3.0\">\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"StylusTipToStylus\" Matrix=\"1 0 0 0.0  0 1 0 0.0  0 0 1 150.0  0 0 0 1\" Error=\"0.38\" Timestamp=\"1732480100.000\"/>\n  <IgtlMessage Type=\"TDATA\" DeviceName=\"StylusToTracker\" Matrix=\"0.866025 -0.500000 0 12.4  0.500000 0.866025 0 -24.8  0 0 1 580.0  0 0 0 1\" Error=\"0.21\" Timestamp=\"1732480100.016\"/>\n  <IgtlMessage Type=\"TDATA\" DeviceName=\"TrackerToReference\" Matrix=\"1 0 0 -10.0  0 1 0 15.0  0 0 1 -540.0  0 0 0 1\" Error=\"0.19\" Timestamp=\"1732480100.016\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"ReferenceToPatientRAS\" Matrix=\"0 1 0 5.0  -1 0 0 12.0  0 0 1 -18.0  0 0 0 1\" Error=\"0.65\" Timestamp=\"1732480100.016\"/>\n</OpenIGTLinkStream>\n"
+  },
+  {
+    "id": "igtl-03-stereotactic-biopsy-needle",
+    "lang": "igtl",
+    "subFormats": ["igtl"],
+    "difficulty": 3,
+    "title": "Stereotactic Biopsy Needle Target and Status Telemetry",
+    "description": "OpenIGTLink stereotactic biopsy navigation stream pairing needle-tip kinematic transforms with skull-mounted fiducial registration RMS accuracy and device status telemetry.",
+    "category": "Image-Guided Surgery & Navigation",
+    "tags": ["igtl", "stereotactic", "biopsy", "fiducial-registration"],
+    "activeFile": "biopsy.igtl",
+    "fileNames": ["biopsy.igtl"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<OpenIGTLinkStream version=\"3.0\">\n  <IgtlMessage Type=\"STATUS\" DeviceName=\"BiopsyRobotCtrl\" StatusCode=\"1\" SubCode=\"0\" Error=\"0.0\" Timestamp=\"1732480200.000\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"NeedleTipToNeedle\" Matrix=\"1 0 0 0.0  0 1 0 0.0  0 0 1 180.0  0 0 0 1\" Error=\"0.28\" Timestamp=\"1732480200.010\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"NeedleToRobotBase\" Matrix=\"0.965926 0 0.258819 35.0  0 1 0 -12.0  -0.258819 0 0.965926 110.0  0 0 0 1\" Error=\"0.34\" Timestamp=\"1732480200.020\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"RobotBaseToPatientMRI\" Matrix=\"1 0 0 -14.2  0 1 0 28.6  0 0 1 -92.4  0 0 0 1\" Error=\"0.72\" Timestamp=\"1732480200.030\"/>\n  <FiducialRegistration FLE=\"0.45\" FRE=\"0.58\" TRE=\"0.76\" Target=\"18.0 -14.5 22.0\">\n    <Fiducial Position=\"-62.0 -48.0 10.0\"/>\n    <Fiducial Position=\"64.0 -45.0 12.0\"/>\n    <Fiducial Position=\"58.0 52.0 18.0\"/>\n    <Fiducial Position=\"-60.0 50.0 15.0\"/>\n  </FiducialRegistration>\n</OpenIGTLinkStream>\n"
+  },
+  {
+    "id": "igtl-04-plus-ultrasound-probe-calibration",
+    "lang": "igtl",
+    "subFormats": ["plus.xml"],
+    "difficulty": 4,
+    "title": "PLUS Toolkit Tracked Ultrasound Probe Calibration",
+    "description": "PLUS Toolkit (.plus.xml) surgical device set configuring an NDI Polaris optical tracker, B-mode ultrasound scanner, Image-to-Probe calibration matrix, and OpenIGTLink TCP server.",
+    "category": "Image-Guided Surgery & Navigation",
+    "tags": ["igtl", "plus-toolkit", "ultrasound-calibration", "polaris"],
+    "activeFile": "us_probe.plus.xml",
+    "fileNames": ["us_probe.plus.xml"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<PlusConfiguration version=\"2.8\">\n  <DataCollection StartupDelaySec=\"1.0\">\n    <DeviceSet Name=\"TrackedUltrasoundCalibration\" Description=\"NDI Polaris Optical Tracker + Telemed B-Mode Ultrasound Probe\">\n      <Device Id=\"OpticalTracker\" Type=\"PolarisTracker\" AcquisitionRate=\"60\" ToolReferenceFrame=\"Tracker\">\n        <DataSources>\n          <DataSource Type=\"Tool\" Id=\"Probe\" PortName=\"0\" BufferSize=\"150\"/>\n          <DataSource Type=\"Tool\" Id=\"Reference\" PortName=\"1\" BufferSize=\"150\"/>\n          <DataSource Type=\"Tool\" Id=\"Stylus\" PortName=\"2\" BufferSize=\"150\"/>\n        </DataSources>\n        <OutputChannels>\n          <OutputChannel Id=\"TrackerStream\"/>\n        </OutputChannels>\n      </Device>\n      <Device Id=\"UltrasoundScanner\" Type=\"TelemedVideo\" AcquisitionRate=\"30\">\n        <DataSources>\n          <DataSource Type=\"Video\" Id=\"Video\" PortUsImageOrientation=\"MF\" BufferSize=\"100\"/>\n        </DataSources>\n        <OutputChannels>\n          <OutputChannel Id=\"VideoStream\"/>\n        </OutputChannels>\n      </Device>\n    </DeviceSet>\n  </DataCollection>\n  <CoordinateDefinitions>\n    <Transform From=\"Image\" To=\"Probe\"\n      Matrix=\"0.0 -1.0 0.0 24.5  1.0 0.0 0.0 -12.0  0.0 0.0 1.0 8.5  0 0 0 1\"\n      Error=\"0.54\" Date=\"2026.02.10\"/>\n    <Transform From=\"Probe\" To=\"Tracker\"\n      Matrix=\"1 0 0 15.0  0 1 0 -22.0  0 0 1 640.0  0 0 0 1\"\n      Error=\"0.22\"/>\n    <Transform From=\"StylusTip\" To=\"Stylus\"\n      Matrix=\"1 0 0 0.0  0 1 0 0.0  0 0 1 152.0  0 0 0 1\"\n      Error=\"0.35\"/>\n    <Transform From=\"Stylus\" To=\"Tracker\"\n      Matrix=\"1 0 0 -18.0  0 1 0 14.0  0 0 1 610.0  0 0 0 1\"\n      Error=\"0.20\"/>\n    <Transform From=\"Tracker\" To=\"Reference\"\n      Matrix=\"1 0 0 8.0  0 1 0 -5.0  0 0 1 -590.0  0 0 0 1\"\n      Error=\"0.18\"/>\n  </CoordinateDefinitions>\n  <PlusOpenIGTLinkServer MaxNumberOfIgtlMessagesToSend=\"10\" ListeningPort=\"18944\" OutputChannelId=\"TrackerStream\">\n    <DefaultClientInfo>\n      <MessageTypes>\n        <Message Type=\"TRANSFORM\"/>\n        <Message Type=\"IMAGE\"/>\n      </MessageTypes>\n      <TransformNames>\n        <Transform Name=\"ImageToReference\"/>\n        <Transform Name=\"StylusTipToReference\"/>\n      </TransformNames>\n    </DefaultClientInfo>\n  </PlusOpenIGTLinkServer>\n  <FiducialRegistration FLE=\"0.48\" FRE=\"0.52\" TRE=\"0.69\" Target=\"12.0 8.0 45.0\">\n    <Fiducial Position=\"-45 -45 0\"/>\n    <Fiducial Position=\"45 -45 0\"/>\n    <Fiducial Position=\"45 45 0\"/>\n    <Fiducial Position=\"-45 45 0\"/>\n  </FiducialRegistration>\n</PlusConfiguration>\n"
+  },
+  {
+    "id": "igtl-05-neurosurgery-navigation-session",
+    "lang": "igtl",
+    "subFormats": ["igtl", "plus.xml", "nii.json"],
+    "difficulty": 5,
+    "title": "Image-Guided Neurosurgery Navigation Session Bundle",
+    "description": "End-to-end cranial neurosurgery navigation workspace combining live OpenIGTLink transform telemetry (.igtl), PLUS optical tracker server config (.plus.xml), and preoperative T1w MRI reference header (.nii.json).",
+    "category": "Image-Guided Surgery & Navigation",
+    "tags": ["igtl", "neurosurgery", "plus-toolkit", "nifti-mri", "multi-file"],
+    "activeFile": "nav_stream.igtl",
+    "fileNames": ["nav_stream.igtl", "mri_ref.nii.json", "plus_config.plus.xml"],
+    "fileCount": 3,
+    "code": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<OpenIGTLinkStream version=\"3.0\">\n  <IgtlMessage Type=\"STATUS\" DeviceName=\"NeuroNavServer\" StatusCode=\"1\" SubCode=\"0\" Error=\"0.0\" Timestamp=\"1732480500.000\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"PointerTipToPointer\" Matrix=\"1 0 0 0.0  0 1 0 0.0  0 0 1 165.0  0 0 0 1\" Error=\"0.31\" Timestamp=\"1732480500.016\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"PointerToTracker\" Matrix=\"0.939693 -0.342020 0 28.4  0.342020 0.939693 0 -16.2  0 0 1 625.0  0 0 0 1\" Error=\"0.22\" Timestamp=\"1732480500.016\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"TrackerToMayfieldRef\" Matrix=\"1 0 0 -12.0  0 1 0 18.0  0 0 1 -580.0  0 0 0 1\" Error=\"0.19\" Timestamp=\"1732480500.016\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"MayfieldRefToMriRAS\" Matrix=\"1 0 0 4.5  0 1 0 -9.0  0 0 1 14.0  0 0 0 1\" Error=\"0.78\" Timestamp=\"1732480500.016\"/>\n  <FiducialRegistration FLE=\"0.50\" FRE=\"0.64\" TRE=\"0.85\" Target=\"24.0 -18.0 32.0\">\n    <Fiducial Position=\"-68.0 -42.0 8.0\"/>\n    <Fiducial Position=\"70.0 -40.0 10.0\"/>\n    <Fiducial Position=\"62.0 58.0 22.0\"/>\n    <Fiducial Position=\"-64.0 55.0 20.0\"/>\n    <Fiducial Position=\"0.0 78.0 -12.0\"/>\n  </FiducialRegistration>\n</OpenIGTLinkStream>\n",
+    "files": {
+      "nav_stream.igtl": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<OpenIGTLinkStream version=\"3.0\">\n  <IgtlMessage Type=\"STATUS\" DeviceName=\"NeuroNavServer\" StatusCode=\"1\" SubCode=\"0\" Error=\"0.0\" Timestamp=\"1732480500.000\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"PointerTipToPointer\" Matrix=\"1 0 0 0.0  0 1 0 0.0  0 0 1 165.0  0 0 0 1\" Error=\"0.31\" Timestamp=\"1732480500.016\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"PointerToTracker\" Matrix=\"0.939693 -0.342020 0 28.4  0.342020 0.939693 0 -16.2  0 0 1 625.0  0 0 0 1\" Error=\"0.22\" Timestamp=\"1732480500.016\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"TrackerToMayfieldRef\" Matrix=\"1 0 0 -12.0  0 1 0 18.0  0 0 1 -580.0  0 0 0 1\" Error=\"0.19\" Timestamp=\"1732480500.016\"/>\n  <IgtlMessage Type=\"TRANSFORM\" DeviceName=\"MayfieldRefToMriRAS\" Matrix=\"1 0 0 4.5  0 1 0 -9.0  0 0 1 14.0  0 0 0 1\" Error=\"0.78\" Timestamp=\"1732480500.016\"/>\n  <FiducialRegistration FLE=\"0.50\" FRE=\"0.64\" TRE=\"0.85\" Target=\"24.0 -18.0 32.0\">\n    <Fiducial Position=\"-68.0 -42.0 8.0\"/>\n    <Fiducial Position=\"70.0 -40.0 10.0\"/>\n    <Fiducial Position=\"62.0 58.0 22.0\"/>\n    <Fiducial Position=\"-64.0 55.0 20.0\"/>\n    <Fiducial Position=\"0.0 78.0 -12.0\"/>\n  </FiducialRegistration>\n</OpenIGTLinkStream>\n",
+      "mri_ref.nii.json": "{\n  \"nifti_version\": 1,\n  \"sizeof_hdr\": 348,\n  \"magic\": \"n+1\",\n  \"descrip\": \"Preoperative Cranial Navigation T1w MRI Reference Volume (RAS+)\",\n  \"dim\": [3, 256, 256, 176, 1, 1, 1, 1],\n  \"pixdim\": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],\n  \"datatype\": \"INT16\",\n  \"scl_slope\": 1.0,\n  \"scl_inter\": 0.0,\n  \"qform_code\": 1,\n  \"sform_code\": 1,\n  \"quatern_b\": 0.0,\n  \"quatern_c\": 0.0,\n  \"quatern_d\": 0.0,\n  \"qoffset_x\": -128.0,\n  \"qoffset_y\": -128.0,\n  \"qoffset_z\": -88.0,\n  \"srow_x\": [1.0, 0.0, 0.0, -128.0],\n  \"srow_y\": [0.0, 1.0, 0.0, -128.0],\n  \"srow_z\": [0.0, 0.0, 1.0, -88.0]\n}\n",
+      "plus_config.plus.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<PlusConfiguration version=\"2.8\">\n  <DataCollection StartupDelaySec=\"1.0\">\n    <DeviceSet Name=\"NeuroNavPolarisSuite\" Description=\"Cranial Neurosurgery Optical Navigation Server\">\n      <Device Id=\"PolarisSpectra\" Type=\"PolarisTracker\" AcquisitionRate=\"60\" ToolReferenceFrame=\"Tracker\">\n        <DataSources>\n          <DataSource Type=\"Tool\" Id=\"Pointer\" PortName=\"0\" BufferSize=\"150\"/>\n          <DataSource Type=\"Tool\" Id=\"MayfieldRef\" PortName=\"1\" BufferSize=\"150\"/>\n        </DataSources>\n        <OutputChannels>\n          <OutputChannel Id=\"NeuroNavStream\"/>\n        </OutputChannels>\n      </Device>\n    </DeviceSet>\n  </DataCollection>\n  <CoordinateDefinitions>\n    <Transform From=\"PointerTip\" To=\"Pointer\" Matrix=\"1 0 0 0  0 1 0 0  0 0 1 165.0  0 0 0 1\" Error=\"0.31\"/>\n    <Transform From=\"Pointer\" To=\"Tracker\" Matrix=\"0.939693 -0.342020 0 28.4  0.342020 0.939693 0 -16.2  0 0 1 625.0  0 0 0 1\" Error=\"0.22\"/>\n    <Transform From=\"Tracker\" To=\"MayfieldRef\" Matrix=\"1 0 0 -12.0  0 1 0 18.0  0 0 1 -580.0  0 0 0 1\" Error=\"0.19\"/>\n    <Transform From=\"MayfieldRef\" To=\"MriRAS\" Matrix=\"1 0 0 4.5  0 1 0 -9.0  0 0 1 14.0  0 0 0 1\" Error=\"0.78\"/>\n  </CoordinateDefinitions>\n  <PlusOpenIGTLinkServer MaxNumberOfIgtlMessagesToSend=\"10\" ListeningPort=\"18944\" OutputChannelId=\"NeuroNavStream\">\n    <DefaultClientInfo>\n      <MessageTypes>\n        <Message Type=\"TRANSFORM\"/>\n      </MessageTypes>\n      <TransformNames>\n        <Transform Name=\"PointerTipToMriRAS\"/>\n      </TransformNames>\n    </DefaultClientInfo>\n  </PlusOpenIGTLinkServer>\n</PlusConfiguration>\n"
+    }
+  }
+]

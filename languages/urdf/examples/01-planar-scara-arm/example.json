@@ -1,0 +1,12 @@
+{
+  "id": "urdf-01-planar-scara-arm",
+  "lang": "urdf",
+  "subFormats": ["urdf"],
+  "difficulty": 1,
+  "title": "2-DOF Planar SCARA Arm",
+  "description": "Two-axis planar SCARA pick-and-place robot arm with base pedestal, shoulder and elbow revolute joints with limits, complete inertial tensors, and matching visual and collision geometries.",
+  "category": "Robotics Kinematics",
+  "tags": ["scara", "manipulator", "urdf", "revolute-joint"],
+  "activeFile": "scara_arm.urdf",
+  "isDefaultStarter": true
+}

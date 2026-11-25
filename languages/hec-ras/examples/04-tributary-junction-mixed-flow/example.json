@@ -1,0 +1,11 @@
+{
+  "id": "hec-ras-04-tributary-junction-mixed-flow",
+  "lang": "hec-ras",
+  "subFormats": ["prj", "g01", "f01", "p01"],
+  "difficulty": 4,
+  "title": "Tributary Junction Mixed-Flow Regime",
+  "description": "Two-reach river confluence combining a steep mountain tributary with a milder mainstem reach, complete with project, geometry, steady flow boundary conditions, and mixed-flow plan file.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec-ras", "confluence", "mixed-flow", "multi-file"],
+  "activeFile": "junction.g01"
+}

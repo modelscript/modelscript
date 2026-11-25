@@ -43,7 +43,19 @@ export function certifyPsdInterval(M: number[][], margin = 0): { certified: bool
   const n = M.length;
   if (n === 0) return { certified: true, minPivotLo: Infinity };
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as {
+    memory: WebAssembly.Memory;
+    alloc?: (size: number) => number;
+    free?: (ptr: number) => void;
+    sos_certifyPsdInterval?: (
+      mPtr: number,
+      n: number,
+      margin: number,
+      lLoPtr: number,
+      lHiPtr: number,
+      outMinPtr: number,
+    ) => number;
+  } | null;
   if (
     w &&
     typeof w.sos_certifyPsdInterval === "function" &&

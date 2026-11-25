@@ -1,0 +1,51 @@
+[IBIS Ver] 5.0
+[File Name] lvds_pair.ibs
+[File Rev] 1.2
+[Date] November 24, 2026
+
+[Component] LVDS_XCVR_1V8
+[Manufacturer] Ansatz High-Speed IO
+[Package]
+R_pkg        0.0950       0.0550       0.1450
+L_pkg        1.650nH      0.950nH      2.400nH
+C_pkg        0.750pF      0.450pF      1.150pF
+
+[Pin] signal_name model_name R_pin L_pin C_pin
+1     VDD18       POWER
+2     VSS         GND
+3     TX_P        LVDS_TX
+4     TX_N        LVDS_TX
+5     RX_P        LVDS_RX
+6     RX_N        LVDS_RX
+
+[Model] LVDS_TX
+Model_type Output
+Polarity Non-Inverting
+C_comp 1.2pF 0.9pF 1.6pF
+[Voltage Range] 1.8V 1.71V 1.89V
+
+[Pulldown]
+-1.800      -0.0250      -0.0180      -0.0320
+ 0.000       0.0000       0.0000       0.0000
+ 0.900       0.0035       0.0030       0.0040
+ 1.800       0.0038       0.0032       0.0044
+
+[Pullup]
+-1.800      -0.0240      -0.0170      -0.0310
+ 0.000       0.0000       0.0000       0.0000
+ 0.900       0.0035       0.0030       0.0040
+ 1.800       0.0037       0.0031       0.0043
+
+[Ramp]
+dV/dt_r 0.28V/0.22ns 0.22V/0.28ns 0.34V/0.16ns
+dV/dt_f 0.28V/0.22ns 0.22V/0.28ns 0.34V/0.16ns
+R_load 100
+
+[Model] LVDS_RX
+Model_type Input
+C_comp 1.0pF 0.75pF 1.35pF
+[Voltage Range] 1.8V 1.71V 1.89V
+Vinl = 0.85V
+Vinh = 0.95V
+
+[End]

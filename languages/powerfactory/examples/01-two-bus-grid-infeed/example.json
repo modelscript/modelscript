@@ -1,0 +1,12 @@
+{
+  "id": "powerfactory-01-two-bus-grid-infeed",
+  "lang": "powerfactory",
+  "subFormats": ["dgs"],
+  "difficulty": 1,
+  "title": "2-Bus Grid Infeed & Load",
+  "description": "Minimal DIgSILENT PowerFactory 110 kV network with one synchronous generator infeed, an overhead transmission line, and a bulk substation load.",
+  "category": "Power Flow",
+  "tags": ["powerfactory", "dgs", "2-bus", "power-flow"],
+  "activeFile": "grid_2bus.dgs",
+  "isDefaultStarter": true
+}

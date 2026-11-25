@@ -1,0 +1,12 @@
+{
+  "id": "three-mf-01-titanium-bone-screw",
+  "lang": "three-mf",
+  "subFormats": ["3mf"],
+  "difficulty": 1,
+  "title": "ISO 10993 Titanium Cortical Bone Screw Prototype",
+  "description": "Closed 2-manifold Ti-6Al-4V ELI orthopedic cortical bone screw blank in ISO/ASTM 52915 3MF XML with verified outward normals and biocompatible base material.",
+  "category": "Medical Additive Manufacturing & 3MF",
+  "tags": ["three-mf", "titanium", "iso-10993", "orthopedic-implant"],
+  "activeFile": "bone_screw.3mf",
+  "isDefaultStarter": true
+}

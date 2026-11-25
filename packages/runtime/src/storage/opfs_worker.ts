@@ -6,30 +6,68 @@ import { PagedStorageEngine, type PagedWasmExports } from "./paged_store.js";
  * Dedicated Web Worker orchestrating Origin Private File System (OPFS)
  * synchronous access for 100M+ and 1B+ fact persistence.
  */
+export interface OPFSInitPayload {
+  wasmModule: WebAssembly.Module;
+  fileName?: string | undefined;
+}
+
+export interface OPFSInsertBatchPayload {
+  triples: { s: string | number; p: string | number; o: string | number }[];
+}
+
+export interface OPFSQueryPayload {
+  pattern: Parameters<PagedStorageEngine["findTriples"]>[0];
+}
+
 export interface OPFSMessageRequest {
   id: number;
   type: "INIT" | "INSERT_BATCH" | "QUERY" | "FLUSH" | "METRICS" | "CLOSE";
-  payload?: any;
+  payload?: OPFSInitPayload | OPFSInsertBatchPayload | OPFSQueryPayload | Record<string, unknown> | undefined;
 }
 
 export interface OPFSMessageResponse {
   id: number;
   success: boolean;
-  data?: any;
+  data?: unknown;
   error?: string | undefined;
 }
 
+interface OPFSSyncAccessHandleLike {
+  flush?: () => void;
+  close?: () => void;
+}
+
+interface OPFSFileHandleLike {
+  createSyncAccessHandle?: () => Promise<OPFSSyncAccessHandleLike>;
+}
+
+interface OPFSDirectoryHandleLike {
+  getFileHandle(name: string, options?: { create?: boolean }): Promise<OPFSFileHandleLike>;
+}
+
+interface NavigatorWithOPFS {
+  storage?: {
+    getDirectory?: () => Promise<OPFSDirectoryHandleLike>;
+  };
+}
+
+interface WorkerGlobalLike {
+  onmessage?: ((e: MessageEvent<OPFSMessageRequest>) => unknown) | null;
+  postMessage(message: OPFSMessageResponse): void;
+}
+
 let g_storageEngine: PagedStorageEngine | null = null;
-let g_syncHandle: any = null;
+let g_syncHandle: OPFSSyncAccessHandleLike | null = null;
 
 export async function initOPFSWorker(
   wasmModule: WebAssembly.Module,
   fileName: string = "modelscript_ontology.bin",
 ): Promise<void> {
-  let syncHandle: any = null;
+  let syncHandle: OPFSSyncAccessHandleLike | null = null;
 
-  if (typeof navigator !== "undefined" && (navigator as any).storage?.getDirectory) {
-    const root = await (navigator as any).storage.getDirectory();
+  const navStorage = typeof navigator !== "undefined" ? (navigator as unknown as NavigatorWithOPFS).storage : undefined;
+  if (navStorage?.getDirectory) {
+    const root = await navStorage.getDirectory();
     const fileHandle = await root.getFileHandle(fileName, { create: true });
     if (fileHandle.createSyncAccessHandle) {
       syncHandle = await fileHandle.createSyncAccessHandle();
@@ -53,36 +91,41 @@ export async function initOPFSWorker(
   g_storageEngine = new PagedStorageEngine(exports, 1024); // 1024 frames = 4MB working set
 }
 
-if (typeof self !== "undefined" && typeof (self as any).onmessage !== "undefined") {
-  (self as any).onmessage = async (e: MessageEvent<OPFSMessageRequest>) => {
+const workerSelf = typeof self !== "undefined" ? (self as unknown as WorkerGlobalLike) : undefined;
+
+if (workerSelf && typeof workerSelf.onmessage !== "undefined") {
+  workerSelf.onmessage = async (e: MessageEvent<OPFSMessageRequest>) => {
     const { id, type, payload } = e.data;
 
     try {
       switch (type) {
         case "INIT": {
-          if (!payload.wasmModule || !(payload.wasmModule instanceof WebAssembly.Module)) {
+          const initPayload = payload as Partial<OPFSInitPayload> | undefined;
+          if (!initPayload?.wasmModule || !(initPayload.wasmModule instanceof WebAssembly.Module)) {
             throw new Error("Expected pre-compiled WebAssembly.Module in payload.wasmModule");
           }
-          await initOPFSWorker(payload.wasmModule, payload.fileName);
-          (self as any).postMessage({ id, success: true });
+          await initOPFSWorker(initPayload.wasmModule, initPayload.fileName);
+          workerSelf.postMessage({ id, success: true });
           break;
         }
         case "INSERT_BATCH": {
           if (!g_storageEngine) throw new Error("Worker storage engine not initialized");
-          const triples: { s: string | number; p: string | number; o: string | number }[] = payload.triples;
+          const batchPayload = payload as OPFSInsertBatchPayload;
+          const triples = batchPayload.triples;
           let inserted = 0;
           for (const t of triples) {
             if (g_storageEngine.insertTriple(t.s, t.p, t.o)) {
               inserted++;
             }
           }
-          (self as any).postMessage({ id, success: true, data: { inserted } });
+          workerSelf.postMessage({ id, success: true, data: { inserted } });
           break;
         }
         case "QUERY": {
           if (!g_storageEngine) throw new Error("Worker storage engine not initialized");
-          const results = g_storageEngine.findTriples(payload.pattern);
-          (self as any).postMessage({ id, success: true, data: { results } });
+          const queryPayload = payload as OPFSQueryPayload;
+          const results = g_storageEngine.findTriples(queryPayload.pattern);
+          workerSelf.postMessage({ id, success: true, data: { results } });
           break;
         }
         case "FLUSH": {
@@ -91,13 +134,13 @@ if (typeof self !== "undefined" && typeof (self as any).onmessage !== "undefined
           if (g_syncHandle?.flush) {
             g_syncHandle.flush();
           }
-          (self as any).postMessage({ id, success: true, data: { flushed } });
+          workerSelf.postMessage({ id, success: true, data: { flushed } });
           break;
         }
         case "METRICS": {
           if (!g_storageEngine) throw new Error("Worker storage engine not initialized");
           const metrics = g_storageEngine.getMetrics();
-          (self as any).postMessage({ id, success: true, data: metrics });
+          workerSelf.postMessage({ id, success: true, data: metrics });
           break;
         }
         case "CLOSE": {
@@ -108,14 +151,15 @@ if (typeof self !== "undefined" && typeof (self as any).onmessage !== "undefined
             g_syncHandle.close();
             g_syncHandle = null;
           }
-          (self as any).postMessage({ id, success: true });
+          workerSelf.postMessage({ id, success: true });
           break;
         }
         default:
-          throw new Error(`Unknown OPFS worker message type: ${type}`);
+          throw new Error(`Unknown OPFS worker message type: ${String(type)}`);
       }
-    } catch (err: any) {
-      (self as any).postMessage({ id, success: false, error: err.message ?? String(err) });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      workerSelf.postMessage({ id, success: false, error: message });
     }
   };
 }

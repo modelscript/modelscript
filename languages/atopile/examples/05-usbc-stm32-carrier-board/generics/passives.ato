@@ -1,0 +1,9 @@
+component Resistor:
+    signal p1
+    signal p2
+    resistance = 10kohm +/- 1%
+
+component Capacitor:
+    signal p1
+    signal p2
+    capacitance = 100nF +/- 10%

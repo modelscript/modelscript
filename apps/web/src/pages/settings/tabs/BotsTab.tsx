@@ -16,6 +16,7 @@ import { createBot, deleteBot, getBots, rotateBotToken, updateBot } from "../../
 import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { safeCssImageUrl } from "../../../util/url";
 import {
   DangerButton,
@@ -33,6 +34,21 @@ export interface BotsTabProps {
   onBack: () => void;
 }
 
+interface BotAccount {
+  id: number;
+  username: string;
+  display_name: string;
+  bio?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  bot_system_prompt?: string | null | undefined;
+  bot_model?: string | null | undefined;
+  bot_endpoint_url?: string | null | undefined;
+  bot_scopes?: string | null | undefined;
+  bot_last_used_at?: string | null | undefined;
+  has_bot_api_key?: boolean | undefined;
+  bot_api_key?: string | null | undefined;
+}
+
 const AVAILABLE_SCOPES = [
   { id: "social:read", label: "social:read — Read timeline posts, replies, and discussions" },
   { id: "social:write", label: "social:write — Publish posts, replies, and reactions" },
@@ -45,7 +61,7 @@ const AVAILABLE_SCOPES = [
 
 export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
   const toast = useToast();
-  const [bots, setBots] = useState<any[]>([]);
+  const [bots, setBots] = useState<BotAccount[]>([]);
   const [confirmingDeleteBotId, setConfirmingDeleteBotId] = useState<number | null>(null);
   const [confirmingRotateBotId, setConfirmingRotateBotId] = useState<number | null>(null);
   const [rotatingBotId, setRotatingBotId] = useState<number | null>(null);
@@ -86,7 +102,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
       .catch(() => {});
   }, []);
 
-  const startEditingBot = (bot: any) => {
+  const startEditingBot = (bot: BotAccount) => {
     setEditingBotId(bot.id);
     setConfirmingDeleteBotId(null);
     setConfirmingRotateBotId(null);
@@ -126,7 +142,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
           b.id === botId
             ? res?.bot || {
                 ...b,
-                display_name: payload.display_name,
+                display_name: payload.display_name ?? b.display_name,
                 bio: payload.bio,
                 avatar_url: payload.avatar_url,
                 bot_scopes: payload.scopes,
@@ -140,8 +156,8 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
       );
       setEditingBotId(null);
       toast.success("Bot configuration updated.");
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Failed to update bot";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to update bot");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -149,7 +165,7 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
     }
   };
 
-  const handleRotateToken = async (bot: any) => {
+  const handleRotateToken = async (bot: BotAccount) => {
     setConfirmingRotateBotId(null);
     setRotatingBotId(bot.id);
     setError(null);
@@ -157,8 +173,8 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
       const res = await rotateBotToken(bot.id);
       setNewBotToken(res.token);
       toast.success(`Generated a new API token for @${bot.username}.`);
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Failed to rotate bot token";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to rotate bot token");
       setError(msg);
       toast.error(msg);
     } finally {
@@ -166,15 +182,15 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
     }
   };
 
-  const handleDeleteBot = async (bot: any) => {
+  const handleDeleteBot = async (bot: BotAccount) => {
     setConfirmingDeleteBotId(null);
     setError(null);
     try {
       await deleteBot(bot.id);
       setBots((prev) => prev.filter((b) => b.id !== bot.id));
       toast.success(`Bot @${bot.username} deleted.`);
-    } catch (err: any) {
-      const msg = err.response?.data?.error || err.message || "Failed to delete bot";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to delete bot");
       setError(msg);
       toast.error(msg);
     }
@@ -575,8 +591,8 @@ export const BotsTab: React.FC<BotsTabProps> = ({ onBack }) => {
                 setBotSystemPrompt("");
                 setBotApiKey("");
                 setBotEndpointUrl("");
-              } catch (err: any) {
-                setError(err.response?.data?.error || "Failed to create bot");
+              } catch (err: unknown) {
+                setError(getApiErrorMessage(err, "Failed to create bot"));
               }
             }}
           >

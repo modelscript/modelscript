@@ -248,14 +248,14 @@ export interface IndexerHook {
   /** Dot-path to the field that provides the symbol name */
   namePath: string;
   /** Dot-paths of exported scope fields */
-  exportPaths: string[];
+  exportPaths?: string[] | undefined;
   /** Dot-paths of inherited scope references */
-  inheritPaths: string[];
+  inheritPaths?: string[] | undefined;
   /**
    * Metadata field paths: key → dot-path.
    * Each path is resolved to CST node text and stored in SymbolEntry.metadata.
    */
-  metadataFieldPaths: Record<string, string>;
+  metadataFieldPaths?: Record<string, string> | undefined;
 }
 
 /**
@@ -429,7 +429,7 @@ export interface QueryDB {
    * Get the CST subtree node covering a specific offset range.
    * Returns an opaque SyntaxNode.
    */
-  cstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry | string): any;
+  cstNodeRange(startOffset: number, endOffset: number, entry?: SymbolEntry | string): unknown | null;
 
   // -------------------------------------------------------------------------
   // Expression Evaluation
@@ -455,14 +455,22 @@ export interface QueryDB {
   clearMemos?(): void;
 
   /** Taxonomy index for O(1) subtype interval containment queries. */
-  taxonomy?: any;
+  taxonomy?: TaxonomyIndexLike | undefined;
+}
+
+/** Structural interface for pre-order interval taxonomy encoding index. */
+export interface TaxonomyIndexLike {
+  has(className: string): boolean;
+  addClass(name: string, superclasses?: string[]): void;
+  isSubtype(childClass: string, parentClass: string): boolean;
+  computeIntervals?(): Map<string, { low: number; high: number }>;
 }
 
 /**
  * A user-defined query function.
  * Receives the QueryDB facade and the symbol entry being queried.
  */
-export type QueryFn = (db: QueryDB, self: SymbolEntry, args?: any) => unknown;
+export type QueryFn = (db: QueryDB, self: SymbolEntry, args?: Record<string, unknown>) => unknown;
 
 /**
  * Information about a detected query cycle, passed to recovery functions.
@@ -705,14 +713,14 @@ export interface IndexerHook {
   /** Dot-path to the field that provides the symbol name */
   namePath: string;
   /** Dot-paths of exported scope fields */
-  exportPaths: string[];
+  exportPaths?: string[] | undefined;
   /** Dot-paths of inherited scope references */
-  inheritPaths: string[];
+  inheritPaths?: string[] | undefined;
   /**
    * Metadata field paths: key → dot-path.
    * Each path is resolved to CST node text and stored in SymbolEntry.metadata.
    */
-  metadataFieldPaths: Record<string, string>;
+  metadataFieldPaths?: Record<string, string> | undefined;
 }
 
 /**
@@ -767,8 +775,8 @@ export interface ComponentTreeNode {
   type?: string | undefined;
   typeName?: string | undefined;
   kind?: string | undefined;
-  variability?: any;
-  causality?: any;
+  variability?: string | null | undefined;
+  causality?: string | null | undefined;
   description?: string | null | undefined;
   children?: ComponentTreeNode[] | undefined;
 }

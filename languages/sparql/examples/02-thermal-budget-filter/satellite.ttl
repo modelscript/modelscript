@@ -1,0 +1,23 @@
+@prefix sat: <http://modelscript.dev/ontology/spacecraft#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+sat:XBandTransponder a sat:AvionicsUnit ;
+  rdfs:label "X-Band Deep-Space Transponder" ;
+  sat:peakDissipationW "48.5"^^xsd:double ;
+  sat:thermalBudgetW "40.0"^^xsd:double .
+
+sat:FlightComputer a sat:AvionicsUnit ;
+  rdfs:label "RAD750 Flight Computer" ;
+  sat:peakDissipationW "14.2"^^xsd:double ;
+  sat:thermalBudgetW "20.0"^^xsd:double .
+
+sat:StarTracker a sat:AvionicsUnit ;
+  rdfs:label "Optical Star Tracker" ;
+  sat:peakDissipationW "6.8"^^xsd:double ;
+  sat:thermalBudgetW "10.0"^^xsd:double .
+
+sat:ReactionWheelDriver a sat:AvionicsUnit ;
+  rdfs:label "Reaction Wheel Electronics" ;
+  sat:peakDissipationW "32.0"^^xsd:double ;
+  sat:thermalBudgetW "28.0"^^xsd:double .

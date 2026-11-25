@@ -1,0 +1,11 @@
+{
+  "id": "modelscript-05-cyber-physical-quadrotor",
+  "lang": "modelscript",
+  "subFormats": ["msx"],
+  "difficulty": 5,
+  "title": "Multi-Module Cyber-Physical Quadrotor Mission",
+  "description": "Modular four-file quadrotor flight dynamics and altitude-hold control architecture separating shared types, rotor propulsion, PD controller, and mission loop.",
+  "category": "Aerospace & Robotics",
+  "tags": ["modelscript", "quadrotor", "multi-file", "uav", "control"],
+  "activeFile": "mission.msx"
+}

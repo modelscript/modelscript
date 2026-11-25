@@ -15,12 +15,33 @@
  *   - Convex set enclosure and branching splits
  */
 
-import { addUp, subDown, WasmScratchPool } from "@modelscript/solve";
+import { addUp, subDown, WasmScratchPool, type WasmMemoryHost } from "@modelscript/solve";
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import { Interval } from "./wasm_interval.js";
 
+interface ZonotopeWasmExports extends WasmMemoryHost {
+  zonotope_bounds?: (n: number, p: number, cPtr: number, gPtr: number, outLoPtr: number, outHiPtr: number) => void;
+  zonotope_linear_transform?: (
+    n: number,
+    p: number,
+    matPtr: number,
+    cPtr: number,
+    gPtr: number,
+    outCPtr: number,
+    outGPtr: number,
+  ) => void;
+  zonotope_reduce_girard?: (
+    n: number,
+    p: number,
+    maxG: number,
+    gensPtr: number,
+    outGPtr: number,
+    scratchPtr: number,
+  ) => number;
+}
+
 const _zonotopeScratchPools = new WeakMap<object, WasmScratchPool>();
-function getZonotopePool(wasm: any): WasmScratchPool {
+function getZonotopePool(wasm: ZonotopeWasmExports): WasmScratchPool {
   let pool = _zonotopeScratchPools.get(wasm);
   if (!pool) {
     pool = new WasmScratchPool(wasm, 65536);
@@ -90,7 +111,7 @@ export class Zonotope {
     const n = this.dim;
     const p = this.generators.length;
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as ZonotopeWasmExports | null;
     if (wasm && typeof wasm.zonotope_bounds === "function" && typeof wasm.__new === "function" && n > 0 && p > 0) {
       const scope = getZonotopePool(wasm).scope();
       try {
@@ -147,7 +168,7 @@ export class Zonotope {
     const n = this.dim;
     const p = this.generators.length;
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as ZonotopeWasmExports | null;
     if (
       wasm &&
       typeof wasm.zonotope_linear_transform === "function" &&
@@ -272,7 +293,7 @@ export class Zonotope {
     }
     const p = this.generators.length;
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as ZonotopeWasmExports | null;
     if (
       wasm &&
       typeof wasm.zonotope_reduce_girard === "function" &&

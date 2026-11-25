@@ -1,0 +1,20 @@
+1D Single-Phase Sandstone Porous Column Pressure Diffusion
+ROCKS
+SAND1    2600.0      0.20 1.0E-13 1.0E-13 5.0E-14       2.2     920.0
+ELEME
+A1  1SAND1 2.5E+03
+A1  2SAND1 2.5E+03
+A1  3SAND1 2.5E+03
+A1  4SAND1 2.5E+03
+CONNE
+A1  1A1  2 25.0 25.0 5.0E+01       0.0
+A1  2A1  3 25.0 25.0 5.0E+01       0.0
+A1  3A1  4 25.0 25.0 5.0E+01       0.0
+GENER
+A1  1INJ01MASS       2.5    2.0E+05
+INCON
+A1  1        1.0E+07        45.0
+A1  2        1.0E+07        45.0
+A1  3        1.0E+07        45.0
+A1  4        1.0E+07        45.0
+ENDCY

@@ -5,7 +5,7 @@ import { Button, Heading, Text } from "@primer/react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import styledImport from "styled-components";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 interface Props {
   children: ReactNode;

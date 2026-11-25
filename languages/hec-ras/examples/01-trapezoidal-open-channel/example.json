@@ -1,0 +1,12 @@
+{
+  "id": "hec-ras-01-trapezoidal-open-channel",
+  "lang": "hec-ras",
+  "subFormats": ["prj", "g01", "f01"],
+  "difficulty": 1,
+  "title": "Trapezoidal Open Channel Steady Flow",
+  "description": "Prismatic trapezoidal concrete-lined canal reach with three cross-sections, constant bed slope, upstream steady discharge, and downstream normal depth boundary condition.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec-ras", "open-channel", "steady-flow", "multi-file"],
+  "activeFile": "channel.g01",
+  "isDefaultStarter": true
+}

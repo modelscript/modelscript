@@ -1,0 +1,17 @@
+##TITLE=Aspirin (Acetylsalicylic Acid) 400 MHz 1H-NMR Peak Table
+##JCAMP-DX=5.00
+##DATA TYPE=NMR PEAK TABLE
+##ORIGIN=Organic Structure Elucidation Lab
+##OWNER=PUBLIC DOMAIN
+##MOLFORM=C9 H8 O4
+##XUNITS=PPM
+##YUNITS=RELATIVE INTENSITY
+##FIRSTX=2.35
+##LASTX=11.40
+##NPOINTS=6
+##XFACTOR=1
+##YFACTOR=1
+$$ Methyl singlet (2.35), ortho/meta/para aromatic ring (7.12-8.12), COOH (11.40)
+##PEAK TABLE=(XY..XY)
+2.35, 100.0; 7.12, 34.5; 7.36, 36.2; 7.62, 35.8; 8.12, 33.9; 11.40, 28.0
+##END=

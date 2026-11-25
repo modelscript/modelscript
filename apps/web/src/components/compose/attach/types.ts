@@ -170,7 +170,7 @@ export interface AttachProfile<D = unknown> {
   Preview?: ComponentType<{ draft: D }> | undefined;
 }
 
-export type AnyAttachProfile = AttachProfile<any>;
+export type AnyAttachProfile = AttachProfile<unknown>;
 
 export type AttachFlowState =
   | { phase: "idle" }

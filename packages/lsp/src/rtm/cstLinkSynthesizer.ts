@@ -1,7 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { findCstNodesByType } from "../utils/ast-utils.js";
+import { findCstNodesByType, type CstNodeLike, type CstTreeLike } from "../utils/ast-utils.js";
 import { isIdentContCode, isWsCode, readIdentAt, skipWs } from "../utils/lexical-utils.js";
+
+export type CstTreeOrNode = CstTreeLike | CstNodeLike;
+
+function resolveCstRoot(tree: CstTreeOrNode): CstNodeLike {
+  return "rootNode" in tree ? tree.rootNode : tree;
+}
+
+function cstNodeStart(node: CstNodeLike): number {
+  return node.startIndex ?? node.startOffset ?? 0;
+}
+
+function cstNodeEnd(node: CstNodeLike): number {
+  return node.endIndex ?? node.endOffset ?? 0;
+}
 
 export interface TextPosition {
   line: number;
@@ -387,7 +401,7 @@ export class CstLinkSynthesizer {
     sourceName: string,
     targetName: string,
     linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine" = "satisfy",
-    tree?: any,
+    tree?: CstTreeOrNode,
   ): WorkspaceTextEdit[] | null {
     if (linkKind === "connect") {
       let lastBraceIndex = -1;
@@ -418,7 +432,7 @@ export class CstLinkSynthesizer {
     }
 
     if (tree) {
-      const root = tree.rootNode ?? tree;
+      const root = resolveCstRoot(tree);
       const declNodes = findCstNodesByType(root, "definition_element")
         .concat(findCstNodesByType(root, "usage_element"))
         .concat(findCstNodesByType(root, "part_def"))
@@ -427,11 +441,11 @@ export class CstLinkSynthesizer {
         .concat(findCstNodesByType(root, "item_usage"));
       for (const node of declNodes) {
         const idNode = node.children?.find(
-          (c: any) => c.type === "IDENT" || c.type === "identifier" || c.type === "name",
+          (c: CstNodeLike) => c.type === "IDENT" || c.type === "identifier" || c.type === "name",
         );
-        const name = idNode ? (idNode.text ?? documentText.slice(idNode.startIndex, idNode.endIndex)) : "";
+        const name = idNode ? (idNode.text ?? documentText.slice(cstNodeStart(idNode), cstNodeEnd(idNode))) : "";
         if (name === sourceName) {
-          const bodyNode = node.children?.find((c: any) => c.type === "body" || (c.text ?? "").startsWith("{"));
+          const bodyNode = node.children?.find((c: CstNodeLike) => c.type === "body" || (c.text ?? "").startsWith("{"));
           const keyword =
             linkKind === "satisfy"
               ? "satisfy"
@@ -443,7 +457,7 @@ export class CstLinkSynthesizer {
                     ? "refine"
                     : "allocate";
           if (bodyNode) {
-            const pos = this.offsetToPosition(documentText, bodyNode.startIndex + 1);
+            const pos = this.offsetToPosition(documentText, cstNodeStart(bodyNode) + 1);
             return [
               {
                 range: { start: pos, end: pos },
@@ -520,7 +534,7 @@ export class CstLinkSynthesizer {
     linkKind: "satisfy" | "verify" | "allocate" | "connect" | "mitigate" | "refine" = "satisfy",
     declarationRange?: [number, number],
     sourceName?: string,
-    tree?: any,
+    tree?: CstTreeOrNode,
   ): WorkspaceTextEdit[] | null {
     if (declarationRange && declarationRange[1] > declarationRange[0]) {
       const startPos = this.offsetToPosition(documentText, declarationRange[0]);
@@ -534,22 +548,24 @@ export class CstLinkSynthesizer {
     }
 
     if (tree) {
-      const root = tree.rootNode ?? tree;
+      const root = resolveCstRoot(tree);
       const stmtNodes = findCstNodesByType(root, "satisfy_statement")
         .concat(findCstNodesByType(root, "verify_statement"))
         .concat(findCstNodesByType(root, "allocate_statement"))
         .concat(findCstNodesByType(root, "connection_statement"));
       for (const node of stmtNodes) {
-        const text = node.text ?? documentText.slice(node.startIndex, node.endIndex);
+        const nodeStart = cstNodeStart(node);
+        const nodeEnd = cstNodeEnd(node);
+        const text = node.text ?? documentText.slice(nodeStart, nodeEnd);
         if (text.includes(targetName) && (!sourceName || text.includes(sourceName))) {
-          let endIdx = node.endIndex;
+          let endIdx = nodeEnd;
           while (endIdx < documentText.length && (documentText[endIdx] === " " || documentText[endIdx] === "\t")) {
             endIdx++;
           }
           if (endIdx < documentText.length && documentText[endIdx] === ";") {
             endIdx++;
           }
-          const fullRange = expandLineRange(documentText, node.startIndex, endIdx);
+          const fullRange = expandLineRange(documentText, nodeStart, endIdx);
           const startPos = this.offsetToPosition(documentText, fullRange.start);
           const endPos = this.offsetToPosition(documentText, fullRange.end);
           return [
@@ -584,21 +600,21 @@ export class CstLinkSynthesizer {
     sourceClassName: string,
     targetReqName: string,
     linkKind: "satisfy" | "verify" | "allocate" = "satisfy",
-    tree?: any,
+    tree?: CstTreeOrNode,
   ): WorkspaceTextEdit[] | null {
     if (tree) {
-      const root = tree.rootNode ?? tree;
+      const root = resolveCstRoot(tree);
       const classDefs = findCstNodesByType(root, "class_definition").concat(
         findCstNodesByType(root, "stored_definition"),
       );
       for (const node of classDefs) {
-        const idNode = node.children?.find((c: any) => c.type === "IDENT" || c.type === "identifier");
-        const name = idNode ? (idNode.text ?? documentText.slice(idNode.startIndex, idNode.endIndex)) : "";
+        const idNode = node.children?.find((c: CstNodeLike) => c.type === "IDENT" || c.type === "identifier");
+        const name = idNode ? (idNode.text ?? documentText.slice(cstNodeStart(idNode), cstNodeEnd(idNode))) : "";
         if (name === sourceClassName) {
           const endNode = node.children?.find(
-            (c: any) => (c.text ?? documentText.slice(c.startIndex, c.endIndex)) === "end",
+            (c: CstNodeLike) => (c.text ?? documentText.slice(cstNodeStart(c), cstNodeEnd(c))) === "end",
           );
-          const insertOffset = endNode ? endNode.startIndex : node.endIndex;
+          const insertOffset = endNode ? cstNodeStart(endNode) : cstNodeEnd(node);
           const attrName = linkKind === "satisfy" ? "satisfies" : linkKind === "verify" ? "verifies" : "allocates";
           const annotationSnippet = `  annotation(__modelscript(${attrName}="${targetReqName}"));\n`;
           const pos = this.offsetToPosition(documentText, insertOffset);
@@ -635,21 +651,27 @@ export class CstLinkSynthesizer {
   /**
    * Removes a traceability annotation from a Modelica model.
    */
-  static removeModelicaTraceLink(documentText: string, targetReqName: string, tree?: any): WorkspaceTextEdit[] | null {
+  static removeModelicaTraceLink(
+    documentText: string,
+    targetReqName: string,
+    tree?: CstTreeOrNode,
+  ): WorkspaceTextEdit[] | null {
     if (tree) {
-      const root = tree.rootNode ?? tree;
+      const root = resolveCstRoot(tree);
       const annotNodes = findCstNodesByType(root, "annotation_clause").concat(findCstNodesByType(root, "annotation"));
       for (const node of annotNodes) {
-        const text = node.text ?? documentText.slice(node.startIndex, node.endIndex);
+        const nodeStart = cstNodeStart(node);
+        const nodeEnd = cstNodeEnd(node);
+        const text = node.text ?? documentText.slice(nodeStart, nodeEnd);
         if (text.includes("__modelscript") && text.includes(`"${targetReqName}"`)) {
-          let endIdx = node.endIndex;
+          let endIdx = nodeEnd;
           while (endIdx < documentText.length && (documentText[endIdx] === " " || documentText[endIdx] === "\t")) {
             endIdx++;
           }
           if (endIdx < documentText.length && documentText[endIdx] === ";") {
             endIdx++;
           }
-          const fullRange = expandLineRange(documentText, node.startIndex, endIdx);
+          const fullRange = expandLineRange(documentText, nodeStart, endIdx);
           const startPos = this.offsetToPosition(documentText, fullRange.start);
           const endPos = this.offsetToPosition(documentText, fullRange.end);
           return [

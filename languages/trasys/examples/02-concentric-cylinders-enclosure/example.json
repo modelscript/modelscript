@@ -1,0 +1,11 @@
+{
+  "id": "trasys-02-concentric-cylinders-enclosure",
+  "lang": "trasys",
+  "subFormats": ["trasys"],
+  "difficulty": 2,
+  "title": "Concentric Cylinders Annular Radiation Enclosure",
+  "description": "Concentric cylindrical cryogenic radiation shield enclosing a warm inner tube with top and bottom circular endcap disks for RADK exchange factors.",
+  "category": "Spacecraft Radiation Analysis",
+  "tags": ["trasys", "cylinders", "enclosure", "radk"],
+  "activeFile": "concentric_cylinders.tra"
+}

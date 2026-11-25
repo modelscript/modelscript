@@ -50,14 +50,14 @@ export function ensureXmlParser(): void {
   if (cached) return;
 
   const globalWasm = (globalThis as Record<string, unknown>)["__MODEL_SCRIPT_XML_WASM__"] as
-    | string
-    | Uint8Array
-    | undefined;
+    string | Uint8Array | undefined;
   if (globalWasm) {
     try {
       initXmlParser(globalWasm);
       return;
-    } catch {}
+    } catch {
+      // Optional runtime/module probe failed; continue with fallback loader
+    }
   }
 
   if (typeof process === "undefined" || !process.versions?.node) return;
@@ -73,7 +73,9 @@ export function ensureXmlParser(): void {
       pathModule = proc.getBuiltinModule("node:path") as typeof pathModule;
       urlModule = proc.getBuiltinModule("node:url") as typeof urlModule;
     }
-  } catch {}
+  } catch {
+    // Optional runtime/module probe failed; continue with fallback loader
+  }
 
   if (!fsModule || !pathModule || !urlModule) {
     try {
@@ -83,7 +85,9 @@ export function ensureXmlParser(): void {
         pathModule = pathModule || (req("node:path") as typeof pathModule);
         urlModule = urlModule || (req("node:url") as typeof urlModule);
       }
-    } catch {}
+    } catch {
+      // Optional runtime/module probe failed; continue with fallback loader
+    }
   }
 
   if (!fsModule || !pathModule || !urlModule) return;

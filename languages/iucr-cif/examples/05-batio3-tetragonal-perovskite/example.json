@@ -1,0 +1,11 @@
+{
+  "id": "iucr-cif-05-batio3-tetragonal-perovskite",
+  "lang": "iucr-cif",
+  "subFormats": ["cif-1.1"],
+  "difficulty": 5,
+  "title": "Tetragonal Ferroelectric BaTiO3 Perovskite with ADPs",
+  "description": "Room-temperature polar tetragonal ferroelectric barium titanate (BaTiO3, P4mm #99, c/a = 1.011) resolving off-center Ti4+ and apical/equatorial O2- displacements responsible for spontaneous polarization.",
+  "category": "Ferroelectric Ceramics",
+  "tags": ["iucr-cif", "perovskite", "batio3", "ferroelectric", "tetragonal"],
+  "activeFile": "batio3_tetragonal.cif"
+}

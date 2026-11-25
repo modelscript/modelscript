@@ -217,7 +217,7 @@ const SUPPORTED_REHYDRATION_LANGUAGES = new Set([
 /**
  * Progressive-enhancement DOM rehydration helper for intranet documentation & wikis.
  * Scans a DOM subtree for static `<pre><code class="language-modelica">...</code></pre>` blocks
- * or `<svg data-modelscript-embed>` placeholders and upgrades them into interactive `<modelscript-morsel>` elements.
+ * or `<svg data-modelscript-embed>` placeholders and upgrades them into interactive `<ansatz-editor>` elements.
  */
 export function rehydrateEmbeds(root?: ParentNode, options?: { embedOrigin?: string; view?: string }): number {
   const targetRoot = root ?? (typeof document !== "undefined" ? document : null);
@@ -225,10 +225,8 @@ export function rehydrateEmbeds(root?: ParentNode, options?: { embedOrigin?: str
 
   let upgraded = 0;
 
-  // 1. Upgrade <pre><code class="language-<dialect>"> blocks with data-modelscript-morsel or matching dialect
-  const codeNodes = Array.from(
-    targetRoot.querySelectorAll("pre > code[class*='language-'], [data-modelscript-morsel]"),
-  );
+  // 1. Upgrade <pre><code class="language-<dialect>"> blocks with data-ansatz-editor or matching dialect
+  const codeNodes = Array.from(targetRoot.querySelectorAll("pre > code[class*='language-'], [data-ansatz-editor]"));
   for (const node of codeNodes) {
     const el = node as HTMLElement;
     const classAttr = el.getAttribute("class") || "";
@@ -237,14 +235,14 @@ export function rehydrateEmbeds(root?: ParentNode, options?: { embedOrigin?: str
       el.getAttribute("data-dialect") || (langMatch?.[1] ? langMatch[1].toLowerCase() : "modelica")
     ).toLowerCase();
 
-    if (!el.hasAttribute("data-modelscript-morsel") && !SUPPORTED_REHYDRATION_LANGUAGES.has(dialect)) {
+    if (!el.hasAttribute("data-ansatz-editor") && !SUPPORTED_REHYDRATION_LANGUAGES.has(dialect)) {
       continue;
     }
 
     const code = el.getAttribute("data-code") || el.textContent?.trim() || "";
     if (!code) continue;
 
-    const viewer = document.createElement("modelscript-morsel");
+    const viewer = document.createElement("ansatz-editor");
     viewer.setAttribute("dialect", dialect);
     viewer.setAttribute("view", el.getAttribute("data-view") || options?.view || "diagram");
     viewer.setAttribute("code", code);
@@ -263,15 +261,15 @@ export function rehydrateEmbeds(root?: ParentNode, options?: { embedOrigin?: str
   const svgNodes = Array.from(targetRoot.querySelectorAll("svg[data-modelscript-embed]"));
   for (const svg of svgNodes) {
     const code = svg.getAttribute("data-code") || "";
-    const morselId = svg.getAttribute("data-morsel-id") || "";
+    const ansatzId = svg.getAttribute("data-ansatz-id") || "";
     const artifactId = svg.getAttribute("data-artifact-id") || "";
-    if (!code && !morselId && !artifactId) continue;
+    if (!code && !ansatzId && !artifactId) continue;
 
-    const viewer = document.createElement("modelscript-morsel");
+    const viewer = document.createElement("ansatz-editor");
     viewer.setAttribute("dialect", svg.getAttribute("data-dialect") || "modelica");
     viewer.setAttribute("view", svg.getAttribute("data-view") || options?.view || "diagram");
     if (code) viewer.setAttribute("code", code);
-    if (morselId) viewer.setAttribute("morsel-id", morselId);
+    if (ansatzId) viewer.setAttribute("ansatz-id", ansatzId);
     if (artifactId) viewer.setAttribute("artifact-id", artifactId);
     if (options?.embedOrigin) {
       viewer.setAttribute("origin", options.embedOrigin);

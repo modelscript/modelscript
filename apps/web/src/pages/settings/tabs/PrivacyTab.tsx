@@ -42,6 +42,8 @@ import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
+import type { TabType } from "../../SettingsPage";
 import {
   DangerButton,
   DetailSubtitle,
@@ -56,8 +58,8 @@ import {
 
 export interface PrivacyTabProps {
   subView?: "privacy" | "deleteAccount" | undefined;
-  onNavigate?: ((tab: any) => void) | undefined;
-  setActiveTab?: ((tab: any) => void) | undefined;
+  onNavigate?: ((tab: TabType) => void) | undefined;
+  setActiveTab?: ((tab: TabType) => void) | undefined;
   onBack?: (() => void) | undefined;
 }
 
@@ -144,7 +146,7 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
   const toast = useToast();
 
   const navigateTab = useCallback(
-    (tab: string) => {
+    (tab: TabType) => {
       if (onNavigate) onNavigate(tab);
       else if (setActiveTab) setActiveTab(tab);
     },
@@ -280,8 +282,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       await refreshUser?.();
       setPrivacyStatus({ type: "success", text: "Privacy and discovery preferences saved." });
       toast.success("Privacy settings saved.");
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to update privacy settings.";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to update privacy settings.");
       setPrivacyStatus({ type: "error", text: msg });
       toast.error(msg);
     } finally {
@@ -295,8 +297,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       await acceptFollowRequest(req.id);
       setFollowRequests((prev) => prev.filter((item) => item.id !== req.id));
       toast.success(`Approved follow request from @${req.username}.`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to accept follow request.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to accept follow request."));
     } finally {
       setProcessingRequestId(null);
     }
@@ -308,8 +310,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       await rejectFollowRequest(req.id);
       setFollowRequests((prev) => prev.filter((item) => item.id !== req.id));
       toast.info(`Declined follow request from @${req.username}.`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to reject follow request.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to reject follow request."));
     } finally {
       setProcessingRequestId(null);
     }
@@ -346,8 +348,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
         text: `Saved ${updatedFields.length} metadata ${updatedFields.length === 1 ? "field" : "fields"} (${verifiedCount} verified).`,
       });
       toast.success(`Profile links saved (${verifiedCount} verified).`);
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to verify profile metadata fields.";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to verify profile metadata fields.");
       setVerifyStatus({ type: "error", text: msg });
       toast.error(msg);
     } finally {
@@ -361,8 +363,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       await unblockUser(username);
       setBlockedUsers((prev) => prev.filter((u) => u.username !== username));
       toast.success(`Unblocked @${username}.`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || `Failed to unblock @${username}.`);
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, `Failed to unblock @${username}.`));
     } finally {
       setUnblockingUsername(null);
     }
@@ -374,8 +376,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       await unmuteUser(username);
       setMutedUsers((prev) => prev.filter((u) => u.username !== username));
       toast.success(`Unmuted @${username}.`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || `Failed to unmute @${username}.`);
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, `Failed to unmute @${username}.`));
     } finally {
       setUnmutingUsername(null);
     }
@@ -401,8 +403,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       toast.success(`Exported ${type} list as ${format.toUpperCase()}.`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to export social graph.");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to export social graph."));
     } finally {
       setExportingKey(null);
     }
@@ -461,8 +463,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       const [blockedRes, mutedRes] = await Promise.allSettled([getBlockedUsers(), getMutedUsers()]);
       if (blockedRes.status === "fulfilled") setBlockedUsers(blockedRes.value);
       if (mutedRes.status === "fulfilled") setMutedUsers(mutedRes.value);
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to import social graph.";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to import social graph.");
       setImportResult({ type: "error", text: msg });
       toast.error(msg);
     } finally {
@@ -495,8 +497,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
         text: `Saved ${updated.length} federated account ${updated.length === 1 ? "alias" : "aliases"} (alsoKnownAs).`,
       });
       toast.success("Federated account aliases updated.");
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to update account aliases.";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to update account aliases.");
       setFederationStatus({ type: "error", text: msg });
       toast.error(msg);
     } finally {
@@ -527,8 +529,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
         text: `Account migration broadcast to ${res.movedToActorUrl || target}. Migrated ${res.migratedLocalFollowers ?? 0} local followers.`,
       });
       toast.success("ActivityPub Move broadcast completed.");
-    } catch (err: any) {
-      const msg = err?.response?.data?.error || err?.message || "Failed to broadcast account migration.";
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, "Failed to broadcast account migration.");
       setFederationStatus({ type: "error", text: msg });
       toast.error(msg);
     } finally {
@@ -553,8 +555,8 @@ export const PrivacyTab: React.FC<PrivacyTabProps> = ({ subView = "privacy", onN
       toast.info("Your account and associated personal data have been permanently erased.");
       logout({ redirect: false });
       window.location.href = "/";
-    } catch (err: any) {
-      setDeleteError(err.response?.data?.error || "Failed to delete account. Please try again or contact support.");
+    } catch (err: unknown) {
+      setDeleteError(getApiErrorMessage(err, "Failed to delete account. Please try again or contact support."));
       setIsDeletingAccount(false);
     }
   };

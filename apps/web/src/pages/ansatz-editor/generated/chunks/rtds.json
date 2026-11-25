@@ -1,0 +1,77 @@
+[
+  {
+    "id": "rtds-01-rl-source-load-hil",
+    "lang": "rtds",
+    "subFormats": ["dft"],
+    "difficulty": 1,
+    "title": "Single-Phase RL Source-Load Real-Time HIL Benchmark",
+    "description": "Minimal 50-microsecond RTDS RSCAD draft circuit modeling a 138 kV sinusoidal voltage source energizing a series RL feeder and resistive load for real-time HIL verification.",
+    "category": "Real-Time HIL Simulation",
+    "tags": ["rtds", "dft", "hil", "rl-circuit", "50us"],
+    "activeFile": "rl_hil.dft",
+    "fileNames": ["rl_hil.dft"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "CASE SinglePhase_RL_HIL\nTIME_STEP 50e-6\nFINISH_TIME 0.10\nFREQUENCY 60\nSUBSYSTEM 1\nCOMPONENT SOURCE SRC_138 nodes=BUS_SRC,0 V=112676\nCOMPONENT R R_SRC nodes=BUS_SRC,BUS_LINE R=1.2\nCOMPONENT L L_LINE nodes=BUS_LINE,BUS_LOAD L=0.025\nCOMPONENT R R_LOAD nodes=BUS_LOAD,0 R=85.0\n"
+  },
+  {
+    "id": "rtds-02-three-phase-line-fault",
+    "lang": "rtds",
+    "subFormats": ["dft"],
+    "difficulty": 2,
+    "title": "Three-Phase 230 kV Transmission Line Fault Injection",
+    "description": "Two-terminal 230 kV transmission corridor modeled in RTDS RSCAD with pi-section line inductance, shunt capacitance, and mid-span fault branch for distance relay HIL testing.",
+    "category": "Real-Time HIL Simulation",
+    "tags": ["rtds", "dft", "fault-injection", "230kv", "relay-testing"],
+    "activeFile": "line_fault.dft",
+    "fileNames": ["line_fault.dft"],
+    "fileCount": 1,
+    "code": "CASE Line230kV_Fault_HIL\nTIME_STEP 50e-6\nFINISH_TIME 0.25\nFREQUENCY 60\nSUBSYSTEM 1\nCOMPONENT SOURCE SRC_WEST nodes=WEST_BUS,0 V=187794\nCOMPONENT SOURCE SRC_EAST nodes=EAST_BUS,0 V=187794\nCOMPONENT R R_LINE1 nodes=WEST_BUS,MID_FAULT R=2.4\nCOMPONENT L L_LINE1 nodes=MID_FAULT,MID_NODE L=0.032\nCOMPONENT C C_MID nodes=MID_NODE,0 C=2.2e-6\nCOMPONENT R R_LINE2 nodes=MID_NODE,EAST_BUS R=2.4\nCOMPONENT R R_FAULT nodes=MID_FAULT,0 R=5.0\n"
+  },
+  {
+    "id": "rtds-03-sync-machine-excitation-hil",
+    "lang": "rtds",
+    "subFormats": ["dft"],
+    "difficulty": 3,
+    "title": "Synchronous Machine Excitation & Step-Up Transformer HIL",
+    "description": "Real-time RTDS generator-transformer-infinite-bus (SMIB) draft with subtransient reactance, step-up impedance, and damping load for AVR/PSS hardware-in-the-loop validation.",
+    "category": "Real-Time HIL Simulation",
+    "tags": ["rtds", "synchronous-machine", "avr", "smib", "hil"],
+    "activeFile": "sync_gen_hil.dft",
+    "fileNames": ["sync_gen_hil.dft"],
+    "fileCount": 1,
+    "code": "CASE SyncMachine_SMIB_HIL\nTIME_STEP 50e-6\nFINISH_TIME 0.50\nFREQUENCY 60\nSUBSYSTEM 1\nCOMPONENT SOURCE GEN_EMF nodes=GEN_INT,0 V=16500\nCOMPONENT R R_STATOR nodes=GEN_INT,GEN_TERM R=0.08\nCOMPONENT L L_SUBTRANS nodes=GEN_TERM,GSU_LV L=0.0045\nCOMPONENT L L_GSU nodes=GSU_LV,HV_BUS L=0.018\nCOMPONENT C C_FILTER nodes=HV_BUS,0 C=4.0e-6\nCOMPONENT R R_CORRIDOR nodes=HV_BUS,INF_BUS R=1.5\nCOMPONENT L L_CORRIDOR nodes=HV_BUS,INF_BUS L=0.042\nCOMPONENT SOURCE GRID_INF nodes=INF_BUS,0 V=16500\n"
+  },
+  {
+    "id": "rtds-04-grid-following-pv-inverter",
+    "lang": "rtds",
+    "subFormats": ["dft"],
+    "difficulty": 4,
+    "title": "Grid-Following PV Inverter with LCL Filter HIL Model",
+    "description": "Small-time-step (25 us) RTDS power-electronics HIL model of a grid-following solar PV inverter coupled to a stiff 13.8 kV grid through a damped LCL harmonic filter.",
+    "category": "Real-Time HIL Simulation",
+    "tags": ["rtds", "pv-inverter", "lcl-filter", "power-electronics", "hil"],
+    "activeFile": "pv_inverter_hil.dft",
+    "fileNames": ["pv_inverter_hil.dft"],
+    "fileCount": 1,
+    "code": "CASE GridFollowing_PV_LCL_HIL\nTIME_STEP 25e-6\nFINISH_TIME 0.20\nFREQUENCY 60\nSUBSYSTEM 1\nCOMPONENT SOURCE INV_BRIDGE nodes=INV_OUT,0 V=690\nCOMPONENT L L_INV nodes=INV_OUT,LCL_MID L=0.0008\nCOMPONENT R R_DAMP nodes=LCL_MID,CAP_N R=0.45\nCOMPONENT C C_LCL nodes=CAP_N,0 C=1.2e-4\nCOMPONENT L L_GRID nodes=LCL_MID,PCC_BUS L=0.0005\nCOMPONENT R R_PCC_LOAD nodes=PCC_BUS,0 R=24.0\nCOMPONENT R R_GRID_EQ nodes=PCC_BUS,GRID_SRC R=0.12\nCOMPONENT SOURCE GRID_13KV nodes=GRID_SRC,0 V=690\n"
+  },
+  {
+    "id": "rtds-05-hil-relay-testing-microgrid",
+    "lang": "rtds",
+    "subFormats": ["dft", "csv"],
+    "difficulty": 5,
+    "title": "Hardware-in-the-Loop Relay Testing Microgrid Suite",
+    "description": "Multi-file RTDS closed-loop relay testing benchmark pairing a multi-subsystem microgrid draft (grid tie, BESS inverter, diesel genset, critical load) with an automated fault-injection schedule CSV.",
+    "category": "Real-Time HIL Simulation",
+    "tags": ["rtds", "microgrid", "closed-loop-hil", "relay-testing", "multi-file"],
+    "activeFile": "hil_microgrid.dft",
+    "fileNames": ["hil_microgrid.dft", "fault_script.csv"],
+    "fileCount": 2,
+    "code": "CASE Microgrid_Relay_HIL\nTIME_STEP 50e-6\nFINISH_TIME 1.00\nFREQUENCY 60\nSUBSYSTEM 1\nCOMPONENT SOURCE UTIL_GRID nodes=UTIL_BUS,0 V=12470\nCOMPONENT R R_TIE nodes=UTIL_BUS,PCC_BUS R=0.45\nCOMPONENT L L_TIE nodes=PCC_BUS,MG_BUS L=0.0065\nCOMPONENT C C_MG_SHUNT nodes=MG_BUS,0 C=1.5e-5\nCOMPONENT R R_CRIT_LOAD nodes=MG_BUS,0 R=42.0\nSUBSYSTEM 2\nCOMPONENT SOURCE BESS_GFM nodes=BESS_TERM,0 V=12470\nCOMPONENT L L_BESS nodes=BESS_TERM,MG_BUS L=0.0040\nCOMPONENT SOURCE DIESEL_GEN nodes=GEN_TERM,0 V=12470\nCOMPONENT R R_GEN nodes=GEN_TERM,MG_BUS R=0.35\n",
+    "files": {
+      "hil_microgrid.dft": "CASE Microgrid_Relay_HIL\nTIME_STEP 50e-6\nFINISH_TIME 1.00\nFREQUENCY 60\nSUBSYSTEM 1\nCOMPONENT SOURCE UTIL_GRID nodes=UTIL_BUS,0 V=12470\nCOMPONENT R R_TIE nodes=UTIL_BUS,PCC_BUS R=0.45\nCOMPONENT L L_TIE nodes=PCC_BUS,MG_BUS L=0.0065\nCOMPONENT C C_MG_SHUNT nodes=MG_BUS,0 C=1.5e-5\nCOMPONENT R R_CRIT_LOAD nodes=MG_BUS,0 R=42.0\nSUBSYSTEM 2\nCOMPONENT SOURCE BESS_GFM nodes=BESS_TERM,0 V=12470\nCOMPONENT L L_BESS nodes=BESS_TERM,MG_BUS L=0.0040\nCOMPONENT SOURCE DIESEL_GEN nodes=GEN_TERM,0 V=12470\nCOMPONENT R R_GEN nodes=GEN_TERM,MG_BUS R=0.35\n",
+      "fault_script.csv": "case_id,fault_type,fault_bus,fault_r_ohm,t_apply_s,t_clear_s,expected_relay_trip_ms\n1,SLG_A,PCC_BUS,0.5,0.200,0.265,32\n2,LL_BC,MG_BUS,0.2,0.400,0.455,28\n3,3PH_BOLTED,MG_BUS,0.05,0.650,0.700,22\n4,ISLAND_TRANSFER,UTIL_BUS,9999.0,0.850,1.000,45\n"
+    }
+  }
+]

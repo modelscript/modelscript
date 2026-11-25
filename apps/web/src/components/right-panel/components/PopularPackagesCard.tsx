@@ -3,13 +3,19 @@
 import { Text } from "@primer/react";
 import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import type { LibraryListItem } from "../../../api/packages";
 import { PackageIcon } from "../../../pages/libraries/components/PackageIcon";
 import { formatDomainLabel, inferPackageDomains, splitScopedPackageName } from "../../../pages/libraries/constants";
 import Box from "../../Box";
 import { Card, CardHeader, CardTitle, PanelBadge, PanelList, ShowMoreLink, TrendingItem } from "../styles";
 
+export interface PopularPackageItem extends LibraryListItem {
+  version?: string | undefined;
+  domains?: string[] | undefined;
+}
+
 export interface PopularPackagesCardProps {
-  popularPackages: any[];
+  popularPackages: PopularPackageItem[];
 }
 
 export const PopularPackagesCard: React.FC<PopularPackagesCardProps> = ({ popularPackages }) => {

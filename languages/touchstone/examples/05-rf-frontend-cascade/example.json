@@ -1,0 +1,11 @@
+{
+  "id": "touchstone-05-rf-frontend-cascade",
+  "lang": "touchstone",
+  "subFormats": ["s2p", "sp"],
+  "difficulty": 5,
+  "title": "Cascaded 2.45 GHz Bandpass Filter & Matching Front-End",
+  "description": "Multi-file RF front-end workspace combining a 2.45 GHz passive bandpass filter (.s2p), quarter-wave matching stage (.s2p), and SPICE system cascade deck.",
+  "category": "RF Front-End Systems",
+  "tags": ["touchstone", "s2p", "bandpass-filter", "cascade", "multi-file"],
+  "activeFile": "bpf_2450mhz.s2p"
+}

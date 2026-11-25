@@ -1,0 +1,11 @@
+{
+  "id": "waterml-04-reservoir-inflow-outflow",
+  "lang": "waterml",
+  "subFormats": ["waterml"],
+  "difficulty": 4,
+  "title": "Reservoir Inflow & Outflow Paired Timeseries Collection",
+  "description": "Paired WaterML 2.0 hydrologic observation collection comparing unregulated reservoir headwater inflow against controlled spillway release discharge across a 36-hour storm event.",
+  "category": "Reservoir Operations",
+  "tags": ["waterml", "reservoir", "inflow-outflow", "flood-control"],
+  "activeFile": "reservoir_ops.waterml"
+}

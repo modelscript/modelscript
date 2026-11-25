@@ -2,6 +2,7 @@
 
 import jwt from "jsonwebtoken";
 import assert from "node:assert";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -9,13 +10,25 @@ import test from "node:test";
 import request from "supertest";
 
 process.env["NODE_ENV"] = "test";
-
-import { createApp } from "../src/app.js";
-import { LibraryDatabase } from "../src/database.js";
-import { OidcService } from "../src/services/oidc.js";
-import { LibraryStorage } from "../src/storage.js";
+process.env["OIDC_ISSUER_URL"] = "https://login.microsoftonline.com/tenant/v2.0";
+process.env["OIDC_CLIENT_ID"] = "test-client-id";
 
 test("Enterprise OIDC / SSO Authentication & RBAC Group Mapping", async (t) => {
+  const [{ createApp }, { LibraryDatabase }, { defaultOidcService, OidcService }, { LibraryStorage }] =
+    await Promise.all([
+      import("../src/app.js"),
+      import("../src/database.js"),
+      import("../src/services/oidc.js"),
+      import("../src/storage.js"),
+    ]);
+
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    publicKeyEncoding: { type: "spki", format: "pem" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  });
+  defaultOidcService.registerStaticSigningKey("test-kid", publicKey);
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "oidc-test-"));
   const db = new LibraryDatabase(path.join(tmpDir, "db"));
   const storage = new LibraryStorage(path.join(tmpDir, "storage"));
@@ -46,7 +59,13 @@ test("Enterprise OIDC / SSO Authentication & RBAC Group Mapping", async (t) => {
         preferred_username: "alice_eng",
         groups: ["Flight-Dynamics", "Engineering-Admins"],
       },
-      "dummy-secret",
+      privateKey,
+      {
+        algorithm: "RS256",
+        keyid: "test-kid",
+        issuer: "https://login.microsoftonline.com/tenant/v2.0",
+        audience: "test-client-id",
+      },
     );
 
     const claims = oidc.extractClaims(mockIdToken);
@@ -102,7 +121,13 @@ test("Enterprise OIDC / SSO Authentication & RBAC Group Mapping", async (t) => {
         preferred_username: "charlie",
         groups: ["Thermal-FEA"],
       },
-      "dummy-secret",
+      privateKey,
+      {
+        algorithm: "RS256",
+        keyid: "test-kid",
+        issuer: "https://login.microsoftonline.com/tenant/v2.0",
+        audience: "test-client-id",
+      },
     );
 
     const res = await request(app).post("/api/v1/auth/oidc/token").send({ idToken: mockIdToken }).expect(200);

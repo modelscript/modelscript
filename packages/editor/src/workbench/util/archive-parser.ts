@@ -68,7 +68,7 @@ export function sspBytesToModelica(name: string, sspBytes: Uint8Array): string {
   }
 }
 
-function generateModelicaSspBlock(ssp: any): string {
+function generateModelicaSspBlock(ssp: ReturnType<typeof parseSsd>): string {
   const lines: string[] = [];
   lines.push("// ── System Structure and Parameterization (SSP) ────────────────────");
   lines.push("// This is a readonly view of the SSP archive contents.");
@@ -83,8 +83,8 @@ function generateModelicaSspBlock(ssp: any): string {
     for (const comp of ssp.components) {
       lines.push(`  ${comp.source ? `/* ${comp.source} */ ` : ""}block ${comp.name}_type`);
 
-      const inputs = comp.connectors.filter((c: any) => c.kind === "input");
-      const outputs = comp.connectors.filter((c: any) => c.kind === "output" || c.kind === "inout");
+      const inputs = comp.connectors.filter((c) => c.kind === "input");
+      const outputs = comp.connectors.filter((c) => c.kind === "output" || c.kind === "inout");
 
       let i = 0;
       for (const conn of inputs) {
@@ -199,7 +199,7 @@ function parseModelDescription(xml: string) {
   return { modelName, description, guid, generationTool, variables };
 }
 
-function generateModelicaFmuBlock(fmu: any): string {
+function generateModelicaFmuBlock(fmu: ReturnType<typeof parseModelDescription>): string {
   const lines: string[] = [];
   lines.push("// ── FMU 2.0 Model Description ──────────────────────────────────────");
   lines.push("// This is a readonly view of the FMU archive contents.");
@@ -210,9 +210,9 @@ function generateModelicaFmuBlock(fmu: any): string {
   if (fmu.description) lines.push(`block ${fmu.modelName} "${fmu.description}"`);
   else lines.push(`block ${fmu.modelName}`);
 
-  const inputs = fmu.variables.filter((v: any) => v.causality === "input");
-  const outputs = fmu.variables.filter((v: any) => v.causality === "output");
-  const params = fmu.variables.filter((v: any) => v.causality === "parameter" || v.causality === "calculatedParameter");
+  const inputs = fmu.variables.filter((v) => v.causality === "input");
+  const outputs = fmu.variables.filter((v) => v.causality === "output");
+  const params = fmu.variables.filter((v) => v.causality === "parameter" || v.causality === "calculatedParameter");
 
   for (const v of params) {
     const startStr = v.start !== undefined ? ` = ${v.start}` : "";

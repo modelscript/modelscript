@@ -5,10 +5,10 @@
 
 Host-agnostic visual modeling, diagramming, simulation, and code editor core for ModelScript.
 
-Provides the shared **LSP Transport** (`EditorLspTransport`, `createHttpLspTransport`), **Host Context** (`EditorHostProvider`, `useEditorHost`), and reusable **Ansatz Workbench** (`Morsel`, Monaco code editor, AntV X6 schematic canvas, 3D CAD viewer, and simulation plotters) so the same editor workbench runs seamlessly across:
+Provides the shared **LSP Transport** (`EditorLspTransport`, `createHttpLspTransport`), **Host Context** (`EditorHostProvider`, `useEditorHost`), and reusable **Ansatz Workbench** (`Ansatz`, Monaco code editor, AntV X6 schematic canvas, 3D CAD viewer, and simulation plotters) so the same editor workbench runs seamlessly across:
 
 - Production web (`apps/web`) over a WebWorker LSP connection
-- Single-language dev playground (`scripts/tools/language-playground.ts`) over `/__playground/lsp` (`@modelscript/lsp/core`)
+- Single-language dev ansatz (`scripts/tools/language-ansatz.ts`) over `/__ansatz/lsp` (`@modelscript/lsp/core`)
 - Docs embeds (`apps/docs`, `@modelscript/embed`) and deterministic in-memory tests
 
 ---
@@ -22,7 +22,7 @@ Provides the shared **LSP Transport** (`EditorLspTransport`, `createHttpLspTrans
 
 ### 2. Shared Workbench UI (`src/workbench/`)
 
-- **Core Workbench Shell**: `Morsel.tsx`, `MorselHostContext.tsx`, `MorselLoadingScreen.tsx`, `Preview.tsx`, `morsel.css`.
+- **Core Workbench Shell**: `Ansatz.tsx`, `AnsatzEditorHostContext.tsx`, `AnsatzEditorLoadingScreen.tsx`, `Preview.tsx`, `ansatz-editor.css`.
 - **Code, Schematic & 3D Views**: `Code.tsx` (Monaco editor), `Diagram.tsx` (AntV X6 interactive schematic canvas), `cad-viewer/` (Three.js 3D CAD/CAE viewport), `markdown/` (Markdown + KaTeX rendering).
 - **Simulation, Co-Simulation & Inspection**: `SimulationParameters.tsx`, `SimulationResults.tsx`, `simulation-results/`, `ParameterSliderRibbon.tsx`, `CosimPanel.tsx`, `CloudDispatchModal.tsx`, `Properties.tsx`, `Tree.tsx`, `VariablesTree.tsx`, `ComponentList.tsx`, `panels/`.
 - **Library & Model Ingestion**: `AddLibraryModal.tsx`, `OpenModelModal.tsx`, `OpenFileDropzone.tsx`, `componentGalleryCatalog.ts`, `openModelCatalog.ts`.
@@ -40,7 +40,7 @@ Provides the shared **LSP Transport** (`EditorLspTransport`, `createHttpLspTrans
 | `@modelscript/editor`            | `src/index.ts`     | Root barrel re-exporting `host` and `transport`        |
 | `@modelscript/editor/transport`  | `src/transport.ts` | `EditorLspTransport` and `createHttpLspTransport`      |
 | `@modelscript/editor/host`       | `src/host.tsx`     | `EditorHostProvider` and `useEditorHost` React context |
-| `@modelscript/editor/workbench`  | `src/workbench/`   | Shared `Morsel` workbench components (`./workbench/*`) |
+| `@modelscript/editor/workbench`  | `src/workbench/`   | Shared `Ansatz` workbench components (`./workbench/*`) |
 | `@modelscript/editor/internal/*` | `src/internal/*`   | Internal plotting, telemetry, and theme utilities      |
 
 ---

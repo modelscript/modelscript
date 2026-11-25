@@ -1,0 +1,12 @@
+{
+  "id": "simulink-04-aircraft-pitch-autopilot",
+  "lang": "simulink",
+  "subFormats": ["mdl", "m"],
+  "difficulty": 4,
+  "title": "Longitudinal Aircraft Pitch Autopilot",
+  "description": "Short-period longitudinal aircraft pitch attitude hold autopilot with inner pitch-rate damper loop, outer pitch-angle tracker, elevator actuator lag, and a companion MATLAB gain initialization script.",
+  "category": "Aerospace Flight Control",
+  "tags": ["simulink", "autopilot", "pitch-control", "aerospace", "multi-file"],
+  "activeFile": "pitch_ap.mdl",
+  "fileOrder": ["pitch_ap.mdl", "init_gains.m"]
+}

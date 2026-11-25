@@ -65,14 +65,19 @@ export interface WasmMatrixExports {
   luSolve(luPtr: number, pivPtr: number, scalePtr: number, bPtr: number, scratchPtr: number, n: number): void;
   vectorNorm2(vPtr: number, n: number): number;
   vectorNormInf(vPtr: number, n: number): number;
+  alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
   memory: WebAssembly.Memory;
 }
+
+type WasmMatrixInstanceOrExports =
+  Partial<WasmMatrixExports> | { exports?: Partial<WasmMatrixExports>; memory?: WebAssembly.Memory } | null | undefined;
 
 /**
  * WebAssembly-backed Gaussian & Dense Linear Algebra Bridge.
  */
 export class WasmGaussian {
-  constructor(private wasmInstance: WasmMatrixExports | any) {}
+  constructor(private wasmInstance: WasmMatrixInstanceOrExports) {}
 
   /**
    * Solves Ax = b in WASM linear memory using row-equilibrated LU factorization.
@@ -83,8 +88,9 @@ export class WasmGaussian {
    */
   solveLinearSystem(A: Float64Array[] | Float64Array, b: Float64Array): Float64Array {
     const n = b.length;
-    const exports = this.wasmInstance?.exports ?? this.wasmInstance;
-    const memory: WebAssembly.Memory | undefined = this.wasmInstance?.memory ?? exports?.memory;
+    const raw = this.wasmInstance;
+    const exports: Partial<WasmMatrixExports> | undefined = raw && "exports" in raw ? raw.exports : (raw ?? undefined);
+    const memory: WebAssembly.Memory | undefined = raw?.memory ?? exports?.memory;
 
     if (typeof exports?.luFactor === "function" && typeof exports?.luSolve === "function" && memory) {
       const matrixBytes = (n * n * 8 + 7) & ~7;
@@ -95,7 +101,7 @@ export class WasmGaussian {
       const blockBytes = matrixBytes + pivBytes + scaleBytes + bBytes + scratchBytes;
 
       const hasAlloc = typeof exports.alloc === "function";
-      const basePtr = hasAlloc ? (exports.alloc(blockBytes) + 7) & ~7 : 1024;
+      const basePtr = hasAlloc ? (exports.alloc!(blockBytes) + 7) & ~7 : 1024;
       const matrixPtr = basePtr;
       const pivPtr = matrixPtr + matrixBytes;
       const scalePtr = pivPtr + pivBytes;
@@ -594,8 +600,23 @@ export interface LUFactorizationFlat {
   n: number;
 }
 
+interface DenseLuWasmExports {
+  memory: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  luFactorFlatInPlace?: (matPtr: number, pivPtr: number, scalePtr: number, n: number) => void;
+  luSolveFlatInPlace?: (
+    matPtr: number,
+    pivPtr: number,
+    scalePtr: number,
+    bPtr: number,
+    scratchPtr: number,
+    n: number,
+  ) => void;
+}
+
 interface DenseLuWasmScratch {
-  wasm: any;
+  wasm: DenseLuWasmExports;
   capN: number;
   matPtr: number;
   pivPtr: number;
@@ -606,14 +627,15 @@ interface DenseLuWasmScratch {
 
 let denseLuScratch: DenseLuWasmScratch | null = null;
 
-function ensureDenseLuScratch(wasm: any, n: number): DenseLuWasmScratch | null {
+function ensureDenseLuScratch(wasm: DenseLuWasmExports | null, n: number): DenseLuWasmScratch | null {
   if (!wasm || typeof wasm.__new !== "function") return null;
   if (denseLuScratch && denseLuScratch.wasm === wasm && denseLuScratch.capN >= n) {
     return denseLuScratch;
   }
   const capN = Math.max(n, 64);
+  const newFn = wasm.__new;
   const alloc = (bytes: number): number => {
-    const ptr = wasm.__new(bytes, 0);
+    const ptr = newFn(bytes, 0);
     if (typeof wasm.__pin === "function") wasm.__pin(ptr);
     return ptr;
   };
@@ -644,7 +666,7 @@ export function luFactorFlat(
   const rowScale = outScale && outScale.length >= n ? outScale : new Float64Array(n);
 
   if (n >= 16) {
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as DenseLuWasmExports | null;
     if (wasm && typeof wasm.luFactorFlatInPlace === "function") {
       const s = ensureDenseLuScratch(wasm, n);
       if (s) {
@@ -740,7 +762,7 @@ export function luSolveFlat(fact: LUFactorizationFlat, b: Float64Array, scratchP
   const { mat, piv, rowScale, n } = fact;
 
   if (n >= 16) {
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as DenseLuWasmExports | null;
     if (wasm && typeof wasm.luSolveFlatInPlace === "function") {
       const s = ensureDenseLuScratch(wasm, n);
       if (s) {

@@ -6,7 +6,7 @@
  * Decouples visual/code editor workbenches from app-shell contexts (`Theme`,
  * `FeatureFlags`, `Capabilities`, `ModelingPreferences`, `Toast`, `api.ts`,
  * `react-router-dom`, and `virtual:modelscript-language-ui`) so the exact same
- * editor workbench can mount in `apps/web`, the single-language dev playground,
+ * editor workbench can mount in `apps/web`, the single-language dev ansatz,
  * docs embeds, and automated tests.
  */
 
@@ -45,7 +45,7 @@ export interface EditorLanguageToolbarButton {
   icon?: string | undefined;
   iconSvg?: string | undefined;
   views?: EditorToolbarView[] | undefined;
-  targets?: Array<"vscode" | "morsel" | "artifact"> | undefined;
+  targets?: Array<"vscode" | "ansatz" | "artifact"> | undefined;
   placement?: "primary" | "overflow" | undefined;
   order?: number | undefined;
   kind?: "action" | "toggle" | undefined;
@@ -62,14 +62,14 @@ export interface ResolvedLanguageToolbarButtons {
 }
 
 export interface EditorLanguageUiRegistry {
-  morselPanels: Record<string, () => Promise<{ default: React.ComponentType<any> }>>;
-  artifactPanels: Record<string, () => Promise<{ default: React.ComponentType<any> }>>;
+  ansatzPanels: Record<string, () => Promise<{ default: React.ComponentType<never> }>>;
+  artifactPanels: Record<string, () => Promise<{ default: React.ComponentType<never> }>>;
   simulationCards: Array<{
     id: string;
     languageId: string;
     title: string;
     standards?: string[];
-    load: () => Promise<{ default: React.ComponentType<any> }>;
+    load: () => Promise<{ default: React.ComponentType<never> }>;
   }>;
   stencils: Record<string, Array<{ label: string; className: string; snippet: string; category?: string }>>;
   toolbarButtons: Record<string, EditorLanguageToolbarButton[]>;
@@ -81,7 +81,7 @@ function getGlobalLanguageUi(): EditorLanguageUiRegistry {
   const g = globalThis as Record<symbol, EditorLanguageUiRegistry | undefined>;
   if (!g[LANGUAGE_UI_REGISTRY_SYMBOL]) {
     g[LANGUAGE_UI_REGISTRY_SYMBOL] = {
-      morselPanels: {},
+      ansatzPanels: {},
       artifactPanels: {},
       simulationCards: [],
       stencils: {},
@@ -94,12 +94,12 @@ function getGlobalLanguageUi(): EditorLanguageUiRegistry {
 /**
  * Registers language UI panels, simulation cards, stencils, and toolbar buttons into `@modelscript/editor`.
  * Called once at boot by `apps/web` (from `virtual:modelscript-language-ui`) or by
- * `scripts/tools/language-playground.ts` (from `virtual:modelscript-playground-lang`).
+ * `scripts/tools/language-ansatz.ts` (from `virtual:modelscript-ansatz-lang`).
  */
 export function registerEditorLanguageUi(registry: Partial<EditorLanguageUiRegistry>): void {
   const current = getGlobalLanguageUi();
   (globalThis as Record<symbol, EditorLanguageUiRegistry>)[LANGUAGE_UI_REGISTRY_SYMBOL] = {
-    morselPanels: registry.morselPanels ?? current.morselPanels,
+    ansatzPanels: registry.ansatzPanels ?? current.ansatzPanels,
     artifactPanels: registry.artifactPanels ?? current.artifactPanels,
     simulationCards: registry.simulationCards ?? current.simulationCards,
     stencils: registry.stencils ?? current.stencils,
@@ -120,7 +120,7 @@ export function resolveLanguageToolbarButtons(
   buttons: readonly EditorLanguageToolbarButton[] | undefined,
   activeView: Exclude<EditorToolbarView, "*">,
   options?: {
-    target?: "vscode" | "morsel" | "artifact" | undefined;
+    target?: "vscode" | "ansatz" | "artifact" | undefined;
     maxPrimary?: number | undefined;
     isFeatureEnabled?: ((flag: string) => boolean) | undefined;
   },
@@ -129,13 +129,13 @@ export function resolveLanguageToolbarButtons(
     return { primary: [], overflow: [], all: [] };
   }
 
-  const target = options?.target ?? "morsel";
+  const target = options?.target ?? "ansatz";
   const maxPrimary = options?.maxPrimary ?? 2;
   const isFeatureEnabled = options?.isFeatureEnabled;
 
   const matching = buttons
     .filter((btn) => {
-      const targets = btn.targets && btn.targets.length > 0 ? btn.targets : ["morsel", "vscode"];
+      const targets = btn.targets && btn.targets.length > 0 ? btn.targets : ["ansatz", "vscode"];
       if (!targets.includes(target)) return false;
 
       const views = btn.views && btn.views.length > 0 ? btn.views : ["*"];
@@ -166,12 +166,12 @@ export function resolveLanguageToolbarButtons(
 export function useLanguageToolbarButtons(
   languageId: string,
   activeView: Exclude<EditorToolbarView, "*">,
-  options?: { target?: "vscode" | "morsel" | "artifact"; maxPrimary?: number },
+  options?: { target?: "vscode" | "ansatz" | "artifact"; maxPrimary?: number },
 ): ResolvedLanguageToolbarButtons {
   const host = useEditorHost();
   const rawButtons = getGlobalLanguageUi().toolbarButtons[languageId];
   return resolveLanguageToolbarButtons(rawButtons, activeView, {
-    target: options?.target ?? "morsel",
+    target: options?.target ?? "ansatz",
     maxPrimary: options?.maxPrimary ?? 2,
     isFeatureEnabled: host.isFeatureEnabled ? (flag) => Boolean(host.isFeatureEnabled!(flag)) : undefined,
   });
@@ -280,15 +280,15 @@ export function useEditorToolbarAction(
         handler(detail);
       }
     };
-    window.addEventListener("morsel:toolbar-action", listener);
-    return () => window.removeEventListener("morsel:toolbar-action", listener);
+    window.addEventListener("ansatz:toolbar-action", listener);
+    return () => window.removeEventListener("ansatz:toolbar-action", listener);
   }, [matcher, handler]);
 }
 
 /**
- * Dispatches a declarative toolbar button click to Morsel and active language panels.
- * Fires `morsel:toolbar-action` for general handlers and, when `command` uses the
- * `morsel:<action>` convention, also dispatches `modelscript:morsel-command`.
+ * Dispatches a declarative toolbar button click to Ansatz and active language panels.
+ * Fires `ansatz:toolbar-action` for general handlers and, when `command` uses the
+ * `ansatz:<action>` convention, also dispatches `modelscript:ansatz-command`.
  */
 export function dispatchEditorToolbarAction(
   button: EditorLanguageToolbarButton,
@@ -301,11 +301,11 @@ export function dispatchEditorToolbarAction(
     view: context.view,
     active: context.active,
   };
-  window.dispatchEvent(new CustomEvent<EditorToolbarActionEventDetail>("morsel:toolbar-action", { detail }));
+  window.dispatchEvent(new CustomEvent<EditorToolbarActionEventDetail>("ansatz:toolbar-action", { detail }));
 
-  if (button.command?.startsWith("morsel:")) {
-    const action = button.command.slice("morsel:".length);
-    window.dispatchEvent(new CustomEvent("modelscript:morsel-command", { detail: { action, button } }));
+  if (button.command?.startsWith("ansatz:")) {
+    const action = button.command.slice("ansatz:".length);
+    window.dispatchEvent(new CustomEvent("modelscript:ansatz-command", { detail: { action, button } }));
   }
 }
 
@@ -331,17 +331,24 @@ export interface EditorHostAdapter {
   /** Optional single-language lock ID (restricts UI/templates to one language). */
   singleLanguageId?: string | undefined;
   /** Optional shortlink creator for Share modal. */
-  createShortLink?: ((payload: any) => Promise<{ id?: string; shortCode?: string; url?: string } | null>) | undefined;
+  createShortLink?:
+    | ((payload: {
+        code: string;
+        dialect?: string;
+        title?: string;
+        view?: string;
+      }) => Promise<{ id?: string; shortCode?: string; url?: string; embedUrl?: string } | null>)
+    | undefined;
   /** Optional cloud simulation job result fetcher. */
-  getSimulationJobResult?: ((jobId: string) => Promise<any>) | undefined;
+  getSimulationJobResult?: ((jobId: string) => Promise<Record<string, unknown> | null>) | undefined;
   /** Optional curated example models for welcome/empty states. */
-  heroExamples?: Array<Record<string, any>> | undefined;
+  heroExamples?: Array<Record<string, unknown>> | undefined;
   /** Optional router navigation callback (replaces react-router-dom useNavigate). */
   navigate?: ((path: string) => void) | undefined;
   /** Optional cloud simulation modal renderer provided by host web app. */
-  renderCloudSimulationModal?: ((props: Record<string, any>) => React.ReactNode) | undefined;
+  renderCloudSimulationModal?: ((props: Record<string, unknown>) => React.ReactNode) | undefined;
   /** Optional ReqIF viewer renderer provided by host web app. */
-  renderReqifViewer?: ((props: Record<string, any>) => React.ReactNode) | undefined;
+  renderReqifViewer?: ((props: Record<string, unknown>) => React.ReactNode) | undefined;
 }
 
 const DEFAULT_CAPABILITIES: EditorCapabilities = {

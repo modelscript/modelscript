@@ -1,0 +1,11 @@
+{
+  "id": "powerworld-05-fourteen-bus-opf-contingency",
+  "lang": "powerworld",
+  "subFormats": ["aux"],
+  "difficulty": 5,
+  "title": "IEEE 14-Bus Optimal Power Flow & Contingency Study",
+  "description": "Multi-file IEEE 14-bus transmission benchmark pairing the base network and OPF dispatch case (case14.aux) with a companion N-1/N-2 contingency list and screening script (contingencies.aux).",
+  "category": "Transmission Power Flow",
+  "tags": ["powerworld", "ieee-14", "opf", "contingency", "multi-file"],
+  "activeFile": "case14.aux"
+}

@@ -1,0 +1,28 @@
+`include "disciplines.vams"
+`include "constants.vams"
+
+module hp_memristor(p, n);
+  inout p, n;
+  electrical p, n;
+
+  parameter real Ron = 100.0 from (0:inf);
+  parameter real Roff = 16000.0 from (0:inf);
+  parameter real D = 10.0e-9 from (0:inf);
+  parameter real Uv = 1.0e-14 from (0:inf);
+  parameter real Xinit = 0.1 from (0:1);
+
+  real x, Rm, Im, dxdt;
+
+  analog begin
+    x = idt(dxdt, Xinit);
+    if (x < 0.01) begin
+      x = 0.01;
+    end else if (x > 0.99) begin
+      x = 0.99;
+    end
+    Rm = Ron * x + Roff * (1.0 - x);
+    Im = V(p, n) / Rm;
+    dxdt = (Uv * Ron / (D * D)) * Im * (1.0 - (2.0 * x - 1.0) * (2.0 * x - 1.0));
+    I(p, n) <+ Im;
+  end
+endmodule

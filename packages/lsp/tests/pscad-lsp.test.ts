@@ -353,7 +353,7 @@ describe("PSCAD LSP Integration Suite", () => {
   </definitions>
 </project>`;
 
-    const memUri = "inmemory://morsel/MoveTest.pscx";
+    const memUri = "inmemory://ansatz/MoveTest.pscx";
     const dispatch = createDiagramDispatch({
       generic: {
         deps: {
@@ -395,7 +395,7 @@ describe("PSCAD LSP Integration Suite", () => {
   </definitions>
 </project>`;
 
-    const simUri = "inmemory://morsel/LocalSimTest.pscx";
+    const simUri = "inmemory://ansatz/LocalSimTest.pscx";
     const doc = TextDocument.create(simUri, "pscad", 1, pscx);
     const handlers = new Map<string, (params: any) => Promise<any>>();
     const mockContext: any = {

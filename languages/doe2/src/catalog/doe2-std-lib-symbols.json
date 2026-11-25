@@ -1,0 +1,786 @@
+[
+  {
+    "name": "MAT-CONCRETE",
+    "kind": "component",
+    "namePath": "DOE2.MAT-CONCRETE",
+    "exports": [
+      "thickness",
+      "conductivity",
+      "density",
+      "specificHeat"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Heavyweight Concrete (200 mm)",
+      "category": "Envelope Material",
+      "domain": "building-energy",
+      "description": "200 mm (8 in) heavyweight poured concrete structural wall/slab layer.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 26 / DOE-2.1E BDL Library (CC03)",
+      "aliases": [
+        "CC03",
+        "CONCRETE-8IN",
+        "HW-CONCRETE"
+      ],
+      "parameters": [
+        {
+          "key": "thickness",
+          "type": "real",
+          "defaultValue": 0.2032,
+          "unit": "m",
+          "description": "Layer thickness (8 in = 0.2032 m)"
+        },
+        {
+          "key": "conductivity",
+          "type": "real",
+          "defaultValue": 1.7296,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity (1.0 Btu/hr-ft-F)"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 2242.6,
+          "unit": "kg/m^3",
+          "description": "Dry bulk density (140 lb/ft^3)"
+        },
+        {
+          "key": "specificHeat",
+          "type": "real",
+          "defaultValue": 837.4,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity (0.20 Btu/lb-F)"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "MAT-INSUL-R19",
+    "kind": "component",
+    "namePath": "DOE2.MAT-INSUL-R19",
+    "exports": [
+      "thickness",
+      "conductivity",
+      "density",
+      "specificHeat",
+      "resistance"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fiberglass Batt Insulation (R-19)",
+      "category": "Envelope Material",
+      "domain": "building-energy",
+      "description": "152 mm (6 in) fiberglass batt cavity insulation with nominal R-19 IP (3.346 m^2-K/W).",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 26 / DOE-2.1E BDL Library (IN05)",
+      "aliases": [
+        "IN05",
+        "FIBERGLASS-R19",
+        "BATT-R19"
+      ],
+      "parameters": [
+        {
+          "key": "thickness",
+          "type": "real",
+          "defaultValue": 0.1524,
+          "unit": "m",
+          "description": "Layer thickness (6 in = 0.1524 m)"
+        },
+        {
+          "key": "conductivity",
+          "type": "real",
+          "defaultValue": 0.0455,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "kg/m^3",
+          "description": "Bulk density"
+        },
+        {
+          "key": "specificHeat",
+          "type": "real",
+          "defaultValue": 837.4,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity"
+        },
+        {
+          "key": "resistance",
+          "type": "real",
+          "defaultValue": 3.3461,
+          "unit": "m^2*K/W",
+          "description": "Nominal R-19 IP thermal resistance"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "MAT-GYPSUM",
+    "kind": "component",
+    "namePath": "DOE2.MAT-GYPSUM",
+    "exports": [
+      "thickness",
+      "conductivity",
+      "density",
+      "specificHeat"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gypsum Board (12.7 mm)",
+      "category": "Envelope Material",
+      "domain": "building-energy",
+      "description": "12.7 mm (0.5 in) interior gypsum wallboard finish layer.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 26 / DOE-2.1E BDL Library (GP01)",
+      "aliases": [
+        "GP01",
+        "GYPSUM-BOARD",
+        "DRYWALL"
+      ],
+      "parameters": [
+        {
+          "key": "thickness",
+          "type": "real",
+          "defaultValue": 0.0127,
+          "unit": "m",
+          "description": "Layer thickness (0.5 in = 0.0127 m)"
+        },
+        {
+          "key": "conductivity",
+          "type": "real",
+          "defaultValue": 0.16,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity (0.0926 Btu/hr-ft-F)"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 800.9,
+          "unit": "kg/m^3",
+          "description": "Bulk density (50 lb/ft^3)"
+        },
+        {
+          "key": "specificHeat",
+          "type": "real",
+          "defaultValue": 1088.6,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity (0.26 Btu/lb-F)"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "MAT-BRICK",
+    "kind": "component",
+    "namePath": "DOE2.MAT-BRICK",
+    "exports": [
+      "thickness",
+      "conductivity",
+      "density",
+      "specificHeat"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Face Brick Veneer (100 mm)",
+      "category": "Envelope Material",
+      "domain": "building-energy",
+      "description": "101.6 mm (4 in) exterior clay face brick masonry veneer.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 26 / DOE-2.1E BDL Library (BK01)",
+      "aliases": [
+        "BK01",
+        "FACE-BRICK",
+        "MASONRY-BRICK"
+      ],
+      "parameters": [
+        {
+          "key": "thickness",
+          "type": "real",
+          "defaultValue": 0.1016,
+          "unit": "m",
+          "description": "Layer thickness (4 in = 0.1016 m)"
+        },
+        {
+          "key": "conductivity",
+          "type": "real",
+          "defaultValue": 1.311,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity (0.757 Btu/hr-ft-F)"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 2082.4,
+          "unit": "kg/m^3",
+          "description": "Bulk density (130 lb/ft^3)"
+        },
+        {
+          "key": "specificHeat",
+          "type": "real",
+          "defaultValue": 921.1,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity (0.22 Btu/lb-F)"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "MAT-WOOD-FRAME",
+    "kind": "component",
+    "namePath": "DOE2.MAT-WOOD-FRAME",
+    "exports": [
+      "thickness",
+      "conductivity",
+      "density",
+      "specificHeat"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Softwood Sheathing (19 mm)",
+      "category": "Envelope Material",
+      "domain": "building-energy",
+      "description": "19 mm (0.75 in) structural plywood / softwood sheathing.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 26 / DOE-2.1E BDL Library (WD01)",
+      "aliases": [
+        "WD01",
+        "SOFTWOOD",
+        "PLYWOOD"
+      ],
+      "parameters": [
+        {
+          "key": "thickness",
+          "type": "real",
+          "defaultValue": 0.01905,
+          "unit": "m",
+          "description": "Layer thickness (0.75 in)"
+        },
+        {
+          "key": "conductivity",
+          "type": "real",
+          "defaultValue": 0.1154,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 544.6,
+          "unit": "kg/m^3",
+          "description": "Bulk density (34 lb/ft^3)"
+        },
+        {
+          "key": "specificHeat",
+          "type": "real",
+          "defaultValue": 1214.2,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MAT-ROOF-MEMBRANE",
+    "kind": "component",
+    "namePath": "DOE2.MAT-ROOF-MEMBRANE",
+    "exports": [
+      "thickness",
+      "conductivity",
+      "density",
+      "specificHeat"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Built-Up Roof Membrane (9.5 mm)",
+      "category": "Envelope Material",
+      "domain": "building-energy",
+      "description": "9.5 mm (0.375 in) built-up asphalt/gravel roof waterproofing membrane.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 26 / DOE-2.1E BDL Library (BR01)",
+      "aliases": [
+        "BR01",
+        "BUILT-UP-ROOF",
+        "EPDM"
+      ],
+      "parameters": [
+        {
+          "key": "thickness",
+          "type": "real",
+          "defaultValue": 0.0095,
+          "unit": "m",
+          "description": "Layer thickness (3/8 in)"
+        },
+        {
+          "key": "conductivity",
+          "type": "real",
+          "defaultValue": 0.1627,
+          "unit": "W/(m*K)",
+          "description": "Thermal conductivity"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1121.3,
+          "unit": "kg/m^3",
+          "description": "Bulk density (70 lb/ft^3)"
+        },
+        {
+          "key": "specificHeat",
+          "type": "real",
+          "defaultValue": 1465.4,
+          "unit": "J/(kg*K)",
+          "description": "Specific heat capacity"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "GLZ-DOUBLE-LOWE",
+    "kind": "component",
+    "namePath": "DOE2.GLZ-DOUBLE-LOWE",
+    "exports": [
+      "uValue",
+      "shgc",
+      "shadingCoeff",
+      "visibleTransmittance"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Double Pane Low-E Argon Glazing",
+      "category": "Glazing System",
+      "domain": "building-energy",
+      "description": "Double-pane insulated glazing unit with low-emissivity coating (e=0.1) and argon fill.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 15 / LBNL WINDOW & DOE-2 Glazing Library",
+      "aliases": [
+        "DOUBLE-LOWE",
+        "LOWE-ARGON",
+        "2600"
+      ],
+      "parameters": [
+        {
+          "key": "uValue",
+          "type": "real",
+          "defaultValue": 1.65,
+          "unit": "W/(m^2*K)",
+          "description": "Center-of-glass U-factor (0.29 Btu/hr-ft^2-F)"
+        },
+        {
+          "key": "shgc",
+          "type": "real",
+          "defaultValue": 0.42,
+          "unit": "1",
+          "description": "Solar Heat Gain Coefficient"
+        },
+        {
+          "key": "shadingCoeff",
+          "type": "real",
+          "defaultValue": 0.483,
+          "unit": "1",
+          "description": "DOE-2 Shading Coefficient (SC = SHGC / 0.87)"
+        },
+        {
+          "key": "visibleTransmittance",
+          "type": "real",
+          "defaultValue": 0.68,
+          "unit": "1",
+          "description": "Visible light transmittance"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "GLZ-SINGLE-CLEAR",
+    "kind": "component",
+    "namePath": "DOE2.GLZ-SINGLE-CLEAR",
+    "exports": [
+      "uValue",
+      "shgc",
+      "shadingCoeff",
+      "visibleTransmittance"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Single Pane Clear Glass (6 mm)",
+      "category": "Glazing System",
+      "domain": "building-energy",
+      "description": "Single-pane 6 mm clear monolithic glass.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 15 / DOE-2 Glazing Library",
+      "aliases": [
+        "SINGLE-CLEAR",
+        "1000"
+      ],
+      "parameters": [
+        {
+          "key": "uValue",
+          "type": "real",
+          "defaultValue": 5.8,
+          "unit": "W/(m^2*K)",
+          "description": "Center-of-glass U-factor"
+        },
+        {
+          "key": "shgc",
+          "type": "real",
+          "defaultValue": 0.81,
+          "unit": "1",
+          "description": "Solar Heat Gain Coefficient"
+        },
+        {
+          "key": "shadingCoeff",
+          "type": "real",
+          "defaultValue": 0.931,
+          "unit": "1",
+          "description": "DOE-2 Shading Coefficient"
+        },
+        {
+          "key": "visibleTransmittance",
+          "type": "real",
+          "defaultValue": 0.88,
+          "unit": "1",
+          "description": "Visible light transmittance"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "GLZ-DOUBLE-CLEAR",
+    "kind": "component",
+    "namePath": "DOE2.GLZ-DOUBLE-CLEAR",
+    "exports": [
+      "uValue",
+      "shgc",
+      "shadingCoeff",
+      "visibleTransmittance"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Double Pane Clear Air Glazing",
+      "category": "Glazing System",
+      "domain": "building-energy",
+      "description": "Double-pane 6 mm clear glass with 12.7 mm air gap.",
+      "provenance": "ASHRAE Handbook — Fundamentals Ch. 15 / DOE-2 Glazing Library",
+      "aliases": [
+        "DOUBLE-CLEAR",
+        "2000"
+      ],
+      "parameters": [
+        {
+          "key": "uValue",
+          "type": "real",
+          "defaultValue": 2.78,
+          "unit": "W/(m^2*K)",
+          "description": "Center-of-glass U-factor"
+        },
+        {
+          "key": "shgc",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "1",
+          "description": "Solar Heat Gain Coefficient"
+        },
+        {
+          "key": "shadingCoeff",
+          "type": "real",
+          "defaultValue": 0.805,
+          "unit": "1",
+          "description": "DOE-2 Shading Coefficient"
+        },
+        {
+          "key": "visibleTransmittance",
+          "type": "real",
+          "defaultValue": 0.78,
+          "unit": "1",
+          "description": "Visible light transmittance"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "PSZ",
+    "kind": "component",
+    "namePath": "DOE2.PSZ",
+    "exports": [
+      "coolingCop",
+      "heatingEff",
+      "fanPowerRatio",
+      "minPartLoad"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Packaged Single Zone (PSZ)",
+      "category": "HVAC System",
+      "domain": "building-energy",
+      "description": "DOE-2 PSZ constant-volume packaged DX rooftop unit with gas furnace or electric heat.",
+      "provenance": "LBNL DOE-2.1E Reference Manual — SYSTEMS PSZ / ASHRAE 90.1 System 3",
+      "aliases": [
+        "PACKAGED-SINGLE-ZONE",
+        "RTU"
+      ],
+      "parameters": [
+        {
+          "key": "coolingCop",
+          "type": "real",
+          "defaultValue": 3.2,
+          "unit": "W/W",
+          "description": "Rated DX cooling COP (EIR = 0.3125)"
+        },
+        {
+          "key": "heatingEff",
+          "type": "real",
+          "defaultValue": 0.82,
+          "unit": "1",
+          "description": "Gas furnace thermal efficiency"
+        },
+        {
+          "key": "fanPowerRatio",
+          "type": "real",
+          "defaultValue": 0.07,
+          "unit": "W/W",
+          "description": "Supply fan power per unit thermal capacity"
+        },
+        {
+          "key": "minPartLoad",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1",
+          "description": "Minimum part-load ratio before cycling"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "VAVS",
+    "kind": "component",
+    "namePath": "DOE2.VAVS",
+    "exports": [
+      "coolingCop",
+      "heatingEff",
+      "fanPowerRatio",
+      "minPartLoad"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Variable Air Volume w/ Reheat (VAVS)",
+      "category": "HVAC System",
+      "domain": "building-energy",
+      "description": "DOE-2 VAVS central air handler with VFD supply fan and zone reheat coils.",
+      "provenance": "LBNL DOE-2.1E Reference Manual — SYSTEMS VAVS / ASHRAE 90.1 System 7",
+      "aliases": [
+        "VAV",
+        "VAV-REHEAT"
+      ],
+      "parameters": [
+        {
+          "key": "coolingCop",
+          "type": "real",
+          "defaultValue": 3.6,
+          "unit": "W/W",
+          "description": "Chilled-water / DX cooling COP"
+        },
+        {
+          "key": "heatingEff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "1",
+          "description": "Central boiler / reheat thermal efficiency"
+        },
+        {
+          "key": "fanPowerRatio",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "W/W",
+          "description": "VFD supply fan design power ratio (cubic unloading)"
+        },
+        {
+          "key": "minPartLoad",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "1",
+          "description": "Minimum VAV box damper airflow fraction"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "PIU",
+    "kind": "component",
+    "namePath": "DOE2.PIU",
+    "exports": [
+      "coolingCop",
+      "heatingEff",
+      "fanPowerRatio",
+      "minPartLoad"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Powered Induction Unit (PIU)",
+      "category": "HVAC System",
+      "domain": "building-energy",
+      "description": "DOE-2 PIU series/parallel fan-powered VAV terminal unit with plenum return mixing.",
+      "provenance": "LBNL DOE-2.1E Reference Manual — SYSTEMS PIU / ASHRAE 90.1 System 6",
+      "aliases": [
+        "POWERED-INDUCTION-UNIT",
+        "FAN-POWERED-VAV"
+      ],
+      "parameters": [
+        {
+          "key": "coolingCop",
+          "type": "real",
+          "defaultValue": 3.3,
+          "unit": "W/W",
+          "description": "Primary air cooling COP"
+        },
+        {
+          "key": "heatingEff",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "1",
+          "description": "Terminal reheat efficiency"
+        },
+        {
+          "key": "fanPowerRatio",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "W/W",
+          "description": "Primary + terminal fan design power ratio"
+        },
+        {
+          "key": "minPartLoad",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "1",
+          "description": "Minimum primary airflow fraction"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "FC",
+    "kind": "component",
+    "namePath": "DOE2.FC",
+    "exports": [
+      "coolingCop",
+      "heatingEff",
+      "fanPowerRatio",
+      "minPartLoad"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Four-Pipe Fan Coil (FC)",
+      "category": "HVAC System",
+      "domain": "building-energy",
+      "description": "DOE-2 FC four-pipe hydronic fan coil unit with dedicated outdoor air ventilation.",
+      "provenance": "LBNL DOE-2.1E Reference Manual — SYSTEMS FC / ASHRAE Systems Handbook",
+      "aliases": [
+        "FAN-COIL",
+        "FOUR-PIPE-FCU"
+      ],
+      "parameters": [
+        {
+          "key": "coolingCop",
+          "type": "real",
+          "defaultValue": 3.8,
+          "unit": "W/W",
+          "description": "Chilled-water plant effective COP"
+        },
+        {
+          "key": "heatingEff",
+          "type": "real",
+          "defaultValue": 0.88,
+          "unit": "1",
+          "description": "Hot-water boiler thermal efficiency"
+        },
+        {
+          "key": "fanPowerRatio",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "W/W",
+          "description": "Low-static local fan coil power ratio"
+        },
+        {
+          "key": "minPartLoad",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Minimum hydronic valve modulation"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "PTAC",
+    "kind": "component",
+    "namePath": "DOE2.PTAC",
+    "exports": [
+      "coolingCop",
+      "heatingEff",
+      "fanPowerRatio",
+      "minPartLoad"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Packaged Terminal Air Conditioner (PTAC)",
+      "category": "HVAC System",
+      "domain": "building-energy",
+      "description": "DOE-2 PTAC through-the-wall packaged terminal DX cooling and electric/hydronic heating unit.",
+      "provenance": "LBNL DOE-2.1E Reference Manual — SYSTEMS PTAC / ASHRAE 90.1 System 1",
+      "aliases": [
+        "PACKAGED-TERMINAL-AC"
+      ],
+      "parameters": [
+        {
+          "key": "coolingCop",
+          "type": "real",
+          "defaultValue": 2.9,
+          "unit": "W/W",
+          "description": "Rated PTAC cooling COP"
+        },
+        {
+          "key": "heatingEff",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "1",
+          "description": "Heating efficiency (electric or hydronic)"
+        },
+        {
+          "key": "fanPowerRatio",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "W/W",
+          "description": "Unit supply fan power ratio"
+        },
+        {
+          "key": "minPartLoad",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Minimum cycling part-load ratio"
+        }
+      ],
+      "wasmKernel": "doe2ModelEval",
+      "archetypeId": 34
+    }
+  }
+]

@@ -1,0 +1,63 @@
+Model {
+  Name "FirstOrderLag"
+  System {
+    Name "FirstOrderLag"
+    Block {
+      BlockType Constant
+      Name "StepRef"
+      SID "1"
+      Value 1.0
+    }
+    Block {
+      BlockType Sum
+      Name "ErrorSum"
+      SID "2"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Gain
+      Name "InvTau"
+      SID "3"
+      Gain 2.0
+    }
+    Block {
+      BlockType Integrator
+      Name "LagState"
+      SID "4"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Scope
+      Name "OutputScope"
+      SID "5"
+    }
+    Line {
+      SrcBlock "StepRef"
+      SrcPort 1
+      DstBlock "ErrorSum"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "ErrorSum"
+      SrcPort 1
+      DstBlock "InvTau"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "InvTau"
+      SrcPort 1
+      DstBlock "LagState"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "LagState"
+      SrcPort 1
+      DstBlock "OutputScope"
+      DstPort 1
+      Branch {
+        DstBlock "ErrorSum"
+        DstPort 2
+      }
+    }
+  }
+}

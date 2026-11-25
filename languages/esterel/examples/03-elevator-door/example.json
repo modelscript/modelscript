@@ -1,0 +1,11 @@
+{
+  "id": "esterel-03-elevator-door",
+  "lang": "esterel",
+  "subFormats": ["strl"],
+  "difficulty": 3,
+  "title": "Elevator Door Obstruction and Timeout Controller",
+  "description": "Reactive elevator cabin door controller handling open requests, dwell timer expiration, optical light-curtain obstruction reversal via trap/exit, and motor commands.",
+  "category": "Building Automation & Safety",
+  "tags": ["esterel", "elevator", "trap", "obstruction", "safety"],
+  "activeFile": "elevator_door.strl"
+}

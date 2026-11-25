@@ -1,0 +1,11 @@
+{
+  "id": "hdf4-03-vdata-atmospheric-sounding",
+  "lang": "hdf4",
+  "subFormats": ["ddl"],
+  "difficulty": 3,
+  "title": "Vdata Tabular Atmospheric Sounding Record",
+  "description": "HDF4 archive combining a structured multi-field Vdata vertical atmospheric sounding table with a companion temperature profile SDS.",
+  "category": "Atmospheric Science",
+  "tags": ["hdf4", "vdata", "sounding", "tabular"],
+  "activeFile": "airs_sounding.hdf"
+}

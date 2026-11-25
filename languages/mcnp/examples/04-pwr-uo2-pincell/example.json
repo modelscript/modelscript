@@ -1,0 +1,11 @@
+{
+  "id": "mcnp-04-pwr-uo2-pincell",
+  "lang": "mcnp",
+  "subFormats": ["mcnp6", "criticality", "lattice"],
+  "difficulty": 4,
+  "title": "PWR UO2 Fuel Pin Cell Criticality Benchmark",
+  "description": "Infinite-lattice 17x17 PWR 4.2% enriched UO2 fuel pin cell with helium gap, Zircaloy-4 cladding, light-water moderator, and reflective boundaries.",
+  "category": "Nuclear Reactor Physics",
+  "tags": ["mcnp", "pwr", "pincell", "kcode", "reflective"],
+  "activeFile": "pwr_pincell.mcnp"
+}

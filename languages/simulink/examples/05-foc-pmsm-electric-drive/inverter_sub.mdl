@@ -1,0 +1,47 @@
+Model {
+  Name "InverterSubsystem"
+  System {
+    Name "InverterSubsystem"
+    Block {
+      BlockType Constant
+      Name "VdcBus"
+      SID "1"
+      Value 400.0
+    }
+    Block {
+      BlockType Gain
+      Name "SvpwmModulation"
+      SID "2"
+      Gain 0.57735
+    }
+    Block {
+      BlockType Integrator
+      Name "FilterState"
+      SID "3"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Scope
+      Name "VoutScope"
+      SID "4"
+    }
+    Line {
+      SrcBlock "VdcBus"
+      SrcPort 1
+      DstBlock "SvpwmModulation"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "SvpwmModulation"
+      SrcPort 1
+      DstBlock "FilterState"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "FilterState"
+      SrcPort 1
+      DstBlock "VoutScope"
+      DstPort 1
+    }
+  }
+}

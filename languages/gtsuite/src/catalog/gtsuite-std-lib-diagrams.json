@@ -1,0 +1,749 @@
+[
+  {
+    "namePath": "gtsuite:PipeRound",
+    "aliases": [
+      "PipeRoundConn",
+      "pipe_round",
+      "pipe"
+    ],
+    "label": "1D Round Gas-Dynamic Pipe",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PipeRound</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:PipeBend",
+    "aliases": [
+      "PipeRoundBend",
+      "pipe_bend"
+    ],
+    "label": "1D Curved Pipe Bend",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">PipeBend</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:FlowSplitGeneral",
+    "aliases": [
+      "FlowSplit",
+      "plenum",
+      "flow_split"
+    ],
+    "label": "0D Flow Split / Plenum Volume",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">FlowSplitGe</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:OrificeConn",
+    "aliases": [
+      "Orifice",
+      "orifice_conn",
+      "orifice"
+    ],
+    "label": "Isentropic Compressible Orifice",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">OrificeConn</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:ValveCamConn",
+    "aliases": [
+      "ValveCam",
+      "valve_cam",
+      "valve"
+    ],
+    "label": "Cam-Driven Poppet Valve",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">ValveCamCon</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:ThrottleConn",
+    "aliases": [
+      "Throttle",
+      "throttle_conn",
+      "butterfly_valve"
+    ],
+    "label": "Butterfly Throttle Valve",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">ThrottleCon</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:EndEnvironment",
+    "aliases": [
+      "Environment",
+      "end_environment",
+      "ambient"
+    ],
+    "label": "Ambient Pressure/Temperature Boundary",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EndEnvironm</text></svg>",
+    "ports": [
+      {
+        "name": "port",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:CatalystBrick",
+    "aliases": [
+      "Catalyst",
+      "catalyst_brick",
+      "aftertreatment"
+    ],
+    "label": "Monolith Catalytic Converter Brick",
+    "category": "Flow & Gas Dynamics",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#17324d\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">FLW</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CatalystBri</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:EngCylinder",
+    "aliases": [
+      "Cylinder",
+      "eng_cylinder",
+      "cylinder"
+    ],
+    "label": "Internal Combustion Engine Cylinder",
+    "category": "Engine & Turbomachinery",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f1a\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">ENG</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EngCylinder</text></svg>",
+    "ports": [
+      {
+        "name": "intake",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "exhaust",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 14
+      },
+      {
+        "name": "crank",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      },
+      {
+        "name": "thermal",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:EngCylCombWiebe",
+    "aliases": [
+      "Wiebe",
+      "wiebe_combustion",
+      "EngCylCombSIWiebe"
+    ],
+    "label": "Wiebe Function Combustion Model",
+    "category": "Engine & Turbomachinery",
+    "domain": "thermal",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f1a\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">ENG</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EngCylCombW</text></svg>",
+    "ports": [
+      {
+        "name": "theta",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cylinder",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:EngCylHeatTrWoschni",
+    "aliases": [
+      "Woschni",
+      "woschni_ht",
+      "EngCylHeatTrWoschniGT"
+    ],
+    "label": "Woschni Cylinder Heat Transfer",
+    "category": "Engine & Turbomachinery",
+    "domain": "thermal",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f1a\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">ENG</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">EngCylHeatT</text></svg>",
+    "ports": [
+      {
+        "name": "theta",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "cylinder",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:Compressor",
+    "aliases": [
+      "TurboCompressor",
+      "turbo_compressor",
+      "compressor"
+    ],
+    "label": "Turbocharger Centrifugal Compressor",
+    "category": "Engine & Turbomachinery",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f1a\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">ENG</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Compressor</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "shaft",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:Turbine",
+    "aliases": [
+      "TurboTurbine",
+      "turbo_turbine",
+      "turbine"
+    ],
+    "label": "Turbocharger Radial Turbine",
+    "category": "Engine & Turbomachinery",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f1a\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">ENG</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Turbine</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "shaft",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:ShaftTurbo",
+    "aliases": [
+      "TurboShaft",
+      "shaft_turbo",
+      "shaft"
+    ],
+    "label": "Turbocharger Rotor Shaft",
+    "category": "Engine & Turbomachinery",
+    "domain": "mechanical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f1a\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">ENG</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">ShaftTurbo</text></svg>",
+    "ports": [
+      {
+        "name": "turbine",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "compressor",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:InjectorAFSeq",
+    "aliases": [
+      "Injector",
+      "injector_af_seq",
+      "injector"
+    ],
+    "label": "Sequential Air-Fuel Ratio Injector",
+    "category": "Engine & Turbomachinery",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f1a\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">ENG</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">InjectorAFS</text></svg>",
+    "ports": [
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "fuelOut",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:HeatExchanger",
+    "aliases": [
+      "Intercooler",
+      "Radiator",
+      "heat_exchanger",
+      "intercooler"
+    ],
+    "label": "Effectiveness-NTU Heat Exchanger",
+    "category": "Thermal & Electrification",
+    "domain": "thermal",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">HeatExchang</text></svg>",
+    "ports": [
+      {
+        "name": "hotIn",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "hotOut",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "coolant",
+        "kind": "thermal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 48
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:ThermalMass",
+    "aliases": [
+      "LumpedThermalMass",
+      "thermal_mass"
+    ],
+    "label": "1st-Order Lumped Thermal Mass",
+    "category": "Thermal & Electrification",
+    "domain": "thermal",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">ThermalMass</text></svg>",
+    "ports": [
+      {
+        "name": "qIn",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "temp",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:Battery",
+    "aliases": [
+      "BatteryThevenin",
+      "battery_pack",
+      "battery"
+    ],
+    "label": "Thévenin Equivalent-Circuit Battery",
+    "category": "Thermal & Electrification",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Battery</text></svg>",
+    "ports": [
+      {
+        "name": "dcBus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "thermal",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:ElectricMotor",
+    "aliases": [
+      "EMotor",
+      "TractionMotor",
+      "electric_motor"
+    ],
+    "label": "Traction Electric Motor / Generator",
+    "category": "Thermal & Electrification",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">ElectricMot</text></svg>",
+    "ports": [
+      {
+        "name": "acBus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "shaft",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "thermal",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:Inverter",
+    "aliases": [
+      "PowerInverter",
+      "DCACInverter",
+      "inverter"
+    ],
+    "label": "DC/AC Traction Power Inverter",
+    "category": "Thermal & Electrification",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">Inverter</text></svg>",
+    "ports": [
+      {
+        "name": "dcBus",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "thermal",
+        "kind": "thermal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:CoolantPump",
+    "aliases": [
+      "Pump",
+      "WaterPump",
+      "coolant_pump"
+    ],
+    "label": "Centrifugal Coolant Pump",
+    "category": "Thermal & Electrification",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">CoolantPump</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:FluidAir",
+    "aliases": [
+      "Air",
+      "fluid_air",
+      "IdealGasAir"
+    ],
+    "label": "Ideal-Gas Dry Air Property Object",
+    "category": "Thermal & Electrification",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">FluidAir</text></svg>",
+    "ports": [
+      {
+        "name": "props",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:FluidGasoline",
+    "aliases": [
+      "Gasoline",
+      "Indolene",
+      "fluid_gasoline"
+    ],
+    "label": "Gasoline / Iso-Octane Fuel Properties",
+    "category": "Thermal & Electrification",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">FluidGasoli</text></svg>",
+    "ports": [
+      {
+        "name": "props",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "gtsuite:FluidCoolant",
+    "aliases": [
+      "EGW5050",
+      "WaterGlycol",
+      "fluid_coolant"
+    ],
+    "label": "50/50 Ethylene Glycol-Water Coolant",
+    "category": "Thermal & Electrification",
+    "domain": "fluid",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">THM</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9\" font-weight=\"bold\" fill=\"#f8fafc\">FluidCoolan</text></svg>",
+    "ports": [
+      {
+        "name": "props",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  }
+]

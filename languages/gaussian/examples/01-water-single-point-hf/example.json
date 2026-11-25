@@ -1,0 +1,12 @@
+{
+  "id": "gaussian-01-water-single-point-hf",
+  "lang": "gaussian",
+  "subFormats": ["gjf"],
+  "difficulty": 1,
+  "title": "Water Single-Point Hartree-Fock Energy",
+  "description": "Closed-shell singlet Hartree-Fock single-point energy calculation of water (H2O) at the HF/STO-3G level using equilibrium Cartesian coordinates.",
+  "category": "Quantum Chemistry & Electronic Structure",
+  "tags": ["gaussian", "hartree-fock", "single-point", "water"],
+  "activeFile": "water_sp.gjf",
+  "isDefaultStarter": true
+}

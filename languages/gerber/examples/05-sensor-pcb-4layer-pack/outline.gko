@@ -1,0 +1,14 @@
+G04 4-Layer Mixed-Signal Sensor PCB — Board Outline (40 mm x 30 mm)*
+%TF.FileFunction,Profile,NP*%
+%FSLAX34Y34*%
+%MOMM*%
+%ADD10C,0.150*%
+%LPD*%
+G01*
+D10*
+X0Y0D02*
+X400000Y0D01*
+X400000Y300000D01*
+X0Y300000D01*
+X0Y0D01*
+M02*

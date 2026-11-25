@@ -1,0 +1,11 @@
+{
+  "id": "atp-02-capacitor-bank-switching",
+  "lang": "atp",
+  "subFormats": ["atp"],
+  "difficulty": 2,
+  "title": "500 kV Back-to-Back Capacitor Bank Switching",
+  "description": "High-frequency inrush current and transient overvoltage during 500 kV substation shunt capacitor bank energization with current-limiting reactor.",
+  "category": "Power Systems EMT",
+  "tags": ["atp", "capacitor-switching", "500kv", "inrush", "overvoltage"],
+  "activeFile": "cap_switch.atp"
+}

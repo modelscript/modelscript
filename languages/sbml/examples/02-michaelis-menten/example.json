@@ -1,0 +1,11 @@
+{
+  "id": "sbml-02-michaelis-menten",
+  "lang": "sbml",
+  "subFormats": ["sbml-l2v4"],
+  "difficulty": 2,
+  "title": "Michaelis-Menten Enzymatic Kinetics",
+  "description": "Two-step enzymatic catalysis (E + S <-> ES -> E + P) demonstrating enzyme-substrate complex formation, steady-state turnover, and product accumulation.",
+  "category": "Systems Biology",
+  "tags": ["sbml", "enzyme-kinetics", "michaelis-menten", "biochemistry"],
+  "activeFile": "michaelis_menten.sbml"
+}

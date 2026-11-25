@@ -352,6 +352,7 @@ import {
   validateRocets,
 } from "@modelscript/rocets";
 import { getRtdsDiagnostics, getRtdsDocumentSymbols, rtdsLanguage } from "@modelscript/rtds";
+import type { QueryEngine } from "@modelscript/runtime";
 import {
   getSbmlDocumentSymbols,
   getSbmlHover,
@@ -457,9 +458,34 @@ import {
   verilogALanguage,
 } from "@modelscript/verilog-a";
 import { getWaterMlDiagnostics, getWaterMlDocumentSymbols, watermlLanguage } from "@modelscript/waterml";
+import type {
+  CodeLens,
+  CompletionItem,
+  CompletionItemKind,
+  Diagnostic,
+  Disposable,
+  Hover,
+  Position,
+  Range,
+} from "vscode-languageserver";
 import type { ParserService } from "../services/parser-service.js";
 import type { WorkspaceManager } from "../services/workspace-manager.js";
-import { globalLanguageRegistry } from "./LanguageRegistry.js";
+import {
+  globalLanguageRegistry,
+  type LanguageDefLike,
+  type LanguagePlugin,
+  type PluginActionHandler,
+  type PluginCodeLensContext,
+  type PluginCustomHandlers,
+  type PluginDocumentLike,
+  type PluginDocumentSymbolLike,
+  type PluginFormatContext,
+  type PluginFormattingOptions,
+  type PluginProtocolHandler,
+  type WasmFacadeInstance,
+  type WasmParserInstance,
+  type WorkspaceIndexLike,
+} from "./LanguageRegistry.js";
 
 export interface BuiltinPluginsOptions {
   workspaceManager: WorkspaceManager;
@@ -475,7 +501,7 @@ export interface BuiltinPluginsOptions {
     | undefined;
 }
 
-type DocInput = string | { getText?: () => string } | null | undefined;
+type DocInput = PluginDocumentLike | null | undefined;
 type TreeWrapperInput = string | { text?: string; rootNode?: { text?: string }; uri?: string } | null | undefined;
 type CadHandlerContext =
   | { documentManager?: { documents?: { get?: (uri: string) => { getText?: () => string } | undefined } } }
@@ -483,8 +509,97 @@ type CadHandlerContext =
   | undefined;
 type CadHandlerParams = { documentText?: string; text?: string; uri?: string } | null | undefined;
 
+interface FullTextDocumentLike {
+  uri: string;
+  lineCount: number;
+  getText(): string;
+  offsetAt(position: Position): number;
+  positionAt(offset: number): Position;
+}
+
+type HoverLike = {
+  contents:
+    | string
+    | { kind: string; value: string }
+    | { language: string; value: string }
+    | Array<string | { language: string; value: string }>;
+  range?: Range | undefined;
+};
+
+type CompletionItemLike = {
+  label: string;
+  kind?: number | undefined;
+  detail?: string | undefined;
+  documentation?: string | { kind: "markdown" | "plaintext"; value: string } | undefined;
+  insertText?: string | undefined;
+  insertTextFormat?: number | undefined;
+  sortText?: string | undefined;
+  filterText?: string | undefined;
+};
+
+type CodeLensLike = {
+  range: Range;
+  command?: { title: string; command: string; arguments?: unknown[] | undefined } | undefined;
+  data?: unknown;
+};
+
 function docText(doc: DocInput): string {
   return typeof doc === "string" ? doc : typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
+}
+
+function docUri(doc: DocInput): string {
+  return typeof doc === "object" && doc !== null && typeof doc.uri === "string" ? doc.uri : "";
+}
+
+function docOffsetAt(doc: DocInput, position: Position): number {
+  return typeof doc === "object" && doc !== null && typeof doc.offsetAt === "function" ? doc.offsetAt(position) : 0;
+}
+
+function toHover(h: HoverLike | string | null | undefined): Hover | null {
+  if (!h) return null;
+  if (typeof h === "string") {
+    return { contents: { kind: "markdown", value: h } };
+  }
+  const contents =
+    typeof h.contents === "object" && !Array.isArray(h.contents) && "kind" in h.contents
+      ? {
+          kind: (h.contents.kind === "plaintext" ? "plaintext" : "markdown") as "plaintext" | "markdown",
+          value: h.contents.value,
+        }
+      : h.contents;
+  return h.range !== undefined ? { contents, range: h.range } : { contents };
+}
+
+function toCodeLenses(lenses: ReadonlyArray<CodeLensLike>): CodeLens[] {
+  return lenses.map((lens) => {
+    const out: CodeLens = { range: lens.range };
+    if (lens.command !== undefined) {
+      out.command =
+        lens.command.arguments !== undefined
+          ? { title: lens.command.title, command: lens.command.command, arguments: lens.command.arguments }
+          : { title: lens.command.title, command: lens.command.command };
+    }
+    if (lens.data !== undefined) out.data = lens.data;
+    return out;
+  });
+}
+
+function toCompletionItems(items: ReadonlyArray<CompletionItemLike>): CompletionItem[] {
+  return items.map((item) => {
+    const out: CompletionItem = { label: item.label };
+    if (item.kind !== undefined) out.kind = item.kind as CompletionItemKind;
+    if (item.detail !== undefined) out.detail = item.detail;
+    if (item.documentation !== undefined) out.documentation = item.documentation;
+    if (item.insertText !== undefined) out.insertText = item.insertText;
+    if (item.insertTextFormat !== undefined) out.insertTextFormat = item.insertTextFormat as 1 | 2;
+    if (item.sortText !== undefined) out.sortText = item.sortText;
+    if (item.filterText !== undefined) out.filterText = item.filterText;
+    return out;
+  });
+}
+
+function toFoldingKind(kind?: string): "comment" | "imports" | "region" | undefined {
+  return kind === "comment" || kind === "imports" || kind === "region" ? kind : undefined;
 }
 
 function treeText(treeWrapper: TreeWrapperInput, fallbackText?: string): string {
@@ -497,52 +612,55 @@ function offsetToPos(text: string, offset: number): { line: number; character: n
   return { line: lines.length - 1, character: lines[lines.length - 1]!.length };
 }
 
-async function simulateDaeHelper(dae: any, opts: { startTime: number; stopTime: number; step: number }) {
+async function simulateDaeHelper(dae: unknown, opts: { startTime: number; stopTime: number; step: number }) {
   const [{ initBltWasm }, { simulateArena }] = await Promise.all([
     import("@modelscript/runtime"),
     import("@modelscript/simulate"),
   ]);
   await initBltWasm();
-  return simulateArena(dae, opts);
+  return simulateArena(dae as Parameters<typeof simulateArena>[0], opts);
 }
 
 interface StandardPluginSpec {
   id: string;
   name: string;
   extensions: string[];
-  languageDef: any;
-  symbols?: (text: string) => any;
-  hoverPos?: (text: string, pos: { line: number; character: number }) => any;
-  hoverOffset?: (text: string, offset: number) => any;
-  validate?: (text: string) => any;
-  validateWithTree?: (text: string, cstTree?: any) => any;
-  customHandlers?: Record<string, any>;
-  actionHandlers?: Record<string, any>;
-  extractTheoryConstraints?: (text: string) => any;
-  workspaceIndex?: any;
-  handlers?: any;
-  disposables?: any[];
+  languageDef: unknown;
+  symbols?: (text: string) => unknown;
+  hoverPos?: (text: string, pos: { line: number; character: number }) => unknown;
+  hoverOffset?: (text: string, offset: number) => unknown;
+  validate?: (text: string) => unknown;
+  validateWithTree?: { bivarianceHack(text: string, cstTree?: unknown): unknown }["bivarianceHack"];
+  customHandlers?: PluginCustomHandlers;
+  actionHandlers?: Record<string, PluginActionHandler>;
+  extractTheoryConstraints?: LanguagePlugin["extractTheoryConstraints"];
+  workspaceIndex?: WorkspaceIndexLike;
+  handlers?: Record<string, PluginProtocolHandler>;
+  disposables?: Disposable[];
 }
 
 function registerStandardPlugin(spec: StandardPluginSpec): void {
-  const customHandlers: Record<string, any> = {};
+  const customHandlers: PluginCustomHandlers = {};
   if (spec.symbols) {
     const fn = spec.symbols;
-    customHandlers["symbols"] = (treeWrapper: TreeWrapperInput, text?: string) => fn(treeText(treeWrapper, text));
+    customHandlers.symbols = (treeWrapper: TreeWrapperInput, text?: string) =>
+      fn(treeText(treeWrapper, text)) as PluginDocumentSymbolLike[];
   }
   if (spec.hoverPos) {
     const fn = spec.hoverPos;
-    customHandlers["hover"] = (offset: number, text: string) => fn(text, offsetToPos(text, offset));
+    customHandlers.hover = (offset: number, text: string) =>
+      toHover(fn(text, offsetToPos(text, offset)) as HoverLike | null | undefined);
   } else if (spec.hoverOffset) {
     const fn = spec.hoverOffset;
-    customHandlers["hover"] = (offset: number, text: string) => fn(text, offset);
+    customHandlers.hover = (offset: number, text: string) => toHover(fn(text, offset) as HoverLike | null | undefined);
   }
   if (spec.validateWithTree) {
     const fn = spec.validateWithTree;
-    customHandlers["validate"] = (doc: any, cstTree?: any) => fn(docText(doc), cstTree);
+    customHandlers.validate = (doc: DocInput, cstTree?: unknown) =>
+      fn(docText(doc), cstTree) as Diagnostic[] | readonly unknown[];
   } else if (spec.validate) {
     const fn = spec.validate;
-    customHandlers["validate"] = (doc: any) => fn(docText(doc));
+    customHandlers.validate = (doc: DocInput) => fn(docText(doc)) as Diagnostic[] | readonly unknown[];
   }
   if (spec.customHandlers) {
     Object.assign(customHandlers, spec.customHandlers);
@@ -551,7 +669,7 @@ function registerStandardPlugin(spec: StandardPluginSpec): void {
     id: spec.id,
     name: spec.name,
     extensions: spec.extensions,
-    languageDef: spec.languageDef,
+    languageDef: spec.languageDef as LanguageDefLike | undefined,
     ...(spec.workspaceIndex !== undefined ? { workspaceIndex: spec.workspaceIndex } : {}),
     ...(spec.handlers !== undefined ? { handlers: spec.handlers } : {}),
     ...(spec.extractTheoryConstraints !== undefined ? { extractTheoryConstraints: spec.extractTheoryConstraints } : {}),
@@ -568,18 +686,26 @@ function registerStandardPlugin(spec: StandardPluginSpec): void {
 export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): void {
   const { workspaceManager, parserService, connection } = options;
 
-  function ensureWorkspaceIndex<T>(id: string, factory: () => T, langFallback?: any): T {
+  function ensureWorkspaceIndex<T>(
+    id: string,
+    factory: () => T,
+    langFallback?: Parameters<typeof workspaceManager.unifiedWorkspace.registerWorkspace>[2],
+  ): T {
     let ws = workspaceManager.getWorkspaceIndex(id);
     if (!ws) {
-      ws = factory();
+      ws = factory() as unknown as NonNullable<ReturnType<typeof workspaceManager.getWorkspaceIndex>>;
       workspaceManager.setWorkspaceIndex(id, ws);
     }
-    workspaceManager.unifiedWorkspace.registerWorkspace(id, ws, langFallback ?? { priority: 2 });
-    return ws as T;
+    workspaceManager.unifiedWorkspace.registerWorkspace(
+      id,
+      ws as Parameters<typeof workspaceManager.unifiedWorkspace.registerWorkspace>[1],
+      langFallback ?? { priority: 2 },
+    );
+    return ws as unknown as T;
   }
 
   function registerParserBackedPlugin(
-    plugin: any,
+    plugin: LanguagePlugin,
     opts?: { parserKey?: string; queryEngineKey?: string | false },
   ): void {
     const parserKey = opts?.parserKey ?? plugin.id;
@@ -590,7 +716,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         get() {
           return parserService?.getParser(parserKey);
         },
-        set(val: any) {
+        set(val: WasmParserInstance | null | undefined) {
           if (parserService && parserService.getParser(parserKey) !== val) {
             parserService.registerParser(parserKey, val);
           }
@@ -602,7 +728,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         get() {
           return parserService?.getFacade(parserKey);
         },
-        set(val: any) {
+        set(val: WasmFacadeInstance | null | undefined) {
           if (parserService && parserService.getFacade(parserKey) !== val) {
             parserService.registerParser(parserKey, parserService.getParser(parserKey), val);
           }
@@ -617,7 +743,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         get() {
           return workspaceManager.getQueryEngine(qeKey) ?? undefined;
         },
-        set(val: any) {
+        set(val: QueryEngine | null | undefined) {
           workspaceManager.setQueryEngine(qeKey, val ?? null);
         },
       };
@@ -632,7 +758,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   ensureWorkspaceIndex("sysml", () => workspaceManager.getWorkspaceIndex("sysml2"), sysml2LangFallback);
   ensureWorkspaceIndex("owl2", () => workspaceManager.getWorkspaceIndex("owl2"), owl2LangFallback);
 
-  const fullDocReplaceEdit = (doc: any, newText: string) => {
+  const fullDocReplaceEdit = (doc: FullTextDocumentLike, newText: string) => {
     const lastLine = doc.lineCount - 1;
     const lastChar = doc.getText().length - doc.offsetAt({ line: lastLine, character: 0 });
     return [{ range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } }, newText }];
@@ -644,16 +770,26 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       name: "Modelica",
       extensions: [".mo", ".mos", ".msim"],
       workspaceIndex: workspaceManager.getWorkspaceIndex("modelica"),
-      createQueryEngine: (idx: any, tree?: any) => createModelicaQueryEngine(idx, tree),
+      createQueryEngine: (
+        idx: Parameters<typeof createModelicaQueryEngine>[0],
+        tree?: Parameters<typeof createModelicaQueryEngine>[1],
+      ) => createModelicaQueryEngine(idx, tree),
       languageDef: modelicaLanguage,
       handlers: modelicaLanguage.lsp?.handlers,
       customHandlers: {
-        codeLens: (doc: any, ctx?: any) => getModelicaCodeLenses(doc, ctx),
-        format: (doc: any, _options?: any, ctx?: any) => {
+        codeLens: (doc, ctx) =>
+          getModelicaCodeLenses(
+            doc as Parameters<typeof getModelicaCodeLenses>[0],
+            ctx as Parameters<typeof getModelicaCodeLenses>[1],
+          ),
+        format: (doc: FullTextDocumentLike, _options?: PluginFormattingOptions, ctx?: PluginFormatContext) => {
           if (ctx?.isParserReady && !ctx.isParserReady()) return [];
           const tree = ctx?.getDocumentTree?.(doc.uri);
           if (!tree) return [];
-          return fullDocReplaceEdit(doc, formatModelicaTree(tree, doc.getText()));
+          return fullDocReplaceEdit(
+            doc,
+            formatModelicaTree(tree as Parameters<typeof formatModelicaTree>[0], doc.getText()),
+          );
         },
       },
       actionHandlers: modelicaActionHandlers,
@@ -668,12 +804,19 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         name: "SysML v2",
         extensions: [".sysml", ".sysml2", ".kerml"],
         workspaceIndex: workspaceManager.getWorkspaceIndex("sysml2"),
-        createQueryEngine: (idx: any, tree?: any) => createSysML2QueryEngine(idx, tree),
+        createQueryEngine: (
+          idx: Parameters<typeof createSysML2QueryEngine>[0],
+          tree?: Parameters<typeof createSysML2QueryEngine>[1],
+        ) => createSysML2QueryEngine(idx, tree),
         languageDef: sysml2LangFallback,
         customHandlers: {
-          codeLens: (doc: any, ctx?: any) =>
-            getSysml2CodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
-          format: (doc: any, options?: any) =>
+          codeLens: (doc: DocInput, ctx?: PluginCodeLensContext) =>
+            getSysml2CodeLenses(
+              ctx?.text ?? docText(doc),
+              ctx?.uri ?? docUri(doc),
+              ctx as Parameters<typeof getSysml2CodeLenses>[2],
+            ),
+          format: (doc: FullTextDocumentLike, options?: PluginFormattingOptions) =>
             fullDocReplaceEdit(
               doc,
               formatSysmlSource(doc.getText(), {
@@ -681,7 +824,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
                 insertSpaces: options?.insertSpaces,
               }),
             ),
-          rangeFormat: (doc: any, range: any, options?: any) =>
+          rangeFormat: (doc: FullTextDocumentLike, range: Range, options?: PluginFormattingOptions) =>
             fullDocReplaceEdit(
               doc,
               formatSysmlSource(doc.getText(), {
@@ -691,8 +834,12 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
                 endLine: range?.end?.line,
               }),
             ),
-          semanticTokens: (doc: any, tree?: any) =>
-            computeSysML2SemanticTokensData(docText(doc), tree, parserService?.getParser("sysml2")),
+          semanticTokens: (doc: DocInput, tree?: unknown) =>
+            computeSysML2SemanticTokensData(
+              docText(doc),
+              tree as Parameters<typeof computeSysML2SemanticTokensData>[1],
+              parserService?.getParser("sysml2") as Parameters<typeof computeSysML2SemanticTokensData>[2],
+            ),
         },
       },
       { parserKey: "sysml2", queryEngineKey: "sysml2" },
@@ -712,11 +859,17 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         references: (offset: number, text: string, uri?: string) =>
           getStepReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
         hover: (offset: number, text: string, uri?: string) => getStepHover(offset, text, uri),
-        signatureHelp: (doc: any, position: any) => getStepSignatureHelp(doc, position),
-        format: (doc: any) => formatStepDocument(doc),
-        codeLens: (doc: any, ctx?: any) =>
-          getStepCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
-        semanticTokens: (doc: any, tree?: any) => computeStepSemanticTokensData(docText(doc), tree),
+        signatureHelp: (doc: Parameters<typeof getStepSignatureHelp>[0], position: Position) =>
+          getStepSignatureHelp(doc, position),
+        format: (doc: Parameters<typeof formatStepDocument>[0]) => formatStepDocument(doc),
+        codeLens: (doc: DocInput, ctx?: PluginCodeLensContext) =>
+          getStepCodeLenses(
+            ctx?.text ?? docText(doc),
+            ctx?.uri ?? docUri(doc),
+            ctx as Parameters<typeof getStepCodeLenses>[2],
+          ),
+        semanticTokens: (doc: DocInput, tree?: unknown) =>
+          computeStepSemanticTokensData(docText(doc), tree as Parameters<typeof computeStepSemanticTokensData>[1]),
       },
     },
     { queryEngineKey: "step" },
@@ -730,12 +883,15 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       get workspaceIndex() {
         return workspaceManager.getWorkspaceIndex("owl2");
       },
-      createQueryEngine: (idx: any, tree?: any) => createOWL2QueryEngine(idx, tree),
+      createQueryEngine: (
+        idx: Parameters<typeof createOWL2QueryEngine>[0],
+        tree?: Parameters<typeof createOWL2QueryEngine>[1],
+      ) => createOWL2QueryEngine(idx, tree),
       languageDef: owl2LangFallback,
       customHandlers: {
-        codeLens: (_doc: any, ctx?: any) => ({
+        codeLens: (_doc: DocInput, ctx?: PluginCodeLensContext) => ({
           appendUniversal: true,
-          lenses: ctx?.flags?.showVerification
+          lenses: ctx?.flags?.["showVerification"]
             ? [
                 {
                   range: ctx.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
@@ -748,7 +904,12 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
               ]
             : [],
         }),
-        semanticTokens: (doc: any, tree?: any) => computeOwl2SemanticTokensData(docText(doc), tree, doc?.uri),
+        semanticTokens: (doc: DocInput, tree?: unknown) =>
+          computeOwl2SemanticTokensData(
+            docText(doc),
+            tree as Parameters<typeof computeOwl2SemanticTokensData>[1],
+            docUri(doc) || undefined,
+          ),
       },
     },
     { queryEngineKey: "owl2" },
@@ -760,9 +921,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".csv"],
     languageDef: csvLangFallback,
     customHandlers: {
-      codeLens: (_doc: any, ctx?: any) => ({
+      codeLens: (_doc: DocInput, ctx?: PluginCodeLensContext) => ({
         appendUniversal: true,
-        lenses: ctx?.flags?.showSimulate
+        lenses: ctx?.flags?.["showSimulate"]
           ? [
               {
                 range: ctx.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
@@ -775,7 +936,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
             ]
           : [],
       }),
-      validate: async (doc: any) => {
+      validate: async (doc: DocInput) => {
         const { lintCsv } = await import("@modelscript/csv/csv-parser");
         return lintCsv(docText(doc));
       },
@@ -805,7 +966,12 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         getScadDefinition(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getScadReferences(text, offset, uri ?? "", workspaceManager.unifiedWorkspace),
-      codeLens: (doc: any, ctx?: any) => getScadCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
+      codeLens: (doc: DocInput, ctx?: PluginCodeLensContext) =>
+        getScadCodeLenses(
+          ctx?.text ?? docText(doc),
+          ctx?.uri ?? docUri(doc),
+          ctx as Parameters<typeof getScadCodeLenses>[2],
+        ),
     },
   });
 
@@ -818,11 +984,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       languageDef: modelscriptLangFallback,
       handlers: modelscriptLangFallback.lsp?.handlers,
       customHandlers: {
-        codeLens: (_doc: any, ctx?: any) => {
+        codeLens: (_doc: DocInput, ctx?: PluginCodeLensContext) => {
           const range = ctx?.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
           const uri = ctx?.uri ?? "";
-          const out: any[] = [];
-          if (ctx?.flags?.showSimulate) {
+          const out: CodeLens[] = [];
+          if (ctx?.flags?.["showSimulate"]) {
             out.push({
               range,
               command: {
@@ -832,7 +998,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
               },
             });
           }
-          if (ctx?.flags?.showVerification) {
+          if (ctx?.flags?.["showVerification"]) {
             out.push({
               range,
               command: {
@@ -859,14 +1025,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     hoverPos: getCfdHover,
     validate: validateCfd,
     customHandlers: {
-      codeLens: (doc: any, ctx?: any) => {
-        const text = ctx?.text ?? (typeof doc?.getText === "function" ? doc.getText() : String(doc ?? ""));
-        const uri = ctx?.uri ?? doc?.uri ?? "";
-        return getCfdCodeLenses(text, uri, ctx);
+      codeLens: (doc: DocInput, ctx?: PluginCodeLensContext) => {
+        const text = ctx?.text ?? docText(doc);
+        const uri = ctx?.uri ?? docUri(doc);
+        return toCodeLenses(getCfdCodeLenses(text, uri, ctx as Parameters<typeof getCfdCodeLenses>[2]));
       },
-      semanticTokens: (doc: any, tree?: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
-        return computeCfdSemanticTokensData(text, tree, doc?.uri);
+      semanticTokens: (doc: DocInput, tree?: unknown) => {
+        const text = docText(doc);
+        return computeCfdSemanticTokensData(
+          text,
+          tree as Parameters<typeof computeCfdSemanticTokensData>[1],
+          docUri(doc) || undefined,
+        );
       },
     },
     actionHandlers: cfdActionHandlers,
@@ -880,14 +1050,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     hoverPos: getFeaHover,
     validate: validateFea,
     customHandlers: {
-      codeLens: (doc: any, ctx?: any) => {
-        const text = ctx?.text ?? (typeof doc?.getText === "function" ? doc.getText() : String(doc ?? ""));
-        const uri = ctx?.uri ?? doc?.uri ?? "";
-        return getFeaCodeLenses(text, uri, ctx);
+      codeLens: (doc: DocInput, ctx?: PluginCodeLensContext) => {
+        const text = ctx?.text ?? docText(doc);
+        const uri = ctx?.uri ?? docUri(doc);
+        return toCodeLenses(getFeaCodeLenses(text, uri, ctx as Parameters<typeof getFeaCodeLenses>[2]));
       },
-      semanticTokens: (doc: any, tree?: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
-        return computeFeaSemanticTokensData(text, tree, doc?.uri);
+      semanticTokens: (doc: DocInput, tree?: unknown) => {
+        const text = docText(doc);
+        return computeFeaSemanticTokensData(
+          text,
+          tree as Parameters<typeof computeFeaSemanticTokensData>[1],
+          docUri(doc) || undefined,
+        );
       },
     },
     actionHandlers: feaActionHandlers,
@@ -896,7 +1070,12 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
   // 3. PSCAD
   const collectPscadDocs = (): Array<{ uri: string; text: string }> => {
     const docs: Array<{ uri: string; text: string }> = [];
-    for (const d of (workspaceManager as any).documentManager?.documents?.all?.() ?? []) {
+    const wmDocs = (
+      workspaceManager as unknown as {
+        documentManager?: { documents?: { all?: () => Array<{ uri?: string; getText?: () => string }> } };
+      }
+    ).documentManager?.documents?.all?.();
+    for (const d of wmDocs ?? []) {
       if (typeof d?.uri === "string" && /\.(pscx|pslx|pswx|psmx)$/i.test(d.uri) && typeof d.getText === "function") {
         docs.push({ uri: d.uri, text: d.getText() });
       }
@@ -913,36 +1092,46 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const text = textArg ?? (typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? ""));
         return getPscadDocumentSymbols(text);
       },
-      folding: (_tree: any, textArg?: string) => getPscadFoldingRanges(textArg ?? ""),
+      folding: (_tree: unknown, textArg?: string) =>
+        getPscadFoldingRanges(textArg ?? "").map((r) => ({
+          startLine: r.startLine,
+          endLine: r.endLine,
+          kind: toFoldingKind(r.kind),
+        })),
       hover: (offset: number, text: string) => {
         const h = getPscadHover(text, offset);
         return h ? { contents: { kind: "markdown", value: h.contents } } : null;
       },
-      complete: (offset: number, text: string) => getPscadCompletions(text, offset),
+      complete: (offset: number, text: string) => toCompletionItems(getPscadCompletions(text, offset)),
       definition: (offset: number, text: string, uri?: string) =>
         getPscadDefinitionLocation(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
       references: (offset: number, text: string, uri?: string) =>
         getPscadReferences(text, offset, uri ?? "", collectPscadDocs(), workspaceManager.unifiedWorkspace),
-      inlayHints: (doc: any, range?: any) =>
+      inlayHints: (doc: DocInput, range?: Range) =>
         getPscadInlayHints(docText(doc), range).map((h) => ({
           position: { line: h.position.line, character: h.position.character },
           label: h.label,
           kind: h.kind === "parameter" ? 2 : 1,
           paddingLeft: h.paddingLeft ?? true,
         })),
-      rename: (doc: any, position: any, newName: string) => {
+      rename: (doc: DocInput, position: Position, newName: string) => {
         const text = docText(doc);
-        const offset = typeof doc?.offsetAt === "function" ? doc.offsetAt(position) : 0;
-        const changes = getPscadRenameEdits(text, offset, newName, doc?.uri ?? "", collectPscadDocs());
+        const offset = docOffsetAt(doc, position);
+        const changes = getPscadRenameEdits(text, offset, newName, docUri(doc), collectPscadDocs());
         return changes ? { changes } : null;
       },
-      codeActions: (doc: any) =>
-        getPscadQuickFixes(docText(doc), doc?.uri ?? "").map((fix) => ({
+      codeActions: (doc: DocInput) =>
+        getPscadQuickFixes(docText(doc), docUri(doc)).map((fix) => ({
           title: fix.title,
           kind: "quickfix",
           edit: fix.edit,
         })),
-      codeLens: (doc: any, ctx?: any) => getPscadCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
+      codeLens: (doc: DocInput, ctx?: PluginCodeLensContext) =>
+        getPscadCodeLenses(
+          ctx?.text ?? docText(doc),
+          ctx?.uri ?? docUri(doc),
+          ctx as Parameters<typeof getPscadCodeLenses>[2],
+        ),
     },
     actionHandlers: createPscadActionHandlers({
       buildDiagram: async (project, definitionName) => {
@@ -951,20 +1140,41 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
       },
       getEmtSolverRunner: async () => {
         try {
-          const simMod: any = await import("@modelscript/simulate" as string);
+          type EmtRunner = NonNullable<
+            Awaited<
+              ReturnType<
+                NonNullable<NonNullable<Parameters<typeof createPscadActionHandlers>[0]>["getEmtSolverRunner"]>
+              >
+            >
+          >;
+          const simMod = (await import("@modelscript/simulate" as string)) as {
+            EmtSolver?: new (
+              circuit: Parameters<EmtRunner>[0],
+              opts: {
+                timeStepSec: number;
+                durationSec: number;
+                threePhase: boolean;
+                steadyStateInit: boolean;
+                maxNonlinearIterations: number;
+              },
+            ) => { solve(): ReturnType<EmtRunner> };
+          };
           if (simMod?.EmtSolver) {
-            return (circuit: any, options: any) => {
-              const solver = new simMod.EmtSolver(circuit, {
-                timeStepSec: options.timeStepSec,
-                durationSec: options.durationSec,
-                threePhase: options.threePhase ?? true,
+            const EmtSolverCtor = simMod.EmtSolver;
+            return (circuit, emtOptions) => {
+              const solver = new EmtSolverCtor(circuit, {
+                timeStepSec: emtOptions.timeStepSec,
+                durationSec: emtOptions.durationSec,
+                threePhase: emtOptions.threePhase ?? true,
                 steadyStateInit: true,
                 maxNonlinearIterations: 6,
               });
               return solver.solve();
             };
           }
-        } catch {}
+        } catch {
+          // Optional @modelscript/simulate package not available in this environment.
+        }
         return undefined;
       },
     }),
@@ -1017,11 +1227,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         const line = lines.length - 1;
         const character = lines[lines.length - 1]!.length;
-        return getPsseHover(text, { line, character }, uri ?? "", workspaceManager.unifiedWorkspace);
+        return toHover(getPsseHover(text, { line, character }, uri ?? "", workspaceManager.unifiedWorkspace));
       },
-      validate: (doc: any, tree?: unknown) => {
+      validate: (doc: DocInput, tree?: unknown) => {
         const text = docText(doc);
-        const uri = typeof doc?.uri === "string" ? doc.uri : "model.raw";
+        const uri = docUri(doc) || "model.raw";
         return validatePsse(text, uri, tree);
       },
       definition: (offset: number, text: string, uri?: string) => {
@@ -1040,11 +1250,11 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         const lines = text.slice(0, offset).split("\n");
         const line = lines.length - 1;
         const character = lines[lines.length - 1]!.length;
-        return getPsseCompletions(text, { line, character }, uri ?? "");
+        return toCompletionItems(getPsseCompletions(text, { line, character }, uri ?? ""));
       },
-      inlayHints: (doc: any, range?: any) => {
+      inlayHints: (doc: DocInput, range?: Range) => {
         const text = docText(doc);
-        const uri = typeof doc?.uri === "string" ? doc.uri : "model.raw";
+        const uri = docUri(doc) || "model.raw";
         return getPsseInlayHints(text, uri)
           .filter((h) => !range || (h.position.line >= range.start.line && h.position.line <= range.end.line))
           .map((h) => ({
@@ -1055,29 +1265,29 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
             paddingRight: h.paddingRight ?? true,
           }));
       },
-      rename: (doc: any, position: any, newName: string) => {
+      rename: (doc: DocInput, position: Position, newName: string) => {
         const text = docText(doc);
         return getPsseRenameEdits(
           text,
           position,
           newName,
-          doc?.uri ?? "",
+          docUri(doc),
           workspaceManager.unifiedWorkspace as unknown as Parameters<typeof getPsseRenameEdits>[4],
         );
       },
-      codeActions: (doc: any, range: any, diagnostics: any[]) =>
+      codeActions: (doc: DocInput, range: Range, diagnostics: Diagnostic[]) =>
         getPsseCodeActions(
           docText(doc),
           range,
           diagnostics as unknown as Parameters<typeof getPsseCodeActions>[2],
-          doc?.uri ?? "",
+          docUri(doc),
         ).map((fix) => ({
           title: fix.title,
           kind: "quickfix",
           edit: fix.edit,
           ...(fix.isPreferred !== undefined ? { isPreferred: fix.isPreferred } : {}),
         })),
-      format: (doc: any) => {
+      format: (doc: FullTextDocumentLike) => {
         const formatted = formatPsseDocument(doc.getText(), doc.uri);
         const lastLine = doc.lineCount - 1;
         const lastChar = doc.getText().length - doc.offsetAt({ line: lastLine, character: 0 });
@@ -1091,9 +1301,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
           },
         ];
       },
-      codeLens: (_doc: any, ctx?: any) => ({
+      codeLens: (_doc: DocInput, ctx?: PluginCodeLensContext) => ({
         appendUniversal: true,
-        lenses: ctx?.flags?.showSimulate
+        lenses: ctx?.flags?.["showSimulate"]
           ? [
               {
                 range: ctx.headerRange ?? { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
@@ -1146,7 +1356,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     validate: validateAmpl,
     actionHandlers: amplActionHandlers,
     customHandlers: {
-      semanticTokens: (doc: any) => getAmplSemanticTokens(docText(doc)),
+      semanticTokens: (doc: DocInput) => getAmplSemanticTokens(docText(doc)),
     },
   });
 
@@ -1200,9 +1410,14 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     hoverPos: getOlgaHover,
     validate: validateOlga,
     customHandlers: {
-      codeLens: (doc: any, ctx?: any) => getOlgaCodeLenses(ctx?.text ?? docText(doc), ctx?.uri ?? doc?.uri ?? "", ctx),
-      codeActions: (doc: any) =>
-        getOlgaQuickFixes(docText(doc), doc?.uri ?? "").map((fix) => ({
+      codeLens: (doc: DocInput, ctx?: PluginCodeLensContext) =>
+        getOlgaCodeLenses(
+          ctx?.text ?? docText(doc),
+          ctx?.uri ?? docUri(doc),
+          ctx as Parameters<typeof getOlgaCodeLenses>[2],
+        ),
+      codeActions: (doc: DocInput) =>
+        getOlgaQuickFixes(docText(doc), docUri(doc)).map((fix) => ({
           title: fix.title,
           kind: "quickfix",
           edit: fix.edit,
@@ -1284,7 +1499,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
             lastLineStart = i + 1;
           }
         }
-        return getReqifHover(text, line, offset - lastLineStart);
+        return toHover(getReqifHover(text, line, offset - lastLineStart));
       },
       definition: (offset: number, text: string, uri?: string) =>
         getReqifDefinition(text, offset, uri ?? "file:///requirements.reqif", workspaceManager.unifiedWorkspace),
@@ -1303,7 +1518,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getMagicDrawDocumentSymbols,
     validate: (text: string) => getMagicDrawDiagnostics(text),
     customHandlers: {
-      hover: (offset: number, text: string) => getMagicDrawHover(text, offset),
+      hover: (offset: number, text: string) => toHover(getMagicDrawHover(text, offset)),
     },
     actionHandlers: magicDrawActionHandlers,
   });
@@ -1327,7 +1542,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
             lastLineStart = i + 1;
           }
         }
-        return getSpiceHover(text, line, offset - lastLineStart);
+        return toHover(getSpiceHover(text, line, offset - lastLineStart));
       },
     },
     actionHandlers: spiceActionHandlers,
@@ -1557,10 +1772,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     customHandlers: {
       hover: (offset: number, text: string) => {
         const lines = text.slice(0, offset).split("\n");
-        return getSimulinkHover(
-          text,
-          { line: lines.length - 1, character: lines[lines.length - 1]!.length },
-          "model.mdl",
+        return toHover(
+          getSimulinkHover(text, { line: lines.length - 1, character: lines[lines.length - 1]!.length }, "model.mdl"),
         );
       },
     },
@@ -1586,17 +1799,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".f", ".for", ".f77", ".f90", ".f95", ".f03", ".f08"],
     languageDef: fortranLanguage,
     customHandlers: {
-      validate: async (doc: any) => {
+      validate: async (doc: DocInput) => {
         const text = docText(doc);
         const { validateFortran } = await import("@modelscript/fortran");
         return validateFortran(text);
       },
       symbols: (treeWrapper: TreeWrapperInput) => getFortranDocumentSymbols(treeText(treeWrapper)),
-      hover: (offset: number, text: string) => getFortranHover(text, offsetToPos(text, offset)),
-      complete: (offset: number, text: string) => getFortranCompletions(text, offsetToPos(text, offset)),
-      semanticTokens: (doc: any, tree?: any) => {
-        const text = typeof doc?.getText === "function" ? doc.getText() : String(doc ?? "");
-        return computeFortranSemanticTokensData(text, tree);
+      hover: (offset: number, text: string) => toHover(getFortranHover(text, offsetToPos(text, offset))),
+      complete: (offset: number, text: string) =>
+        toCompletionItems(getFortranCompletions(text, offsetToPos(text, offset))),
+      semanticTokens: (doc: DocInput, tree?: unknown) => {
+        const text = docText(doc);
+        return computeFortranSemanticTokensData(text, tree as Parameters<typeof computeFortranSemanticTokensData>[1]);
       },
     },
     actionHandlers: fortranActionHandlers,
@@ -1610,14 +1824,14 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".c", ".h"],
     languageDef: cLanguage,
     customHandlers: {
-      validate: async (doc: any) => {
+      validate: async (doc: DocInput) => {
         const text = docText(doc);
         const { lintC } = await import("@modelscript/c");
         return lintC(text);
       },
       symbols: (treeWrapper: TreeWrapperInput) => getCDocumentSymbols(treeText(treeWrapper)),
-      hover: (offset: number, text: string) => getCHover(text, offsetToPos(text, offset)),
-      complete: (offset: number, text: string) => getCCompletions(text, offsetToPos(text, offset)),
+      hover: (offset: number, text: string) => toHover(getCHover(text, offsetToPos(text, offset))),
+      complete: (offset: number, text: string) => toCompletionItems(getCCompletions(text, offsetToPos(text, offset))),
     },
     actionHandlers: cActionHandlers,
     disposables: [],
@@ -1654,9 +1868,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".ssd", ".ssv", ".ssm", ".ssp"],
     languageDef: sspLanguage,
     customHandlers: {
-      validate: async (doc: any) => {
+      validate: async (doc: DocInput) => {
         const text = docText(doc);
-        const uri = typeof doc?.uri === "string" ? doc.uri : "";
+        const uri = docUri(doc);
         const { lintSsd, lintSsv } = await import("@modelscript/ssp");
         const isSsv = uri.endsWith(".ssv") || text.includes("<ssv:ParameterSet");
         return isSsv ? lintSsv(text) : lintSsd(text);
@@ -1674,7 +1888,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getHecRasDocumentSymbols,
     hoverPos: getHecRasHover,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         return validateHecRas(text);
       },
@@ -1690,7 +1904,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getOcppDocumentSymbols,
     hoverPos: getOcppHover,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         return validateOcpp(text);
       },
@@ -1706,7 +1920,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getOpenAdrDocumentSymbols,
     hoverPos: getOpenAdrHover,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         return validateOpenAdr(text);
       },
@@ -1722,7 +1936,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getToughDocumentSymbols,
     hoverPos: getToughHover,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         return validateTough(text);
       },
@@ -1738,8 +1952,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getTwentySimDocumentSymbols,
     customHandlers: {
       validate: (doc: Parameters<typeof docText>[0]) => validateTwentySim(docText(doc)),
-      hover: (offset: number, text: string) => getTwentySimHover(text, offset),
-      complete: () => getTwentySimCompletions(),
+      hover: (offset: number, text: string) => toHover(getTwentySimHover(text, offset)),
+      complete: () => toCompletionItems(getTwentySimCompletions()),
     },
   });
 
@@ -1752,7 +1966,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getModflowDocumentSymbols,
     hoverPos: getModflowHover,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         return validateModflow(text);
       },
@@ -1768,7 +1982,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getLandgemDocumentSymbols,
     hoverPos: getLandgemHover,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         return validateLandgem(text);
       },
@@ -1784,7 +1998,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getGtfsDocumentSymbols,
     hoverPos: getGtfsHover,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         return validateGtfs(text);
       },
@@ -1869,14 +2083,15 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".cgmes", ".cim", ".rdf"],
     languageDef: cgmesLanguage,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         const model = parseCgmesRdf(text);
         return lintCgmesModel(model);
       },
       symbols: (treeWrapper: TreeWrapperInput) => getCgmesDocumentSymbols(treeText(treeWrapper)),
-      hover: (offset: number, text: string) => getCgmesHover(text, offsetToPos(text, offset)),
-      complete: (offset: number, text: string) => getCgmesCompletions(text, offsetToPos(text, offset)),
+      hover: (offset: number, text: string) => toHover(getCgmesHover(text, offsetToPos(text, offset))),
+      complete: (offset: number, text: string) =>
+        toCompletionItems(getCgmesCompletions(text, offsetToPos(text, offset))),
     },
     disposables: [],
   });
@@ -1910,7 +2125,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".fiber.geojson", ".osp.json"],
     languageDef: fiberLanguage,
     customHandlers: {
-      validate: async (doc: any) => {
+      validate: async (doc: DocInput) => {
         const text = docText(doc);
         const { parseFiberGis, lintFiberNetwork } = await import("@modelscript/fiber");
         try {
@@ -1930,14 +2145,15 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
               message: d.message,
             };
           });
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const errMessage = err instanceof Error ? err.message : undefined;
           return [
             {
               range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } },
               severity: 1,
               code: "FIBER1000",
               source: "modelscript-fiber",
-              message: err?.message ? String(err.message) : "Invalid Fiber GeoJSON/OSP document.",
+              message: errMessage ? String(errMessage) : "Invalid Fiber GeoJSON/OSP document.",
             },
           ];
         }
@@ -1955,7 +2171,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getGenbankDocumentSymbols,
     validate: validateGenbank,
     customHandlers: {
-      hover: (offset: number, text: string) => getGenbankHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getGenbankHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -1968,7 +2184,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getGpromsDocumentSymbols,
     validate: validateGproms,
     customHandlers: {
-      hover: (offset: number, text: string) => getGpromsHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getGpromsHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2003,7 +2219,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getNmtranDocumentSymbols,
     validate: validateNmtran,
     customHandlers: {
-      hover: (offset: number, text: string) => getNmtranHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getNmtranHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2025,7 +2241,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".sor", ".openroadm.json"],
     languageDef: opticalLanguage,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         if (text.trim().startsWith("{")) {
           return lintOpticalTopology(parseOpenRoadmTopology(text));
@@ -2056,7 +2272,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getPdbDocumentSymbols,
     validate: validatePdb,
     customHandlers: {
-      hover: (offset: number, text: string) => getPdbHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getPdbHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2069,7 +2285,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getPhreeqcDocumentSymbols,
     validate: validatePhreeqc,
     customHandlers: {
-      hover: (offset: number, text: string) => getPhreeqcHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getPhreeqcHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2080,7 +2296,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".pfd", ".dz", ".dsl"],
     languageDef: powerFactoryLanguage,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         if (text.trim().startsWith("<")) {
           return lintPowerFactoryModel(parsePowerFactoryXml(text));
@@ -2088,8 +2304,9 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
         return [];
       },
       symbols: (treeWrapper: TreeWrapperInput) => getPowerFactoryDocumentSymbols(treeText(treeWrapper)),
-      hover: (offset: number, text: string) => getPowerFactoryHover(text, offsetToPos(text, offset)),
-      complete: (offset: number, text: string) => getPowerFactoryCompletions(text, offsetToPos(text, offset)),
+      hover: (offset: number, text: string) => toHover(getPowerFactoryHover(text, offsetToPos(text, offset))),
+      complete: (offset: number, text: string) =>
+        toCompletionItems(getPowerFactoryCompletions(text, offsetToPos(text, offset))),
     },
     disposables: [],
   });
@@ -2101,17 +2318,18 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".epc", ".dyd"],
     languageDef: pslfLanguage,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
-        const uri = typeof doc?.uri === "string" ? doc.uri : "";
+        const uri = docUri(doc);
         if (uri.toLowerCase().endsWith(".dyd") || text.includes("models")) {
           return lintPslfDyd(parsePslfDyd(text));
         }
         return lintPslfEpc(parsePslfEpc(text));
       },
       symbols: (treeWrapper: TreeWrapperInput) => getPslfDocumentSymbols(treeText(treeWrapper)),
-      hover: (offset: number, text: string) => getPslfHover(text, offsetToPos(text, offset)),
-      complete: (offset: number, text: string) => getPslfCompletions(text, offsetToPos(text, offset)),
+      hover: (offset: number, text: string) => toHover(getPslfHover(text, offsetToPos(text, offset))),
+      complete: (offset: number, text: string) =>
+        toCompletionItems(getPslfCompletions(text, offsetToPos(text, offset))),
     },
     disposables: [],
   });
@@ -2140,7 +2358,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     extensions: [".adf", ".nsma", ".msi", ".planet"],
     languageDef: ranLanguage,
     customHandlers: {
-      validate: (doc: any) => {
+      validate: (doc: DocInput) => {
         const text = docText(doc);
         const isNsma = text.includes("REVNUM:") || text.includes("MANUF:") || text.includes("NOFREQ:");
         const deck = isNsma ? parseNsmaAdf(text) : parsePlanetPat(text);
@@ -2159,7 +2377,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getSbolDocumentSymbols,
     validateWithTree: validateSbol,
     customHandlers: {
-      hover: (offset: number, text: string) => getSbolHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getSbolHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2172,7 +2390,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getSedmlDocumentSymbols,
     validateWithTree: validateSedml,
     customHandlers: {
-      hover: (offset: number, text: string) => getSedmlHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getSedmlHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2185,7 +2403,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getSmilesDocumentSymbols,
     validate: validateSmiles,
     customHandlers: {
-      hover: (offset: number, text: string) => getSmilesHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getSmilesHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2231,8 +2449,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     customHandlers: {
       symbols: (treeWrapper: TreeWrapperInput) =>
         usdLspService.getDocumentSymbols(typeof treeWrapper === "string" ? treeWrapper : (treeWrapper?.text ?? "")),
-      hover: (offset: number, text: string) => usdLspService.getHover(text, offsetToPosition(text, offset)),
-      validate: (doc: any) => usdLspService.validate(docText(doc)),
+      hover: (offset: number, text: string) => toHover(usdLspService.getHover(text, offsetToPosition(text, offset))),
+      validate: (doc: DocInput) => usdLspService.validate(docText(doc)),
     },
     handlers: {
       "modelscript/getCadComponents": (context: CadHandlerContext, params: CadHandlerParams) => {
@@ -2406,7 +2624,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     customHandlers: {
       hover: (offset: number, text: string) => {
         const lines = text.slice(0, offset).split("\n");
-        return getGridlabdHover(text, lines.length - 1);
+        return toHover(getGridlabdHover(text, lines.length - 1));
       },
     },
   });
@@ -2490,7 +2708,7 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     symbols: getMlxtranDocumentSymbols,
     validate: validateMlxtran,
     customHandlers: {
-      hover: (offset: number, text: string) => getMlxtranHover(text, offsetToPosition(text, offset)),
+      hover: (offset: number, text: string) => toHover(getMlxtranHover(text, offsetToPosition(text, offset))),
     },
   });
 
@@ -2504,7 +2722,8 @@ export function registerBuiltinLanguagePlugins(options: BuiltinPluginsOptions): 
     hoverPos: getNmodlHover,
     validate: validateNmodl,
     customHandlers: {
-      complete: (offset: number, text: string) => provideNmodlCompletions(text, offsetToPos(text, offset)),
+      complete: (offset: number, text: string) =>
+        toCompletionItems(provideNmodlCompletions(text, offsetToPos(text, offset))),
     },
   });
 

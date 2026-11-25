@@ -1,0 +1,11 @@
+{
+  "id": "edif-02-nand-half-adder",
+  "lang": "edif",
+  "subFormats": ["edf"],
+  "difficulty": 2,
+  "title": "2-Input NAND and Half-Adder Hierarchical Netlist",
+  "description": "Two-level hierarchical EDIF 2.0.0 netlist constructing a binary half-adder from 2-input XOR and AND gates built over a standard cell library.",
+  "category": "Combinational Netlists",
+  "tags": ["edif", "half-adder", "nand", "hierarchical"],
+  "activeFile": "half_adder.edf"
+}

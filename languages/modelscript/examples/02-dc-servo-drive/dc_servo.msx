@@ -1,0 +1,38 @@
+struct MotorParams {
+  resistance: f64;
+  inductance: f64;
+  kt: f64;
+  ke: f64;
+  inertia: f64;
+  damping: f64;
+  vMax: f64;
+}
+
+function clampVoltage(v: f64, limit: f64): f64 {
+  if (v > limit) {
+    return limit;
+  }
+  if (v < -limit) {
+    return -limit;
+  }
+  return v;
+}
+
+function simulateServoSpeed(p: MotorParams, targetOmega: f64, kp: f64, ki: f64, dt: f64, steps: i32): f64 {
+  let omega: f64 = 0.0;
+  let current: f64 = 0.0;
+  let integralErr: f64 = 0.0;
+  let k: i32 = 0;
+
+  while (k < steps) {
+    let err: f64 = targetOmega - omega;
+    integralErr = integralErr + err * dt;
+    let vCmd: f64 = clampVoltage(kp * err + ki * integralErr, p.vMax);
+    let diDt: f64 = (vCmd - p.resistance * current - p.ke * omega) / p.inductance;
+    let dOmegaDt: f64 = (p.kt * current - p.damping * omega) / p.inertia;
+    current = current + diDt * dt;
+    omega = omega + dOmegaDt * dt;
+    k = k + 1;
+  }
+  return omega;
+}

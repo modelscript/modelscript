@@ -1,0 +1,9 @@
+-- Synchronous Safety Observer Contracts for Dual-Channel Flight Control Voter
+node FailSafeObserver(fault_latched: bool; cmd_out: real) returns (ok: bool);
+var
+  latched_forever: bool;
+let
+  latched_forever = true -> (if pre(fault_latched) then fault_latched else true);
+  ok = latched_forever and (if fault_latched then cmd_out = 0.0 else true);
+  assert ok;
+tel

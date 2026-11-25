@@ -103,7 +103,8 @@ const BookmarksPage: React.FC = () => {
         prev.filter(
           (post) =>
             String(post.id) !== String(detail.postId) &&
-            String((post as any).repost_post?.id) !== String(detail.postId),
+            String((post as PostItem & { repost_post?: { id?: number | string } }).repost_post?.id) !==
+              String(detail.postId),
         ),
       );
     };

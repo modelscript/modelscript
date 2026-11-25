@@ -1,0 +1,153 @@
+{
+  "network-name": "Northeast-LongHaul-Corridor",
+  "nodes": [
+    {
+      "node-id": "ROADM-NYC",
+      "name": "New York Core ROADM",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": true
+        }
+      ],
+      "latitude": 40.7128,
+      "longitude": -74.006
+    },
+    {
+      "node-id": "ILA-NEW-HAVEN",
+      "name": "New Haven ILA",
+      "node-type": "ila",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        }
+      ],
+      "latitude": 41.3083,
+      "longitude": -72.9279
+    },
+    {
+      "node-id": "ILA-PROVIDENCE",
+      "name": "Providence ILA",
+      "node-type": "ila",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        }
+      ],
+      "latitude": 41.824,
+      "longitude": -71.4128
+    },
+    {
+      "node-id": "ROADM-BOS",
+      "name": "Boston Core ROADM",
+      "node-type": "rdm",
+      "degrees": [
+        {
+          "degree-number": 1,
+          "max-wavelengths": 96
+        }
+      ],
+      "srgs": [
+        {
+          "srg-number": 1,
+          "max-add-drop": 96,
+          "colorless": true,
+          "directionless": true,
+          "contentionless": true
+        }
+      ],
+      "latitude": 42.3601,
+      "longitude": -71.0589
+    }
+  ],
+  "links": [
+    {
+      "link-id": "SPAN-NYC-NHV",
+      "source-node": "ROADM-NYC",
+      "dest-node": "ILA-NEW-HAVEN",
+      "length-km": 115,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.2,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-1",
+          "type": "edfa",
+          "gain-db": 23,
+          "noise-figure-db": 4.8,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-I95-S1"]
+    },
+    {
+      "link-id": "SPAN-NHV-PVD",
+      "source-node": "ILA-NEW-HAVEN",
+      "dest-node": "ILA-PROVIDENCE",
+      "length-km": 125,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.2,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-2",
+          "type": "edfa",
+          "gain-db": 25,
+          "noise-figure-db": 4.8,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-I95-S2"]
+    },
+    {
+      "link-id": "SPAN-PVD-BOS",
+      "source-node": "ILA-PROVIDENCE",
+      "dest-node": "ROADM-BOS",
+      "length-km": 85,
+      "fiber-type": "SSMF",
+      "loss-coef": 0.2,
+      "dispersion": 16.7,
+      "pmd": 0.04,
+      "gamma": 1.3,
+      "amplifiers": [
+        {
+          "id": "EDFA-3",
+          "type": "edfa",
+          "gain-db": 17,
+          "noise-figure-db": 5,
+          "max-power-dbm": 21
+        }
+      ],
+      "srlg": ["SRLG-I95-S3"]
+    }
+  ],
+  "channels": [
+    {
+      "service-name": "CH-200G-PM-QPSK",
+      "source-node": "ROADM-NYC",
+      "dest-node": "ROADM-BOS",
+      "frequency-thz": 193.1,
+      "baud-rate": 64,
+      "modulation": "PM-QPSK",
+      "launch-power-dbm": 1,
+      "required-osnr-db": 12.5,
+      "path": ["SPAN-NYC-NHV", "SPAN-NHV-PVD", "SPAN-PVD-BOS"]
+    }
+  ]
+}

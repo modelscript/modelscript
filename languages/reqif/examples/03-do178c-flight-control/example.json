@@ -1,0 +1,11 @@
+{
+  "id": "reqif-03-do178c-flight-control",
+  "lang": "reqif",
+  "subFormats": ["reqif"],
+  "difficulty": 3,
+  "title": "DO-178C Flight Control Software Spec with Hierarchy & Links",
+  "description": "DAL-A fly-by-wire flight control software specification organizing high-level and low-level requirements in a multi-level ReqIF hierarchy with traceability relations.",
+  "category": "Aerospace Software",
+  "tags": ["reqif", "do-178c", "flight-control", "avionics", "traceability"],
+  "activeFile": "flight_control.reqif"
+}

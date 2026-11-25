@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#" xml:base="http://modelscript.org/sbol/promoters#">
+  <sbol:Component displayId="prom_pLac" name="pLacO1 Promoter" role="SO:0000167"/>
+  <sbol:Component displayId="prom_pTet" name="pLtetO1 Promoter" role="SO:0000167"/>
+  <sbol:Component displayId="prom_pCI" name="pR Lambda Promoter" role="SO:0000167"/>
+</rdf:RDF>

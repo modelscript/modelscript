@@ -1,0 +1,12 @@
+{
+  "id": "edif-01-cmos-inverter",
+  "lang": "edif",
+  "subFormats": ["edf"],
+  "difficulty": 1,
+  "title": "CMOS Inverter Gate Netlist",
+  "description": "Minimal EDIF 2.0.0 structural netlist instantiating a CMOS inverter standard cell with explicit external primitive library, ports, and power/signal nets.",
+  "category": "Standard Cell Netlists",
+  "tags": ["edif", "cmos", "inverter", "netlist"],
+  "activeFile": "inverter.edf",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>BbwInterfaces</SHORT-NAME>
+      <ELEMENTS>
+        <SENDER-RECEIVER-INTERFACE>
+          <SHORT-NAME>PedalForceIf</SHORT-NAME>
+          <DATA-ELEMENTS>
+            <VARIABLE-DATA-PROTOTYPE>
+              <SHORT-NAME>PedalForceN</SHORT-NAME>
+            </VARIABLE-DATA-PROTOTYPE>
+          </DATA-ELEMENTS>
+        </SENDER-RECEIVER-INTERFACE>
+        <SENDER-RECEIVER-INTERFACE>
+          <SHORT-NAME>BrakeTorqueIf</SHORT-NAME>
+          <DATA-ELEMENTS>
+            <VARIABLE-DATA-PROTOTYPE>
+              <SHORT-NAME>TargetTorqueNm</SHORT-NAME>
+            </VARIABLE-DATA-PROTOTYPE>
+          </DATA-ELEMENTS>
+        </SENDER-RECEIVER-INTERFACE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

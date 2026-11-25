@@ -192,8 +192,8 @@ export const ParameterSliderRibbon: React.FC<ParameterSliderRibbonProps> = ({
 
   if (parameters.length === 0) return null;
 
-  const isPlaygroundRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/playground");
-  const effectiveHasFloatingDock = Boolean(hasFloatingDock && !isPlaygroundRoute);
+  const isAnsatzEditorRoute = typeof window !== "undefined" && window.location.pathname.startsWith("/editor");
+  const effectiveHasFloatingDock = Boolean(hasFloatingDock && !isAnsatzEditorRoute);
 
   return (
     <RibbonContainer

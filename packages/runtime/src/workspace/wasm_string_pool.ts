@@ -8,10 +8,41 @@
  * Data-Oriented Design (DoD) arenas.
  */
 
+import type { WasmRuntimeExports } from "../dae/wasm_loader.js";
+
 export type StringId = number;
 
 /** Sentinel value representing "no string" / null. */
 export const NULL_STRING_ID: StringId = 0;
+
+/**
+ * Typed WebAssembly exports surface consumed by `WasmStringPool`.
+ */
+export interface StringPoolWasmExports {
+  memory?: WebAssembly.Memory | undefined;
+  stringPool_create?: (() => number) | undefined;
+  stringPool_dispose?: ((ptr: number) => void) | undefined;
+  stringPool_internUtf8?: ((poolPtr: number, bufPtr: number, byteLen: number) => number) | undefined;
+  stringPool_getLength?: ((poolPtr: number, id: number) => number) | undefined;
+  stringPool_copyOut?: ((poolPtr: number, id: number, bufPtr: number) => void) | undefined;
+  stringPool_concatIds?: ((poolPtr: number, prefixId: number, nameId: number) => number) | undefined;
+  stringPool_getSize?: ((poolPtr: number) => number) | undefined;
+  dae_createBuilder?: ((...args: number[]) => number) | undefined;
+  atomicChunkAlloc?: ((size: number) => number) | undefined;
+  atomicChunkFree?: ((ptr: number) => void) | undefined;
+  arena_alloc?: ((size: number) => number) | undefined;
+  arena_free?: ((ptr: number) => void) | undefined;
+  alloc?: ((size: number) => number) | undefined;
+  free?: ((ptr: number) => void) | undefined;
+  dae_alloc?: ((size: number) => number) | undefined;
+  dae_free?: ((ptr: number) => void) | undefined;
+  __new?: ((size: number, id: number) => number) | undefined;
+  __pin?: ((ptr: number) => number) | undefined;
+  __unpin?: ((ptr: number) => void) | undefined;
+}
+
+export type StringPoolWasmExportsInput =
+  StringPoolWasmExports | WasmRuntimeExports | WebAssembly.Exports | null | undefined;
 
 export interface IStringInterner {
   intern(s: string): StringId;
@@ -43,7 +74,7 @@ export class WasmStringPool implements IStringInterner {
   public static readonly INPUT: StringId = 9;
   public static readonly OUTPUT: StringId = 10;
 
-  private wasmExports: any = null;
+  private wasmExports: StringPoolWasmExports | null = null;
   public poolPtr: number = 0;
   private ownsPool = false;
 
@@ -62,9 +93,10 @@ export class WasmStringPool implements IStringInterner {
   private scratchFreeFn: ((ptr: number) => void) | null = null;
   private _scratchView: Uint8Array | null = null;
 
-  constructor(wasmExports?: any, poolPtr?: number) {
-    if (wasmExports && (wasmExports.stringPool_internUtf8 || wasmExports.dae_createBuilder)) {
-      this.wasmExports = wasmExports;
+  constructor(wasmExports?: StringPoolWasmExportsInput, poolPtr?: number) {
+    const typedExports = (wasmExports as unknown as StringPoolWasmExports | null | undefined) ?? null;
+    if (typedExports && (typedExports.stringPool_internUtf8 || typedExports.dae_createBuilder)) {
+      this.wasmExports = typedExports;
       if (poolPtr && poolPtr !== 0) {
         this.poolPtr = poolPtr;
         this.ownsPool = false;
@@ -208,46 +240,58 @@ export class WasmStringPool implements IStringInterner {
   }
 
   private static _resolveAllocPair(
-    exports: any,
+    exports: StringPoolWasmExports | null | undefined,
   ): { alloc: (n: number) => number; free: ((ptr: number) => void) | null } | null {
     if (!exports) return null;
     if (typeof exports.atomicChunkAlloc === "function") {
+      const allocFn = exports.atomicChunkAlloc;
+      const freeFn = exports.atomicChunkFree;
       return {
-        alloc: (n: number) => exports.atomicChunkAlloc(n) >>> 0,
-        free: typeof exports.atomicChunkFree === "function" ? (p: number) => exports.atomicChunkFree(p) : null,
+        alloc: (n: number) => allocFn(n) >>> 0,
+        free: typeof freeFn === "function" ? (p: number) => freeFn(p) : null,
       };
     }
     if (typeof exports.arena_alloc === "function") {
+      const allocFn = exports.arena_alloc;
+      const arenaFree = exports.arena_free;
+      const chunkFree = exports.atomicChunkFree;
       return {
-        alloc: (n: number) => exports.arena_alloc(n) >>> 0,
+        alloc: (n: number) => allocFn(n) >>> 0,
         free:
-          typeof exports.arena_free === "function"
-            ? (p: number) => exports.arena_free(p)
-            : typeof exports.atomicChunkFree === "function"
-              ? (p: number) => exports.atomicChunkFree(p)
+          typeof arenaFree === "function"
+            ? (p: number) => arenaFree(p)
+            : typeof chunkFree === "function"
+              ? (p: number) => chunkFree(p)
               : null,
       };
     }
     if (typeof exports.alloc === "function") {
+      const allocFn = exports.alloc;
+      const freeFn = exports.free;
       return {
-        alloc: (n: number) => exports.alloc(n) >>> 0,
-        free: typeof exports.free === "function" ? (p: number) => exports.free(p) : null,
+        alloc: (n: number) => allocFn(n) >>> 0,
+        free: typeof freeFn === "function" ? (p: number) => freeFn(p) : null,
       };
     }
     if (typeof exports.dae_alloc === "function") {
+      const allocFn = exports.dae_alloc;
+      const freeFn = exports.dae_free;
       return {
-        alloc: (n: number) => exports.dae_alloc(n) >>> 0,
-        free: typeof exports.dae_free === "function" ? (p: number) => exports.dae_free(p) : null,
+        alloc: (n: number) => allocFn(n) >>> 0,
+        free: typeof freeFn === "function" ? (p: number) => freeFn(p) : null,
       };
     }
     if (typeof exports.__new === "function") {
+      const newFn = exports.__new;
+      const pinFn = exports.__pin;
+      const unpinFn = exports.__unpin;
       return {
         alloc: (n: number) => {
-          const p = exports.__new(n, 0) >>> 0;
-          if (p && typeof exports.__pin === "function") exports.__pin(p);
+          const p = newFn(n, 0) >>> 0;
+          if (p && typeof pinFn === "function") pinFn(p);
           return p;
         },
-        free: typeof exports.__unpin === "function" ? (p: number) => exports.__unpin(p) : null,
+        free: typeof unpinFn === "function" ? (p: number) => unpinFn(p) : null,
       };
     }
     return null;
@@ -279,7 +323,9 @@ export class WasmStringPool implements IStringInterner {
     if (this.scratchPtr && this.scratchFreeFn) {
       try {
         this.scratchFreeFn(this.scratchPtr);
-      } catch {}
+      } catch {
+        // Best-effort WASM scratch buffer release during disposal
+      }
     }
     this.scratchPtr = 0;
     this.scratchCapacity = 0;
@@ -288,7 +334,9 @@ export class WasmStringPool implements IStringInterner {
     if (this.ownsPool && this.poolPtr && typeof this.wasmExports?.stringPool_dispose === "function") {
       try {
         this.wasmExports.stringPool_dispose(this.poolPtr);
-      } catch {}
+      } catch {
+        // Best-effort WASM string pool disposal
+      }
       this.poolPtr = 0;
       this.ownsPool = false;
     }
@@ -466,8 +514,9 @@ export class WasmStringPool implements IStringInterner {
    * Synchronizes all interned strings into a target WebAssembly ArenaStringPool instance.
    * Ensures that string IDs in linear memory match the host-side StringInterner IDs.
    */
-  public syncToWasmPool(exports: any, targetPoolPtr: number): void {
-    if (!exports?.stringPool_internUtf8 || !targetPoolPtr || !exports.memory) return;
+  public syncToWasmPool(exports: StringPoolWasmExportsInput, targetPoolPtr: number): void {
+    const typedExports = (exports as unknown as StringPoolWasmExports | null | undefined) ?? null;
+    if (!typedExports?.stringPool_internUtf8 || !targetPoolPtr || !typedExports.memory) return;
     const synced = this.syncedCountByPool.get(targetPoolPtr) ?? 0;
     const startId = synced + 1;
 
@@ -478,12 +527,12 @@ export class WasmStringPool implements IStringInterner {
     }
     if (startId >= totalCount) return;
 
-    const pair = WasmStringPool._resolveAllocPair(exports);
+    const pair = WasmStringPool._resolveAllocPair(typedExports);
     if (!pair) return;
 
     let scratchCap = 1024;
     let scratchPtr = pair.alloc(scratchCap);
-    let scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
+    let scratchView = new Uint8Array(typedExports.memory.buffer, scratchPtr >>> 0, scratchCap);
 
     try {
       for (let id = startId; id < totalCount; id++) {
@@ -497,9 +546,9 @@ export class WasmStringPool implements IStringInterner {
           if (pair.free) pair.free(scratchPtr);
           scratchCap = Math.max(maxLen, scratchCap * 2);
           scratchPtr = pair.alloc(scratchCap);
-          scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
-        } else if (scratchView.buffer !== exports.memory.buffer) {
-          scratchView = new Uint8Array(exports.memory.buffer, scratchPtr >>> 0, scratchCap);
+          scratchView = new Uint8Array(typedExports.memory.buffer, scratchPtr >>> 0, scratchCap);
+        } else if (scratchView.buffer !== typedExports.memory.buffer) {
+          scratchView = new Uint8Array(typedExports.memory.buffer, scratchPtr >>> 0, scratchCap);
         }
         let written: number;
         if (this.utf8Encoder.encodeInto) {
@@ -509,7 +558,7 @@ export class WasmStringPool implements IStringInterner {
           written = encoded.length;
           scratchView.set(encoded, 0);
         }
-        exports.stringPool_internUtf8(targetPoolPtr, scratchPtr, written);
+        typedExports.stringPool_internUtf8(targetPoolPtr, scratchPtr, written);
       }
     } finally {
       if (pair.free && scratchPtr) pair.free(scratchPtr);

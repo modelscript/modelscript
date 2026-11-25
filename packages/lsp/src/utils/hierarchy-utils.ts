@@ -60,8 +60,66 @@ export const SYSML2_RULE_TO_KIND: Record<string, string> = {
 
 export const SYSML2_TREE_KINDS = new Set(["Definition", "Package", "Enumeration"]);
 
-export const fqnCacheState = {
-  index: null as any,
+type Owl2WorkspaceParam = Parameters<typeof getOntologyRootNodes>[0];
+type Owl2StoreParam = Parameters<typeof getOntologyRootNodes>[1];
+
+export interface HierarchySymbolEntryLike {
+  id?: number | string | undefined;
+  parentId?: number | null | undefined;
+  name: string;
+  kind?: string | undefined;
+  ruleName?: string | undefined;
+  language?: string | undefined;
+  resourceId?: string | undefined;
+  metadata?:
+    | {
+        classPrefixes?: string | undefined;
+        isPredefined?: boolean | undefined;
+        iconSvg?: string | undefined;
+        [key: string]: unknown;
+      }
+    | undefined;
+}
+
+export interface HierarchySymbolIndexLike {
+  symbols: ReadonlyMap<number, HierarchySymbolEntryLike>;
+  childrenOf: ReadonlyMap<number | null, readonly number[]>;
+}
+
+export interface HierarchyWorkspaceLike {
+  owl2Store?: Owl2StoreParam;
+  documents?: NonNullable<Owl2WorkspaceParam>["documents"];
+  workspaces?: NonNullable<Owl2WorkspaceParam>["workspaces"];
+  hasPendingChildren?(compositeName: string): boolean;
+}
+
+export interface ClassInstanceLike {
+  name?: string | undefined;
+  compositeName?: string | undefined;
+  classKind?: string | undefined;
+  kind?: string | undefined;
+  description?: string | null | undefined;
+  extendsClassInstances?: ReadonlyArray<{ classInstance?: ClassInstanceLike | null | undefined }> | undefined;
+  components?: ReadonlyArray<ComponentElementLike> | undefined;
+  elements?: ReadonlyArray<ComponentElementLike> | undefined;
+}
+
+export interface ComponentElementLike {
+  name?: string | undefined;
+  type?: string | undefined;
+  kind?: string | undefined;
+  isComponentInstance?: boolean | undefined;
+  variability?: string | null | undefined;
+  causality?: string | null | undefined;
+  description?: string | null | undefined;
+  classInstance?: ClassInstanceLike | null | undefined;
+}
+
+export const fqnCacheState: {
+  index: HierarchySymbolIndexLike | null;
+  cache: Map<string, number>;
+} = {
+  index: null,
   cache: new Map<string, number>(),
 };
 
@@ -71,11 +129,11 @@ export function clearFqnCache(): void {
   fqnCacheState.cache.clear();
 }
 
-export function iconFromEntry(entry: any): string | undefined {
+export function iconFromEntry(entry: HierarchySymbolEntryLike | null | undefined): string | undefined {
   if (entry?.language === "pscad") {
     return entry.metadata?.classPrefixes === "package" ? "package" : "circuit-board";
   }
-  if (entry?.language) {
+  if (entry?.language && entry.ruleName) {
     const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
     const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
     if (symConfig?.icon) return symConfig.icon;
@@ -83,18 +141,20 @@ export function iconFromEntry(entry: any): string | undefined {
   return undefined;
 }
 
-export function classKindFromEntry(entry: any): string {
+export function classKindFromEntry(entry: HierarchySymbolEntryLike | null | undefined): string {
   if (entry?.language === "pscad") {
     return entry.metadata?.classPrefixes ?? (entry.kind === "Package" ? "package" : "class");
   }
-  if (entry?.language) {
+  if (entry?.language && entry.ruleName) {
     const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
     const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
     if (symConfig?.icon) return symConfig.icon;
     if (symConfig?.group) return symConfig.group;
   }
   if (entry?.language === "sysml2") {
-    return SYSML2_RULE_TO_KIND[entry.ruleName] ?? entry.kind?.toLowerCase() ?? "definition";
+    return (
+      (entry.ruleName ? SYSML2_RULE_TO_KIND[entry.ruleName] : undefined) ?? entry.kind?.toLowerCase() ?? "definition"
+    );
   }
   // Modelica path
   const prefixesText = entry?.metadata?.classPrefixes;
@@ -106,7 +166,7 @@ export function classKindFromEntry(entry: any): string {
   return "class";
 }
 
-export function isTreeVisible(entry: any): boolean {
+export function isTreeVisible(entry: HierarchySymbolEntryLike | null | undefined): boolean {
   if (entry?.metadata?.isPredefined) return false;
   if (entry?.kind === "Reference") return false;
   if (entry?.name?.startsWith("'") || entry?.name?.startsWith('"')) return false;
@@ -114,12 +174,14 @@ export function isTreeVisible(entry: any): boolean {
     if (entry.language === "owl2") {
       return false; // Handled structurally via ontology nodes
     }
-    const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
-    const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
-    if (symConfig?.treeVisible !== undefined) return symConfig.treeVisible;
+    if (entry.ruleName) {
+      const plugin = globalLanguageRegistry.getPluginByLanguageId(entry.language);
+      const symConfig = plugin?.languageDef?.symbols?.[entry.ruleName];
+      if (symConfig?.treeVisible !== undefined) return symConfig.treeVisible;
+    }
   }
   if (entry?.language === "sysml2") {
-    return SYSML2_TREE_KINDS.has(entry.kind);
+    return entry.kind !== undefined && SYSML2_TREE_KINDS.has(entry.kind);
   }
   if (entry?.language === "pscad") {
     return true;
@@ -127,10 +189,15 @@ export function isTreeVisible(entry: any): boolean {
   return entry?.kind === "Class";
 }
 
-export function getCompositeName(entry: any, index: any, visited = new Set<string>()): string {
-  if (entry.parentId === null) return entry.name;
-  if (visited.has(entry.id?.toString())) return entry.name;
-  visited.add(entry.id?.toString());
+export function getCompositeName(
+  entry: HierarchySymbolEntryLike,
+  index: HierarchySymbolIndexLike,
+  visited = new Set<string>(),
+): string {
+  if (entry.parentId === null || entry.parentId === undefined) return entry.name;
+  const idKey = entry.id !== undefined ? entry.id.toString() : "";
+  if (idKey && visited.has(idKey)) return entry.name;
+  if (idKey) visited.add(idKey);
 
   const parent = index.symbols.get(entry.parentId);
   if (!parent) return entry.name;
@@ -298,10 +365,11 @@ export function getLibraryName(resourceId?: string): string | null {
   return getLibraryInfo(resourceId)?.name ?? null;
 }
 
-function getRootChildIds(index: any): number[] {
+function getRootChildIds(index: HierarchySymbolIndexLike | null | undefined): number[] {
   const ids = new Set<number>();
+  const childrenMap = index?.childrenOf as ReadonlyMap<unknown, readonly number[]> | undefined;
   for (const k of [0, null, undefined, "", "0", "null"]) {
-    const list = index?.childrenOf?.get(k);
+    const list = childrenMap?.get(k);
     if (Array.isArray(list)) {
       for (const id of list) ids.add(id);
     }
@@ -316,7 +384,11 @@ function getRootChildIds(index: any): number[] {
   return Array.from(ids);
 }
 
-export async function getTreeChildrenFast(index: any, parentId?: string, workspace?: any): Promise<TreeNodeInfo[]> {
+export async function getTreeChildrenFast(
+  index: HierarchySymbolIndexLike,
+  parentId?: string,
+  workspace?: HierarchyWorkspaceLike | null,
+): Promise<TreeNodeInfo[]> {
   const nodes: TreeNodeInfo[] = [];
   const seen = new Set<string>();
 
@@ -487,7 +559,7 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
 
     // Add OWL 2 ontology root containers
     if (workspace) {
-      const ontologyRoots = getOntologyRootNodes(workspace, workspace?.owl2Store);
+      const ontologyRoots = getOntologyRootNodes(workspace as Owl2WorkspaceParam, workspace?.owl2Store);
       for (const ontNode of ontologyRoots) {
         nodes.push(ontNode);
       }
@@ -600,7 +672,12 @@ export async function getTreeChildrenFast(index: any, parentId?: string, workspa
   return nodes;
 }
 
-export function hasClassChildren(index: any, symbolId: number, compositeName?: string, workspace?: any): boolean {
+export function hasClassChildren(
+  index: HierarchySymbolIndexLike,
+  symbolId: number,
+  compositeName?: string,
+  workspace?: HierarchyWorkspaceLike | null,
+): boolean {
   const childIds = index.childrenOf.get(symbolId);
   if (childIds && childIds.length > 0) {
     for (const id of childIds) {
@@ -614,7 +691,10 @@ export function hasClassChildren(index: any, symbolId: number, compositeName?: s
   return false;
 }
 
-export function buildClassHierarchy(classInstance: any, visited = new Set<string>()): ClassHierarchyNode {
+export function buildClassHierarchy(
+  classInstance: ClassInstanceLike | null | undefined,
+  visited = new Set<string>(),
+): ClassHierarchyNode {
   if (!classInstance) {
     return { name: "<unknown>", kind: "class", description: null, children: [] };
   }
@@ -623,7 +703,7 @@ export function buildClassHierarchy(classInstance: any, visited = new Set<string
     return {
       name,
       kind: classInstance.classKind || classInstance.kind || "class",
-      description: classInstance.description,
+      description: classInstance.description ?? null,
       children: [],
     };
   }
@@ -643,12 +723,12 @@ export function buildClassHierarchy(classInstance: any, visited = new Set<string
   return {
     name,
     kind: classInstance.classKind || classInstance.kind || "class",
-    description: classInstance.description,
+    description: classInstance.description ?? null,
     children,
   };
 }
 
-export function buildComponentTree(classInstance: any, depth = 0): ComponentTreeNode {
+export function buildComponentTree(classInstance: ClassInstanceLike | null | undefined, depth = 0): ComponentTreeNode {
   const children: ComponentTreeNode[] = [];
   if (classInstance && depth < 5) {
     try {
@@ -659,9 +739,9 @@ export function buildComponentTree(classInstance: any, depth = 0): ComponentTree
             name: comp.name || "<unnamed>",
             typeName: childCI?.name || comp.type || "<unknown>",
             kind: childCI?.classKind || childCI?.kind || "unknown",
-            variability: comp.variability,
-            causality: comp.causality,
-            description: comp.description,
+            variability: comp.variability ?? null,
+            causality: comp.causality ?? null,
+            description: comp.description ?? null,
             children: [],
           };
           if (childCI) {

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0"
+                 xmlns:gml="http://www.opengis.net/gml/3.2"
+                 xmlns:om="http://www.opengis.net/om/2.0"
+                 xmlns:xlink="http://www.w3.org/1999/xlink"
+                 gml:id="COLLECTION_USGS_01463500">
+  <gml:description>24-Hour Streamflow Discharge Observation at Delaware River Trenton NJ</gml:description>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_DELAWARE_Q">
+      <om:observedProperty xlink:title="Discharge"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_01463500">
+          <gml:identifier>01463500</gml:identifier>
+          <gml:name>DELAWARE RIVER AT TRENTON NJ</gml:name>
+          <wml2:shape>
+            <gml:Point gml:id="P_01463500">
+              <gml:pos>40.2217 -74.7778 2.4</gml:pos>
+            </gml:Point>
+          </wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_DELAWARE_Q">
+          <wml2:defaultPointMetadata>
+            <wml2:DefaultTVPMeasurementMetadata>
+              <wml2:uom code="m3/s"/>
+              <wml2:interpolationType xlink:title="Instantaneous"/>
+            </wml2:DefaultTVPMeasurementMetadata>
+          </wml2:defaultPointMetadata>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-06-01T00:00:00Z</wml2:time><wml2:value>152.0</wml2:value><wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-06-01T04:00:00Z</wml2:time><wml2:value>184.5</wml2:value><wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-06-01T08:00:00Z</wml2:time><wml2:value>268.0</wml2:value><wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-06-01T12:00:00Z</wml2:time><wml2:value>342.8</wml2:value><wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-06-01T16:00:00Z</wml2:time><wml2:value>296.4</wml2:value><wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-06-01T20:00:00Z</wml2:time><wml2:value>231.0</wml2:value><wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="estimate"/></wml2:TVPMeasurementMetadata></wml2:metadata></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-06-02T00:00:00Z</wml2:time><wml2:value>188.5</wml2:value><wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata></wml2:MeasurementTVP></wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+</wml2:Collection>

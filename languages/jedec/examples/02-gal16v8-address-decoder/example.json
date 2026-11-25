@@ -1,0 +1,11 @@
+{
+  "id": "jedec-02-gal16v8-address-decoder",
+  "lang": "jedec",
+  "subFormats": ["jesd3"],
+  "difficulty": 2,
+  "title": "GAL16V8 3-to-8 Active-Low Address Decoder",
+  "description": "Lattice GAL16V8 (2194 fuses) JESD3 fuse map decoding 3 address lines into active-low chip-select outputs with 4 functional test vectors and verified C-checksum.",
+  "category": "Programmable Logic",
+  "tags": ["jedec", "gal16v8", "decoder", "test-vectors"],
+  "activeFile": "gal16v8_decoder.jed"
+}

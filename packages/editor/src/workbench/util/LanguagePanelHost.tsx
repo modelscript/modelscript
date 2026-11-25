@@ -8,7 +8,7 @@ import type {
 } from "@modelscript/react";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { getEditorLanguageUi, useEditorHost } from "../../host";
-import { compressMorselPayload } from "./permalink";
+import { compressAnsatzPayload } from "./permalink";
 
 export type LanguagePanelLoader = () => Promise<{ default: React.ComponentType<LanguagePanelProps> }>;
 export interface LanguageSimulationCardEntry {
@@ -38,8 +38,8 @@ function getOrCreateLazyPanel(
   return cached;
 }
 
-export function hasMorselLanguagePanel(dialect: string): boolean {
-  return Boolean(getEditorLanguageUi().morselPanels[dialect]);
+export function hasAnsatzLanguagePanel(dialect: string): boolean {
+  return Boolean(getEditorLanguageUi().ansatzPanels[dialect]);
 }
 
 export function hasArtifactLanguagePanel(viewTypeOrDialect: string): boolean {
@@ -64,7 +64,7 @@ export function triggerBrowserFileDownload(filename: string, content: string | U
 }
 
 export interface DslLanguagePanelMountProps {
-  registry: "morsel" | "artifact";
+  registry: "ansatz" | "artifact";
   lookupKey: string;
   code: string;
   dialect: string;
@@ -94,10 +94,10 @@ export const DslLanguagePanelMount: React.FC<DslLanguagePanelMountProps> = ({
 }) => {
   const LazyPanel = useMemo(() => {
     const ui = getEditorLanguageUi();
-    const map = registry === "morsel" ? ui.morselPanels : ui.artifactPanels;
+    const map = registry === "ansatz" ? ui.ansatzPanels : ui.artifactPanels;
     const loader = map[lookupKey];
     if (!loader) return null;
-    return getOrCreateLazyPanel(`${registry}:${lookupKey}`, loader);
+    return getOrCreateLazyPanel(`${registry}:${lookupKey}`, loader as unknown as LanguagePanelLoader);
   }, [registry, lookupKey]);
 
   if (!LazyPanel) return null;
@@ -127,7 +127,7 @@ export interface DslArtifactPanelWrapperProps {
 
 /**
  * Ansatz Artifact Card adapter for any DSL-declared language panel.
- * Handles remote artifact text fetching, theme detection, and Open-in-Morsel navigation.
+ * Handles remote artifact text fetching, theme detection, and Open-in-Ansatz navigation.
  */
 export const DslArtifactPanelWrapper: React.FC<DslArtifactPanelWrapperProps> = ({
   viewType,
@@ -158,12 +158,12 @@ export const DslArtifactPanelWrapper: React.FC<DslArtifactPanelWrapperProps> = (
   const host = useMemo<LanguagePanelHost>(
     () => ({
       exportFile: triggerBrowserFileDownload,
-      openInMorsel: (codeToOpen: string, dialect: string, title?: string) => {
-        const compressed = compressMorselPayload({ code: codeToOpen, dialect, title });
+      openInAnsatzEditor: (codeToOpen: string, dialect: string, title?: string) => {
+        const compressed = compressAnsatzPayload({ code: codeToOpen, dialect, title });
         if (editorHost.navigate) {
-          editorHost.navigate(`/playground#morsel=${compressed}`);
+          editorHost.navigate(`/editor#ansatz=${compressed}`);
         } else if (typeof window !== "undefined") {
-          window.location.href = `/playground#morsel=${compressed}`;
+          window.location.href = `/editor#ansatz=${compressed}`;
         }
       },
       openExternal: (url: string) => {
@@ -236,7 +236,13 @@ export const DslSimulationCardsStrip: React.FC<DslSimulationCardsStripProps> = (
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       {matchingCards.map((entry) => {
-        const LazyCard = getOrCreateLazySimCard(entry);
+        const LazyCard = getOrCreateLazySimCard(
+          entry as unknown as {
+            id: string;
+            languageId: string;
+            load: () => Promise<{ default: React.ComponentType<LanguageSimulationCardProps> }>;
+          },
+        );
         return (
           <Suspense key={`${entry.languageId}:${entry.id}`} fallback={null}>
             <LazyCard

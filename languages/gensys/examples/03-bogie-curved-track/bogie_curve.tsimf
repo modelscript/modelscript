@@ -1,0 +1,17 @@
+# GENSYS Model: Passenger Bogie Curved Track Flange Contact (Nadal Y/Q)
+# Bogie wheelbase 2.50 m, primary chevron springs, secondary air springs
+set m_cb_half = 16000.0
+set m_bogie = 2850.0
+
+body carbody_half m_cb_half 34000.0 820000.0 810000.0 0.0 0.0 1.65
+body bogie_frame m_bogie 1950.0 1750.0 3200.0 0.0 0.0 0.55
+
+wheelset ws_front 1520.0 1.435 0.46 0.10 "S1002_worn.wheel"
+wheelset ws_rear 1520.0 1.435 0.46 0.10 "S1002_worn.wheel"
+
+# Secondary air-spring and yaw damper suspension
+spring sec_air carbody_half bogie_frame 165000 155000 420000 28000 32000 42000
+
+# Primary axlebox coil and chevron springs
+spring prim_front bogie_frame ws_front 8500000 3800000 1180000 14000 11000 19000
+spring prim_rear bogie_frame ws_rear 8500000 3800000 1180000 14000 11000 19000

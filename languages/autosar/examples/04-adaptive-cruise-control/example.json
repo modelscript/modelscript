@@ -1,0 +1,12 @@
+{
+  "id": "autosar-04-adaptive-cruise-control",
+  "lang": "autosar",
+  "subFormats": ["arxml"],
+  "difficulty": 4,
+  "title": "Adaptive Cruise Control Client-Server and Mode Architecture",
+  "description": "Multi-file AUTOSAR Adaptive Cruise Control (ACC) system combining front radar object tracking SWC, ACC longitudinal controller SWC with client-server brake request and mode interfaces, and system composition.",
+  "category": "ADAS Software Architecture",
+  "tags": ["acc", "client-server", "radar", "autosar", "multi-file"],
+  "activeFile": "System.arxml",
+  "fileOrder": ["System.arxml", "Interfaces.arxml", "RadarSwc.arxml", "AccSwc.arxml"]
+}

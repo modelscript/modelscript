@@ -1,0 +1,11 @@
+{
+  "id": "ieee-cdf-05-ieee-57-bus-controlled-grid",
+  "lang": "ieee-cdf",
+  "subFormats": ["cdf"],
+  "difficulty": 5,
+  "title": "Multi-Area Controlled-Voltage Interconnected Grid (IEEE-57 Style)",
+  "description": "Large-scale multi-area 230/138/69 kV transmission grid with seven generator/condenser buses, parallel transmission corridors, six tap-changing autotransformers, and reactive shunt banks.",
+  "category": "Power Flow & Grid Heritage",
+  "tags": ["ieee-cdf", "multi-area", "tap-transformers", "transmission"],
+  "activeFile": "ieee57.cdf"
+}

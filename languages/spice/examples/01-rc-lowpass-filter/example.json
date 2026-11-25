@@ -1,0 +1,12 @@
+{
+  "id": "spice-01-rc-lowpass-filter",
+  "lang": "spice",
+  "subFormats": ["sp"],
+  "difficulty": 1,
+  "title": "First-Order RC Low-Pass Filter (AC & Transient)",
+  "description": "1.59 kHz passive RC low-pass filter driven by a step/AC voltage source with valid DC ground path and both AC frequency sweep and transient analysis.",
+  "category": "Analog Filters",
+  "tags": ["spice", "rc-filter", "ac-analysis", "transient"],
+  "activeFile": "rc_lowpass.sp",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,10 @@
+** Emergency Braking Thermal Initial Condition and Pad Contact Pressure
+*INITIAL CONDITIONS, TYPE=TEMPERATURE
+1, 293.15
+2, 293.15
+3, 293.15
+4, 293.15
+5, 293.15
+6, 293.15
+7, 293.15
+8, 293.15

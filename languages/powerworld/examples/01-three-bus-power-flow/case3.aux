@@ -1,0 +1,31 @@
+// 3-Bus 138 kV Generator-Load AC Power Flow Case
+DATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])
+{
+  1 "Slack_138" 138.0 1.02 0.0 YES
+  2 "Gen_138"   138.0 1.01 2.2 NO
+  3 "Load_138"  138.0 0.99 -3.4 NO
+}
+
+DATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])
+{
+  1 "1" Closed 145.0 20.0 300.0 10.0 1.02
+  2 "1" Closed 100.0 12.0 200.0  0.0 1.01
+}
+
+DATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])
+{
+  3 "1" Closed 240.0 45.0
+}
+
+DATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])
+{
+  1 2 "1" Closed 0.010 0.050 0.020 250.0 NO
+  2 3 "1" Closed 0.020 0.080 0.030 250.0 NO
+  1 3 "1" Closed 0.015 0.060 0.025 220.0 NO
+}
+
+SCRIPT
+{
+  EnterMode(RUN);
+  SolvePowerFlow(RECTNEWT);
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "lps-01-single-pipe-gas-segment",
+    "lang": "lps",
+    "subFormats": ["lps"],
+    "difficulty": 1,
+    "title": "Single-Pipe Steady-State Natural Gas Segment",
+    "description": "Single 50 km natural gas transmission pipeline connecting a fixed-pressure supply hub to a city-gate delivery terminal under AGA8 equation of state.",
+    "category": "Pipeline Hydraulics",
+    "tags": ["lps", "tgnet", "natural-gas", "steady-state"],
+    "activeFile": "single_pipe.lps",
+    "fileNames": ["single_pipe.lps"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<PipelineStudio id=\"single_pipe_gas\" title=\"Single-Pipe Steady-State Natural Gas Segment\" simulationType=\"TGNET\">\n  <Nodes>\n    <Node name=\"Supply_Hub\" type=\"SUPPLY\" elevation=\"12m\" pressure=\"72.0bar\" flow=\"65.0\" />\n    <Node name=\"City_Gate\" type=\"DELIVERY\" elevation=\"18m\" minDeliveryPressure=\"40.0bar\" flow=\"65.0\" />\n  </Nodes>\n  <Pipes>\n    <Pipe name=\"Segment_101\" from=\"Supply_Hub\" to=\"City_Gate\" length=\"50.0km\" diameter=\"24inch\" roughness=\"0.000045m\" maop=\"90.0bar\" />\n  </Pipes>\n  <GasComposition ch4=\"0.93\" c2h6=\"0.04\" c3h8=\"0.012\" co2=\"0.008\" n2=\"0.010\" h2=\"0.00\" ghv=\"38.9\" />\n  <SimulationControls startTime=\"0\" endTime=\"3600\" timeStep=\"60\" eos=\"AGA8\" steadyStateFirst=\"true\" />\n</PipelineStudio>\n"
+  },
+  {
+    "id": "lps-02-compressor-station-boost",
+    "lang": "lps",
+    "subFormats": ["lps"],
+    "difficulty": 2,
+    "title": "Compressor Station Pressure Boost Loop",
+    "description": "190 km regional natural gas trunkline with a mid-route centrifugal compressor station maintaining 82 bar discharge pressure across two high-pressure pipe segments.",
+    "category": "Pipeline Hydraulics",
+    "tags": ["lps", "compressor", "pressure-boost", "trunkline"],
+    "activeFile": "compressor_boost.lps",
+    "fileNames": ["compressor_boost.lps"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<PipelineStudio id=\"compressor_boost\" title=\"Compressor Station Pressure Boost Loop\" simulationType=\"TGNET\">\n  <Nodes>\n    <Node name=\"Gas_Plant_Inlet\" type=\"SUPPLY\" elevation=\"15m\" pressure=\"70.0bar\" flow=\"115.0\" />\n    <Node name=\"CS1_Suction\" type=\"JUNCTION\" elevation=\"32m\" />\n    <Node name=\"CS1_Discharge\" type=\"JUNCTION\" elevation=\"32m\" />\n    <Node name=\"Metro_Terminal\" type=\"DELIVERY\" elevation=\"10m\" minDeliveryPressure=\"38.0bar\" flow=\"115.0\" />\n  </Nodes>\n  <Pipes>\n    <Pipe name=\"Trunk_Upstream\" from=\"Gas_Plant_Inlet\" to=\"CS1_Suction\" length=\"85.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"95.0bar\" />\n    <Pipe name=\"Trunk_Downstream\" from=\"CS1_Discharge\" to=\"Metro_Terminal\" length=\"105.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"95.0bar\" />\n  </Pipes>\n  <Compressors>\n    <Compressor name=\"Compressor_Station_1\" from=\"CS1_Suction\" to=\"CS1_Discharge\" type=\"CENTRIFUGAL\" power=\"18000000\" maxRatio=\"1.75\" efficiency=\"0.83\" mode=\"DISCHARGE_PRESSURE\" setpoint=\"82.0bar\" status=\"RUNNING\" />\n  </Compressors>\n  <GasComposition ch4=\"0.92\" c2h6=\"0.045\" c3h8=\"0.015\" co2=\"0.010\" n2=\"0.010\" h2=\"0.00\" ghv=\"39.1\" />\n  <SimulationControls startTime=\"0\" endTime=\"21600\" timeStep=\"60\" eos=\"AGA8\" steadyStateFirst=\"true\" />\n</PipelineStudio>\n"
+  },
+  {
+    "id": "lps-03-branched-transmission-regulator",
+    "lang": "lps",
+    "subFormats": ["lps"],
+    "difficulty": 3,
+    "title": "Branched Transmission Pipeline with Regulator Valve",
+    "description": "High-pressure main gas transmission line splitting into an industrial power-plant lateral and a pressure-regulated municipal distribution branch with preheater protection.",
+    "category": "Pipeline Hydraulics",
+    "tags": ["lps", "regulator", "branched-network", "preheater"],
+    "activeFile": "branched_regulator.lps",
+    "fileNames": ["branched_regulator.lps"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<PipelineStudio id=\"branched_regulator\" title=\"Branched Transmission Pipeline with Regulator Valve\" simulationType=\"TGNET\">\n  <Nodes>\n    <Node name=\"Interstate_Receipt\" type=\"SUPPLY\" elevation=\"25m\" pressure=\"76.0bar\" flow=\"140.0\" />\n    <Node name=\"Tee_Junction\" type=\"JUNCTION\" elevation=\"30m\" />\n    <Node name=\"Reg_Inlet\" type=\"JUNCTION\" elevation=\"28m\" />\n    <Node name=\"Reg_Outlet\" type=\"JUNCTION\" elevation=\"28m\" />\n    <Node name=\"Power_Plant_Gate\" type=\"DELIVERY\" elevation=\"22m\" minDeliveryPressure=\"42.0bar\" flow=\"85.0\" />\n    <Node name=\"City_Distribution\" type=\"DELIVERY\" elevation=\"18m\" minDeliveryPressure=\"28.0bar\" flow=\"55.0\" />\n  </Nodes>\n  <Pipes>\n    <Pipe name=\"Main_Feeder\" from=\"Interstate_Receipt\" to=\"Tee_Junction\" length=\"55.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"95.0bar\" />\n    <Pipe name=\"Power_Lateral\" from=\"Tee_Junction\" to=\"Power_Plant_Gate\" length=\"40.0km\" diameter=\"24inch\" roughness=\"0.000045m\" maop=\"90.0bar\" />\n    <Pipe name=\"Reg_Approach\" from=\"Tee_Junction\" to=\"Reg_Inlet\" length=\"22.0km\" diameter=\"20inch\" roughness=\"0.000045m\" maop=\"90.0bar\" />\n    <Pipe name=\"City_Feeder\" from=\"Reg_Outlet\" to=\"City_Distribution\" length=\"18.0km\" diameter=\"16inch\" roughness=\"0.000045m\" maop=\"60.0bar\" />\n  </Pipes>\n  <Regulators>\n    <Regulator name=\"City_Gate_PRV\" from=\"Reg_Inlet\" to=\"Reg_Outlet\" setpoint=\"42.0bar\" capacity=\"90.0\" preheater=\"true\" />\n  </Regulators>\n  <GasComposition ch4=\"0.915\" c2h6=\"0.048\" c3h8=\"0.014\" co2=\"0.011\" n2=\"0.012\" h2=\"0.02\" ghv=\"38.8\" />\n  <SimulationControls startTime=\"0\" endTime=\"43200\" timeStep=\"60\" eos=\"AGA8\" steadyStateFirst=\"true\" />\n</PipelineStudio>\n"
+  },
+  {
+    "id": "lps-04-linepack-diurnal-swing",
+    "lang": "lps",
+    "subFormats": ["lps"],
+    "difficulty": 4,
+    "title": "Linepack Transient Diurnal Demand Swing",
+    "description": "24-hour transient linepack management study across a 220 km gas transmission corridor with looped parallel sections, centrifugal compression, and underground storage buffer.",
+    "category": "Pipeline Hydraulics",
+    "tags": ["lps", "linepack", "transient", "diurnal-swing"],
+    "activeFile": "linepack_swing.lps",
+    "fileNames": ["linepack_swing.lps"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<PipelineStudio id=\"linepack_swing\" title=\"Linepack Transient Diurnal Demand Swing\" simulationType=\"TGNET\">\n  <Nodes>\n    <Node name=\"Basin_Supply\" type=\"SUPPLY\" elevation=\"45m\" pressure=\"78.0bar\" flow=\"165.0\" />\n    <Node name=\"Loop_Split\" type=\"JUNCTION\" elevation=\"52m\" />\n    <Node name=\"Loop_Merge\" type=\"JUNCTION\" elevation=\"48m\" />\n    <Node name=\"Mid_CS_Suction\" type=\"JUNCTION\" elevation=\"48m\" />\n    <Node name=\"Mid_CS_Discharge\" type=\"JUNCTION\" elevation=\"48m\" />\n    <Node name=\"Peak_Market_Hub\" type=\"DELIVERY\" elevation=\"20m\" minDeliveryPressure=\"42.0bar\" flow=\"165.0\" />\n  </Nodes>\n  <Pipes>\n    <Pipe name=\"Inlet_Header\" from=\"Basin_Supply\" to=\"Loop_Split\" length=\"45.0km\" diameter=\"36inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Loop_North\" from=\"Loop_Split\" to=\"Loop_Merge\" length=\"75.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Loop_South\" from=\"Loop_Split\" to=\"Loop_Merge\" length=\"75.0km\" diameter=\"24inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Station_Tie\" from=\"Loop_Merge\" to=\"Mid_CS_Suction\" length=\"5.0km\" diameter=\"36inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Delivery_Main\" from=\"Mid_CS_Discharge\" to=\"Peak_Market_Hub\" length=\"95.0km\" diameter=\"36inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n  </Pipes>\n  <Compressors>\n    <Compressor name=\"Midpoint_Booster\" from=\"Mid_CS_Suction\" to=\"Mid_CS_Discharge\" type=\"CENTRIFUGAL\" power=\"24000000\" maxRatio=\"1.7\" efficiency=\"0.85\" mode=\"DISCHARGE_PRESSURE\" setpoint=\"86.0bar\" status=\"RUNNING\" />\n  </Compressors>\n  <GasComposition ch4=\"0.92\" c2h6=\"0.042\" c3h8=\"0.014\" co2=\"0.010\" n2=\"0.014\" h2=\"0.03\" ghv=\"38.7\" />\n  <SimulationControls startTime=\"0\" endTime=\"86400\" timeStep=\"120\" eos=\"AGA8\" steadyStateFirst=\"true\" />\n</PipelineStudio>\n"
+  },
+  {
+    "id": "lps-05-multi-station-gas-network",
+    "lang": "lps",
+    "subFormats": ["lps", "csv"],
+    "difficulty": 5,
+    "title": "Multi-Station Gas Transmission Network with Hourly Demand Profile",
+    "description": "350 km interstate natural gas transmission network featuring two series compressor stations, dual market delivery branches with preheated regulation, and a 24-hour demand profile CSV.",
+    "category": "Pipeline Hydraulics",
+    "tags": ["lps", "multi-station", "multi-file", "demand-profile", "interstate"],
+    "activeFile": "trunkline.lps",
+    "fileNames": ["trunkline.lps", "demand_24h.csv"],
+    "fileCount": 2,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<PipelineStudio id=\"interstate_trunkline\" title=\"Multi-Station Gas Transmission Network\" simulationType=\"TGNET\">\n  <Nodes>\n    <Node name=\"Permian_Supply\" type=\"SUPPLY\" elevation=\"60m\" pressure=\"76.0bar\" flow=\"210.0\" />\n    <Node name=\"CS_West_Suc\" type=\"JUNCTION\" elevation=\"75m\" />\n    <Node name=\"CS_West_Dis\" type=\"JUNCTION\" elevation=\"75m\" />\n    <Node name=\"Central_Split\" type=\"JUNCTION\" elevation=\"55m\" />\n    <Node name=\"CS_East_Suc\" type=\"JUNCTION\" elevation=\"45m\" />\n    <Node name=\"CS_East_Dis\" type=\"JUNCTION\" elevation=\"45m\" />\n    <Node name=\"Reg_South_In\" type=\"JUNCTION\" elevation=\"40m\" />\n    <Node name=\"Reg_South_Out\" type=\"JUNCTION\" elevation=\"40m\" />\n    <Node name=\"Coastal_LNG_Hub\" type=\"DELIVERY\" elevation=\"8m\" minDeliveryPressure=\"45.0bar\" flow=\"135.0\" />\n    <Node name=\"Southern_City_Gate\" type=\"DELIVERY\" elevation=\"15m\" minDeliveryPressure=\"30.0bar\" flow=\"75.0\" />\n  </Nodes>\n  <Pipes>\n    <Pipe name=\"Seg_West_1\" from=\"Permian_Supply\" to=\"CS_West_Suc\" length=\"95.0km\" diameter=\"36inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Seg_Central_2\" from=\"CS_West_Dis\" to=\"Central_Split\" length=\"85.0km\" diameter=\"36inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Seg_East_3\" from=\"Central_Split\" to=\"CS_East_Suc\" length=\"60.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"95.0bar\" />\n    <Pipe name=\"Seg_Coastal_4\" from=\"CS_East_Dis\" to=\"Coastal_LNG_Hub\" length=\"75.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"95.0bar\" />\n    <Pipe name=\"Seg_South_Lateral\" from=\"Central_Split\" to=\"Reg_South_In\" length=\"35.0km\" diameter=\"24inch\" roughness=\"0.000045m\" maop=\"90.0bar\" />\n    <Pipe name=\"Seg_South_Dist\" from=\"Reg_South_Out\" to=\"Southern_City_Gate\" length=\"20.0km\" diameter=\"20inch\" roughness=\"0.000045m\" maop=\"65.0bar\" />\n  </Pipes>\n  <Compressors>\n    <Compressor name=\"CS_West\" from=\"CS_West_Suc\" to=\"CS_West_Dis\" type=\"CENTRIFUGAL\" power=\"26000000\" maxRatio=\"1.75\" efficiency=\"0.84\" mode=\"DISCHARGE_PRESSURE\" setpoint=\"88.0bar\" status=\"RUNNING\" />\n    <Compressor name=\"CS_East\" from=\"CS_East_Suc\" to=\"CS_East_Dis\" type=\"CENTRIFUGAL\" power=\"20000000\" maxRatio=\"1.70\" efficiency=\"0.84\" mode=\"DISCHARGE_PRESSURE\" setpoint=\"84.0bar\" status=\"RUNNING\" />\n  </Compressors>\n  <Regulators>\n    <Regulator name=\"South_Gate_PRV\" from=\"Reg_South_In\" to=\"Reg_South_Out\" setpoint=\"46.0bar\" capacity=\"110.0\" preheater=\"true\" />\n  </Regulators>\n  <GasComposition ch4=\"0.91\" c2h6=\"0.048\" c3h8=\"0.016\" co2=\"0.012\" n2=\"0.014\" h2=\"0.04\" ghv=\"38.9\" />\n  <SimulationControls startTime=\"0\" endTime=\"86400\" timeStep=\"60\" eos=\"AGA8\" steadyStateFirst=\"true\" />\n</PipelineStudio>\n",
+    "files": {
+      "trunkline.lps": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<PipelineStudio id=\"interstate_trunkline\" title=\"Multi-Station Gas Transmission Network\" simulationType=\"TGNET\">\n  <Nodes>\n    <Node name=\"Permian_Supply\" type=\"SUPPLY\" elevation=\"60m\" pressure=\"76.0bar\" flow=\"210.0\" />\n    <Node name=\"CS_West_Suc\" type=\"JUNCTION\" elevation=\"75m\" />\n    <Node name=\"CS_West_Dis\" type=\"JUNCTION\" elevation=\"75m\" />\n    <Node name=\"Central_Split\" type=\"JUNCTION\" elevation=\"55m\" />\n    <Node name=\"CS_East_Suc\" type=\"JUNCTION\" elevation=\"45m\" />\n    <Node name=\"CS_East_Dis\" type=\"JUNCTION\" elevation=\"45m\" />\n    <Node name=\"Reg_South_In\" type=\"JUNCTION\" elevation=\"40m\" />\n    <Node name=\"Reg_South_Out\" type=\"JUNCTION\" elevation=\"40m\" />\n    <Node name=\"Coastal_LNG_Hub\" type=\"DELIVERY\" elevation=\"8m\" minDeliveryPressure=\"45.0bar\" flow=\"135.0\" />\n    <Node name=\"Southern_City_Gate\" type=\"DELIVERY\" elevation=\"15m\" minDeliveryPressure=\"30.0bar\" flow=\"75.0\" />\n  </Nodes>\n  <Pipes>\n    <Pipe name=\"Seg_West_1\" from=\"Permian_Supply\" to=\"CS_West_Suc\" length=\"95.0km\" diameter=\"36inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Seg_Central_2\" from=\"CS_West_Dis\" to=\"Central_Split\" length=\"85.0km\" diameter=\"36inch\" roughness=\"0.000045m\" maop=\"100.0bar\" />\n    <Pipe name=\"Seg_East_3\" from=\"Central_Split\" to=\"CS_East_Suc\" length=\"60.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"95.0bar\" />\n    <Pipe name=\"Seg_Coastal_4\" from=\"CS_East_Dis\" to=\"Coastal_LNG_Hub\" length=\"75.0km\" diameter=\"30inch\" roughness=\"0.000045m\" maop=\"95.0bar\" />\n    <Pipe name=\"Seg_South_Lateral\" from=\"Central_Split\" to=\"Reg_South_In\" length=\"35.0km\" diameter=\"24inch\" roughness=\"0.000045m\" maop=\"90.0bar\" />\n    <Pipe name=\"Seg_South_Dist\" from=\"Reg_South_Out\" to=\"Southern_City_Gate\" length=\"20.0km\" diameter=\"20inch\" roughness=\"0.000045m\" maop=\"65.0bar\" />\n  </Pipes>\n  <Compressors>\n    <Compressor name=\"CS_West\" from=\"CS_West_Suc\" to=\"CS_West_Dis\" type=\"CENTRIFUGAL\" power=\"26000000\" maxRatio=\"1.75\" efficiency=\"0.84\" mode=\"DISCHARGE_PRESSURE\" setpoint=\"88.0bar\" status=\"RUNNING\" />\n    <Compressor name=\"CS_East\" from=\"CS_East_Suc\" to=\"CS_East_Dis\" type=\"CENTRIFUGAL\" power=\"20000000\" maxRatio=\"1.70\" efficiency=\"0.84\" mode=\"DISCHARGE_PRESSURE\" setpoint=\"84.0bar\" status=\"RUNNING\" />\n  </Compressors>\n  <Regulators>\n    <Regulator name=\"South_Gate_PRV\" from=\"Reg_South_In\" to=\"Reg_South_Out\" setpoint=\"46.0bar\" capacity=\"110.0\" preheater=\"true\" />\n  </Regulators>\n  <GasComposition ch4=\"0.91\" c2h6=\"0.048\" c3h8=\"0.016\" co2=\"0.012\" n2=\"0.014\" h2=\"0.04\" ghv=\"38.9\" />\n  <SimulationControls startTime=\"0\" endTime=\"86400\" timeStep=\"60\" eos=\"AGA8\" steadyStateFirst=\"true\" />\n</PipelineStudio>\n",
+      "demand_24h.csv": "hour,coastal_lng_kg_s,southern_city_kg_s,total_demand_kg_s\n0,125.0,52.0,177.0\n2,124.0,48.0,172.0\n4,126.0,50.0,176.0\n6,132.0,68.0,200.0\n8,138.0,86.0,224.0\n10,140.0,82.0,222.0\n12,138.0,76.0,214.0\n14,136.0,74.0,210.0\n16,139.0,84.0,223.0\n18,142.0,94.0,236.0\n20,138.0,86.0,224.0\n22,130.0,64.0,194.0\n24,125.0,52.0,177.0\n"
+    }
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "id": "sinda-05-cryogenic-telescope-mli",
+  "lang": "sinda",
+  "subFormats": ["sinda-fluint", "cryogenics"],
+  "difficulty": 5,
+  "title": "Deep-Space Cryogenic Telescope MLI Thermal Bus",
+  "description": "Sunshielded deep-space infrared telescope thermal architecture linking a 290 K spacecraft bus through multi-layer insulation (MLI) and V-groove shields to a 40 K focal-plane detector.",
+  "category": "Cryogenic Spacecraft Thermal",
+  "tags": ["sinda", "cryogenic", "mli", "telescope", "radiation"],
+  "activeFile": "cryo_telescope.sin"
+}

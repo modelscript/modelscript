@@ -21,7 +21,7 @@ Native **ASN.1 (ISO/ITU-T X.208 / X.680 Abstract Syntax Notation One + X.690 BER
 - **Type Dependency Graph, Wire-Size Bounds & DAE Lowering (`buildAsn1TypeGraph`, `computeWireSizeBounds`, `verifyDerRoundTrip`, `lowerAsn1ToDae`, `asn1ToDae`)**: Computes min/max BER/DER wire byte bounds and TLV overhead per type and lowers bandwidth & traffic accumulation equations directly into `@modelscript/runtime`'s `DAEBuilder`.
 - **Polyglot Projections (`asn1ToSdl`, `asn1ToC`, `asn1ToJsonSchema`)**: Projects ASN.1 modules to ITU-T Z.100 SDL-88 `NEWTYPE`, C99 `typedef struct`/`enum`/`union` headers, and JSON Schema Draft 2020-12.
 - **Cleanroom Standard Library (`@modelscript/asn1-std-lib`)**: X.680 universal tags (`0x01` BOOLEAN through `0x31` SET) and classic 1980s protocol schemas (SNMPv1 PDU, X.509 `AlgorithmIdentifier` & `Validity`, IEC 61850 GOOSE PDU) with SVG icons and AssemblyScript WASM runtime.
-- **Interactive Visualization & LSP (`renderAsn1DiagramSvg`, `renderBerTlvSvg`, `Asn1Panel`, `validateAsn1`, `getAsn1DocumentSymbols`, `getAsn1Hover`, `getAsn1Completions`)**: Pure SVG schema type-dependency graph, color-coded BER/DER TLV byte-layout breakdown, and React panel for VS Code / Morsel.
+- **Interactive Visualization & LSP (`renderAsn1DiagramSvg`, `renderBerTlvSvg`, `Asn1Panel`, `validateAsn1`, `getAsn1DocumentSymbols`, `getAsn1Hover`, `getAsn1Completions`)**: Pure SVG schema type-dependency graph, color-coded BER/DER TLV byte-layout breakdown, and React panel for VS Code / Ansatz.
 
 ---
 

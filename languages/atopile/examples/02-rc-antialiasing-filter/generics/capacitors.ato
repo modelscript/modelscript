@@ -1,0 +1,4 @@
+component Capacitor:
+    signal p1
+    signal p2
+    capacitance = 100nF +/- 10%

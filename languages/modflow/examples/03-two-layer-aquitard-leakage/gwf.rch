@@ -1,0 +1,5 @@
+# Areal Precipitation Recharge (0.0008 m/day)
+BEGIN PERIOD 1
+  RECHARGE
+    CONSTANT 0.0008
+END PERIOD

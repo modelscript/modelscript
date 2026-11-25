@@ -12,7 +12,7 @@
  * - Unreachable statements following unconditional `return`, `break`, or `assert(false, ...)` (M5022)
  */
 
-import { error, warning, type LintResult } from "@modelscript/dsl";
+import { error, warning, type CompilerLint, type LintResult } from "@modelscript/dsl";
 import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import { ModelicaErrorCode } from "../errors.js";
 import {
@@ -73,20 +73,37 @@ interface VariableInfo {
 }
 
 /**
+ * Minimal structural interface for CST nodes inspected during Control Flow Analysis.
+ * Compatible with WASM `SyntaxNode` instances and lightweight AST fixtures.
+ */
+interface CfaCstNode {
+  readonly type?: string | undefined;
+  readonly text?: string | undefined;
+  readonly children?: readonly CfaCstNode[] | undefined;
+  readonly startIndex?: number | undefined;
+  readonly endIndex?: number | undefined;
+  readonly isError?: boolean | undefined;
+}
+
+function isCfaCstNode(value: unknown): value is CfaCstNode {
+  return typeof value === "object" && value !== null;
+}
+
+/**
  * Normalizes rule and node type names for case/underscore insensitive comparison.
  */
-function normType(t: string): string {
+function normType(t: string | undefined): string {
   return (t || "").toLowerCase().replaceAll("_", "");
 }
 
 /**
  * Searches for all nodes matching a given type name.
  */
-function findNodesByType(root: any, typeName: string): any[] {
-  const results: any[] = [];
+function findNodesByType(root: CfaCstNode, typeName: string): CfaCstNode[] {
+  const results: CfaCstNode[] = [];
   const target = normType(typeName);
 
-  function walk(node: any) {
+  function walk(node: CfaCstNode | null | undefined): void {
     if (!node) return;
     const nt = normType(node.type);
     if (node !== root && nt === "classdefinition") {
@@ -176,7 +193,7 @@ interface ParsedStatement {
 /**
  * Extracts parsed statements directly from a CST statement node.
  */
-function extractStatementFromNode(stmtNode: any): ParsedStatement {
+function extractStatementFromNode(stmtNode: CfaCstNode): ParsedStatement {
   const sStart = stmtNode.startIndex ?? 0;
   const sEnd = stmtNode.endIndex ?? sStart + (stmtNode.text?.length ?? 0);
   const rawText = stmtNode.text || "";
@@ -185,7 +202,7 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
   const ifNode =
     normType(stmtNode.type) === "ifstatement"
       ? stmtNode
-      : stmtNode.children?.find((c: any) => normType(c.type) === "ifstatement");
+      : stmtNode.children?.find((c: CfaCstNode) => normType(c.type) === "ifstatement");
 
   if (ifNode) {
     let currentMode: "init" | "if_cond" | "then" | "elseif_cond" | "elseif_body" | "else_body" = "init";
@@ -244,7 +261,7 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
   const forNode =
     normType(stmtNode.type) === "forstatement"
       ? stmtNode
-      : stmtNode.children?.find((c: any) => normType(c.type) === "forstatement");
+      : stmtNode.children?.find((c: CfaCstNode) => normType(c.type) === "forstatement");
 
   if (forNode) {
     const loopVars: string[] = [];
@@ -252,15 +269,15 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     let rangeStartByte: number | undefined;
     const loopBody: ParsedStatement[] = [];
 
-    const indicesNode = forNode.children?.find((c: any) => normType(c.type) === "forindices");
+    const indicesNode = forNode.children?.find((c: CfaCstNode) => normType(c.type) === "forindices");
     const indexNodes = indicesNode ? findNodesByType(indicesNode, "for_index") : findNodesByType(forNode, "for_index");
 
     for (const idxNode of indexNodes) {
-      const idNode = idxNode.children?.find((c: any) => normType(c.type) === "identifier");
+      const idNode = idxNode.children?.find((c: CfaCstNode) => normType(c.type) === "identifier");
       if (idNode && idNode.text) {
         loopVars.push(idNode.text.trim());
       }
-      const exprNode = idxNode.children?.find((c: any) => normType(c.type) === "expression");
+      const exprNode = idxNode.children?.find((c: CfaCstNode) => normType(c.type) === "expression");
       if (exprNode) {
         rangeExpr = exprNode.text || "";
         rangeStartByte = exprNode.startIndex ?? sStart;
@@ -289,14 +306,14 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
   const whileNode =
     normType(stmtNode.type) === "whilestatement"
       ? stmtNode
-      : stmtNode.children?.find((c: any) => normType(c.type) === "whilestatement");
+      : stmtNode.children?.find((c: CfaCstNode) => normType(c.type) === "whilestatement");
 
   if (whileNode) {
     let condExpr: string | undefined;
     let condStartByte: number | undefined;
     const whileBody: ParsedStatement[] = [];
 
-    const exprNode = whileNode.children?.find((c: any) => normType(c.type) === "expression");
+    const exprNode = whileNode.children?.find((c: CfaCstNode) => normType(c.type) === "expression");
     if (exprNode) {
       condExpr = exprNode.text || "";
       condStartByte = exprNode.startIndex ?? sStart;
@@ -323,14 +340,14 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
   const whenNode =
     normType(stmtNode.type) === "whenstatement"
       ? stmtNode
-      : stmtNode.children?.find((c: any) => normType(c.type) === "whenstatement");
+      : stmtNode.children?.find((c: CfaCstNode) => normType(c.type) === "whenstatement");
 
   if (whenNode) {
     const whenBranches: ParsedBranch[] = [];
     let curBranch: ParsedBranch = { condExpr: "", stmts: [] };
     let mode: "when_cond" | "when_body" | "elsewhen_cond" | "elsewhen_body" = "when_cond";
 
-    const walkWhen = (n: any) => {
+    const walkWhen = (n: CfaCstNode | null | undefined): void => {
       if (!n) return;
       const t = normType(n.type);
       const txt = n.text?.trim() ?? "";
@@ -382,7 +399,7 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
   if (tupleMatch.length > 0) {
     const targetVars: string[] = [];
     const outList = tupleMatch[0];
-    const exprs = outList.children?.filter((c: any) => normType(c.type) === "expression") ?? [];
+    const exprs = outList?.children?.filter((c: CfaCstNode) => normType(c.type) === "expression") ?? [];
     for (const expr of exprs) {
       const varText = (expr.text || "").trim();
       if (varText) {
@@ -392,7 +409,7 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     }
 
     const callNode =
-      stmtNode.children?.find((c: any) => normType(c.type) === "functioncall") ||
+      stmtNode.children?.find((c: CfaCstNode) => normType(c.type) === "functioncall") ||
       findNodesByType(stmtNode, "function_call")[0];
     const valExpr = callNode?.text || rawText.split(":=")[1]?.trim() || "";
     const valStartByte = callNode?.startIndex ?? sStart + Math.max(0, rawText.indexOf(":=") + 2);
@@ -413,8 +430,8 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
     normType(stmtNode.type) === "assignmentstatement" ? stmtNode : findNodesByType(stmtNode, "assignment_statement")[0];
 
   if (assignNode) {
-    const compRef = assignNode.children?.find((c: any) => normType(c.type) === "componentreference");
-    const valNode = assignNode.children?.find((c: any) => normType(c.type) === "expression");
+    const compRef = assignNode.children?.find((c: CfaCstNode) => normType(c.type) === "componentreference");
+    const valNode = assignNode.children?.find((c: CfaCstNode) => normType(c.type) === "expression");
     const targetVar = compRef?.text || rawText.split(":=")[0]?.trim() || "";
     const valExpr = valNode?.text || rawText.split(":=")[1]?.trim() || "";
     const valStartByte = valNode?.startIndex ?? sStart + Math.max(0, rawText.indexOf(":=") + 2);
@@ -479,14 +496,14 @@ function extractStatementFromNode(stmtNode: any): ParsedStatement {
 /**
  * Extracts statements from an algorithm_section CST node.
  */
-function extractStatementsFromCst(algNode: any, defaultStartByte: number): ParsedStatement[] {
+function extractStatementsFromCst(algNode: CfaCstNode | null | undefined, defaultStartByte: number): ParsedStatement[] {
   const statements: ParsedStatement[] = [];
   if (!algNode || !algNode.children || algNode.children.length === 0) {
     return parseStatementsFromText(algNode?.text || "", defaultStartByte);
   }
 
   let hasSyntaxError = Boolean(algNode.isError || algNode.type === "ERROR");
-  const collectStmts = (node: any) => {
+  const collectStmts = (node: CfaCstNode): void => {
     for (const child of node.children || []) {
       const nt = normType(child.type);
       if (child.isError || child.type === "ERROR") {
@@ -689,15 +706,16 @@ function parseStatementsFromText(algText: string, algStartByte: number): ParsedS
  * @param cst - Root CST node of the class definition.
  * @returns Array of CFA lint diagnostics.
  */
-export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any): LintResult[] {
+export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: unknown): LintResult[] {
   const results: LintResult[] = [];
-  if (!cst) return results;
+  if (!isCfaCstNode(cst)) return results;
 
   const className: string = self.name || "Anonymous";
 
   // Check if class is a function
-  const meta = (self.metadata as any) || (self as any).attributes || {};
-  const words = tokenizeCommentStrippedWords(String(meta.classKind ?? meta.classPrefixes ?? ""));
+  const selfWithAttrs = self as SymbolEntry & { attributes?: Record<string, unknown> | undefined };
+  const meta: Record<string, unknown> = self.metadata || selfWithAttrs.attributes || {};
+  const words = tokenizeCommentStrippedWords(String(meta["classKind"] ?? meta["classPrefixes"] ?? ""));
   let isFunction = words.includes("function");
   let isPartial = words.includes("partial");
 
@@ -742,7 +760,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
   const compClauses = findNodesByType(cst, "component_clause");
   for (const comp of compClauses) {
     const compText = comp.text || "";
-    const typePrefixNode = (comp.children || []).find((c: any) => normType(c.type) === "typeprefix");
+    const typePrefixNode = (comp.children || []).find((c: CfaCstNode) => normType(c.type) === "typeprefix");
     const prefixWords = typePrefixNode
       ? tokenizeCommentStrippedWords(typePrefixNode.text || "")
       : tokenizeCommentStrippedWords(compText).slice(0, 6);
@@ -768,7 +786,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
         for (const child of decl.children || []) {
           const childType = normType(child.type);
           if (childType === "ident" || childType === "identifier") {
-            name = child.text;
+            name = child.text ?? null;
             nameStartByte = child.startIndex ?? decl.startIndex ?? compStart;
             nameEndByte = nameStartByte + (name?.length ?? 0);
             break;
@@ -777,7 +795,7 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
             for (const sub of child.children) {
               const subType = normType(sub.type);
               if (subType === "ident" || subType === "identifier") {
-                name = sub.text;
+                name = sub.text ?? null;
                 nameStartByte = sub.startIndex ?? child.startIndex ?? decl.startIndex ?? compStart;
                 nameEndByte = nameStartByte + (name?.length ?? 0);
                 break;
@@ -1281,4 +1299,4 @@ export function runModelicaCfaAnalysis(_db: QueryDB, self: SymbolEntry, cst: any
 /**
  * Placeholder CST lint map for CFA rules (CFA diagnostics are executed via Salsa `lint__cfaAnalysis` query hook).
  */
-export const modelicaCfaLints: Record<string, any> = {};
+export const modelicaCfaLints: Record<string, CompilerLint> = {};

@@ -1,0 +1,11 @@
+{
+  "id": "rtds-03-sync-machine-excitation-hil",
+  "lang": "rtds",
+  "subFormats": ["dft"],
+  "difficulty": 3,
+  "title": "Synchronous Machine Excitation & Step-Up Transformer HIL",
+  "description": "Real-time RTDS generator-transformer-infinite-bus (SMIB) draft with subtransient reactance, step-up impedance, and damping load for AVR/PSS hardware-in-the-loop validation.",
+  "category": "Real-Time HIL Simulation",
+  "tags": ["rtds", "synchronous-machine", "avr", "smib", "hil"],
+  "activeFile": "sync_gen_hil.dft"
+}

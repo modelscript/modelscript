@@ -1,0 +1,12 @@
+{
+  "id": "cantera-01-air-methane-equilibrium",
+  "lang": "cantera",
+  "subFormats": ["cantera-yaml"],
+  "difficulty": 1,
+  "title": "Ideal Gas Air-Methane Equilibrium Mixture",
+  "description": "Stoichiometric methane-air ideal-gas thermodynamic mixture with continuous NASA-7 polynomials for chemical equilibrium and adiabatic flame temperature calculations.",
+  "category": "Combustion & Thermochemistry",
+  "tags": ["cantera", "nasa7", "methane", "equilibrium"],
+  "activeFile": "air_methane.cantera.yaml",
+  "isDefaultStarter": true
+}

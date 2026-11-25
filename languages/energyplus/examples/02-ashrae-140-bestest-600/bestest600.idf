@@ -1,0 +1,136 @@
+!- ASHRAE 140 BESTEST Case 600 Low-Mass Test Cell (8m x 6m x 2.7m)
+Building,
+  BESTEST_Case_600,        !- Name
+  0.0,                     !- North Axis [deg]
+  Country,                 !- Terrain
+  0.04,                    !- Loads Convergence Tolerance Value [W]
+  0.4,                     !- Temperature Convergence Tolerance Value [deltaC]
+  FullInteriorAndExterior, !- Solar Distribution
+  25,                      !- Maximum Number of Warmup Days
+  6;                       !- Minimum Number of Warmup Days
+
+Zone,
+  TestCell600,             !- Name
+  0.0,                     !- Direction of Relative North [deg]
+  0.0, 0.0, 0.0,           !- Origin [X, Y, Z]
+  1,                       !- Type
+  1,                       !- Multiplier
+  2.7,                     !- Ceiling Height [m]
+  129.6;                   !- Volume [m3]
+
+Material,
+  WoodSiding,              !- Name
+  Rough,                   !- Roughness
+  0.009,                   !- Thickness [m]
+  0.14,                    !- Conductivity [W/m-K]
+  530.0,                   !- Density [kg/m3]
+  900.0,                   !- Specific Heat [J/kg-K]
+  0.90,                    !- Thermal Absorptance
+  0.60,                    !- Solar Absorptance
+  0.60;                    !- Visible Absorptance
+
+Material,
+  FiberglassQuilt,         !- Name
+  Rough,                   !- Roughness
+  0.066,                   !- Thickness [m]
+  0.04,                    !- Conductivity [W/m-K]
+  12.0,                    !- Density [kg/m3]
+  840.0,                   !- Specific Heat [J/kg-K]
+  0.90,                    !- Thermal Absorptance
+  0.60,                    !- Solar Absorptance
+  0.60;                    !- Visible Absorptance
+
+Material,
+  Plasterboard,            !- Name
+  Rough,                   !- Roughness
+  0.012,                   !- Thickness [m]
+  0.16,                    !- Conductivity [W/m-K]
+  950.0,                   !- Density [kg/m3]
+  840.0,                   !- Specific Heat [J/kg-K]
+  0.90,                    !- Thermal Absorptance
+  0.60,                    !- Solar Absorptance
+  0.60;                    !- Visible Absorptance
+
+Construction,
+  LTWALL,                  !- Name
+  WoodSiding,              !- Outside Layer
+  FiberglassQuilt,         !- Layer 2
+  Plasterboard;            !- Inside Layer
+
+BuildingSurface:Detailed,
+  WallSouth600,            !- Name
+  Wall,                    !- Surface Type
+  LTWALL,                  !- Construction Name
+  TestCell600,             !- Zone Name
+  Outdoors,                !- Outside Boundary Condition
+  ,                        !- Outside Boundary Condition Object
+  SunExposed,              !- Sun Exposure
+  WindExposed,             !- Wind Exposure
+  0.5,                     !- View Factor to Ground
+  4,                       !- Number of Vertices
+  0.0, 0.0, 2.7,           !- Vertex 1
+  0.0, 0.0, 0.0,           !- Vertex 2
+  8.0, 0.0, 0.0,           !- Vertex 3
+  8.0, 0.0, 2.7;           !- Vertex 4
+
+BuildingSurface:Detailed,
+  WallEast600,             !- Name
+  Wall,                    !- Surface Type
+  LTWALL,                  !- Construction Name
+  TestCell600,             !- Zone Name
+  Outdoors,                !- Outside Boundary Condition
+  ,                        !- Outside Boundary Condition Object
+  SunExposed,              !- Sun Exposure
+  WindExposed,             !- Wind Exposure
+  0.5,                     !- View Factor to Ground
+  4,                       !- Number of Vertices
+  8.0, 0.0, 2.7,           !- Vertex 1
+  8.0, 0.0, 0.0,           !- Vertex 2
+  8.0, 6.0, 0.0,           !- Vertex 3
+  8.0, 6.0, 2.7;           !- Vertex 4
+
+BuildingSurface:Detailed,
+  WallNorth600,            !- Name
+  Wall,                    !- Surface Type
+  LTWALL,                  !- Construction Name
+  TestCell600,             !- Zone Name
+  Outdoors,                !- Outside Boundary Condition
+  ,                        !- Outside Boundary Condition Object
+  SunExposed,              !- Sun Exposure
+  WindExposed,             !- Wind Exposure
+  0.5,                     !- View Factor to Ground
+  4,                       !- Number of Vertices
+  8.0, 6.0, 2.7,           !- Vertex 1
+  8.0, 6.0, 0.0,           !- Vertex 2
+  0.0, 6.0, 0.0,           !- Vertex 3
+  0.0, 6.0, 2.7;           !- Vertex 4
+
+BuildingSurface:Detailed,
+  WallWest600,             !- Name
+  Wall,                    !- Surface Type
+  LTWALL,                  !- Construction Name
+  TestCell600,             !- Zone Name
+  Outdoors,                !- Outside Boundary Condition
+  ,                        !- Outside Boundary Condition Object
+  SunExposed,              !- Sun Exposure
+  WindExposed,             !- Wind Exposure
+  0.5,                     !- View Factor to Ground
+  4,                       !- Number of Vertices
+  0.0, 6.0, 2.7,           !- Vertex 1
+  0.0, 6.0, 0.0,           !- Vertex 2
+  0.0, 0.0, 0.0,           !- Vertex 3
+  0.0, 0.0, 2.7;           !- Vertex 4
+
+ElectricEquipment,
+  InternalGain200W,        !- Name
+  TestCell600,             !- Zone Name
+  AlwaysOn,                !- Schedule Name
+  EquipmentLevel,          !- Calculation Method
+  200.0;                   !- Design Level [W]
+
+ZoneInfiltration:DesignFlowRate,
+  ConstantInfil,           !- Name
+  TestCell600,             !- Zone Name
+  AlwaysOn,                !- Schedule Name
+  Flow/Zone,               !- Flow Rate Calculation Method
+  0.018;                   !- Design Volume Flow Rate [m3/s]

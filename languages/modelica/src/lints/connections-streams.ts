@@ -24,6 +24,7 @@ import {
   isMissingInnerInDocument,
   isStreamMixedWithFlow,
   resolveDottedComponentClass,
+  type ModelicaGrammarSymbols,
 } from "./helpers.js";
 
 /**
@@ -56,7 +57,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
       }
       return `Flow variable sets differ in connect(): '${target["lhs"]}' vs '${target["rhs"]}'.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Locate the enclosing class definition to resolve connector component references
       let enclosingClass: u32 = 0;
       for (const cls of db.ast.getAncestors(node)) {
@@ -112,7 +113,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     code: 4055,
     message: (_target, expRef, nonExpRef) =>
       `Cannot connect expandable connector ${expRef.text} with non-expandable connector ${nonExpRef.text}.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Find enclosing class scope for resolving both sides of `connect(lhs, rhs)`
       let enclosingClass: u32 = 0;
       for (const cls of db.ast.getAncestors(node)) {
@@ -153,7 +154,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     code: 4057,
     message: (_target, compName) =>
       `Prefix 'flow' on component '${compName.text}' not allowed in class specialization 'expandable connector'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check whether the directly enclosing class is an `expandable connector`
       let enclosingClass: u32 = 0;
       for (const cls of db.ast.getAncestors(node)) {
@@ -187,7 +188,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4037,
     message: (_target, pfx, compName) => `Invalid variability ${pfx.text} on connector '${compName.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Inspect variability prefixes (`constant` or `parameter`) on connector-typed components
       for (const pfx of db.ast.getDescendants(node, $.type_prefix)) {
         if (db.ast.textEquals(pfx, "constant") || db.ast.textEquals(pfx, "parameter")) {
@@ -229,7 +230,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4046,
     message: (target) => `Constant '${target.text}' must be fixed but has 'fixed = false'`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check the parent component_clause for a `constant` prefix and disallow `fixed = false`
       for (const comp of db.ast.getAncestors(node, $.component_clause)) {
         for (const pfx of db.ast.getDescendants(comp, $.type_prefix)) {
@@ -261,7 +262,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
       const fCount = flowCount ? flowCount.asNumber() : 0;
       return `Invalid stream connector .${cName}: A stream connector must have exactly one flow variable, this connector has ${fCount} flow variables.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (!isClassKind(db, node, "connector")) return;
       let hasStream = false;
       let flowCount: u32 = 0;
@@ -325,7 +326,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     severity: "warning",
     code: 2094,
     message: (target) => `No corresponding 'inner' declaration found in scope for outer component '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if an `outer` component lacks a matching `inner` declaration in the document hierarchy
       if (isMissingInnerInDocument(db, node, $)) {
         let nameNode: u32 = 0;
@@ -349,7 +350,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     code: 4124,
     message: (target) =>
       `Stream variable '${target.text}' accessed in connector equation without required inStream() operator.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       const streamRef = getStreamMissingInStreamNode(db, node, $);
       if (streamRef != 0) {
         db.diagnostic(streamRef);
@@ -365,7 +366,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4125,
     message: (target) => `Variable '${target.text}' cannot have both 'stream' and 'flow' prefixes.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (isStreamMixedWithFlow(db, node, $)) {
         let nameNode: u32 = 0;
         if ($.declaration != 0) {
@@ -394,7 +395,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     code: 4126,
     message: (target, innerNode) =>
       `Outer component '${target.text}' causality conflicts with inner declaration '${innerNode ? innerNode.text : target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       const innerId = getInnerOuterCausalityConflictNode(db, node, $);
       if (innerId != 0) {
         let outerId: u32 = 0;
@@ -418,7 +419,7 @@ export const modelicaConnectionLints: Record<string, CompilerLint> = {
     severity: "warning",
     code: 5046,
     message: () => `Operator 'cardinality()' is deprecated in Modelica 3.x; use conditional components instead.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (db.ast.getType(node) == $.primary) {
         const fc = db.ast.getFirstChild(node);
         if (fc != 0 && db.ast.getType(fc) == $.function_call) return;

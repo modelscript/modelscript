@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SixPulse_Thyristor_Rectifier" version="5.0.0" type="normal">
+  <param name="time_step" value="20.0"/>
+  <param name="time_duration" value="0.25"/>
+  <param name="start_type" value="0"/>
+  <param name="f_base" value="60.0"/>
+  <hierarchy>
+    <call name="Main" link="10001"/>
+  </hierarchy>
+  <definitions>
+    <definition name="Main" type="module">
+      <schematic>
+        <User classid="UserCmp" defn="master:source_3" id="AC1" x="80" y="180" orient="0">
+          <param name="Name" value="AC_Feeder_138kV"/>
+          <param name="V" value="138.0"/>
+          <param name="MVA" value="600.0"/>
+          <param name="f" value="60.0"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <Bus name="AC_Bus_138kV" id="B_AC" x="140" y="180" length="50" vbase="138.0"/>
+
+        <User classid="UserCmp" defn="master:xfmr-3p2w" id="TX1" x="250" y="180" orient="0">
+          <param name="Name" value="ConverterTransformer"/>
+          <param name="MVA" value="120.0"/>
+          <param name="V1" value="138.0"/>
+          <param name="V2" value="25.0"/>
+          <param name="X" value="0.12"/>
+          <port name="P" pos="[-30, 0]"/>
+          <port name="S" pos="[30, 0]"/>
+        </User>
+
+        <Bus name="Valve_Bus_25kV" id="B_VALVE" x="320" y="180" length="50" vbase="25.0"/>
+
+        <User classid="UserCmp" defn="master:peswitch" id="BRIDGE6P" x="430" y="180" orient="0">
+          <param name="Name" value="SixPulseBridge"/>
+          <param name="AlphaDeg" value="18.0"/>
+          <param name="Ron" value="0.01"/>
+          <param name="Roff" value="1.0e6"/>
+          <param name="SnubberR" value="500.0"/>
+          <param name="SnubberC" value="0.05e-6"/>
+          <port name="ac" pos="[-30, 0]"/>
+          <port name="dc" pos="[30, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:inductor" id="LDC" x="530" y="180" orient="0">
+          <param name="Name" value="SmoothingReactor"/>
+          <param name="L" value="0.15"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <User classid="UserCmp" defn="master:resistor" id="RDC" x="630" y="180" orient="0">
+          <param name="Name" value="DC_Load_Resistor"/>
+          <param name="R" value="18.5"/>
+          <port name="in" pos="[-20, 0]"/>
+          <port name="out" pos="[20, 0]"/>
+        </User>
+
+        <Wire>
+          <vertex x="100" y="180"/>
+          <vertex x="140" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="190" y="180"/>
+          <vertex x="220" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="280" y="180"/>
+          <vertex x="320" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="370" y="180"/>
+          <vertex x="400" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="460" y="180"/>
+          <vertex x="510" y="180"/>
+        </Wire>
+        <Wire>
+          <vertex x="550" y="180"/>
+          <vertex x="610" y="180"/>
+        </Wire>
+      </schematic>
+    </definition>
+  </definitions>
+</project>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  version="1.0"
+                  name="HvacParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="Controller.Kp">
+      <ssv:Real value="450.0" />
+    </ssv:Parameter>
+    <ssv:Parameter name="Controller.Ki">
+      <ssv:Real value="1.2" />
+    </ssv:Parameter>
+    <ssv:Parameter name="ThermalZone.C_air">
+      <ssv:Real value="125000.0" />
+    </ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>

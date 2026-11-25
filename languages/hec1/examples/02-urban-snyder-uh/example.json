@@ -1,0 +1,11 @@
+{
+  "id": "hec1-02-urban-snyder-uh",
+  "lang": "hec1",
+  "subFormats": ["hec1"],
+  "difficulty": 2,
+  "title": "Urban Catchment with Incremental Storm and Snyder UH",
+  "description": "Urbanized metropolitan subbasin modeled with incremental storm hyetograph (PI), exponential rainfall loss (LE), Snyder synthetic unit hydrograph (US), and baseflow recession (BF).",
+  "category": "Watershed Hydrology",
+  "tags": ["hec1", "snyder-uh", "urban-hydrology", "baseflow"],
+  "activeFile": "urban_snyder.hec1"
+}

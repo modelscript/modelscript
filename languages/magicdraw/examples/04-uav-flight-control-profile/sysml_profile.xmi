@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_sysml_profile" name="AvionicsSysMLProfile">
+    <packagedElement xmi:type="uml:Class" xmi:id="prof_dal" name="DesignAssuranceMetadata">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="prof_mtbf" name="mtbfHours">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+  </uml:Model>
+  <sysml:Block xmi:id="st_prof_dal" base_Class="prof_dal"/>
+</xmi:XMI>

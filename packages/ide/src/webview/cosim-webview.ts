@@ -611,7 +611,9 @@ async function disconnectWebSerial(): Promise<void> {
   if (activeSerialPort) {
     try {
       await activeSerialPort.close();
-    } catch {}
+    } catch {
+      // Best-effort serial port / reader cleanup
+    }
     activeSerialPort = null;
   }
   if (hilStatusBadge) {
@@ -649,7 +651,9 @@ async function readSerialStream(port: WebSerialPort): Promise<void> {
     } finally {
       try {
         reader.releaseLock();
-      } catch {}
+      } catch {
+        // Best-effort serial port / reader cleanup
+      }
     }
   }
 }

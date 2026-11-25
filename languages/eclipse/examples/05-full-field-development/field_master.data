@@ -1,0 +1,40 @@
+-- Full Field Black-Oil Development Master Deck
+RUNSPEC
+TITLE
+  Offshore Full Field Multi-Well Black-Oil Development
+/
+
+DIMENS
+  15 15 4 /
+
+FIELD
+OIL
+WATER
+GAS
+DISGAS
+
+START
+  1 'JAN' 2026 /
+
+GRID
+INCLUDE
+  'grid.grdecl' /
+
+PROPS
+INCLUDE
+  'pvt.inc' /
+
+SOLUTION
+EQUIL
+  8500.0 4400.0 8950.0 0.0 8100.0 0.0 1 0 0 /
+
+PRESSURE
+  900*4400.0 /
+SWAT
+  900*0.18 /
+
+SCHEDULE
+INCLUDE
+  'schedule.inc' /
+
+END

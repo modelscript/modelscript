@@ -1,0 +1,12 @@
+{
+  "id": "jedec-01-pal16l8-and-or-gate",
+  "lang": "jedec",
+  "subFormats": ["jesd3"],
+  "difficulty": 1,
+  "title": "PAL16L8 4-Input Combinational AND/OR Gate Fuse Map",
+  "description": "JESD3 JEDEC fuse map targeting a 20-pin PAL16L8 (2048 fuses) implementing a two-product-term combinational AND/OR gate with programmatically verified 16-bit fuse checksum.",
+  "category": "Programmable Logic",
+  "tags": ["jedec", "jesd3", "pal16l8", "combinational", "checksum"],
+  "activeFile": "pal16l8_and_or.jed",
+  "isDefaultStarter": true
+}

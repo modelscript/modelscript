@@ -8,9 +8,16 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
-import { createRepo, getRepos } from "../api";
+import { createRepo, getRepos, type SocialRepoRecord } from "../api";
+import { getApiErrorMessage } from "../util/error";
 import Box from "./Box";
 import Spinner from "./Spinner";
+
+interface ProfileRepoItem extends SocialRepoRecord {
+  repo_full_name?: string | undefined;
+  external_id?: string | undefined;
+  forks_count?: number | undefined;
+}
 
 export default function ProfileRepos({ username, isOwnProfile }: { username: string; isOwnProfile: boolean }) {
   const hasRepos = useFeatureFlag(["git_repositories", "repositories"]);
@@ -18,7 +25,7 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
   const navigate = useNavigate();
-  const [repos, setRepos] = useState<any[]>([]);
+  const [repos, setRepos] = useState<ProfileRepoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
@@ -94,13 +101,10 @@ export default function ProfileRepos({ username, isOwnProfile }: { username: str
       setRepoDesc("");
       setLinkError(null);
       fetchRepos();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to link repo", err);
       setLinkError(
-        err?.response?.data?.error ||
-          err?.response?.data?.message ||
-          err?.message ||
-          "Failed to link repository. Please verify the repository URL and try again.",
+        getApiErrorMessage(err, "Failed to link repository. Please verify the repository URL and try again."),
       );
     } finally {
       setLinking(false);

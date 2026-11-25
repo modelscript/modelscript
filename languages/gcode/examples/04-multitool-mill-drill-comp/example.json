@@ -1,0 +1,11 @@
+{
+  "id": "gcode-04-multitool-mill-drill-comp",
+  "lang": "gcode",
+  "subFormats": ["iso-6983", "cutter-comp"],
+  "difficulty": 4,
+  "title": "Multi-Tool Mill-Drill-Chamfer Operation with G41 Compensation",
+  "description": "Two-tool CNC machining sequence combining G41/G40 cutter radius compensation contour milling (T1) with G81 center-hole drilling (T2).",
+  "category": "CNC Machining & CAM",
+  "tags": ["gcode", "multi-tool", "g41", "cutter-compensation"],
+  "activeFile": "multitool_part.nc"
+}

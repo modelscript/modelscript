@@ -1,0 +1,31 @@
+REVNUM: 1.01
+PATTYP: C
+DESCR1: Half-Wave Omnidirectional Dipole Antenna
+DESCR2: 880-960MHz Vertical Polarization
+MANUF: Ansatz RF Systems
+MODEL: ANS-DIP-900-2
+GAIN: 2.15
+GAINU: DBI
+FRQREC: 880.0 960.0
+POLARZ: V
+DTILTE: 0.0
+DTILTM: 0.0
+NOAVAL: 8
+0.0 0.0
+45.0 0.0
+90.0 0.0
+135.0 0.0
+180.0 0.0
+225.0 0.0
+270.0 0.0
+315.0 0.0
+NOEVAL: 9
+0.0 0.0
+20.0 1.2
+39.0 3.0
+60.0 8.5
+90.0 30.0
+270.0 30.0
+300.0 8.5
+321.0 3.0
+340.0 1.2

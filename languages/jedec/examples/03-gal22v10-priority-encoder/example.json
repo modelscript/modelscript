@@ -1,0 +1,11 @@
+{
+  "id": "jedec-03-gal22v10-priority-encoder",
+  "lang": "jedec",
+  "subFormats": ["jesd3"],
+  "difficulty": 3,
+  "title": "GAL22V10 4-Bit Binary Priority Encoder",
+  "description": "24-pin GAL22V10 (5892 fuses) JESD3 fuse map implementing a 4-input priority encoder with OLMC architecture configuration bits and 5 functional verification vectors.",
+  "category": "Digital Logic Design",
+  "tags": ["jedec", "gal22v10", "priority-encoder", "pld"],
+  "activeFile": "gal22v10_encoder.jed"
+}

@@ -31,6 +31,7 @@ import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import Spinner from "../../../components/Spinner";
 import { useFeatureFlag } from "../../../FeatureFlagContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { DetailSubtitle, DetailTitle, Header } from "../settingsStyles";
 
 const OrgCard = styled.div`
@@ -297,10 +298,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({
       setOrganizations((prev) => prev.map((o) => (o.slug === selectedOrg.slug ? merged : o)));
       setIsEditingProfile(false);
       setFeedback({ type: "success", text: `Updated profile for '${merged.name}'.` });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         type: "error",
-        text: err?.response?.data?.error || err?.message || "Failed to update organization profile.",
+        text: getApiErrorMessage(err, "Failed to update organization profile."),
       });
     } finally {
       setIsSavingProfile(false);
@@ -316,10 +317,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({
         type: "success",
         text: `Updated ${username}'s role to ${formatRoleLabel(newRole)}.`,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         type: "error",
-        text: err?.response?.data?.error || err?.message || "Failed to update member role.",
+        text: getApiErrorMessage(err, "Failed to update member role."),
       });
     }
   };
@@ -348,10 +349,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({
       setSlugManuallyEdited(false);
       setNewOrgDesc("");
       setFeedback({ type: "success", text: `Successfully created organization '${createdWithRole.name}'.` });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         type: "error",
-        text: err?.response?.data?.error || err?.message || "Failed to create organization. Slug may be taken.",
+        text: getApiErrorMessage(err, "Failed to create organization. Slug may be taken."),
       });
     }
   };
@@ -368,10 +369,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({
         type: "success",
         text: `Successfully added ${inviteUsername.trim()} as ${formatRoleLabel(inviteRole)}.`,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         type: "error",
-        text: err?.response?.data?.error || err?.message || "Failed to add member. Check username and permissions.",
+        text: getApiErrorMessage(err, "Failed to add member. Check username and permissions."),
       });
     }
   };
@@ -383,10 +384,10 @@ export const OrganizationTab: React.FC<OrganizationTabProps> = ({
       await removeOrganizationMember(selectedOrg.slug, userId);
       setMembers((prev) => prev.filter((m) => (m.userId || m.user_id) !== userId));
       setFeedback({ type: "success", text: `Removed ${username} from the organization.` });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         type: "error",
-        text: err?.response?.data?.error || err?.message || "Failed to remove member.",
+        text: getApiErrorMessage(err, "Failed to remove member."),
       });
     }
   };

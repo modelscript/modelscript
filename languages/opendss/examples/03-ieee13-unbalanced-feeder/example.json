@@ -1,0 +1,11 @@
+{
+  "id": "opendss-03-ieee13-unbalanced-feeder",
+  "lang": "opendss",
+  "subFormats": ["dss"],
+  "difficulty": 3,
+  "title": "IEEE 13-Bus Modular Distribution Feeder",
+  "description": "Multi-file OpenDSS distribution feeder organizing line impedance codes and spot loads into redirected companion .dss modules.",
+  "category": "Distribution Benchmark",
+  "tags": ["opendss", "ieee13", "redirect", "multi-file"],
+  "activeFile": "Master.dss"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "bngl-03-egfr-dimerization",
+  "lang": "bngl",
+  "subFormats": ["bngl"],
+  "difficulty": 3,
+  "title": "EGFR Dimerization and Autophosphorylation Signaling",
+  "description": "Epidermal growth factor receptor (EGFR) rule-based model capturing EGF binding, receptor homodimerization, trans-autophosphorylation, and Grb2 adaptor recruitment.",
+  "category": "Cell Signaling",
+  "tags": ["bngl", "egfr", "dimerization", "grb2", "signaling"],
+  "activeFile": "egfr_signaling.bngl"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "qif-05-turbine-blade-mbd-inspection",
+  "lang": "qif",
+  "subFormats": ["qif", "step"],
+  "difficulty": 5,
+  "title": "Turbine Blade Aerofoil MBD Inspection Package",
+  "description": "Multi-file QIF 3.0 + STEP AP242 Model-Based Definition metrology bundle linking turbine blade dovetail datum features and airfoil profile checks to STEP entity IDs.",
+  "category": "Aerospace Metrology",
+  "tags": ["qif", "step", "turbine-blade", "mbd", "multi-file"],
+  "activeFile": "blade_qif.qif"
+}

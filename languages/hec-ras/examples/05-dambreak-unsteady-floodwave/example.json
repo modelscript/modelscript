@@ -1,0 +1,11 @@
+{
+  "id": "hec-ras-05-dambreak-unsteady-floodwave",
+  "lang": "hec-ras",
+  "subFormats": ["prj", "g01", "u01", "p01"],
+  "difficulty": 5,
+  "title": "Dam-Break Unsteady Hydrograph Flood Wave",
+  "description": "Full 4-file unsteady HEC-RAS dam-break flood wave study with inline dam weir structure, downstream valley cross-sections, steep breach inflow hydrograph, and unsteady simulation plan.",
+  "category": "Dam Safety & Flood Routing",
+  "tags": ["hec-ras", "dam-break", "unsteady-flow", "flood-wave", "multi-file"],
+  "activeFile": "dambreak.g01"
+}

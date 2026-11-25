@@ -2,7 +2,7 @@
 
 /**
  * CaeSimulationTree — SimScale-inspired floating simulation setup & post-processing
- * tree for FEA (.inp) and CFD (.su2 / .cfg / VTK) workflows in Morsel & Ansatz.
+ * tree for FEA (.inp) and CFD (.su2 / .cfg / VTK) workflows in Ansatz & Ansatz.
  *
  * Stays bidirectionally synchronized with the live source deck:
  * - Clicking any tree item jumps to the source line and highlights the 3D set/marker.

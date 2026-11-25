@@ -1,0 +1,11 @@
+{
+  "id": "hec1-04-two-tributary-combine",
+  "lang": "hec1",
+  "subFormats": ["hec1"],
+  "difficulty": 4,
+  "title": "Two-Tributary Watershed Confluence Combine",
+  "description": "Four-station river basin combining a routed North Fork tributary (Clark UH + Muskingum reach) with a local South Fork tributary (SCS UH) at a downstream confluence junction using HC 2.",
+  "category": "Watershed Hydrology",
+  "tags": ["hec1", "confluence", "hydrograph-combine", "watershed"],
+  "activeFile": "two_tributary.hec1"
+}

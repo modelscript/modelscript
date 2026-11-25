@@ -360,7 +360,7 @@ export default defineConfig({
       const section = parts[0];
       const sectionLabels: Record<string, { name: string; link: string }> = {
         guide: { name: "Guide", link: "https://modelscript.org/guide/introduction" },
-        ansatz: { name: "Ansatz Platform", link: "https://modelscript.org/ansatz/overview" },
+        ansatz: { name: "Ansatz Network", link: "https://modelscript.org/ansatz/overview" },
         architecture: { name: "Architecture", link: "https://modelscript.org/architecture/overview" },
         algorithms: { name: "Algorithms", link: "https://modelscript.org/algorithms/overview" },
         cli: { name: "CLI Reference", link: "https://modelscript.org/cli/overview" },
@@ -539,7 +539,7 @@ export default defineConfig({
           ],
         },
         {
-          text: "Ansatz Platform",
+          text: "Ansatz Network",
           items: [
             { text: "Overview & Architecture", link: "/ansatz/overview" },
             { text: "Workflow Replacement Guide", link: "/ansatz/workflow-replacement" },
@@ -553,7 +553,7 @@ export default defineConfig({
 
       const ansatzSidebar: DefaultTheme.SidebarItem[] = [
         {
-          text: "Ansatz Platform",
+          text: "Ansatz Network",
           items: [
             { text: "Overview & Architecture", link: "/ansatz/overview" },
             { text: "Workflow Replacement Guide", link: "/ansatz/workflow-replacement" },

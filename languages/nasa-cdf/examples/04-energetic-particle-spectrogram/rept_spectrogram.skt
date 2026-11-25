@@ -1,0 +1,63 @@
+! Van Allen Probes REPT Energetic Electron Differential Flux Spectrogram
+#header
+  CDF NAME: rbspa_rel03_ect_rept_l2_20260805.cdf
+  DATA ENCODING: NETWORK
+  MAJORITY: ROW_MAJOR
+  FORMAT: SINGLE
+  VERSION: 3.8.0
+
+#GLOBALattributes
+  "Project" 0: CDF_CHAR { "RBSP>Radiation Belt Storm Probes" }
+  "Source_name" 0: CDF_CHAR { "RBSPA>Van Allen Probe A" }
+  "Discipline" 0: CDF_CHAR { "Space Physics>Magnetospheric Science" }
+  "Data_type" 0: CDF_CHAR { "L2>Level 2 Differential Flux" }
+  "Descriptor" 0: CDF_CHAR { "ECT-REPT>Relativistic Electron Proton Telescope" }
+
+#VARIABLEattributes
+  "DEPEND_0"
+  "DEPEND_1"
+  "UNITS"
+  "VALIDMIN"
+  "VALIDMAX"
+  "FILLVAL"
+  "VAR_TYPE"
+
+#variables
+  "EPOCH" CDF_EPOCH 1 0:[] T
+    "VAR_TYPE" CDF_CHAR { "support_data" }
+    "UNITS" CDF_CHAR { "ms" }
+    [0] = "2026-08-05T14:00:00.000Z"
+    [1] = "2026-08-05T14:05:00.000Z"
+    [2] = "2026-08-05T14:10:00.000Z"
+  .
+  "ENERGY_BINS" CDF_REAL4 1 1:[4] F T
+    "VAR_TYPE" CDF_CHAR { "support_data" }
+    "UNITS" CDF_CHAR { "MeV" }
+    "VALIDMIN" CDF_REAL4 { 0.5, 0.5, 0.5, 0.5 }
+    "VALIDMAX" CDF_REAL4 { 20.0, 20.0, 20.0, 20.0 }
+    [0] = { 1.8, 2.6, 4.2, 6.3 }
+  .
+  "FEDU_FLUX" CDF_REAL4 1 1:[4] T T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "DEPEND_1" CDF_CHAR { "ENERGY_BINS" }
+    "UNITS" CDF_CHAR { "cm^-2 s^-1 sr^-1 MeV^-1" }
+    "VALIDMIN" CDF_REAL4 { 0.0, 0.0, 0.0, 0.0 }
+    "VALIDMAX" CDF_REAL4 { 1.0e8, 1.0e8, 1.0e8, 1.0e8 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = { 4.25e4, 1.18e4, 2.30e3, 3.10e2 }
+    [1] = { 5.10e4, 1.42e4, 2.85e3, 3.95e2 }
+    [2] = { 4.78e4, 1.31e4, 2.54e3, 3.40e2 }
+  .
+  "L_SHELL" CDF_REAL4 1 0:[] T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "Re" }
+    "VALIDMIN" CDF_REAL4 { 1.0 }
+    "VALIDMAX" CDF_REAL4 { 12.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = 4.12
+    [1] = 4.38
+    [2] = 4.65
+  .
+#end

@@ -1,0 +1,11 @@
+{
+  "id": "dxf-04-gear-wheel-block-insert",
+  "lang": "dxf",
+  "subFormats": ["dxf-ascii", "blocks"],
+  "difficulty": 4,
+  "title": "Mechanical Flange Wheel with Block INSERT Bolt Pattern",
+  "description": "Rotary hub flange DXF defining a reusable M6_BOLT_HOLE BLOCK instanced six times around a 70 mm pitch-circle diameter via INSERT entities.",
+  "category": "2D Mechanical CAD",
+  "tags": ["dxf", "blocks", "insert", "bolt-circle", "flange"],
+  "activeFile": "flange_wheel.dxf"
+}

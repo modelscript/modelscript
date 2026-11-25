@@ -1,0 +1,73 @@
+[
+  {
+    "id": "hec1-01-single-subbasin-scs",
+    "lang": "hec1",
+    "subFormats": ["hec1"],
+    "difficulty": 1,
+    "title": "Single Subbasin SCS Curve Number Runoff",
+    "description": "Minimal HEC-1 flood hydrograph deck for a single rural subbasin using total basin storm precipitation (PB), SCS Curve Number infiltration loss (LS), and SCS dimensionless unit hydrograph (UD).",
+    "category": "Watershed Hydrology",
+    "tags": ["hec1", "scs-cn", "unit-hydrograph", "runoff"],
+    "activeFile": "single_subbasin.hec1",
+    "fileNames": ["single_subbasin.hec1"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "ID SINGLE SUBBASIN SCS CURVE NUMBER RUNOFF MODEL\nIT 15 01JUN90 0000 100\nKK SUB1\nKM RURAL HEADWATER SUBBASIN (4.5 SQ MI, CN = 76)\nBA 4.5\nPB 3.8\nLS 0.4 76 5\nUD 1.25\nZZ\n"
+  },
+  {
+    "id": "hec1-02-urban-snyder-uh",
+    "lang": "hec1",
+    "subFormats": ["hec1"],
+    "difficulty": 2,
+    "title": "Urban Catchment with Incremental Storm and Snyder UH",
+    "description": "Urbanized metropolitan subbasin modeled with incremental storm hyetograph (PI), exponential rainfall loss (LE), Snyder synthetic unit hydrograph (US), and baseflow recession (BF).",
+    "category": "Watershed Hydrology",
+    "tags": ["hec1", "snyder-uh", "urban-hydrology", "baseflow"],
+    "activeFile": "urban_snyder.hec1",
+    "fileNames": ["urban_snyder.hec1"],
+    "fileCount": 1,
+    "code": "ID URBAN CATCHMENT INCREMENTAL HYETOGRAPH AND SNYDER UH\nIT 15 15JUL92 0600 120\nKK URBAN1\nKM URBANIZED SUBCATCHMENT WITH 35 PCT IMPERVIOUSNESS\nBA 6.8\nPI 0.15 0.35 0.65 1.10 0.80 0.45 0.25 0.10\nLE 0.25 0.40 0.30 1.20 35\nUS 1.40 0.62\nBF 25.0 -0.05 1.05\nZZ\n"
+  },
+  {
+    "id": "hec1-03-muskingum-channel-routing",
+    "lang": "hec1",
+    "subFormats": ["hec1"],
+    "difficulty": 3,
+    "title": "Upstream Subbasin with Muskingum Channel Routing",
+    "description": "Two-station watershed sequence generating headwater runoff via Clark unit hydrograph (UC) and routing the flood wave downstream through a 4-subreach Muskingum channel (RM) satisfying numerical stability criteria.",
+    "category": "Watershed Hydrology",
+    "tags": ["hec1", "muskingum", "channel-routing", "clark-uh"],
+    "activeFile": "muskingum_reach.hec1",
+    "fileNames": ["muskingum_reach.hec1"],
+    "fileCount": 1,
+    "code": "ID UPSTREAM SUBBASIN WITH MUSKINGUM CHANNEL REACH ROUTING\nIT 15 10AUG93 0000 120\nKK HEADWTR\nKM UPPER VALLEY SUBBASIN WITH CLARK UNIT HYDROGRAPH\nBA 12.4\nPB 4.5\nLS 0.5 74 8\nUC 2.1 2.8\nBF 40.0 -0.04 1.04\nKK RCH1\nKM MAINSTEM CHANNEL MUSKINGUM ROUTING (4 SUBREACHES, K=1.0 HR, X=0.20)\nRM 4 1.0 0.20\nZZ\n"
+  },
+  {
+    "id": "hec1-04-two-tributary-combine",
+    "lang": "hec1",
+    "subFormats": ["hec1"],
+    "difficulty": 4,
+    "title": "Two-Tributary Watershed Confluence Combine",
+    "description": "Four-station river basin combining a routed North Fork tributary (Clark UH + Muskingum reach) with a local South Fork tributary (SCS UH) at a downstream confluence junction using HC 2.",
+    "category": "Watershed Hydrology",
+    "tags": ["hec1", "confluence", "hydrograph-combine", "watershed"],
+    "activeFile": "two_tributary.hec1",
+    "fileNames": ["two_tributary.hec1"],
+    "fileCount": 1,
+    "code": "ID TWO-TRIBUTARY WATERSHED CONFLUENCE COMBINE MODEL\nIT 15 05SEP94 0000 140\nKK NFORK\nKM NORTH FORK HEADWATER BASIN\nBA 14.0\nPB 4.2\nLS 0.45 75 10\nUC 1.8 2.4\nKK NRCH\nKM NORTH FORK CHANNEL ROUTING TO CONFLUENCE\nRM 4 1.0 0.20\nKK SFORK\nKM SOUTH FORK LOCAL TRIBUTARY BASIN\nBA 8.5\nPI 0.30 0.70 1.25 1.10 0.60 0.25\nLS 0.35 81 18\nUD 1.10\nKK CONFL\nKM CONFLUENCE JUNCTION COMBINING NORTH AND SOUTH FORKS\nHC 2\nZZ\n"
+  },
+  {
+    "id": "hec1-05-flood-control-dam-routing",
+    "lang": "hec1",
+    "subFormats": ["hec1"],
+    "difficulty": 5,
+    "title": "Multi-Subbasin Flood Control Dam Spillway Storage Routing",
+    "description": "Full six-station river basin with two headwater tributaries, reservoir inflow combination (HC 2), Modified Puls dam storage routing (RS), downstream channel routing (RM), and town gage confluence.",
+    "category": "Watershed Hydrology",
+    "tags": ["hec1", "reservoir-routing", "dam-spillway", "flood-control"],
+    "activeFile": "dam_spillway.hec1",
+    "fileNames": ["dam_spillway.hec1"],
+    "fileCount": 1,
+    "code": "ID MULTI-SUBBASIN FLOOD CONTROL DAM SPILLWAY STORAGE ROUTING\nIT 15 12OCT95 0000 180\nKK WESTBAS\nKM WEST HEADWATER SUBBASIN ABOVE DAM\nBA 18.5\nPB 5.2\nLS 0.40 72 6\nUC 2.2 3.0\nBF 55.0 -0.04 1.04\nKK EASTBAS\nKM EAST HEADWATER SUBBASIN ABOVE DAM\nBA 14.2\nPB 5.0\nLS 0.35 76 8\nUD 1.65\nBF 40.0 -0.04 1.04\nKK DAMIN\nKM COMBINED RESERVOIR INFLOW AT DAM SITE\nHC 2\nKK DAMRES\nKM FLOOD CONTROL RESERVOIR MODIFIED PULS STORAGE ROUTING\nRS 1 0 120.0 0.0\nKK RCHDN\nKM DOWNSTREAM RIVER REACH FROM DAM TO TOWN GAGE\nRM 4 1.0 0.22\nKK LOCALB\nKM LOCAL URBAN INTERVENING SUBBASIN AT TOWN\nBA 5.4\nPI 0.40 0.90 1.40 1.20 0.70 0.40\nLS 0.25 84 28\nUD 0.85\nKK TOWNGAG\nKM FINAL COMBINED FLOOD HYDROGRAPH AT TOWN GAGE\nHC 2\nZZ\n"
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "id": "las-04-sonic-density-geomechanics",
+  "lang": "las",
+  "subFormats": ["las"],
+  "difficulty": 4,
+  "title": "LAS 3.0 Dipole Sonic & Density Geomechanics Well Log",
+  "description": "Comma-delimited CWLS LAS 3.0 geomechanical wireline log recording compressional slowness (DTC), shear slowness (DTS), bulk density (RHOB), and companion core permeability calibration table.",
+  "category": "Subsurface & Petrophysics",
+  "tags": ["las", "las-3.0", "sonic", "geomechanics", "core-data"],
+  "activeFile": "geomech.las"
+}

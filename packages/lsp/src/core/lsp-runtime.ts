@@ -4,7 +4,7 @@
  * Language-agnostic LSP runtime core (`@modelscript/lsp/core`).
  *
  * Designed to run seamlessly in BOTH:
- *   1. Single-language dev playground mode (`scripts/tools/language-playground.ts`)
+ *   1. Single-language dev ansatz mode (`scripts/tools/language-ansatz.ts`)
  *      with 1 dynamically loaded `LanguagePlugin` and zero imports of other languages.
  *   2. Multi-language production mode (`browserServerMain.ts` / `nodeServerMain.ts`)
  *      with all registered `LanguagePlugin`s in a shared `LanguageRegistry`.
@@ -21,8 +21,9 @@ import {
   performBltTransformationArena,
   Variability,
 } from "@modelscript/runtime";
+import type { Diagnostic, Hover, Location, Range } from "vscode-languageserver";
 import { TextDocument } from "vscode-languageserver-textdocument";
-import { LanguageRegistry, type LanguagePlugin } from "../registry/LanguageRegistry.js";
+import { LanguageRegistry, type LanguagePlugin, type WasmParserInstance } from "../registry/LanguageRegistry.js";
 import { printArenaExpression } from "../utils/arena-utils.js";
 
 export interface LspRuntimePosition {
@@ -43,13 +44,15 @@ export interface LspRuntimeDiagnostic {
   message: string;
 }
 
+export type LspRuntimeParserInput = WasmParserInstance | { parse: (input: string) => { rootNode: unknown } };
+
 export interface BuildLanguagePluginOptions {
   id: string;
   name: string;
   extensions: string[];
   languageDef?: LanguageOptions | undefined;
   lspModule?: Record<string, unknown> | null | undefined;
-  parser?: { parse: (input: string) => { rootNode: unknown } } | undefined;
+  parser?: LspRuntimeParserInput | undefined;
   facade?:
     | {
         loadSource?: (text: string) => void;
@@ -84,7 +87,7 @@ interface ManagedDocEntry {
   languageId: string;
 }
 
-export const PLAYGROUND_SEMANTIC_TOKEN_TYPES = [
+export const ANSATZ_SEMANTIC_TOKEN_TYPES = [
   "keyword",
   "type",
   "class",
@@ -664,7 +667,7 @@ export function buildLanguagePluginFromModule(opts: BuildLanguagePluginOptions):
   if (typeof lspMod["createLspPlugin"] === "function") {
     const created = (lspMod["createLspPlugin"] as (o: BuildLanguagePluginOptions) => LanguagePlugin)(opts);
     if (created && created.id) {
-      if (!created.parser && opts.parser) created.parser = opts.parser;
+      if (!created.parser && opts.parser) created.parser = opts.parser as WasmParserInstance;
       if (!created.facade && opts.facade) created.facade = opts.facade;
       if (!created.languageDef && opts.languageDef) created.languageDef = opts.languageDef;
       return created;
@@ -719,7 +722,7 @@ export function buildLanguagePluginFromModule(opts: BuildLanguagePluginOptions):
   if (hoverFn) {
     customHandlers.hover = (offset: number, text: string, uri?: string) => {
       const pos = positionFromOffset(text, offset);
-      return hoverFn(text, pos, uri) ?? null;
+      return (hoverFn(text, pos, uri) ?? null) as Hover | null;
     };
   }
 
@@ -734,7 +737,7 @@ export function buildLanguagePluginFromModule(opts: BuildLanguagePluginOptions):
   if (definitionFn) {
     customHandlers.definition = (offset: number, text: string, uri?: string) => {
       const pos = positionFromOffset(text, offset);
-      return definitionFn(text, pos, uri) ?? null;
+      return (definitionFn(text, pos, uri) ?? null) as Location | Location[] | null;
     };
   }
 
@@ -854,7 +857,7 @@ export function buildLanguagePluginFromModule(opts: BuildLanguagePluginOptions):
     name: opts.name,
     extensions: opts.extensions,
     languageDef: opts.languageDef,
-    parser: opts.parser,
+    parser: opts.parser as WasmParserInstance | undefined,
     facade: opts.facade,
     customHandlers,
     handlers: Object.keys(handlers).length > 0 ? handlers : undefined,
@@ -894,7 +897,7 @@ export interface LspRuntime {
 
 /**
  * Creates a lightweight, transport-independent LSP runtime backed by a `LanguageRegistry`.
- * Works identically for 1 language (playground) or N languages (production).
+ * Works identically for 1 language (ansatz) or N languages (production).
  */
 export function createLspRuntime(options: LspRuntimeOptions = {}): LspRuntime {
   const registry = options.registry ?? new LanguageRegistry();
@@ -924,7 +927,7 @@ export function createLspRuntime(options: LspRuntimeOptions = {}): LspRuntime {
     let tree: { rootNode: unknown } | undefined;
     if (plugin?.parser && typeof plugin.parser.parse === "function") {
       try {
-        tree = plugin.parser.parse(text);
+        tree = plugin.parser.parse(text) ?? undefined;
       } catch {
         tree = undefined;
       }
@@ -939,7 +942,7 @@ export function createLspRuntime(options: LspRuntimeOptions = {}): LspRuntime {
     const td =
       (p["textDocument"] as { uri?: string; text?: string; version?: number; languageId?: string } | undefined) ?? {};
     const paramUri = typeof p["uri"] === "string" ? (p["uri"] as string) : undefined;
-    const uri = td.uri || paramUri || req.documentUri || "file:///playground.txt";
+    const uri = td.uri || paramUri || req.documentUri || "file:///editor.txt";
     const inlineText =
       typeof req.code === "string"
         ? req.code
@@ -1078,14 +1081,18 @@ export function createLspRuntime(options: LspRuntimeOptions = {}): LspRuntime {
 
       if (method === "textDocument/inlayHint") {
         if (!ch?.inlayHints) return { handled: true, result: [] };
-        const result = await ch.inlayHints(entry.doc, params["range"]);
+        const result = await ch.inlayHints(entry.doc, params["range"] as Range | undefined);
         return { handled: true, result: Array.isArray(result) ? result : [] };
       }
 
       if (method === "textDocument/codeAction") {
         if (!ch?.codeActions) return { handled: true, result: [] };
-        const ctx = (params["context"] as { diagnostics?: unknown[] } | undefined) ?? {};
-        const result = await ch.codeActions(entry.doc, params["range"], ctx.diagnostics ?? []);
+        const ctx = (params["context"] as { diagnostics?: Diagnostic[] } | undefined) ?? {};
+        const range = (params["range"] as Range | undefined) ?? {
+          start: { line: 0, character: 0 },
+          end: { line: 0, character: 0 },
+        };
+        const result = await ch.codeActions(entry.doc, range, ctx.diagnostics ?? []);
         return { handled: true, result: Array.isArray(result) ? result : [] };
       }
 
@@ -1203,14 +1210,10 @@ export function createLspRuntime(options: LspRuntimeOptions = {}): LspRuntime {
   return {
     registry,
     registerPlugin: (plugin: LanguagePlugin) => registry.register(plugin),
-    setParser: (
-      langId: string,
-      parser: { parse: (input: string) => { rootNode: unknown } },
-      facade?: BuildLanguagePluginOptions["facade"],
-    ) => {
+    setParser: (langId: string, parser: LspRuntimeParserInput, facade?: BuildLanguagePluginOptions["facade"]) => {
       const existing = registry.getPluginById(langId);
       if (existing) {
-        existing.parser = parser;
+        existing.parser = parser as WasmParserInstance;
         if (facade !== undefined) existing.facade = facade;
         for (const [uri, entry] of docs.entries()) {
           if (entry.languageId === langId) {

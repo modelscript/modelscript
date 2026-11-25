@@ -1,0 +1,11 @@
+{
+  "id": "three-mf-02-peek-cranial-plate",
+  "lang": "three-mf",
+  "subFormats": ["3mf"],
+  "difficulty": 2,
+  "title": "Biocompatible PEEK Cranial Plate Implant",
+  "description": "Patient-specific implantable-grade PEEK cranioplasty plate with 3.5 mm uniform wall thickness, watertight hexahedral mesh, and autoclave sterilization metadata.",
+  "category": "Medical Additive Manufacturing & 3MF",
+  "tags": ["three-mf", "peek", "cranioplasty", "implant"],
+  "activeFile": "cranial_plate.3mf"
+}

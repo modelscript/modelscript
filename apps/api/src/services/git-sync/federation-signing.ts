@@ -55,7 +55,9 @@ export function attachPostProofToNote(
       let payload: Record<string, unknown> | undefined;
       try {
         payload = JSON.parse(evidence.payload_json);
-      } catch {}
+      } catch {
+        // Leave payload undefined if stored JSON is malformed
+      }
 
       noteObject["proof"] = {
         ...proof,
@@ -184,8 +186,7 @@ export function verifyInboundNoteProof(
   db: LibraryDatabase,
 ): { valid: boolean; keyId?: number; error?: string } {
   const proof = (note["proof"] || (note["object"] as Record<string, unknown> | undefined)?.["proof"]) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
 
   if (!proof || typeof proof !== "object") {
     return { valid: false, error: "Note does not contain a proof object" };

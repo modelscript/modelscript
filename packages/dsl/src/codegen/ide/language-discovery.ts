@@ -232,7 +232,9 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
       try {
         fs.mkdirSync(path.dirname(distWasm), { recursive: true });
         fs.copyFileSync(foundWasm, distWasm);
-      } catch {}
+      } catch {
+        // Best-effort WASM copy or manifest probe ignored
+      }
     }
   }
 
@@ -281,7 +283,9 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
             fieldNames = JSON.parse(mf[1]!);
           }
         }
-      } catch {}
+      } catch {
+        // Best-effort WASM copy or manifest probe ignored
+      }
     }
   }
 
@@ -324,7 +328,7 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
           shortTitle: panel.shortTitle,
           selector,
           priority: panel.priority ?? "option",
-          targets: panel.targets ?? ["vscode", "morsel", "artifact"],
+          targets: panel.targets ?? ["vscode", "ansatz", "artifact"],
           defaultMode: panel.defaultMode,
           retainContextWhenHidden: panel.retainContextWhenHidden ?? true,
           supportsMultipleEditorsPerDocument: panel.supportsMultipleEditorsPerDocument ?? true,
@@ -391,7 +395,7 @@ export async function discoverSingleLanguage(langDir: string): Promise<Discovere
           icon: btn.icon,
           iconSvg: btn.iconSvg,
           views: btn.views && btn.views.length > 0 ? btn.views : ["*"],
-          targets: btn.targets && btn.targets.length > 0 ? btn.targets : ["morsel", "vscode"],
+          targets: btn.targets && btn.targets.length > 0 ? btn.targets : ["ansatz", "vscode"],
           placement: btn.placement ?? "primary",
           order: typeof btn.order === "number" ? btn.order : 100,
           kind: btn.kind ?? "action",

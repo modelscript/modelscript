@@ -1,0 +1,15 @@
+from "generics/passives.ato" import Resistor
+
+module UsbCInput:
+    signal vbus
+    signal cc1
+    signal cc2
+    signal gnd
+
+    r_cc1 = new Resistor
+    r_cc2 = new Resistor
+    r_cc1.resistance = 5.1kohm +/- 1%
+    r_cc2.resistance = 5.1kohm +/- 1%
+
+    cc1 ~> r_cc1 ~> gnd
+    cc2 ~> r_cc2 ~> gnd

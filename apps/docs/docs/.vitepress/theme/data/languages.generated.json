@@ -243,7 +243,7 @@
     "group": "core",
     "pkgName": "@modelscript/sparql",
     "version": "0.1.0",
-    "tier": "beta",
+    "tier": "alpha",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -288,7 +288,7 @@
     "group": "geometry",
     "pkgName": "@modelscript/qif",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx qif",
     "actions": [
       "inspect",
@@ -457,7 +457,7 @@
     "group": "integration",
     "pkgName": "@modelscript/c",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx c",
     "actions": [
       "inspect",
@@ -508,7 +508,7 @@
     "group": "aerospace",
     "pkgName": "@modelscript/jsbsim",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx jsbsim",
     "actions": [
       "inspect",
@@ -732,7 +732,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/gtsuite",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx gtsuite",
     "actions": [
       "lint",
@@ -798,7 +798,7 @@
     "group": "automotive",
     "pkgName": "@modelscript/openscenario",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx openscenario",
     "actions": [
       "inspect",
@@ -894,7 +894,7 @@
     "group": "rail",
     "pkgName": "@modelscript/simpack",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx simpack",
     "actions": [
       "inspect",
@@ -1070,7 +1070,7 @@
     "group": "power",
     "pkgName": "@modelscript/pslf",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx pslf",
     "actions": [
       "inspect",
@@ -1102,7 +1102,7 @@
     "group": "power",
     "pkgName": "@modelscript/cgmes",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx cgmes",
     "actions": [
       "inspect",
@@ -1235,7 +1235,7 @@
     "group": "power",
     "pkgName": "@modelscript/tough",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx tough",
     "actions": [
       "inspect",
@@ -1295,7 +1295,7 @@
     "group": "power",
     "pkgName": "@modelscript/comtrade",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx comtrade",
     "actions": [
       "lint",
@@ -1323,7 +1323,7 @@
     "group": "power",
     "pkgName": "@modelscript/scl",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx scl",
     "actions": [
       "lint",
@@ -1350,7 +1350,7 @@
     "group": "power",
     "pkgName": "@modelscript/atp",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx atp",
     "actions": [
       "lint",
@@ -1403,7 +1403,7 @@
     "group": "power",
     "pkgName": "@modelscript/oneliner",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx oneliner",
     "actions": [
       "lint",
@@ -1430,7 +1430,7 @@
     "group": "power",
     "pkgName": "@modelscript/sel",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx sel",
     "actions": [
       "lint",
@@ -1458,7 +1458,7 @@
     "group": "power",
     "pkgName": "@modelscript/c37118",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "pre-alpha",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -1521,7 +1521,7 @@
     "group": "power",
     "pkgName": "@modelscript/iec104",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "pre-alpha",
     "cliCommand": null,
     "actions": [],
     "capabilities": {
@@ -1941,7 +1941,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/ibis",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx ibis",
     "actions": [
       "inspect",
@@ -1971,7 +1971,7 @@
     "group": "electronics",
     "pkgName": "@modelscript/touchstone",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx touchstone",
     "actions": [
       "inspect",
@@ -2232,7 +2232,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/energyplus",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx energyplus",
     "actions": [
       "inspect",
@@ -2432,7 +2432,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/hec-hms",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx hec-hms",
     "actions": [
       "lint",
@@ -2459,7 +2459,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/waterml",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx waterml",
     "actions": [
       "lint",
@@ -2487,7 +2487,7 @@
     "group": "buildings",
     "pkgName": "@modelscript/asm",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx asm",
     "actions": [
       "lint",
@@ -2615,7 +2615,7 @@
     "group": "process",
     "pkgName": "@modelscript/smiles",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -2765,7 +2765,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/nmtran",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -2789,7 +2789,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/mlxtran",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {
@@ -2892,7 +2892,7 @@
     "group": "life-sciences",
     "pkgName": "@modelscript/nmodl",
     "version": "0.1.0",
-    "tier": "alpha",
+    "tier": "beta",
     "cliCommand": "msx lint",
     "actions": [],
     "capabilities": {

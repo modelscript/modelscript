@@ -1,0 +1,11 @@
+{
+  "id": "twentysim-02-rlc-power-bond",
+  "lang": "twentysim",
+  "subFormats": ["emx"],
+  "difficulty": 2,
+  "title": "RLC Electrical Circuit Power-Bond Equivalence",
+  "description": "Series-parallel RLC electrical filter modeled in 20-sim power bond graph notation with voltage effort source, common-current 1-junction, common-voltage 0-junction, and load resistor.",
+  "category": "Electrical Bond Graphs",
+  "tags": ["twentysim", "rlc", "electrical", "bond-graph"],
+  "activeFile": "rlc_circuit.emx"
+}

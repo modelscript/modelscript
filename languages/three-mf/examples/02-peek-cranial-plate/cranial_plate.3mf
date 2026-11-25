@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:medical="http://schemas.modelscript.org/3mf/medical/2026/01">
+  <metadata name="Title">PEEK_Cranial_Vault_Implant_Plate</metadata>
+  <metadata name="Designer">Neurosurgical CAD Team</metadata>
+  <resources>
+    <basematerials id="20">
+      <base name="PEEK" displaycolor="#D8C8A8"/>
+    </basematerials>
+    <object id="1" name="ParietalCranialPlate" type="model" pid="20" pindex="0" wallThickness="3.5">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0"/>
+          <vertex x="65.0" y="0" z="0"/>
+          <vertex x="65.0" y="55.0" z="0"/>
+          <vertex x="0" y="55.0" z="0"/>
+          <vertex x="0" y="0" z="3.5"/>
+          <vertex x="65.0" y="0" z="3.5"/>
+          <vertex x="65.0" y="55.0" z="3.5"/>
+          <vertex x="0" y="55.0" z="3.5"/>
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1"/>
+          <triangle v1="0" v2="3" v3="2"/>
+          <triangle v1="4" v2="5" v3="6"/>
+          <triangle v1="4" v2="6" v3="7"/>
+          <triangle v1="0" v2="1" v3="5"/>
+          <triangle v1="0" v2="5" v3="4"/>
+          <triangle v1="3" v2="6" v3="2"/>
+          <triangle v1="3" v2="7" v3="6"/>
+          <triangle v1="0" v2="4" v3="7"/>
+          <triangle v1="0" v2="7" v3="3"/>
+          <triangle v1="1" v2="2" v3="6"/>
+          <triangle v1="1" v2="6" v3="5"/>
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1" transform="1 0 0 0 1 0 0 0 1 10 10 0" partnumber="CRAN-PEEK-2026"/>
+  </build>
+</model>

@@ -38,10 +38,10 @@ async function runTests() {
   assert.strictEqual(decompressed.anchor?.elementId, "x");
   assert.strictEqual(decompressed.anchor?.line, 2);
 
-  // 2. Test routing: single-file -> Morsel Playground
+  // 2. Test routing: single-file -> Ansatz Editor
   const launch1 = getLaunchUrl(singleFilePayload);
-  assert.strictEqual(launch1.target, "playground");
-  assert.ok(launch1.url.startsWith("/playground#m="));
+  assert.strictEqual(launch1.target, "ansatz");
+  assert.ok(launch1.url.startsWith("/editor#m="));
 
   // 3. Test routing: multi-file -> Full IDE
   const multiFilePayload: UniversalEmbedPayload = {
@@ -157,19 +157,19 @@ async function runTests() {
   assert.strictEqual(pool.getActiveCount(), 2);
   assert.strictEqual(pool.isActive("viewer-3"), false);
 
-  // 7. Test expanded polyglot dialects & morselId / embedToken payload fields
+  // 7. Test expanded polyglot dialects & ansatzId / embedToken payload fields
   const gensysPayload: UniversalEmbedPayload = {
     v: 1,
     lang: "gensys",
     code: "## GENSYS Vehicle Model",
     view: "diagram",
-    morselId: "morsel-abc123def456",
+    ansatzId: "ansatz-abc123def456",
     embedToken: "signed.token.123",
   };
   const gensysToken = compressEmbedPayload(gensysPayload);
   const decompressedGensys = decompressEmbedPayload(gensysToken);
   assert.strictEqual(decompressedGensys?.lang, "gensys");
-  assert.strictEqual(decompressedGensys?.morselId, "morsel-abc123def456");
+  assert.strictEqual(decompressedGensys?.ansatzId, "ansatz-abc123def456");
   assert.strictEqual(decompressedGensys?.embedToken, "signed.token.123");
 
   // 8. Test ModelScriptEmbed iframe grants WebXR & fullscreen permissions
@@ -229,7 +229,7 @@ async function runTests() {
 
     assert.strictEqual(appended.length, 1);
     assert.strictEqual(appended[0], mockIframe);
-    assert.ok(mockIframe.src.startsWith("https://ansatz.social/embed/playground#m="));
+    assert.ok(mockIframe.src.startsWith("https://ansatz.social/embed/editor#m="));
     const allowAttr = mockIframe.getAttribute("allow");
     assert.strictEqual(allowAttr, "clipboard-read; clipboard-write; xr-spatial-tracking; fullscreen");
     assert.ok(allowAttr.includes("xr-spatial-tracking"), "iframe allow attribute must include xr-spatial-tracking");

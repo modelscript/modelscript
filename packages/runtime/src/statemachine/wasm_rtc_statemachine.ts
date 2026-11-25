@@ -12,7 +12,16 @@
  *   - Reversible step execution (stepForward, stepBack) for interactive IDE debugging
  */
 
-import { getDefaultWasmExports } from "../dae/wasm_dae.js";
+import { getDefaultWasmExports, type WasmRuntimeExports } from "../dae/wasm_loader.js";
+
+interface RtcStateMachineWasmExports extends WasmRuntimeExports {
+  statemachine_find_lca?: (n: number, parentsPtr: number, p1: number, p2: number) => number;
+  atomicChunkAlloc?: (bytes: number) => number;
+  atomicChunkFree?: (ptr: number) => void;
+  __new?: (bytes: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  __unpin?: (ptr: number) => void;
+}
 
 export type StateId = number;
 export type TransitionId = number;
@@ -30,9 +39,9 @@ export interface StateNode {
   kind: StateKind;
   parentId?: StateId | undefined;
   children: StateId[];
-  entryAction?: ((context: Record<string, any>) => void) | undefined;
-  doAction?: ((context: Record<string, any>) => void) | undefined;
-  exitAction?: ((context: Record<string, any>) => void) | undefined;
+  entryAction?: ((context: Record<string, unknown>) => void) | undefined;
+  doAction?: ((context: Record<string, unknown>) => void) | undefined;
+  exitAction?: ((context: Record<string, unknown>) => void) | undefined;
 }
 
 export interface StateTransition {
@@ -42,13 +51,13 @@ export interface StateTransition {
   targetId: StateId;
   /** Trigger event name. If undefined/null, this is a completion transition */
   trigger?: string | undefined;
-  guard?: ((context: Record<string, any>, payload?: any) => boolean) | undefined;
-  effect?: ((context: Record<string, any>, payload?: any) => void) | undefined;
+  guard?: ((context: Record<string, unknown>, payload?: unknown) => boolean) | undefined;
+  effect?: ((context: Record<string, unknown>, payload?: unknown) => void) | undefined;
 }
 
 export interface StateMachineEvent {
   name: string;
-  payload?: any;
+  payload?: unknown;
 }
 
 export interface RTCStepRecord {
@@ -59,8 +68,8 @@ export interface RTCStepRecord {
   enteredStateIds: StateId[];
   preActiveStates: StateId[];
   postActiveStates: StateId[];
-  preContext: Record<string, any>;
-  postContext: Record<string, any>;
+  preContext: Record<string, unknown>;
+  postContext: Record<string, unknown>;
 }
 
 export interface RTCStepResult {
@@ -82,7 +91,7 @@ export class WasmRtcStateMachine {
   // Active Execution State
   private activeStateIds: Set<StateId> = new Set();
   private eventQueue: StateMachineEvent[] = [];
-  private context: Record<string, any> = {};
+  private context: Record<string, unknown> = {};
   private history: RTCStepRecord[] = [];
   private stepCounter = 0;
   private isTerminated = false;
@@ -95,9 +104,9 @@ export class WasmRtcStateMachine {
     kind: StateKind = StateKind.Simple,
     options?: {
       parentId?: StateId | undefined;
-      entryAction?: ((ctx: Record<string, any>) => void) | undefined;
-      doAction?: ((ctx: Record<string, any>) => void) | undefined;
-      exitAction?: ((ctx: Record<string, any>) => void) | undefined;
+      entryAction?: ((ctx: Record<string, unknown>) => void) | undefined;
+      doAction?: ((ctx: Record<string, unknown>) => void) | undefined;
+      exitAction?: ((ctx: Record<string, unknown>) => void) | undefined;
     },
   ): StateId {
     const id = this.nextStateId++;
@@ -134,8 +143,8 @@ export class WasmRtcStateMachine {
     options?: {
       name?: string | undefined;
       trigger?: string | undefined;
-      guard?: ((context: Record<string, any>, payload?: any) => boolean) | undefined;
-      effect?: ((context: Record<string, any>, payload?: any) => void) | undefined;
+      guard?: ((context: Record<string, unknown>, payload?: unknown) => boolean) | undefined;
+      effect?: ((context: Record<string, unknown>, payload?: unknown) => void) | undefined;
     },
   ): TransitionId {
     if (!this.states.has(sourceId)) throw new Error(`Source state ID ${sourceId} not found`);
@@ -177,14 +186,14 @@ export class WasmRtcStateMachine {
   /**
    * Posts an event to the state machine's event queue.
    */
-  postEvent(name: string, payload?: any): void {
+  postEvent(name: string, payload?: unknown): void {
     this.eventQueue.push({ name, payload });
   }
 
   /**
    * Initializes the state machine and enters the root initial state.
    */
-  init(initialContext: Record<string, any> = {}): void {
+  init(initialContext: Record<string, unknown> = {}): void {
     this.context = { ...initialContext };
     this.activeStateIds.clear();
     this.eventQueue = [];
@@ -214,7 +223,7 @@ export class WasmRtcStateMachine {
       .filter(Boolean);
   }
 
-  getContext(): Record<string, any> {
+  getContext(): Record<string, unknown> {
     return { ...this.context };
   }
 
@@ -355,7 +364,7 @@ export class WasmRtcStateMachine {
    */
   private fireTransition(
     transition: StateTransition,
-    payload?: any,
+    payload?: unknown,
   ): { exitedStateIds: StateId[]; enteredStateIds: StateId[] } {
     const exitedStateIds: StateId[] = [];
     const enteredStateIds: StateId[] = [];
@@ -448,7 +457,7 @@ export class WasmRtcStateMachine {
     const p2 = this.states.get(s2)?.parentId;
     if (p1 === undefined || p2 === undefined) return undefined;
 
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as RtcStateMachineWasmExports | null;
     if (
       wasm &&
       typeof wasm.statemachine_find_lca === "function" &&
@@ -462,7 +471,7 @@ export class WasmRtcStateMachine {
       if (typeof wasm.atomicChunkAlloc === "function") {
         parentsPtr = wasm.atomicChunkAlloc(bytes) >>> 0;
         freePtr = () => parentsPtr && wasm.atomicChunkFree?.(parentsPtr);
-      } else {
+      } else if (typeof wasm.__new === "function") {
         parentsPtr = wasm.__new(bytes, 0) >>> 0;
         if (parentsPtr && typeof wasm.__pin === "function") wasm.__pin(parentsPtr);
         freePtr = () => parentsPtr && wasm.__unpin?.(parentsPtr);

@@ -8,6 +8,7 @@ import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
 import {
   DangerButton,
   DetailSubtitle,
@@ -22,6 +23,12 @@ import {
 export interface TokensTabProps {
   onBack: () => void;
 }
+
+type ApiTokenItem = ApiTokenDto & {
+  prefix?: string | undefined;
+  packagePattern?: string | undefined;
+  expiresAt?: string | null | undefined;
+};
 
 const PAT_SCOPE_GROUPS = [
   {
@@ -82,7 +89,7 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
   const toast = useToast();
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
-  const [apiTokens, setApiTokens] = useState<ApiTokenDto[]>([]);
+  const [apiTokens, setApiTokens] = useState<ApiTokenItem[]>([]);
   const [confirmingRevokeTokenId, setConfirmingRevokeTokenId] = useState<number | null>(null);
   const [isLoadingTokens, setIsLoadingTokens] = useState(false);
   const [tokenName, setTokenName] = useState("");
@@ -202,101 +209,101 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
             </Box>
           ) : (
             <Box display="flex" flexDirection="column" gap={2}>
-              {apiTokens.map((t) => (
-                <Box
-                  key={t.id}
-                  p={3}
-                  style={{
-                    border: "1px solid var(--color-border-default)",
-                    borderRadius: "8px",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    background: "var(--color-canvas-subtle)",
-                    gap: "12px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <Box display="flex" flexDirection="column" gap={1}>
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <KeyIcon size={16} fill="var(--color-accent-purple)" />
-                      <Text fontWeight="bold" fontSize="15px">
-                        {t.name}
-                      </Text>
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          fontFamily: "var(--font-mono)",
-                          color: "var(--color-fg-muted)",
-                        }}
-                      >
-                        {(t.token_prefix || (t as any).prefix || "ms_pat_") + "..."}
-                      </span>
+              {apiTokens.map((t) => {
+                const expiresAtValue = t.expires_at || t.expiresAt;
+                return (
+                  <Box
+                    key={t.id}
+                    p={3}
+                    style={{
+                      border: "1px solid var(--color-border-default)",
+                      borderRadius: "8px",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      background: "var(--color-canvas-subtle)",
+                      gap: "12px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Box display="flex" flexDirection="column" gap={1}>
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <KeyIcon size={16} fill="var(--color-accent-purple)" />
+                        <Text fontWeight="bold" fontSize="15px">
+                          {t.name}
+                        </Text>
+                        <span
+                          style={{
+                            fontSize: "12px",
+                            fontFamily: "var(--font-mono)",
+                            color: "var(--color-fg-muted)",
+                          }}
+                        >
+                          {(t.token_prefix || t.prefix || "ms_pat_") + "..."}
+                        </span>
+                      </Box>
+                      <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Scopes: {Array.isArray(t.scopes) ? t.scopes.join(", ") : t.scopes}
+                        </span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Pattern: <code>{t.package_pattern || t.packagePattern || "*"}</code>
+                        </span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Expires: {expiresAtValue ? new Date(expiresAtValue).toLocaleDateString() : "Never"}
+                        </span>
+                      </Box>
+                      <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Created: {t.created_at ? new Date(t.created_at).toLocaleDateString() : "Just now"}
+                        </span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Last used: {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : "Never used"}
+                        </span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
+                        <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
+                          Last IP: <code>{t.last_used_ip || "—"}</code>
+                        </span>
+                      </Box>
                     </Box>
-                    <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Scopes: {Array.isArray(t.scopes) ? t.scopes.join(", ") : t.scopes}
-                      </span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Pattern: <code>{t.package_pattern || (t as any).packagePattern || "*"}</code>
-                      </span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Expires:{" "}
-                        {t.expires_at || (t as any).expiresAt
-                          ? new Date(t.expires_at || (t as any).expiresAt).toLocaleDateString()
-                          : "Never"}
-                      </span>
-                    </Box>
-                    <Box display="flex" gap={2} alignItems="center" flexWrap="wrap">
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Created: {t.created_at ? new Date(t.created_at).toLocaleDateString() : "Just now"}
-                      </span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Last used: {t.last_used_at ? new Date(t.last_used_at).toLocaleString() : "Never used"}
-                      </span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>•</span>
-                      <span style={{ fontSize: "12px", color: "var(--color-text-muted)" }}>
-                        Last IP: <code>{t.last_used_ip || "—"}</code>
-                      </span>
-                    </Box>
-                  </Box>
 
-                  {confirmingRevokeTokenId === t.id ? (
-                    <Box display="flex" alignItems="center" gap={2}>
-                      <SecondaryButton
-                        type="button"
-                        style={{ padding: "6px 12px", fontSize: "13px" }}
-                        onClick={() => setConfirmingRevokeTokenId(null)}
-                      >
-                        Cancel
-                      </SecondaryButton>
-                      <DangerButton
-                        type="button"
-                        style={{ padding: "6px 14px", fontSize: "13px" }}
-                        onClick={async () => {
-                          setConfirmingRevokeTokenId(null);
-                          try {
-                            await revokeApiToken(t.id);
-                            setApiTokens((prev) => prev.filter((tok) => tok.id !== t.id));
-                            toast.success("Token revoked successfully.");
-                          } catch (err: any) {
-                            toast.error(err.response?.data?.error || "Failed to revoke token.");
-                          }
-                        }}
-                      >
-                        Confirm Revoke
-                      </DangerButton>
-                    </Box>
-                  ) : (
-                    <CircleIconButton title="Revoke Token" onClick={() => setConfirmingRevokeTokenId(t.id)}>
-                      <TrashIcon size={16} color="var(--color-danger-fg)" />
-                    </CircleIconButton>
-                  )}
-                </Box>
-              ))}
+                    {confirmingRevokeTokenId === t.id ? (
+                      <Box display="flex" alignItems="center" gap={2}>
+                        <SecondaryButton
+                          type="button"
+                          style={{ padding: "6px 12px", fontSize: "13px" }}
+                          onClick={() => setConfirmingRevokeTokenId(null)}
+                        >
+                          Cancel
+                        </SecondaryButton>
+                        <DangerButton
+                          type="button"
+                          style={{ padding: "6px 14px", fontSize: "13px" }}
+                          onClick={async () => {
+                            setConfirmingRevokeTokenId(null);
+                            try {
+                              await revokeApiToken(t.id);
+                              setApiTokens((prev) => prev.filter((tok) => tok.id !== t.id));
+                              toast.success("Token revoked successfully.");
+                            } catch (err: unknown) {
+                              toast.error(getApiErrorMessage(err, "Failed to revoke token."));
+                            }
+                          }}
+                        >
+                          Confirm Revoke
+                        </DangerButton>
+                      </Box>
+                    ) : (
+                      <CircleIconButton title="Revoke Token" onClick={() => setConfirmingRevokeTokenId(t.id)}>
+                        <TrashIcon size={16} color="var(--color-danger-fg)" />
+                      </CircleIconButton>
+                    )}
+                  </Box>
+                );
+              })}
             </Box>
           )}
         </Box>
@@ -342,8 +349,8 @@ export const TokensTab: React.FC<TokensTabProps> = ({ onBack }) => {
                 setApiTokens([res, ...apiTokens]);
                 setTokenName("");
                 toast.success("Token generated successfully!");
-              } catch (err: any) {
-                setTokenError(err.response?.data?.error || "Failed to generate token.");
+              } catch (err: unknown) {
+                setTokenError(getApiErrorMessage(err, "Failed to generate token."));
               } finally {
                 setIsCreatingToken(false);
               }

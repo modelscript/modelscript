@@ -1,0 +1,5 @@
+# Initial Hydraulic Head
+BEGIN GRIDDATA
+  STRT
+    CONSTANT 72.0
+END GRIDDATA

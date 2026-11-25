@@ -1,0 +1,94 @@
+[
+  {
+    "id": "ampl-01-production-mix-lp",
+    "lang": "ampl",
+    "subFormats": ["mod", "dat"],
+    "difficulty": 1,
+    "title": "Steel Mill Production Mix LP",
+    "description": "Classic AMPL linear program maximizing weekly steel mill profit across product lines subject to rolling-mill capacity and market demand bounds.",
+    "category": "Linear Programming",
+    "tags": ["ampl", "lp", "production-planning", "manufacturing", "multi-file"],
+    "activeFile": "prod.mod",
+    "fileNames": ["prod.mod", "prod.dat"],
+    "fileCount": 2,
+    "isDefaultStarter": true,
+    "code": "# Steel Mill Production Mix Linear Program\nset PROD;\n\nparam rate {PROD} > 0;     # tons produced per hour\nparam avail >= 0;          # hours available per week\nparam profit {PROD};       # profit per ton ($/ton)\nparam market {PROD} >= 0;  # maximum weekly demand (tons)\n\nvar Make {p in PROD} >= 0, <= market[p];\n\nmaximize Total_Profit:\n  sum {p in PROD} profit[p] * Make[p];\n\nsubject to Mill_Time:\n  sum {p in PROD} (1 / rate[p]) * Make[p] <= avail;\n",
+    "files": {
+      "prod.mod": "# Steel Mill Production Mix Linear Program\nset PROD;\n\nparam rate {PROD} > 0;     # tons produced per hour\nparam avail >= 0;          # hours available per week\nparam profit {PROD};       # profit per ton ($/ton)\nparam market {PROD} >= 0;  # maximum weekly demand (tons)\n\nvar Make {p in PROD} >= 0, <= market[p];\n\nmaximize Total_Profit:\n  sum {p in PROD} profit[p] * Make[p];\n\nsubject to Mill_Time:\n  sum {p in PROD} (1 / rate[p]) * Make[p] <= avail;\n",
+      "prod.dat": "set PROD := BANDS COILS PLATE ;\n\nparam avail := 40 ;\n\nparam rate :=\n  BANDS 200\n  COILS 140\n  PLATE 160 ;\n\nparam profit :=\n  BANDS 25\n  COILS 30\n  PLATE 29 ;\n\nparam market :=\n  BANDS 6000\n  COILS 4000\n  PLATE 3500 ;\n"
+    }
+  },
+  {
+    "id": "ampl-02-hitchcock-transportation-lp",
+    "lang": "ampl",
+    "subFormats": ["mod", "dat"],
+    "difficulty": 2,
+    "title": "Hitchcock Transportation Network LP",
+    "description": "Minimum-cost freight distribution model balancing supply across manufacturing plants and demand at regional distribution centers.",
+    "category": "Network Optimization",
+    "tags": ["ampl", "lp", "transportation", "logistics", "multi-file"],
+    "activeFile": "transport.mod",
+    "fileNames": ["transport.mod", "transport.dat"],
+    "fileCount": 2,
+    "code": "# Hitchcock Transportation Network Linear Program\nset ORIG;\nset DEST;\n\nparam supply {ORIG} >= 0;\nparam demand {DEST} >= 0;\nparam cost {ORIG, DEST} >= 0;\n\nvar Ship {ORIG, DEST} >= 0;\n\nminimize Total_Freight_Cost:\n  sum {i in ORIG, j in DEST} cost[i, j] * Ship[i, j];\n\nsubject to Supply_Limit {i in ORIG}:\n  sum {j in DEST} Ship[i, j] <= supply[i];\n\nsubject to Demand_Req {j in DEST}:\n  sum {i in ORIG} Ship[i, j] >= demand[j];\n",
+    "files": {
+      "transport.mod": "# Hitchcock Transportation Network Linear Program\nset ORIG;\nset DEST;\n\nparam supply {ORIG} >= 0;\nparam demand {DEST} >= 0;\nparam cost {ORIG, DEST} >= 0;\n\nvar Ship {ORIG, DEST} >= 0;\n\nminimize Total_Freight_Cost:\n  sum {i in ORIG, j in DEST} cost[i, j] * Ship[i, j];\n\nsubject to Supply_Limit {i in ORIG}:\n  sum {j in DEST} Ship[i, j] <= supply[i];\n\nsubject to Demand_Req {j in DEST}:\n  sum {i in ORIG} Ship[i, j] >= demand[j];\n",
+      "transport.dat": "set ORIG := GARY CLEV PITT ;\nset DEST := FRA DET LAN WIN ;\n\nparam supply :=\n  GARY 1400\n  CLEV 2600\n  PITT 2900 ;\n\nparam demand :=\n  FRA  900\n  DET 1200\n  LAN  600\n  WIN 1400 ;\n\nparam cost :\n         FRA DET LAN WIN :=\n  GARY    39  14  11  14\n  CLEV    27   9  12   9\n  PITT    24  14  17  13 ;\n"
+    }
+  },
+  {
+    "id": "ampl-03-facility-location-milp",
+    "lang": "ampl",
+    "subFormats": ["mod", "dat"],
+    "difficulty": 3,
+    "title": "Capacitated Facility Location MILP",
+    "description": "Mixed-integer linear program selecting which regional warehouses to open and how to assign customer demand to minimize fixed opening and shipping costs.",
+    "category": "Integer Programming",
+    "tags": ["ampl", "milp", "facility-location", "binary", "multi-file"],
+    "activeFile": "facility.mod",
+    "fileNames": ["facility.mod", "facility.dat"],
+    "fileCount": 2,
+    "code": "# Capacitated Facility Location Mixed-Integer Linear Program\nset FAC;\nset CUST;\n\nparam fixed_cost {FAC} >= 0;\nparam capacity {FAC} >= 0;\nparam demand {CUST} >= 0;\nparam ship_cost {FAC, CUST} >= 0;\n\nvar Open {FAC} binary;\nvar Serve {FAC, CUST} >= 0;\n\nminimize Total_Cost:\n  sum {i in FAC} fixed_cost[i] * Open[i]\n  + sum {i in FAC, j in CUST} ship_cost[i, j] * Serve[i, j];\n\nsubject to Meet_Demand {j in CUST}:\n  sum {i in FAC} Serve[i, j] >= demand[j];\n\nsubject to Facility_Capacity {i in FAC}:\n  (sum {j in CUST} Serve[i, j]) / capacity[i] <= Open[i];\n",
+    "files": {
+      "facility.mod": "# Capacitated Facility Location Mixed-Integer Linear Program\nset FAC;\nset CUST;\n\nparam fixed_cost {FAC} >= 0;\nparam capacity {FAC} >= 0;\nparam demand {CUST} >= 0;\nparam ship_cost {FAC, CUST} >= 0;\n\nvar Open {FAC} binary;\nvar Serve {FAC, CUST} >= 0;\n\nminimize Total_Cost:\n  sum {i in FAC} fixed_cost[i] * Open[i]\n  + sum {i in FAC, j in CUST} ship_cost[i, j] * Serve[i, j];\n\nsubject to Meet_Demand {j in CUST}:\n  sum {i in FAC} Serve[i, j] >= demand[j];\n\nsubject to Facility_Capacity {i in FAC}:\n  (sum {j in CUST} Serve[i, j]) / capacity[i] <= Open[i];\n",
+      "facility.dat": "set FAC := NORTH SOUTH EAST ;\nset CUST := C1 C2 C3 C4 ;\n\nparam fixed_cost :=\n  NORTH 400\n  SOUTH 350\n  EAST  450 ;\n\nparam capacity :=\n  NORTH 120\n  SOUTH 100\n  EAST  140 ;\n\nparam demand :=\n  C1 40\n  C2 50\n  C3 45\n  C4 35 ;\n\nparam ship_cost :\n          C1 C2 C3 C4 :=\n  NORTH    4  6  9  7\n  SOUTH    7  5  4  6\n  EAST     6  8  5  3 ;\n"
+    }
+  },
+  {
+    "id": "ampl-04-portfolio-markowitz-qp",
+    "lang": "ampl",
+    "subFormats": ["mod", "dat"],
+    "difficulty": 4,
+    "title": "Markowitz Mean-Variance Portfolio QP",
+    "description": "Convex quadratic program allocating capital across asset classes to minimize portfolio variance while achieving a target expected return.",
+    "category": "Nonlinear & Quadratic Programming",
+    "tags": ["ampl", "qp", "nlp", "portfolio", "multi-file"],
+    "activeFile": "portfolio.mod",
+    "fileNames": ["portfolio.mod", "portfolio.dat"],
+    "fileCount": 2,
+    "code": "# Markowitz Mean-Variance Portfolio Quadratic Program\nset ASSETS;\n\nparam mu {ASSETS};\nparam var_diag {ASSETS} > 0;\nparam target_return >= 0;\n\nvar w {ASSETS} >= 0, <= 0.6, := 0.25;\n\nminimize Portfolio_Variance:\n  sum {i in ASSETS} var_diag[i] * w[i]^2;\n\nsubject to Budget:\n  sum {i in ASSETS} w[i] = 1.0;\n\nsubject to Expected_Return:\n  sum {i in ASSETS} mu[i] * w[i] >= target_return;\n",
+    "files": {
+      "portfolio.mod": "# Markowitz Mean-Variance Portfolio Quadratic Program\nset ASSETS;\n\nparam mu {ASSETS};\nparam var_diag {ASSETS} > 0;\nparam target_return >= 0;\n\nvar w {ASSETS} >= 0, <= 0.6, := 0.25;\n\nminimize Portfolio_Variance:\n  sum {i in ASSETS} var_diag[i] * w[i]^2;\n\nsubject to Budget:\n  sum {i in ASSETS} w[i] = 1.0;\n\nsubject to Expected_Return:\n  sum {i in ASSETS} mu[i] * w[i] >= target_return;\n",
+      "portfolio.dat": "set ASSETS := BONDS EQUITIES REIT COMMOD ;\n\nparam target_return := 0.065 ;\n\nparam mu :=\n  BONDS    0.040\n  EQUITIES 0.095\n  REIT     0.075\n  COMMOD   0.060 ;\n\nparam var_diag :=\n  BONDS    0.0025\n  EQUITIES 0.0324\n  REIT     0.0196\n  COMMOD   0.0256 ;\n"
+    }
+  },
+  {
+    "id": "ampl-05-dcopf-parametric-sweep",
+    "lang": "ampl",
+    "subFormats": ["mod", "dat", "run"],
+    "difficulty": 5,
+    "title": "Security-Constrained DC-OPF with Parametric Sweep Script",
+    "description": "Multi-bus DC Optimal Power Flow model minimizing generation dispatch cost subject to nodal power balance, line thermal limits, and a .run sweep script.",
+    "category": "Power Systems Optimization",
+    "tags": ["ampl", "dcopf", "power-systems", "run-script", "multi-file"],
+    "activeFile": "dcopf.mod",
+    "fileNames": ["dcopf.mod", "ieee14.dat", "sweep.run"],
+    "fileCount": 3,
+    "code": "# Security-Constrained DC Optimal Power Flow (DC-OPF)\nset BUS;\nset GEN;\nset LINE;\n\nparam load_mw {BUS} >= 0;\nparam load_scale >= 0 default 1.0;\n\nparam gen_at {GEN, BUS} >= 0 default 0;\nparam pmin {GEN} >= 0;\nparam pmax {GEN} >= 0;\nparam c_lin {GEN} >= 0;\n\nparam line_inc {LINE, BUS} default 0;\nparam susceptance {LINE} > 0;\nparam fmax {LINE} > 0;\n\nvar Pg {g in GEN} >= pmin[g], <= pmax[g];\nvar theta {BUS} >= -1.5, <= 1.5;\nvar Flow {l in LINE} >= -fmax[l], <= fmax[l];\n\nminimize Dispatch_Cost:\n  sum {g in GEN} c_lin[g] * Pg[g];\n\nsubject to Line_Flow {l in LINE}:\n  Flow[l] = susceptance[l] * sum {b in BUS} line_inc[l, b] * theta[b];\n\nsubject to Nodal_Balance {b in BUS}:\n  sum {g in GEN} gen_at[g, b] * Pg[g]\n  - sum {l in LINE} line_inc[l, b] * Flow[l]\n  = load_scale * load_mw[b];\n",
+    "files": {
+      "dcopf.mod": "# Security-Constrained DC Optimal Power Flow (DC-OPF)\nset BUS;\nset GEN;\nset LINE;\n\nparam load_mw {BUS} >= 0;\nparam load_scale >= 0 default 1.0;\n\nparam gen_at {GEN, BUS} >= 0 default 0;\nparam pmin {GEN} >= 0;\nparam pmax {GEN} >= 0;\nparam c_lin {GEN} >= 0;\n\nparam line_inc {LINE, BUS} default 0;\nparam susceptance {LINE} > 0;\nparam fmax {LINE} > 0;\n\nvar Pg {g in GEN} >= pmin[g], <= pmax[g];\nvar theta {BUS} >= -1.5, <= 1.5;\nvar Flow {l in LINE} >= -fmax[l], <= fmax[l];\n\nminimize Dispatch_Cost:\n  sum {g in GEN} c_lin[g] * Pg[g];\n\nsubject to Line_Flow {l in LINE}:\n  Flow[l] = susceptance[l] * sum {b in BUS} line_inc[l, b] * theta[b];\n\nsubject to Nodal_Balance {b in BUS}:\n  sum {g in GEN} gen_at[g, b] * Pg[g]\n  - sum {l in LINE} line_inc[l, b] * Flow[l]\n  = load_scale * load_mw[b];\n",
+      "ieee14.dat": "set BUS := B1 B2 B3 B4 B5 ;\nset GEN := G1 G2 G3 ;\nset LINE := L12 L13 L23 L24 L35 L45 ;\n\nparam load_scale := 1.0 ;\n\nparam load_mw :=\n  B1  40\n  B2  80\n  B3  95\n  B4  70\n  B5  65 ;\n\nparam gen_at :\n       B1 B2 B3 B4 B5 :=\n  G1    1  0  0  0  0\n  G2    0  1  0  0  0\n  G3    0  0  0  0  1 ;\n\nparam pmin :=\n  G1 20\n  G2 15\n  G3 10 ;\n\nparam pmax :=\n  G1 220\n  G2 180\n  G3 160 ;\n\nparam c_lin :=\n  G1 24.0\n  G2 32.5\n  G3 41.0 ;\n\nparam line_inc :\n        B1 B2 B3 B4 B5 :=\n  L12    1 -1  0  0  0\n  L13    1  0 -1  0  0\n  L23    0  1 -1  0  0\n  L24    0  1  0 -1  0\n  L35    0  0  1  0 -1\n  L45    0  0  0  1 -1 ;\n\nparam susceptance :=\n  L12 1000\n  L13  800\n  L23  900\n  L24  850\n  L35  750\n  L45  950 ;\n\nparam fmax :=\n  L12 150\n  L13 130\n  L23 110\n  L24 120\n  L35 100\n  L45 120 ;\n",
+      "sweep.run": "model dcopf.mod;\ndata ieee14.dat;\nsolve;\ndisplay Dispatch_Cost, Pg, Flow;\nlet load_scale := 1.15;\nsolve;\ndisplay Dispatch_Cost, Pg;\n"
+    }
+  }
+]

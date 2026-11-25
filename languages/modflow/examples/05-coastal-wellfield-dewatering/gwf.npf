@@ -1,0 +1,7 @@
+# Regional Coastal Aquifer Hydraulic Properties
+BEGIN NPF6
+  K 22.0
+  K33 1.5
+  SS 1.0e-5
+  SY 0.22
+END NPF6

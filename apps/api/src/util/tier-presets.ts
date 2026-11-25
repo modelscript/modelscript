@@ -79,7 +79,7 @@ export const SETUP_TIER_PRESETS: Record<string, SetupTierPreset> = {
   },
   tier3_flagship: {
     id: "tier3_flagship",
-    label: "Tier 3: Ansatz Social (Public Flagship Node at ansatz.social)",
+    label: "Tier 3: Ansatz Network (Public Flagship Node at ansatz.social)",
     description:
       "Open or gated registration with anti-Sybil verification, open ActivityPub federation, and automated report threshold quarantine. Flagship node at ansatz.social.",
     registrationMode: "open",

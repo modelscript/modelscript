@@ -1,0 +1,11 @@
+{
+  "id": "phreeqc-02-calcite-co2-karst",
+  "lang": "phreeqc",
+  "subFormats": ["phreeqc"],
+  "difficulty": 2,
+  "title": "Calcite-CO2-Water Equilibrium and Karst Dissolution",
+  "description": "Open-system carbonate geochemistry modeling rainwater equilibration with soil CO2(g) and limestone aquifer calcite dissolution kinetics.",
+  "category": "Aqueous Geochemistry",
+  "tags": ["phreeqc", "calcite", "karst", "carbonate"],
+  "activeFile": "karst_calcite.pqi"
+}

@@ -370,13 +370,7 @@ export type TabType =
   | "tokens";
 
 export type SubViewType =
-  | "main"
-  | "accountInfo"
-  | "changePassword"
-  | "deleteAccount"
-  | "notificationFilters"
-  | "contentPreferences"
-  | "other";
+  "main" | "accountInfo" | "changePassword" | "deleteAccount" | "notificationFilters" | "contentPreferences" | "other";
 
 export interface DeepSettingEntry {
   id: string;
@@ -577,7 +571,7 @@ export const DEEP_SETTINGS_INDEX: DeepSettingEntry[] = [
     description: "Automatically execute simulation runs when opening a model in Ansatz.",
     tab: "modeling",
     tabLabel: "Modeling & Simulation",
-    keywords: "auto-simulate ansatz editor morsel run automatically model load",
+    keywords: "auto-simulate ansatz editor ansatz run automatically model load",
   },
 
   // 5. Display & Accessibility

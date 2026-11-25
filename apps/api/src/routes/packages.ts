@@ -804,12 +804,16 @@ export function packagesRouter(storage: LibraryStorage, jobQueue: JobQueue, data
                 } else if (/\.(step|stp)$/i.test(item)) {
                   results.push(relItem);
                 }
-              } catch {}
+              } catch {
+                // Skip unreadable or transiently missing directory entries
+              }
             }
           };
           try {
             walk(dir, "");
-          } catch {}
+          } catch {
+            // Return partial STEP file list if root directory cannot be read
+          }
           return results;
         };
 

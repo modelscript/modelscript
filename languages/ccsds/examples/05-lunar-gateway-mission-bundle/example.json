@@ -1,0 +1,12 @@
+{
+  "id": "ccsds-05-lunar-gateway-mission-bundle",
+  "lang": "ccsds",
+  "subFormats": ["oem", "opm", "tdm", "xtce"],
+  "difficulty": 5,
+  "title": "Lunar Gateway Mission Operations Bundle",
+  "description": "Complete multi-format CCSDS spaceflight operations package for the Lunar Gateway station combining an OEM ephemeris, OPM station-keeping state vector, DSN X-band TDM tracking pass, and XTCE telemetry/telecommand dictionary.",
+  "category": "Cislunar Mission Operations",
+  "tags": ["ccsds", "lunar-gateway", "xtce", "oem", "multi-file"],
+  "activeFile": "orbit.oem",
+  "fileOrder": ["orbit.oem", "maneuver.opm", "dsn_track.tdm", "telemetry.xtce"]
+}

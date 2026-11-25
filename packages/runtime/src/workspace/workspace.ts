@@ -3,6 +3,12 @@
 import {
   extractValidWasmCstRoot,
   indexSymbolsFromWasmCst,
+  type DslAddSymbolOptions,
+  type DslBuiltinSymbol,
+  type DslIndexFileContext,
+  type DslSymbolInput,
+  type LanguageIndexingConfig,
+  type PolyglotConfig,
   type SyntheticSymbolSpec,
   type WorkspaceIndexingHooks,
 } from "@modelscript/dsl";
@@ -16,12 +22,14 @@ import {
   LanguageDomainId,
   makePolyglotSymbolId,
   type IndexerHook,
+  type QueryDB,
   type SymbolEntry,
   type SymbolId,
   type SymbolIndex,
 } from "../runtime.js";
 import { computeEditRanges, type EditRange } from "../util/diff.js";
 import { WorkspaceTypeRegistry } from "../util/type_registry.js";
+import type { CorrespondenceIndexLike } from "./query_engine.js";
 
 /**
  * Common interface implemented by single-language (`LanguageWorkspaceIndex`) and
@@ -117,15 +125,162 @@ export interface WasmLanguageInstance {
   hashString(str: string): number;
 }
 
+/** Structural interface for a green CST node produced by `@modelscript/dsl` WASM GLR parsers. */
+export interface WorkspaceCstNode {
+  type?: string | undefined;
+  text?: string | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  merkleLow?: number | undefined;
+  merkleHigh?: number | undefined;
+  parent?: WorkspaceCstNode | null | undefined;
+  children?: readonly WorkspaceCstNode[] | undefined;
+  namedChildren?: readonly WorkspaceCstNode[] | undefined;
+  tree?: WorkspaceCstTree | undefined;
+  childForFieldName?: ((fieldName: string) => WorkspaceCstNode | null | undefined) | undefined;
+  descendantForIndex?: ((start: number, end?: number) => WorkspaceCstNode | null | undefined) | undefined;
+  descendantForByteRange?: ((start: number, end?: number) => WorkspaceCstNode | null | undefined) | undefined;
+}
+
+/** Structural interface for a parsed syntax tree stored in `UnifiedWorkspace` / `LanguageWorkspaceIndex`. */
+export interface WorkspaceCstTree {
+  rootNode?: WorkspaceCstNode | null | undefined;
+  sourceCode?: string | undefined;
+  text?: string | undefined;
+  delete?: (() => void) | undefined;
+  getText?: ((...args: never[]) => string | null | undefined) | undefined;
+  getNode?: ((...args: never[]) => unknown) | undefined;
+}
+
+/** Incremental edit bounds passed to WASM GLR `parser.parse()`. */
+export interface ParseEditBounds {
+  editStart?: number | undefined;
+  editOldEnd?: number | undefined;
+  editNewEnd?: number | undefined;
+  uri?: string | undefined;
+}
+
+/** Structural interface for a WASM GLR parser registered with `UnifiedWorkspace`. */
+export interface WorkspaceParser {
+  parse(
+    input: string,
+    oldTree?: WorkspaceCstTree | null,
+    editStart?: number,
+    editOldEnd?: number,
+    editNewEnd?: number,
+    uri?: string,
+  ): WorkspaceCstTree | null | undefined;
+  removeDocument?: ((uri: string) => void) | undefined;
+}
+
+/** Per-document CST handle stored by `LanguageWorkspaceIndex`. */
+export interface LanguageWorkspaceDocument {
+  uri: string;
+  tree: WorkspaceCstTree;
+  getText?: (() => string) | undefined;
+}
+
+/** Serialized or in-memory `SymbolIndex` payload accepted by `LanguageWorkspaceIndex.hydrate()`. */
+export interface HydratableSymbolIndex {
+  symbols?: Map<SymbolId | string, Partial<SymbolEntry>> | Record<string, Partial<SymbolEntry>> | undefined;
+  byName?: Map<string, SymbolId[]> | Record<string, SymbolId[]> | undefined;
+  childrenOf?: Map<SymbolId | string | null, SymbolId[]> | Record<string, SymbolId[]> | undefined;
+}
+
+/** Structural interface for language workspace indices or raw `SymbolIndex` objects registered in `UnifiedWorkspace`. */
+export interface RegisteredWorkspaceLike extends Partial<IWorkspaceIndex> {
+  __delegatesToUnifiedWorkspace?: UnifiedWorkspace | undefined;
+  indexDocument?(
+    uri: string,
+    loader?: () => WorkspaceCstNode | null | undefined,
+    parentFQN?: string,
+    editRanges?: readonly { startOffset: number; endOffset: number }[],
+    lazy?: boolean,
+  ): number;
+  register?(
+    uri: string,
+    loader?: () => WorkspaceCstNode | null | undefined,
+    parentFQN?: string,
+    editRanges?: readonly { startOffset: number; endOffset: number }[],
+  ): number;
+  clear?(uri?: string): void;
+  getFileIndex?(uri: string): SymbolIndex | undefined;
+  getFileStructuralRevision?(uri: string): number;
+  takeGlobalChangedIds?(): { changedIds: Set<SymbolId>; structuralChangedIds?: Set<SymbolId> | undefined } | null;
+  takeLazyChangedIds?(): { changedIds: Set<SymbolId>; structuralChangedIds: Set<SymbolId> } | null;
+  ensureChildrenIndexed?(parentFQN?: string): void;
+  ensureFQNIndexed?(fqn: string): void;
+  getFileUriForFQN?(fqn: string): string | undefined;
+  hasPendingChildren?(parentFQN?: string): boolean;
+  symbols?: Map<SymbolId, SymbolEntry> | undefined;
+  byName?: Map<string, SymbolId[]> | undefined;
+  childrenOf?: Map<SymbolId | null, SymbolId[]> | undefined;
+  fileIndices?: Map<string, SymbolIndex> | undefined;
+}
+
+/** Structural interface for language `WasmQueryEngine` instances registered in `UnifiedWorkspace`. */
+export interface WorkspaceQueryEngineLike {
+  query?<T = unknown>(queryName: string, id: SymbolId): T;
+  queryWith?<T = unknown>(queryName: string, id: SymbolId, args: Record<string, unknown>, hashOverride?: string): T;
+  toQueryDB?(): QueryDB;
+  setCorrespondenceIndex?(
+    corr: CorrespondenceIndexLike | undefined,
+    slotMap?: Map<SymbolId, number>,
+    slotsBySymbol?: Map<SymbolId, Set<number>>,
+  ): void;
+  getCorrespondenceIndex?(): CorrespondenceIndexLike | undefined;
+  updateIndex?(
+    newIndex: SymbolIndex,
+    uri?: string,
+    changedSymbolIds?: Set<SymbolId>,
+    structuralChangedIds?: Set<SymbolId>,
+    changedNames?: Set<string>,
+  ): void;
+  invalidate?(changedSymbolIds: Set<SymbolId>, structuralChangedIds?: Set<SymbolId>): void;
+  index?: SymbolIndex | undefined;
+}
+
+/** Structural interface for declarative language definitions / configs registered in `UnifiedWorkspace`. */
+export interface LanguageDefinitionLike {
+  name?: string | undefined;
+  priority?: number | undefined;
+  polyglot?: PolyglotConfig | undefined;
+  fileExtensions?: readonly string[] | undefined;
+  lsp?:
+    | {
+        fileExtensions?: readonly string[] | undefined;
+        fileExtension?: string | undefined;
+      }
+    | undefined;
+  indexing?:
+    | LanguageIndexingConfig
+    | {
+        builtins?: readonly DslBuiltinSymbol[] | (() => readonly DslBuiltinSymbol[]) | undefined;
+        indexFile?: ((ctx: DslIndexFileContext) => void) | undefined;
+        indexerHooks?:
+          | readonly IndexerHook[]
+          | (() => readonly IndexerHook[])
+          | readonly unknown[]
+          | (() => readonly unknown[])
+          | undefined;
+        packageHierarchy?: boolean | undefined;
+        canIndex?: ((uri: string, text: string) => boolean) | undefined;
+        workspaceHooks?: WorkspaceIndexingHooks | undefined;
+      }
+    | undefined;
+}
+
 /**
  * Searches a CST node and its non-body descendants for a child matching `fieldName`
  * (or an identifier child when `fieldName === "name"`).
  */
-function findDescendantByFieldName(node: any, fieldName: string): any | null {
-  const direct = node.childForFieldName ? node.childForFieldName(fieldName) : null;
+function findDescendantByFieldName(node: WorkspaceCstNode, fieldName: string): WorkspaceCstNode | null {
+  const direct = node.childForFieldName ? (node.childForFieldName(fieldName) ?? null) : null;
   if (direct) return direct;
   if (fieldName === "name" && node.children) {
-    const directId = node.children.find((c: any) => c.type === "identifier" || c.type === "IDENT");
+    const directId = node.children.find((c) => c.type === "identifier" || c.type === "IDENT");
     if (directId) return directId;
   }
   for (const child of node.children || []) {
@@ -154,21 +309,21 @@ function findDescendantByFieldName(node: any, fieldName: string): any | null {
  * Resolves a dot-separated field path (e.g. `"parent.name"`, `"$self"`, or `"type_specifier"`)
  * starting from `node` in the CST.
  */
-function resolveFieldPath(node: any, fieldPath: string): any | null {
+function resolveFieldPath(node: WorkspaceCstNode, fieldPath: string): WorkspaceCstNode | null {
   if (!fieldPath || fieldPath === "$self") return node;
   const parts = fieldPath.split(".");
-  let current: any | null = node;
+  let current: WorkspaceCstNode | null = node;
 
   for (const part of parts) {
     if (!current) return null;
     if (part === "parent") {
       current = current.parent ?? null;
     } else {
-      let child = current.childForFieldName ? current.childForFieldName(part) : null;
+      let child: WorkspaceCstNode | null = current.childForFieldName ? (current.childForFieldName(part) ?? null) : null;
       if (!child) {
-        const children: any[] = current.children || [];
+        const children: readonly WorkspaceCstNode[] = current.children || [];
         const pascalType = part.charAt(0).toUpperCase() + part.slice(1);
-        child = children.find((c: any) => c.type === pascalType || c.type === part) ?? null;
+        child = children.find((c) => c.type === pascalType || c.type === part) ?? null;
       }
       if (!child) {
         child = findDescendantByFieldName(current, part);
@@ -181,12 +336,12 @@ function resolveFieldPath(node: any, fieldPath: string): any | null {
 }
 
 /** Returns the trimmed source text of a CST node, or `""` if unavailable. */
-function getNodeText(node: any): string {
+function getNodeText(node: WorkspaceCstNode): string {
   return node.text ? node.text.trim() : "";
 }
 
 /** Scans direct CST children of `node` for a modifier or direction keyword token matching `fieldName`. */
-function scanForKeyword(node: any, fieldName: string): string | null {
+function scanForKeyword(node: WorkspaceCstNode, fieldName: string): string | null {
   let keyword: string | null = null;
   let keywords: string[] | null = null;
 
@@ -201,6 +356,7 @@ function scanForKeyword(node: any, fieldName: string): string | null {
   const children = node.children || [];
   for (const child of children) {
     const t = child.type;
+    if (!t) continue;
     if (keywords) {
       if (keywords.includes(t)) return t;
     } else if (keyword && t === keyword) {
@@ -211,7 +367,7 @@ function scanForKeyword(node: any, fieldName: string): string | null {
 }
 
 /** Extracts a key-value metadata dictionary from a CST `node` using the field paths configured on `hook`. */
-function extractMetadata(node: any, hook: IndexerHook): Record<string, unknown> {
+function extractMetadata(node: WorkspaceCstNode, hook: IndexerHook): Record<string, unknown> {
   const metadata: Record<string, unknown> = {};
   if (!hook.metadataFieldPaths) return metadata;
   for (const [key, fieldPath] of Object.entries(hook.metadataFieldPaths)) {
@@ -226,7 +382,7 @@ function extractMetadata(node: any, hook: IndexerHook): Record<string, unknown> 
 }
 
 /** Extracts an array of non-empty trimmed string values from `node` for each field path in `paths`. */
-function extractStringList(node: any, paths?: string[]): string[] {
+function extractStringList(node: WorkspaceCstNode, paths?: string[]): string[] {
   if (!paths || paths.length === 0) return [];
   const results: string[] = [];
   for (const path of paths) {
@@ -268,7 +424,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   /** Map from document URI to the ordered list of `SymbolId`s declared in that file. */
   private fileSymbols = new Map<string, SymbolId[]>();
   /** Pending lazy CST loader callbacks keyed by document URI for on-demand package indexing. */
-  private fileLoaders = new Map<string, { loader: () => any; parentFQN?: string | undefined; editRanges?: any }>();
+  private fileLoaders = new Map<
+    string,
+    {
+      loader: () => WorkspaceCstNode | null | undefined;
+      parentFQN?: string | undefined;
+      editRanges?: readonly { startOffset: number; endOffset: number }[] | undefined;
+    }
+  >();
   /** Map from top-level package/class FQN to the document URI that defines it. */
   private fqnToUri = new Map<string, string>();
   /** Re-entrancy guard set tracking FQNs currently being materialized in `ensureFQNIndexed()`. */
@@ -284,14 +447,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     childrenOf: new Map<SymbolId | null, SymbolId[]>(),
   };
   /** Map from document URI to parsed CST records ({ uri, tree }). */
-  public documents = new Map<string, any>();
+  public documents = new Map<string, LanguageWorkspaceDocument>();
 
   /**
    * Creates a new `LanguageWorkspaceIndex` from either an array of grammar `IndexerHook`s
    * or a low-level `WasmLanguageInstance`.
    */
   constructor(
-    instanceOrHooks: WasmLanguageInstance | IndexerHook[] | any = {},
+    instanceOrHooks: Partial<WasmLanguageInstance> | IndexerHook[] | null = {},
     workspaceHooks?: WorkspaceIndexingHooks,
   ) {
     if (workspaceHooks) this.wsHooks = workspaceHooks;
@@ -301,9 +464,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           this.hookMap.set(hook.ruleName, hook);
         }
       }
-      this.instance = {} as any;
+      this.instance = {} as WasmLanguageInstance;
     } else {
-      this.instance = instanceOrHooks || {};
+      this.instance = (instanceOrHooks || {}) as WasmLanguageInstance;
     }
   }
 
@@ -382,10 +545,16 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   /**
    * Indexes a document's CST into the symbol table.
    */
-  indexDocument(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any, lazy = false): number {
+  indexDocument(
+    uri: string,
+    loader?: () => WorkspaceCstNode | null | undefined,
+    parentFQN?: string,
+    editRanges?: readonly { startOffset: number; endOffset: number }[],
+    lazy = false,
+  ): number {
     const fileId = this.registerFile(uri, parentFQN);
     if (editRanges && Array.isArray(editRanges)) {
-      this.fileDirtyRanges.set(uri, editRanges);
+      this.fileDirtyRanges.set(uri, [...editRanges]);
     }
     const rawFilename = uri.split("/").pop();
     const filename = rawFilename?.replace(/\.[^./]+$/, "");
@@ -422,7 +591,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   /**
    * Backwards-compatible alias for indexDocument. Defaults to lazy loading when a loader function is supplied.
    */
-  register(uri: string, loader?: () => any, parentFQN?: string, editRanges?: any): number {
+  register(
+    uri: string,
+    loader?: () => WorkspaceCstNode | null | undefined,
+    parentFQN?: string,
+    editRanges?: readonly { startOffset: number; endOffset: number }[],
+  ): number {
     return this.indexDocument(uri, loader, parentFQN, editRanges, true);
   }
 
@@ -598,11 +772,16 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   /**
    * Re-indexes a document or marks it dirty upon edit.
    */
-  reindexDocument(uri: string, loader?: () => any, editRanges?: any, totalDelta?: number): void {
+  reindexDocument(
+    uri: string,
+    loader?: () => WorkspaceCstNode | null | undefined,
+    editRanges?: readonly { startOffset: number; endOffset: number }[],
+    totalDelta?: number,
+  ): void {
     const existingEntry = this.fileLoaders.get(uri);
     this.fileLoaders.delete(uri);
     if (editRanges && Array.isArray(editRanges)) {
-      this.fileDirtyRanges.set(uri, editRanges);
+      this.fileDirtyRanges.set(uri, [...editRanges]);
     }
     if (typeof totalDelta === "number" && totalDelta !== 0) {
       this.fileDeltas.set(uri, (this.fileDeltas.get(uri) ?? 0) + totalDelta);
@@ -622,7 +801,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
   /**
    * @deprecated Backwards-compatible alias for reindexDocument. Use `reindexDocument` instead.
    */
-  markDirty(uri: string, loader?: () => any, editRanges?: any, totalDelta?: number): void {
+  markDirty(
+    uri: string,
+    loader?: () => WorkspaceCstNode | null | undefined,
+    editRanges?: readonly { startOffset: number; endOffset: number }[],
+    totalDelta?: number,
+  ): void {
     this.reindexDocument(uri, loader, editRanges, totalDelta);
   }
 
@@ -677,7 +861,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * @param rootNode Root CST node produced by the WASM GLR parser.
    * @param _parentFQN Optional enclosing package FQN (a language hook may override it from a scope the file declares).
    */
-  private indexCst(uri: string, rootNode: any, _parentFQN?: string): void {
+  private indexCst(uri: string, rootNode: WorkspaceCstNode, _parentFQN?: string): void {
     // Step 1: Resolve the enclosing package scope the file itself declares (language hook), if any.
     if (rootNode) {
       this.documents.set(uri, {
@@ -889,9 +1073,9 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
     // Step 5: Recursive green CST walker that extracts symbols (Classes, Components, Extends, Connect, etc.)
     // according to language grammar `IndexerHook` definitions.
-    const walk = (node: any, parentId: SymbolId | null) => {
+    const walk = (node: WorkspaceCstNode, parentId: SymbolId | null) => {
       let currentId = parentId;
-      const hook = this.hookMap.get(node.type);
+      const hook = node.type ? this.hookMap.get(node.type) : undefined;
 
       // Step 5a: Register any extra symbols the language implies for this node
       // (for example, an implicit Extends symbol for a class-extends declaration), via the language hook.
@@ -938,7 +1122,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
           const intersectsDirty = merkleUnchanged
             ? false
             : dirtyRanges && dirtyRanges.length > 0
-              ? dirtyRanges.some((r: any) => {
+              ? dirtyRanges.some((r) => {
                   const rStart = r.startOffset ?? 0;
                   const rEnd = r.endOffset ?? 0;
                   return (
@@ -1072,7 +1256,7 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
 
       // Step 5d: Prune CST subtrees that the language declares can never contain structural symbol
       // declarations (expressions, statements, comments, annotations are lowered directly during flattening).
-      if (this.wsHooks.skipNodeTypes?.has(node.type)) {
+      if (node.type && this.wsHooks.skipNodeTypes?.has(node.type)) {
         return;
       }
 
@@ -1177,7 +1361,12 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
    * Hydrates pre-serialized `SymbolIndex` bundle data (`symbols`, `byName`, `childrenOf`)
    * for `uri` into `unifiedIndex`, remapping symbol IDs to avoid collisions with existing entries.
    */
-  hydrate(uri: string, indexData: any, parentFQN?: string, mapResourceId?: (path: string) => string): void {
+  hydrate(
+    uri: string,
+    indexData: HydratableSymbolIndex | SymbolIndex | null | undefined,
+    parentFQN?: string,
+    mapResourceId?: (path: string) => string,
+  ): void {
     if (!indexData) {
       this._version++;
       this._structuralRevision++;
@@ -1190,16 +1379,21 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
     }
 
     // 1. Build ID remapping table to prevent collisions between bundles and existing symbols
-    const symbolsSource: [string | number, any][] =
+    const symbolsSource: [string | number, Partial<SymbolEntry>][] =
       indexData.symbols instanceof Map
         ? Array.from(indexData.symbols.entries())
         : Object.entries(indexData.symbols || {});
 
-    const isCorruptedSymbolEntry = (rawEntry: any): boolean => {
+    const isCorruptedSymbolEntry = (rawEntry: Partial<SymbolEntry> | null | undefined): boolean => {
       if (!rawEntry || typeof rawEntry.name !== "string") return true;
       const n = rawEntry.name;
       if (/[\r\n]/.test(n) || n.startsWith("/") || /^\s/.test(n)) return true;
-      return this.wsHooks.isCorruptedStub?.(rawEntry) ?? false;
+      return (
+        this.wsHooks.isCorruptedStub?.({
+          name: n,
+          ...(rawEntry.kind !== undefined ? { kind: rawEntry.kind } : {}),
+        }) ?? false
+      );
     };
 
     const idMap = new Map<number, number>();
@@ -1347,9 +1541,14 @@ export class LanguageWorkspaceIndex implements IWorkspaceIndex {
         this.ensureIndexed(uri);
       }
     }
-    (this.unifiedIndex as any).documents = this.documents;
-    (this.unifiedIndex as any).workspace = this;
-    (this.unifiedIndex as any).workspaceIndex = this;
+    const attached = this.unifiedIndex as SymbolIndex & {
+      documents?: Map<string, LanguageWorkspaceDocument> | undefined;
+      workspace?: LanguageWorkspaceIndex | undefined;
+      workspaceIndex?: LanguageWorkspaceIndex | undefined;
+    };
+    attached.documents = this.documents;
+    attached.workspace = this;
+    attached.workspaceIndex = this;
     return this.unifiedIndex;
   }
 
@@ -1752,7 +1951,7 @@ export interface DocumentRecord {
   /** Monotonically increasing per-document edit version. */
   version: number;
   /** Cached parsed syntax tree (`CSTTree`), if parsed. */
-  tree?: any;
+  tree?: WorkspaceCstTree | null | undefined;
   /** Canonical language identifier, if known. */
   language?: string | undefined;
 }
@@ -1774,13 +1973,13 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Incremental TGG correspondence indexer aligning symbols into `DigitalThreadHypergraph`. */
   public tggCorrespondenceIndexer: TggCorrespondenceIndexer;
   /** Map from language identifier (e.g. `"modelica"`, `"sysml2"`) to its `LanguageWorkspaceIndex`. */
-  private workspaces = new Map<string, any>();
+  private workspaces = new Map<string, RegisteredWorkspaceLike>();
   /** Map from language identifier to its associated `WasmQueryEngine`. */
-  private queryEngines = new Map<string, any>();
+  private queryEngines = new Map<string, WorkspaceQueryEngineLike>();
   /** Map from language identifier to its registered language configuration object. */
-  private configs = new Map<string, any>();
+  private configs = new Map<string, LanguageDefinitionLike>();
   /** Map from language identifier to its DSL `language(...)` definition (with optional `indexing`). */
-  private languageDefs = new Map<string, any>();
+  private languageDefs = new Map<string, LanguageDefinitionLike>();
   /** Built-in standard-library `SymbolIndex` per language materialized from `langDef.indexing.builtins`. */
   private nativeBuiltinIndices = new Map<string, SymbolIndex>();
   /** Per-document `SymbolIndex` materialized by `langDef.indexing.indexFile`. */
@@ -1830,9 +2029,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   /** Process-wide fallback registry mapping file extensions (e.g. `".mo"`) to WASM GLR parser instances. */
-  private static globalParsers = new Map<string, any>();
+  private static globalParsers = new Map<string, WorkspaceParser>();
   /** Instance-level registry mapping file extensions to WASM GLR parser instances. */
-  private parsers = new Map<string, any>();
+  private parsers = new Map<string, WorkspaceParser>();
   /** Instance-level registry mapping file extensions to canonical language identifiers. */
   private instanceExtensionMap = new Map<string, string>();
   /** Instance-level registry mapping ambiguous file extensions to candidate language identifiers. */
@@ -1848,7 +2047,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   public queryProvider?: ((queryName: string, id: SymbolId) => unknown | null) | undefined;
 
   /** Initializes a new `UnifiedWorkspace` with default CST node, text, and query providers, optionally registering `languages`. */
-  constructor(...languages: any[]) {
+  constructor(...languages: Array<LanguageDefinitionLike | LanguageDefinitionLike[] | null | undefined>) {
     this.owl2Store = new WasmOntologyStore(null, this);
     this.tggCorrespondenceIndexer = new TggCorrespondenceIndexer(
       this.tggProjectionTable,
@@ -1864,7 +2063,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       const start = entry.startOffset;
       const end = Math.max(start, entry.endOffset);
       return typeof tree.rootNode.descendantForIndex === "function"
-        ? tree.rootNode.descendantForIndex(start, end)
+        ? (tree.rootNode.descendantForIndex(start, end) ?? null)
         : null;
     };
 
@@ -1902,7 +2101,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // ---------------------------------------------------------------------------
 
   /** Recovers the CST node for `id` using `cstNodeProvider`. */
-  getCstNode(id: SymbolId): any | null {
+  getCstNode(id: SymbolId): unknown | null {
     if (this.cstNodeProvider) return this.cstNodeProvider(id);
     return null;
   }
@@ -1924,26 +2123,26 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // ---------------------------------------------------------------------------
 
   /** Registers a WASM GLR parser globally for the file extension `extname` (e.g. `".mo"`). */
-  static registerGlobalParser(extname: string, parser: any): void {
+  static registerGlobalParser(extname: string, parser: WorkspaceParser): void {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     UnifiedWorkspace.globalParsers.set(ext, parser);
   }
 
   /** Retrieves the globally registered WASM GLR parser for `extname`, if any. */
-  static getGlobalParser(extname: string): any | undefined {
+  static getGlobalParser(extname: string): WorkspaceParser | undefined {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     return UnifiedWorkspace.globalParsers.get(ext);
   }
 
   /** Registers a WASM GLR parser on both this workspace instance and the global parser registry. */
-  registerParser(extname: string, parser: any): void {
+  registerParser(extname: string, parser: WorkspaceParser): void {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     this.parsers.set(ext, parser);
     UnifiedWorkspace.registerGlobalParser(ext, parser);
   }
 
   /** Returns the parser registered for `extname` (checking instance parsers first, then global parsers). */
-  getParser(extname: string): any | undefined {
+  getParser(extname: string): WorkspaceParser | undefined {
     const ext = extname.startsWith(".") ? extname : `.${extname}`;
     return this.parsers.get(ext) ?? UnifiedWorkspace.getGlobalParser(ext);
   }
@@ -1952,7 +2151,12 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
    * Parses `input` using the WASM GLR parser registered for `uriOrExt`, supporting incremental
    * re-parsing when `oldTree` and `editBounds` are provided.
    */
-  parse(uriOrExt: string, input: string, oldTree?: any, editBounds?: any): any {
+  parse(
+    uriOrExt: string,
+    input: string,
+    oldTree?: WorkspaceCstTree | null,
+    editBounds?: ParseEditBounds,
+  ): WorkspaceCstTree | null | undefined {
     const ext = uriOrExt.startsWith(".") ? uriOrExt.toLowerCase() : UnifiedWorkspace.extractExtension(uriOrExt);
     const parser =
       this.getParser(ext) ?? (ext.includes(".") ? this.getParser(ext.slice(ext.lastIndexOf("."))) : undefined);
@@ -1987,13 +2191,13 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     text: string,
     options?: {
       parse?: boolean | undefined;
-      oldTree?: any;
-      editBounds?: any;
+      oldTree?: WorkspaceCstTree | null | undefined;
+      editBounds?: ParseEditBounds | undefined;
       editRanges?: EditRange[] | undefined;
       index?: boolean | undefined;
       language?: string | undefined;
     },
-  ): { editRanges: EditRange[]; delta: number; tree?: any } {
+  ): { editRanges: EditRange[]; delta: number; tree?: WorkspaceCstTree | null | undefined } {
     const prev = this.documents.get(uri);
     let editRanges: EditRange[] = options?.editRanges ?? [];
     let delta = 0;
@@ -2031,7 +2235,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     if (prev?.tree && prev.tree !== tree && typeof prev.tree.delete === "function") {
       try {
         prev.tree.delete();
-      } catch {}
+      } catch {
+        // Best-effort release of superseded CST tree
+      }
     }
 
     const lang = options?.language?.toLowerCase() ?? this.detectLanguage(uri, text);
@@ -2069,7 +2275,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   /** Returns the parsed CST tree for `uri`, parsing on-demand if only source text is currently stored. */
-  getDocumentTree(uri: string): any | undefined {
+  getDocumentTree(uri: string): WorkspaceCstTree | undefined {
     const doc = this.documents.get(uri);
     if (!doc) return undefined;
     if (doc.tree) return doc.tree;
@@ -2083,11 +2289,11 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         // ignore
       }
     }
-    return doc.tree;
+    return doc.tree ?? undefined;
   }
 
   /** Explicitly attaches a pre-parsed CST `tree` to `uri` in the document store. */
-  setDocumentTree(uri: string, tree: any): void {
+  setDocumentTree(uri: string, tree: WorkspaceCstTree | null | undefined): void {
     const doc = this.documents.get(uri);
     if (doc) {
       doc.tree = tree;
@@ -2102,7 +2308,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     if (doc?.tree && typeof doc.tree.delete === "function") {
       try {
         doc.tree.delete();
-      } catch {}
+      } catch {
+        // Best-effort release of deleted document CST tree
+      }
     }
     const lang = doc?.language ?? this.nativeFileIndices.get(uri)?.language ?? this.detectLanguage(uri);
     const existed = this.documents.delete(uri);
@@ -2116,10 +2324,12 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     const ext = UnifiedWorkspace.extractExtension(uri);
     const parser =
       this.getParser(ext) ?? (ext.includes(".") ? this.getParser(ext.slice(ext.lastIndexOf("."))) : undefined);
-    if (parser && typeof (parser as any).removeDocument === "function") {
+    if (parser && typeof parser.removeDocument === "function") {
       try {
-        (parser as any).removeDocument(uri);
-      } catch {}
+        parser.removeDocument(uri);
+      } catch {
+        // Best-effort removal from parser document cache
+      }
     }
     if (existed || oldNative) {
       this._version++;
@@ -2127,11 +2337,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       if (oldNative && oldNative.index.symbols.size > 0) {
         for (const id of oldNative.index.symbols.keys()) changedIds.add(id);
       }
-      const wsWithChanged = ws as unknown as {
-        takeGlobalChangedIds?: () => { changedIds?: Iterable<SymbolId> } | null;
-      };
-      if (ws && !this.isDelegatedSelf(ws) && typeof wsWithChanged.takeGlobalChangedIds === "function") {
-        const drained = wsWithChanged.takeGlobalChangedIds();
+      if (ws && !this.isDelegatedSelf(ws) && typeof ws.takeGlobalChangedIds === "function") {
+        const drained = ws.takeGlobalChangedIds();
         if (drained?.changedIds) {
           for (const id of drained.changedIds) changedIds.add(id);
         }
@@ -2233,7 +2440,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     if (candidates.length === 1) return candidates[0];
     for (const candidate of candidates) {
       const def = this.languageDefs.get(candidate) ?? this.configs.get(candidate);
-      if (typeof def?.indexing?.canIndex === "function" && def.indexing.canIndex(uri, textHint)) {
+      if (typeof def?.indexing?.canIndex === "function" && def.indexing.canIndex(uri, textHint ?? "")) {
         return candidate;
       }
     }
@@ -2318,7 +2525,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   async loadDirectory(
     dirPath: string,
     fs: {
-      stat: (p: string) => any;
+      stat: (p: string) => { isFile(): boolean; isDirectory(): boolean } | null | undefined;
       readdir: (p: string) => { name: string }[];
       read: (p: string) => string;
       join: (...p: string[]) => string;
@@ -2356,7 +2563,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   // Workspace & Query Engine Management
   // ---------------------------------------------------------------------------
 
-  private isDelegatedSelf(ws: any): boolean {
+  private isDelegatedSelf(ws: RegisteredWorkspaceLike | null | undefined): boolean {
     return !ws || ws === this || ws.__delegatesToUnifiedWorkspace === this;
   }
 
@@ -2395,8 +2602,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Returns the per-file structural revision for `uri` from its owning language workspace. */
   getFileStructuralRevision(uri: string): number {
     for (const ws of this.workspaces.values()) {
-      if (!this.isDelegatedSelf(ws) && typeof (ws as any).getFileStructuralRevision === "function") {
-        const rev = (ws as any).getFileStructuralRevision(uri);
+      if (!this.isDelegatedSelf(ws) && typeof ws.getFileStructuralRevision === "function") {
+        const rev = ws.getFileStructuralRevision(uri);
         if (rev > 0) return rev;
       }
     }
@@ -2404,7 +2611,11 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   /** Registers a language workspace index (and optional language DSL configuration) under `language`. */
-  registerWorkspace(language: string, index: any, config?: any): void {
+  registerWorkspace(
+    language: string,
+    index: RegisteredWorkspaceLike | SymbolIndex | null | undefined,
+    config?: LanguageDefinitionLike,
+  ): void {
     if (!index) return;
     this.workspaces.set(language, index);
     if (config) {
@@ -2434,17 +2645,17 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   /** Returns the registered workspace index for `language`, if any. */
-  getWorkspace(language: string): any {
+  getWorkspace(language: string): RegisteredWorkspaceLike | undefined {
     return this.workspaces.get(language);
   }
 
   /** Returns the registered language configuration for `language`, if any. */
-  getLanguageConfig(language: string): any {
+  getLanguageConfig(language: string): LanguageDefinitionLike | undefined {
     return this.configs.get(language) ?? this.languageDefs.get(language);
   }
 
   /** Returns the registered DSL `language(...)` definition for `language`, if any. */
-  getLanguageDef(language: string): any {
+  getLanguageDef(language: string): LanguageDefinitionLike | undefined {
     return this.languageDefs.get(language) ?? this.configs.get(language);
   }
 
@@ -2477,7 +2688,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     target: SymbolIndex,
     language: string,
     defaultUri: string,
-    sym: any,
+    sym: DslSymbolInput,
     defaultParentId: SymbolId | null,
     allocateId: () => SymbolId,
   ): SymbolId {
@@ -2497,7 +2708,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     const entry: SymbolEntry = {
       id,
       name: sym.name,
-      kind: sym.kind as any,
+      kind: sym.kind,
       ruleName: sym.ruleName ?? sym.kind,
       namePath: sym.namePath ?? sym.name,
       startOffset,
@@ -2569,9 +2780,9 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
    * Registers a `@modelscript/dsl` `language(...)` definition on this `UnifiedWorkspace`
    * using `langDef.name` (or `idOverride`), returning `this` for chaining.
    */
-  registerLanguage(langDef: any, idOverride?: string): this {
+  registerLanguage(langDef: LanguageDefinitionLike | null | undefined, idOverride?: string): this {
     const id = (idOverride ?? langDef?.name ?? "").toString().trim().toLowerCase();
-    if (id) {
+    if (id && langDef) {
       this.registerLanguageDef(id, langDef);
     }
     return this;
@@ -2582,7 +2793,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
    * wiring file extensions, optional CST `indexerHooks`, and materializing any `indexing.builtins`
    * into the unified symbol table.
    */
-  registerLanguageDef(language: string, langDef: any): void {
+  registerLanguageDef(language: string, langDef: LanguageDefinitionLike | null | undefined): void {
     if (!langDef || typeof langDef !== "object") return;
     const normLang = language.toLowerCase();
     this.languageDefs.set(normLang, langDef);
@@ -2623,7 +2834,10 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     if (hooksCfg && !this.workspaces.has(normLang)) {
       const hooks = typeof hooksCfg === "function" ? hooksCfg() : hooksCfg;
       if (Array.isArray(hooks) && hooks.length > 0) {
-        this.workspaces.set(normLang, new LanguageWorkspaceIndex(hooks, langDef.indexing?.workspaceHooks));
+        this.workspaces.set(
+          normLang,
+          new LanguageWorkspaceIndex(hooks as IndexerHook[], langDef.indexing?.workspaceHooks),
+        );
       }
     }
 
@@ -2790,7 +3004,12 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
    * Indexes `text` for `uri` using the owning language's declarative `indexing.indexFile` hook,
    * storing the resulting `SymbolIndex` in `UnifiedWorkspace` and invalidating registered `QueryEngine`s.
    */
-  indexDocumentText(uri: string, text: string, langOverride?: string, tree?: any): SymbolIndex | undefined {
+  indexDocumentText(
+    uri: string,
+    text: string,
+    langOverride?: string,
+    tree?: WorkspaceCstTree | null,
+  ): SymbolIndex | undefined {
     const lang = (langOverride ?? this.detectLanguage(uri, text))?.toLowerCase();
     if (!this.documents.has(uri) || this.documents.get(uri)?.text !== text) {
       const prev = this.documents.get(uri);
@@ -2826,13 +3045,13 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     };
 
     const ext = UnifiedWorkspace.extractExtension(uri);
-    const ctx = {
+    const ctx: DslIndexFileContext = {
       uri,
       text,
       extension: ext,
       language: lang,
       tree: effectiveTree,
-      emitSymbol: (sym: any): number => {
+      emitSymbol: (sym: DslSymbolInput): number => {
         return this.emitSymbolIntoIndex(fileIndex, lang, uri, sym, null, () => this.allocateNativeFileSymbolId(lang));
       },
       addSymbol: (
@@ -2841,8 +3060,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
         parentId: number | null = null,
         startOffset = 0,
         endOffset = 0,
-        metadata?: Record<string, any>,
-        options?: any,
+        metadata?: Record<string, unknown>,
+        options?: DslAddSymbolOptions,
       ): number => {
         return this.emitSymbolIntoIndex(
           fileIndex,
@@ -3078,7 +3297,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   /** Registers a `WasmQueryEngine` instance for `language`. */
-  registerQueryEngine(language: string, engine: any): void {
+  registerQueryEngine(language: string, engine: WorkspaceQueryEngineLike): void {
     this.queryEngines.set(language, engine);
     if (engine && typeof engine.setCorrespondenceIndex === "function") {
       engine.setCorrespondenceIndex(this.tggCorrespondenceIndexer.hypergraph, this.tggCorrespondenceIndexer.slotMap);
@@ -3087,7 +3306,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   }
 
   /** Returns the registered `WasmQueryEngine` for `language`, if any. */
-  getQueryEngine(language: string): any {
+  getQueryEngine(language: string): WorkspaceQueryEngineLike | undefined {
     return this.queryEngines.get(language);
   }
 
@@ -3095,7 +3314,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
    * Convenience getter returning the primary registered `WasmQueryEngine`
    * (prioritizing `modelica` or `sysml2`, otherwise the first registered engine).
    */
-  get queryEngine(): any {
+  get queryEngine(): WorkspaceQueryEngineLike | undefined {
     return (
       this.queryEngines.get("modelica") ?? this.queryEngines.get("sysml2") ?? this.queryEngines.values().next().value
     );
@@ -3200,9 +3419,14 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     return merged;
   }
 
-  private readonly extractingWorkspaces = new Set<any>();
+  private readonly extractingWorkspaces = new Set<RegisteredWorkspaceLike>();
 
-  private extractWorkspaceEntries(lang: string, ws: any, eager: boolean, out: [string, SymbolIndex | null][]): void {
+  private extractWorkspaceEntries(
+    lang: string,
+    ws: RegisteredWorkspaceLike,
+    eager: boolean,
+    out: [string, SymbolIndex | null][],
+  ): void {
     if (this.isDelegatedSelf(ws) || this.extractingWorkspaces.has(ws)) return;
     if (typeof ws.getIndex === "function") {
       this.extractingWorkspaces.add(ws);
@@ -3217,7 +3441,7 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
       out.push([lang, ws as SymbolIndex]);
       return;
     }
-    const fileIndices = (ws as any).fileIndices;
+    const fileIndices = ws.fileIndices;
     if (fileIndices instanceof Map) {
       for (const fileIdx of fileIndices.values()) {
         if (fileIdx && fileIdx.symbols instanceof Map) {
@@ -3343,8 +3567,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   ensureChildrenIndexed(parentFQN?: string): void {
     const dotFqn = parentFQN && parentFQN.includes("::") ? parentFQN.replace(/::/g, ".") : parentFQN;
     for (const ws of this.workspaces.values()) {
-      if (!this.isDelegatedSelf(ws) && typeof (ws as any).ensureChildrenIndexed === "function") {
-        (ws as any).ensureChildrenIndexed(dotFqn);
+      if (!this.isDelegatedSelf(ws) && typeof ws.ensureChildrenIndexed === "function") {
+        ws.ensureChildrenIndexed(dotFqn);
       }
     }
   }
@@ -3353,8 +3577,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   ensureFQNIndexed(fqn: string): void {
     const dotFqn = fqn.includes("::") ? fqn.replace(/::/g, ".") : fqn;
     for (const ws of this.workspaces.values()) {
-      if (!this.isDelegatedSelf(ws) && typeof (ws as any).ensureFQNIndexed === "function") {
-        (ws as any).ensureFQNIndexed(dotFqn);
+      if (!this.isDelegatedSelf(ws) && typeof ws.ensureFQNIndexed === "function") {
+        ws.ensureFQNIndexed(dotFqn);
       }
     }
   }
@@ -3364,8 +3588,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
     const changedIds = new Set<SymbolId>();
     const structuralChangedIds = new Set<SymbolId>();
     for (const ws of this.workspaces.values()) {
-      if (!this.isDelegatedSelf(ws) && typeof (ws as any).takeLazyChangedIds === "function") {
-        const res = (ws as any).takeLazyChangedIds();
+      if (!this.isDelegatedSelf(ws) && typeof ws.takeLazyChangedIds === "function") {
+        const res = ws.takeLazyChangedIds();
         if (res) {
           for (const id of res.changedIds) changedIds.add(id);
           for (const id of res.structuralChangedIds) structuralChangedIds.add(id);
@@ -3378,15 +3602,15 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Resolves a fully qualified name `fqn` to its defining document URI across all language workspaces. */
   getFileUriForFQN(fqn: string): string | undefined {
     for (const ws of this.workspaces.values()) {
-      if (!this.isDelegatedSelf(ws) && typeof (ws as any).getFileUriForFQN === "function") {
-        const uri = (ws as any).getFileUriForFQN(fqn);
+      if (!this.isDelegatedSelf(ws) && typeof ws.getFileUriForFQN === "function") {
+        const uri = ws.getFileUriForFQN(fqn);
         if (uri) return uri;
       }
     }
     this.ensureFQNIndexed(fqn);
     for (const ws of this.workspaces.values()) {
-      if (!this.isDelegatedSelf(ws) && typeof (ws as any).getFileUriForFQN === "function") {
-        const uri = (ws as any).getFileUriForFQN(fqn);
+      if (!this.isDelegatedSelf(ws) && typeof ws.getFileUriForFQN === "function") {
+        const uri = ws.getFileUriForFQN(fqn);
         if (uri) return uri;
       }
     }
@@ -3396,8 +3620,8 @@ export class UnifiedWorkspace implements IWorkspaceIndex {
   /** Checks whether any language workspace has unindexed lazy loaders under `parentFQN`. */
   hasPendingChildren(parentFQN?: string): boolean {
     for (const ws of this.workspaces.values()) {
-      if (!this.isDelegatedSelf(ws) && typeof (ws as any).hasPendingChildren === "function") {
-        if ((ws as any).hasPendingChildren(parentFQN)) return true;
+      if (!this.isDelegatedSelf(ws) && typeof ws.hasPendingChildren === "function") {
+        if (ws.hasPendingChildren(parentFQN)) return true;
       }
     }
     return false;

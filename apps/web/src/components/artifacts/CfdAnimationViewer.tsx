@@ -20,9 +20,25 @@ import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
 // ── Types ───────────────────────────────────────────────────────
 
+export interface CfdAnimationViewConfig {
+  frames?: CfdFrame[] | undefined;
+  moldGeometry?: { length: number; width: number; height: number } | undefined;
+  moldDimensions?: unknown;
+  showGateInlet?: boolean | undefined;
+  solverInfo?: { name?: string | undefined; [key: string]: unknown } | undefined;
+  modelDescription?: string | undefined;
+  legendTitle?: string | undefined;
+  maxTempLabel?: string | undefined;
+  midTempLabel?: string | undefined;
+  minTempLabel?: string | undefined;
+  thumbnailUrl?: string | undefined;
+  thumbnail_url?: string | undefined;
+  [key: string]: unknown;
+}
+
 interface CfdAnimationViewerProps {
   artifactId?: number | undefined;
-  viewConfig: any;
+  viewConfig: CfdAnimationViewConfig;
   isFullScreen?: boolean | undefined;
 }
 
@@ -397,7 +413,7 @@ const CfdAnimationViewer: React.FC<CfdAnimationViewerProps> = ({ artifactId, vie
     if (baseGeometry && colorArrays.length > 0) {
       setLoading(false);
       setTimeout(() => {
-        (window as any).__ARTIFACT_READY = true;
+        window.__ARTIFACT_READY = true;
       }, 800);
     }
   }, [baseGeometry, colorArrays]);

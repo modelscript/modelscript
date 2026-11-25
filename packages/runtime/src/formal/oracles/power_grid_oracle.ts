@@ -211,7 +211,9 @@ export class PowerGridTheoryOracle implements TheoryOracle {
     for (const c of report.checks) {
       const val = c.actualValue ?? c.value ?? 0;
       const lim = c.threshold ?? c.limit ?? 0;
-      const op = (c.operator as any) || "<=";
+      const rawOp = c.operator;
+      const op: Ieee2800ClauseSpec["operator"] =
+        rawOp === "<=" || rawOp === "<" || rawOp === ">=" || rawOp === ">" || rawOp === "==" ? rawOp : "<=";
       this.assertIeee2800Clause({
         clause: c.clause,
         name: c.name,
@@ -271,6 +273,9 @@ export class PowerGridTheoryOracle implements TheoryOracle {
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
+    const matchArg = (a: unknown, key: string, expected: unknown): boolean =>
+      typeof a === "object" && a !== null && (a as Record<string, unknown>)[key] === expected;
+
     // 1. Check Bus Voltage Boundaries
     for (const [id, spec] of this.busVoltages.entries()) {
       // Check internal bounds
@@ -281,7 +286,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.busId === spec.busId),
+              l.args.some((a) => matchArg(a, "busId", spec.busId)),
             ),
             explanation: `Power Grid Violation: Bus '${spec.busName || id}' voltage magnitude ${spec.actualVm.toFixed(4)} p.u. violates allowable boundary [${spec.minVm}, ${spec.maxVm}] p.u. (${dir} by ${delta.toFixed(4)} p.u.).`,
             culpritEntities: [String(id), spec.busName || `Bus#${id}`],
@@ -301,7 +306,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
               isSat: false,
               conflict: {
                 literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-                  l.args.some((a) => a?.busId === spec.busId),
+                  l.args.some((a) => matchArg(a, "busId", spec.busId)),
                 ),
                 explanation: `Nelson-Oppen Grid Requirement Conflict: Bus '${spec.busName || id}' voltage ${spec.actualVm.toFixed(4)} p.u. breaches formal requirement bound [${lo}, ${hi}] p.u.`,
                 culpritEntities: [String(id), vn],
@@ -321,7 +326,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.genId === spec.genId),
+              l.args.some((a) => matchArg(a, "genId", spec.genId)),
             ),
             explanation: `Power Grid Violation: Generator '${id}' reactive power output ${spec.actualQgMvar.toFixed(2)} MVAR exceeds capability limits [${spec.minQgMvar}, ${spec.maxQgMvar}] MVAR (${dir}).`,
             culpritEntities: [String(id), `Gen#${id}`],
@@ -338,12 +343,15 @@ export class PowerGridTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some(
-                (a) =>
-                  a?.fromBus === spec.fromBus &&
-                  a?.toBus === spec.toBus &&
-                  (!spec.circuitId || a?.circuitId === spec.circuitId),
-              ),
+              l.args.some((a) => {
+                if (typeof a !== "object" || a === null) return false;
+                const obj = a as Record<string, unknown>;
+                return (
+                  obj["fromBus"] === spec.fromBus &&
+                  obj["toBus"] === spec.toBus &&
+                  (!spec.circuitId || obj["circuitId"] === spec.circuitId)
+                );
+              }),
             ),
             explanation: `Power Grid Violation: Branch ${spec.fromBus}->${spec.toBus} thermal loading ${spec.loadingPercent.toFixed(1)}% exceeds 100% MVA continuous rating (${spec.actualMva.toFixed(1)} / ${spec.rateMva.toFixed(1)} MVA).`,
             culpritEntities: [id, `Branch_${id}`],
@@ -360,7 +368,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.clause === clauseId),
+              l.args.some((a) => matchArg(a, "clause", clauseId)),
             ),
             explanation: `IEEE 2800-2022 Non-Compliance: Clause '${clauseId}' (${spec.name}) failed. Value ${spec.actualValue}${spec.unit} does not satisfy condition ${spec.operator} ${spec.threshold}${spec.unit}. ${spec.explanation || ""}`,
             culpritEntities: [clauseId, spec.name],
@@ -374,13 +382,15 @@ export class PowerGridTheoryOracle implements TheoryOracle {
   }
 
   public propagateEqualities(): SharedEquality[] {
+    const matchArg = (a: unknown, key: string, expected: unknown): boolean =>
+      typeof a === "object" && a !== null && (a as Record<string, unknown>)[key] === expected;
     const eqs: SharedEquality[] = [];
     const allLitIds = Array.from(this.assertedLiterals.keys());
 
     // Propagate bus voltage bounds
     for (const [id, spec] of this.busVoltages.entries()) {
       const busJusts = Array.from(this.assertedLiterals.values())
-        .filter((l) => l.args.some((a) => a?.busId === spec.busId))
+        .filter((l) => l.args.some((a) => matchArg(a, "busId", spec.busId)))
         .map((l) => l.id);
       const varName = `grid.bus_voltage.${id}`;
       eqs.push({
@@ -428,7 +438,7 @@ export class PowerGridTheoryOracle implements TheoryOracle {
     // Propagate IEEE 2800 metrics
     for (const [clauseId, spec] of this.ieee2800Clauses.entries()) {
       const clauseJusts = Array.from(this.assertedLiterals.values())
-        .filter((l) => l.args.some((a) => a?.clause === clauseId))
+        .filter((l) => l.args.some((a) => matchArg(a, "clause", clauseId)))
         .map((l) => l.id);
       const varName = `grid.ieee2800.${clauseId}`;
       eqs.push({

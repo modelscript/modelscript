@@ -90,12 +90,35 @@ export type EventFunctionAsync = (t: number, y: number[]) => Promise<number>;
 /** Event callback when a zero-crossing event is detected. */
 export type EventCallback = (t: number, y: number[], eventIdx: number, dir: 1 | -1) => number[];
 
+export interface WasmDopri5Exports {
+  stepDopri5?: (
+    daePtr: number,
+    varValuesPtr: number,
+    kStagesPtr: number,
+    tempValuesPtr: number,
+    yNewPtr: number,
+    dt: number,
+    atol: number,
+    rtol: number,
+  ) => number | boolean;
+  hermiteInterpolate?: (
+    y0Ptr: number,
+    y1Ptr: number,
+    k1Ptr: number,
+    k7Ptr: number,
+    dt: number,
+    theta: number,
+    numVars: number,
+    outPtr: number,
+  ) => void;
+}
+
 /**
  * WebAssembly-backed Dormand-Prince 5(4) Bridge.
  * Interfaces with linear memory AssemblyScript DOPRI5 routines.
  */
 export class WasmDopri5 {
-  constructor(private wasmInstance: any) {}
+  constructor(private wasmInstance: { exports?: WasmDopri5Exports } | null | undefined) {}
 
   /**
    * Executes a single adaptive DOPRI5 step in WASM linear memory.

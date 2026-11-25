@@ -3,7 +3,7 @@
 /**
  * Framework-agnostic studio PBR texture synthesis, aerospace photography
  * cyclorama HDR lighting model, alloy presets, and shared GLSL shaders for
- * ModelScript 3D CAD viewports (Docs Hero, Morsel IDE, and Ansatz).
+ * ModelScript 3D CAD viewports (Docs Hero, Ansatz Editor, and Ansatz).
  */
 
 export type AlloyPresetKey =

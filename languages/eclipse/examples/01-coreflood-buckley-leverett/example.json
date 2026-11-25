@@ -1,0 +1,12 @@
+{
+  "id": "eclipse-01-coreflood-buckley-leverett",
+  "lang": "eclipse",
+  "subFormats": ["data"],
+  "difficulty": 1,
+  "title": "1D Coreflood Water-Oil Buckley-Leverett Displacement",
+  "description": "One-dimensional two-phase oil-water coreflood simulation modeling immiscible Buckley-Leverett displacement from an injector at cell 1 to a producer at cell 20.",
+  "category": "Reservoir Simulation",
+  "tags": ["eclipse", "coreflood", "buckley-leverett", "waterflood"],
+  "activeFile": "core1d.data",
+  "isDefaultStarter": true
+}

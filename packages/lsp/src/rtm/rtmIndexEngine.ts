@@ -3,6 +3,7 @@
 import type { SymbolEntry, SymbolIndex, TggCorrespondenceIndexer } from "@modelscript/runtime";
 import {
   STANDARD_MATRIX_PRESETS,
+  type Iso14971Hazard,
   type RtmAnalytics,
   type RtmDomain,
   type RtmElement,
@@ -183,7 +184,7 @@ export class RtmIndexEngine {
       }
       const packagePath = pathParts.join(".");
 
-      let iso14971Data: any = undefined;
+      let iso14971Data: Partial<Iso14971Hazard> | undefined = undefined;
       if (domain === "hazard") {
         const sev = Number(entry.metadata?.["severity"] ?? entry.metadata?.["initialSeverity"] ?? 4);
         const prob = Number(entry.metadata?.["probability"] ?? entry.metadata?.["initialProbability"] ?? 3);

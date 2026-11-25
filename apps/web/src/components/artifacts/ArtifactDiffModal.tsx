@@ -12,10 +12,50 @@ import { getCachedArtifact } from "../../util/offline-storage";
 import Box from "../Box";
 import Spinner from "../Spinner";
 
+interface DiffArtifactConfig {
+  code?: string | undefined;
+  modelicaCode?: string | undefined;
+  sysmlCode?: string | undefined;
+  stepCode?: string | undefined;
+  scadCode?: string | undefined;
+  language?: string | undefined;
+  dialect?: string | undefined;
+  filename?: string | undefined;
+  title?: string | undefined;
+  [key: string]: unknown;
+}
+
+interface DiffArtifactRecord {
+  id?: number | string | undefined;
+  view_type?: string | undefined;
+  viewType?: string | undefined;
+  view_config?: string | DiffArtifactConfig | Record<string, unknown> | undefined;
+  viewConfigJson?: string | DiffArtifactConfig | Record<string, unknown> | undefined;
+  title?: string | null | undefined;
+  artifactView?: DiffArtifactRecord | undefined;
+  [key: string]: unknown;
+}
+
+function parseArtifactConfig(artifact: DiffArtifactRecord | null | undefined): DiffArtifactConfig {
+  const raw = artifact?.view_config ?? artifact?.viewConfigJson;
+  if (typeof raw === "string") {
+    try {
+      const parsed: unknown = JSON.parse(raw || "{}");
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as DiffArtifactConfig) : {};
+    } catch {
+      return {};
+    }
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    return raw as DiffArtifactConfig;
+  }
+  return {};
+}
+
 interface ArtifactDiffModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentArtifact: any;
+  currentArtifact: DiffArtifactRecord | null | undefined;
   forkedFromArtifactId: number | string;
 }
 
@@ -54,7 +94,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   forkedFromArtifactId,
 }) => {
   const { theme } = useTheme();
-  const [parentArtifact, setParentArtifact] = useState<any | null>(null);
+  const [parentArtifact, setParentArtifact] = useState<DiffArtifactRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"studio" | "diff" | "parameters">("studio");
@@ -68,8 +108,9 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
     getArtifactView(forkedFromArtifactId)
       .then((data) => {
         if (!active) return;
-        if (data?.artifactView) {
-          setParentArtifact(data.artifactView);
+        const viewRecord = (data as DiffArtifactRecord | undefined)?.artifactView;
+        if (viewRecord) {
+          setParentArtifact(viewRecord);
         } else {
           throw new Error("Upstream artifact not found.");
         }
@@ -78,7 +119,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
         const cached = await getCachedArtifact(forkedFromArtifactId);
         if (active) {
           if (cached) {
-            setParentArtifact(cached);
+            setParentArtifact(cached as unknown as DiffArtifactRecord);
           } else {
             setError(`Could not retrieve upstream parent artifact #${forkedFromArtifactId}.`);
           }
@@ -94,17 +135,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   }, [isOpen, forkedFromArtifactId]);
 
   const currentCode = useMemo(() => {
-    let config: any = {};
-    const raw = currentArtifact?.view_config ?? (currentArtifact as any)?.viewConfigJson;
-    if (typeof raw === "string") {
-      try {
-        config = JSON.parse(raw || "{}");
-      } catch {
-        config = {};
-      }
-    } else if (raw && typeof raw === "object") {
-      config = raw;
-    }
+    const config = parseArtifactConfig(currentArtifact);
     return (
       config.code ||
       config.modelicaCode ||
@@ -116,17 +147,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   }, [currentArtifact]);
 
   const parentCode = useMemo(() => {
-    let config: any = {};
-    const raw = parentArtifact?.view_config ?? (parentArtifact as any)?.viewConfigJson;
-    if (typeof raw === "string") {
-      try {
-        config = JSON.parse(raw || "{}");
-      } catch {
-        config = {};
-      }
-    } else if (raw && typeof raw === "object") {
-      config = raw;
-    }
+    const config = parseArtifactConfig(parentArtifact);
     return (
       config.code ||
       config.modelicaCode ||
@@ -193,23 +214,13 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
   }, [parentCode, currentCode]);
 
   const diffLanguage = useMemo(() => {
-    let config: any = {};
-    const raw = currentArtifact?.view_config ?? (currentArtifact as any)?.viewConfigJson;
-    if (typeof raw === "string") {
-      try {
-        config = JSON.parse(raw || "{}");
-      } catch {
-        config = {};
-      }
-    } else if (raw && typeof raw === "object") {
-      config = raw;
-    }
+    const config = parseArtifactConfig(currentArtifact);
 
     const rawType = String(
       config.language ||
         config.dialect ||
         currentArtifact?.view_type ||
-        (currentArtifact as any)?.viewType ||
+        currentArtifact?.viewType ||
         parentArtifact?.view_type ||
         config.filename ||
         config.title ||
@@ -387,7 +398,7 @@ export const ArtifactDiffModal: React.FC<ArtifactDiffModalProps> = ({
                     >
                       <th style={{ padding: "8px 12px" }}>Parameter</th>
                       <th style={{ padding: "8px 12px" }}>Original #{forkedFromArtifactId}</th>
-                      <th style={{ padding: "8px 12px" }}>Fork #{currentArtifact.id}</th>
+                      <th style={{ padding: "8px 12px" }}>Fork #{currentArtifact?.id}</th>
                       <th style={{ padding: "8px 12px" }}>Delta</th>
                       <th style={{ padding: "8px 12px" }}>% Change</th>
                     </tr>

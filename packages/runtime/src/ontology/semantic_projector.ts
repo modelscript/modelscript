@@ -22,10 +22,7 @@ export class SemanticAxiomProjector {
   /**
    * Projects a flat SymbolIndex into a set of BFO/IOF-aligned OWL2 axioms.
    */
-  public static projectSymbolIndex(
-    symbolIndex: SymbolIndex,
-    options?: ProjectorOptions,
-  ): OWL2Axiom[] {
+  public static projectSymbolIndex(symbolIndex: SymbolIndex, options?: ProjectorOptions): OWL2Axiom[] {
     const axioms: OWL2Axiom[] = [];
     const lang = options?.sourceLang ?? "polyglot";
     const prefix = options?.basePrefix ?? `${lang}:`;
@@ -241,7 +238,10 @@ export class SemanticAxiomProjector {
       // 4. Scope Disjointness Annotations
       if (meta["isDisjoint"] === true || meta["disjointWith"]) {
         const others = Array.isArray(meta["disjointWith"]) ? meta["disjointWith"] : [meta["disjointWith"]];
-        const disjointIris = [entityIri, ...others.filter(Boolean).map((o: string) => (o.includes(":") ? o : `${prefix}${o}`))];
+        const disjointIris = [
+          entityIri,
+          ...others.filter(Boolean).map((o: string) => (o.includes(":") ? o : `${prefix}${o}`)),
+        ];
         if (disjointIris.length >= 2) {
           axioms.push({
             type: "DisjointClasses",
@@ -331,10 +331,12 @@ export class SemanticAxiomProjector {
 
       // 5c. Biochemical (SBML / Reaction Networks): Empty Reactants Mass Imbalance
       if (ruleStr.includes("reaction") || meta["defKind"] === "reaction") {
-        const reactantsCount = meta["reactantsCount"] ?? (meta["reactants"] as any)?.length;
-        const productsCount = meta["productsCount"] ?? (meta["products"] as any)?.length;
+        const reactants = meta["reactants"] as { length?: number } | undefined;
+        const products = meta["products"] as { length?: number } | undefined;
+        const reactantsCount = (meta["reactantsCount"] as number | undefined) ?? reactants?.length;
+        const productsCount = (meta["productsCount"] as number | undefined) ?? products?.length;
         const isBoundary = meta["boundary"] === true || meta["isBoundary"] === true;
-        if (reactantsCount === 0 && productsCount > 0 && !isBoundary) {
+        if (reactantsCount === 0 && typeof productsCount === "number" && productsCount > 0 && !isBoundary) {
           axioms.push(
             {
               type: "DisjointClasses",

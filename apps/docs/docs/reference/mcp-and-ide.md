@@ -424,5 +424,5 @@ When an engineering post or comment mentions an automated bot (`@dynamics_bot`):
    - `simulating`: The bot is running numerical integrators and preparing trajectory data.
    - `done`: The reply is posted and the UI automatically appends the completed card.
 3. **Interactive Artifact Synthesis**:
-   - `morsel`: Inline interactive Modelica code view with syntax highlighting and verification badges.
+   - `ansatz`: Inline interactive Modelica code view with syntax highlighting and verification badges.
    - `vega-plot`: Interactive Vega-Lite timeseries charts with state variable selection and trajectory zoom.

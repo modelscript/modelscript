@@ -1,0 +1,11 @@
+{
+  "id": "nmea0183-02-vessel-coastal-track",
+  "lang": "nmea0183",
+  "subFormats": ["nmea0183"],
+  "difficulty": 2,
+  "title": "Vessel Coastal Waypoint Track (GGA, RMC, VTG)",
+  "description": "Differential GPS coastal navigation track for a 12.5-knot vessel exiting Golden Gate Channel with course-over-ground and speed-over-ground VTG sentences.",
+  "category": "Marine Navigation",
+  "tags": ["nmea0183", "marine", "dgps", "vtg", "track"],
+  "activeFile": "coastal_track.nmea"
+}

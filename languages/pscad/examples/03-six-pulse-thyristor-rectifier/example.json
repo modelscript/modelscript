@@ -1,0 +1,11 @@
+{
+  "id": "pscad-03-six-pulse-thyristor-rectifier",
+  "lang": "pscad",
+  "subFormats": ["pscx"],
+  "difficulty": 3,
+  "title": "6-Pulse Thyristor Bridge Rectifier",
+  "description": "Line-commutated 6-pulse thyristor rectifier fed by a 138/25 kV converter transformer with smoothing reactor and firing-angle alpha control.",
+  "category": "Power Electronics",
+  "tags": ["pscad", "thyristor", "rectifier", "hvdc", "power-electronics"],
+  "activeFile": "thyristor_rectifier.pscx"
+}

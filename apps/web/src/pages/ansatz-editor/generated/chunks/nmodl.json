@@ -1,0 +1,79 @@
+[
+  {
+    "id": "nmodl-01-passive-leak-channel",
+    "lang": "nmodl",
+    "subFormats": ["nmodl"],
+    "difficulty": 1,
+    "title": "Passive Leak Membrane Conductance",
+    "description": "Ohmic passive neuronal membrane leak current mechanism (pas) establishing resting membrane potential and input resistance in NEURON compartmental simulations.",
+    "category": "Computational Neuroscience",
+    "tags": ["nmodl", "neuron", "passive-leak", "electrophysiology"],
+    "activeFile": "pas.mod",
+    "fileNames": ["pas.mod"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "TITLE Passive Leak Membrane Conductance\n\nNEURON {\n  SUFFIX pas_leak\n  NONSPECIFIC_CURRENT i\n  RANGE g, e, i\n}\n\nPARAMETER {\n  g = 0.0003 (S/cm2) <0, 1e9>\n  e = -65.0 (mV)\n}\n\nASSIGNED {\n  v (mV)\n  i (mA/cm2)\n}\n\nBREAKPOINT {\n  i = g * (v - e)\n}\n"
+  },
+  {
+    "id": "nmodl-02-hodgkin-huxley-channels",
+    "lang": "nmodl",
+    "subFormats": ["nmodl"],
+    "difficulty": 2,
+    "title": "Hodgkin-Huxley Voltage-Gated Na+/K+ Channels",
+    "description": "Classic squid giant axon Hodgkin-Huxley fast sodium (m^3 h), delayed rectifier potassium (n^4), and leak conductances for action potential generation.",
+    "category": "Computational Neuroscience",
+    "tags": ["nmodl", "hodgkin-huxley", "action-potential", "ion-channels"],
+    "activeFile": "hh.mod",
+    "fileNames": ["hh.mod"],
+    "fileCount": 1,
+    "code": "TITLE Hodgkin-Huxley Voltage-Gated Sodium and Potassium Channels\n\nNEURON {\n  SUFFIX hh_axon\n  USEION na READ ena WRITE ina\n  USEION k READ ek WRITE ik\n  NONSPECIFIC_CURRENT il\n  RANGE gnabar, gkbar, gl, el, gna, gk, ina, ik, il\n  GLOBAL minf, hinf, ninf, mtau, htau, ntau\n}\n\nPARAMETER {\n  gnabar = 0.12 (S/cm2) <0, 1e9>\n  gkbar = 0.036 (S/cm2) <0, 1e9>\n  gl = 0.0003 (S/cm2) <0, 1e9>\n  ena = 50.0 (mV)\n  ek = -77.0 (mV)\n  el = -54.3 (mV)\n}\n\nSTATE {\n  m\n  h\n  n\n}\n\nASSIGNED {\n  v (mV)\n  gna (S/cm2)\n  gk (S/cm2)\n  ina (mA/cm2)\n  ik (mA/cm2)\n  il (mA/cm2)\n}\n\nINITIAL {\n  m = 0.05\n  h = 0.60\n  n = 0.32\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  gna = gnabar * (m^3) * h\n  ina = gna * (v - ena)\n  gk = gkbar * (n^4)\n  ik = gk * (v - ek)\n  il = gl * (v - el)\n}\n\nDERIVATIVE states {\n  m' = (minf - m) / mtau\n  h' = (hinf - h) / htau\n  n' = (ninf - n) / ntau\n}\n"
+  },
+  {
+    "id": "nmodl-03-alpha-excitatory-synapse",
+    "lang": "nmodl",
+    "subFormats": ["nmodl"],
+    "difficulty": 3,
+    "title": "Dual-Exponential Excitatory AMPA Synapse",
+    "description": "Bi-exponential excitatory glutamatergic synaptic conductance with coupled rise and decay gating states modeling postsynaptic AMPA receptor currents.",
+    "category": "Computational Neuroscience",
+    "tags": ["nmodl", "synapse", "ampa", "excitatory"],
+    "activeFile": "alphasyn.mod",
+    "fileNames": ["alphasyn.mod"],
+    "fileCount": 1,
+    "code": "TITLE Dual-Exponential Excitatory AMPA Synapse\n\nNEURON {\n  SUFFIX alpha_syn\n  NONSPECIFIC_CURRENT i\n  RANGE gmax, tau_r, tau_d, e, g, i\n}\n\nPARAMETER {\n  gmax = 0.002 (uS) <0, 1e9>\n  tau_r = 0.5 (ms) <0.01, 100>\n  tau_d = 5.0 (ms) <0.1, 500>\n  e = 0.0 (mV)\n}\n\nSTATE {\n  A\n  B\n}\n\nASSIGNED {\n  v (mV)\n  g (uS)\n  i (nA)\n}\n\nINITIAL {\n  A = 0.0\n  B = 0.0\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  g = gmax * (B - A)\n  i = g * (v - e)\n}\n\nDERIVATIVE states {\n  A' = -A / tau_r\n  B' = -B / tau_d\n}\n"
+  },
+  {
+    "id": "nmodl-04-ltype-calcium-ghk",
+    "lang": "nmodl",
+    "subFormats": ["nmodl"],
+    "difficulty": 4,
+    "title": "L-Type Calcium Channel with Goldman-Hodgkin-Katz Flux",
+    "description": "High-voltage-activated L-type calcium channel combining activation and calcium-dependent inactivation gating states with nonlinear GHK permeation driving force.",
+    "category": "Computational Neuroscience",
+    "tags": ["nmodl", "calcium", "ghk", "biophysics"],
+    "activeFile": "cal_ghk.mod",
+    "fileNames": ["cal_ghk.mod"],
+    "fileCount": 1,
+    "code": "TITLE L-Type Calcium Channel with GHK Permeation\n\nNEURON {\n  SUFFIX cal_ghk\n  USEION ca READ cai, cao WRITE ica\n  RANGE pbar, gca, ica\n  GLOBAL minf, hinf, mtau, htau\n}\n\nPARAMETER {\n  pbar = 0.00015 (cm/s) <0, 1e9>\n  cai = 0.0001 (mM)\n  cao = 2.0 (mM)\n  eca = 120.0 (mV)\n}\n\nSTATE {\n  m\n  h\n}\n\nASSIGNED {\n  v (mV)\n  gca (S/cm2)\n  ica (mA/cm2)\n}\n\nINITIAL {\n  m = 0.02\n  h = 0.85\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  gca = pbar * (m^2) * h\n  ica = gca * (v - eca)\n}\n\nDERIVATIVE states {\n  m' = (minf - m) / mtau\n  h' = (hinf - h) / htau\n}\n"
+  },
+  {
+    "id": "nmodl-05-cortical-pyramidal-suite",
+    "lang": "nmodl",
+    "subFormats": ["nmodl"],
+    "difficulty": 5,
+    "title": "Cortical Pyramidal Neuron Complete Ion Channel Suite",
+    "description": "Multi-mechanism biophysical membrane suite for a neocortical Layer-5 pyramidal neuron combining fast Na+, delayed rectifier K+, muscarinic M-current, and Ca2+ pump.",
+    "category": "Computational Neuroscience",
+    "tags": ["nmodl", "pyramidal-neuron", "ion-channels", "multi-file"],
+    "activeFile": "na_fast.mod",
+    "fileNames": ["na_fast.mod", "k_delayed.mod", "km_adapt.mod", "ca_pump.mod"],
+    "fileCount": 4,
+    "code": "TITLE Cortical Pyramidal Fast Inactivating Sodium Channel\n\nNEURON {\n  SUFFIX na_fast\n  USEION na READ ena WRITE ina\n  RANGE gnabar, gna, ina\n  GLOBAL minf, hinf, mtau, htau\n}\n\nPARAMETER {\n  gnabar = 0.15 (S/cm2) <0, 1e9>\n  ena = 55.0 (mV)\n}\n\nSTATE {\n  m\n  h\n}\n\nASSIGNED {\n  v (mV)\n  gna (S/cm2)\n  ina (mA/cm2)\n}\n\nINITIAL {\n  m = 0.04\n  h = 0.65\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  gna = gnabar * (m^3) * h\n  ina = gna * (v - ena)\n}\n\nDERIVATIVE states {\n  m' = (minf - m) / mtau\n  h' = (hinf - h) / htau\n}\n",
+    "files": {
+      "na_fast.mod": "TITLE Cortical Pyramidal Fast Inactivating Sodium Channel\n\nNEURON {\n  SUFFIX na_fast\n  USEION na READ ena WRITE ina\n  RANGE gnabar, gna, ina\n  GLOBAL minf, hinf, mtau, htau\n}\n\nPARAMETER {\n  gnabar = 0.15 (S/cm2) <0, 1e9>\n  ena = 55.0 (mV)\n}\n\nSTATE {\n  m\n  h\n}\n\nASSIGNED {\n  v (mV)\n  gna (S/cm2)\n  ina (mA/cm2)\n}\n\nINITIAL {\n  m = 0.04\n  h = 0.65\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  gna = gnabar * (m^3) * h\n  ina = gna * (v - ena)\n}\n\nDERIVATIVE states {\n  m' = (minf - m) / mtau\n  h' = (hinf - h) / htau\n}\n",
+      "k_delayed.mod": "TITLE Cortical Pyramidal Delayed Rectifier Potassium Channel\n\nNEURON {\n  SUFFIX k_delayed\n  USEION k READ ek WRITE ik\n  RANGE gkbar, gk, ik\n  GLOBAL ninf, ntau\n}\n\nPARAMETER {\n  gkbar = 0.04 (S/cm2) <0, 1e9>\n  ek = -85.0 (mV)\n}\n\nSTATE {\n  n\n}\n\nASSIGNED {\n  v (mV)\n  gk (S/cm2)\n  ik (mA/cm2)\n}\n\nINITIAL {\n  n = 0.25\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  gk = gkbar * (n^4)\n  ik = gk * (v - ek)\n}\n\nDERIVATIVE states {\n  n' = (ninf - n) / ntau\n}\n",
+      "km_adapt.mod": "TITLE Muscarinic M-Type Spike Frequency Adaptation Potassium Channel\n\nNEURON {\n  SUFFIX km_adapt\n  USEION k READ ek WRITE ik\n  RANGE gkmbar, gkm, ik\n  GLOBAL minf, mtau\n}\n\nPARAMETER {\n  gkmbar = 0.005 (S/cm2) <0, 1e9>\n  ek = -85.0 (mV)\n}\n\nSTATE {\n  m\n}\n\nASSIGNED {\n  v (mV)\n  gkm (S/cm2)\n  ik (mA/cm2)\n}\n\nINITIAL {\n  m = 0.05\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  gkm = gkmbar * m\n  ik = gkm * (v - ek)\n}\n\nDERIVATIVE states {\n  m' = (minf - m) / mtau\n}\n",
+      "ca_pump.mod": "TITLE Submembrane Calcium Extrusion Pump Mechanism\n\nNEURON {\n  SUFFIX ca_pump\n  USEION ca READ ica WRITE cai\n  RANGE taur, cainf, depth\n}\n\nPARAMETER {\n  taur = 80.0 (ms)\n  cainf = 0.0001 (mM)\n  depth = 0.1 (um)\n}\n\nSTATE {\n  cai (mM)\n}\n\nASSIGNED {\n  ica (mA/cm2)\n}\n\nINITIAL {\n  cai = 0.0001\n}\n\nBREAKPOINT {\n  SOLVE states METHOD cnexp\n  cai = cai\n}\n\nDERIVATIVE states {\n  cai' = (cainf - cai) / taur\n}\n"
+    }
+  }
+]

@@ -433,7 +433,9 @@ try {
       document.getElementById(id)?.classList.add("collapsed");
     });
   }
-} catch {}
+} catch {
+  // Ignore storage errors in sandboxed webview contexts
+}
 
 if (sidebarEl && typeof ResizeObserver !== "undefined") {
   let saveTimer: number | null = null;
@@ -444,7 +446,9 @@ if (sidebarEl && typeof ResizeObserver !== "undefined") {
         if (sidebarEl.style.width) {
           localStorage.setItem("modelscript.sim_sidebar_width", sidebarEl.style.width);
         }
-      } catch {}
+      } catch {
+        // Ignore storage errors in sandboxed webview contexts
+      }
     }, 200);
   }).observe(sidebarEl);
 }
@@ -462,7 +466,9 @@ document.querySelectorAll(".sidebar-header").forEach((header) => {
         if (s.id) collapsedIds.push(s.id);
       });
       localStorage.setItem("modelscript.sim_sidebar_collapsed", JSON.stringify(collapsedIds));
-    } catch {}
+    } catch {
+      // Ignore storage errors in sandboxed webview contexts
+    }
   });
 });
 
@@ -2143,7 +2149,9 @@ canvas.addEventListener("pointerup", (e) => {
     canvasDrag.active = false;
     try {
       canvas.releasePointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch {
+      // Pointer may already have been released
+    }
     canvasPlotCtrl.zoomToPixelRange(startX, curX, startY, curY);
     draw();
     return;
@@ -2152,7 +2160,9 @@ canvas.addEventListener("pointerup", (e) => {
     draggingCursor = null;
     try {
       canvas.releasePointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch {
+      // Pointer may already have been released
+    }
     if (isLiveMode) drawLive();
     else draw();
     return;
@@ -2160,14 +2170,18 @@ canvas.addEventListener("pointerup", (e) => {
   isDragging = false;
   try {
     canvas.releasePointerCapture(e.pointerId);
-  } catch (_) {}
+  } catch {
+    // Pointer may already have been released
+  }
 });
 canvas.addEventListener("pointercancel", (e) => {
   if (canvasDrag.active) {
     canvasDrag.active = false;
     try {
       canvas.releasePointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch {
+      // Pointer may already have been released
+    }
     draw();
     return;
   }
@@ -2175,7 +2189,9 @@ canvas.addEventListener("pointercancel", (e) => {
     draggingCursor = null;
     try {
       canvas.releasePointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch {
+      // Pointer may already have been released
+    }
     if (isLiveMode) drawLive();
     else draw();
     return;
@@ -2183,7 +2199,9 @@ canvas.addEventListener("pointercancel", (e) => {
   isDragging = false;
   try {
     canvas.releasePointerCapture(e.pointerId);
-  } catch (_) {}
+  } catch {
+    // Pointer may already have been released
+  }
 });
 
 canvas.addEventListener("dblclick", () => {

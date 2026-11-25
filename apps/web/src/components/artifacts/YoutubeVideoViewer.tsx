@@ -6,8 +6,18 @@ import styled from "styled-components";
 import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 
+export interface YoutubeVideoViewerConfig {
+  videoId?: string | undefined;
+  url?: string | undefined;
+  src?: string | undefined;
+  thumbnail_url?: string | undefined;
+  thumbnailUrl?: string | undefined;
+  title?: string | undefined;
+  [key: string]: unknown;
+}
+
 interface YoutubeVideoViewerProps {
-  viewConfig: any;
+  viewConfig?: YoutubeVideoViewerConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 

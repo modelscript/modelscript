@@ -1,0 +1,73 @@
+[
+  {
+    "id": "jcamp-dx-01-polystyrene-ftir-reference",
+    "lang": "jcamp-dx",
+    "subFormats": ["jcamp-dx-4.24"],
+    "difficulty": 1,
+    "title": "Polystyrene Film FTIR Wavenumber Calibration Reference",
+    "description": "JCAMP-DX 4.24 infrared transmittance spectrum of a standard polystyrene calibration film across the 1650 to 1550 cm-1 aromatic C=C stretch band.",
+    "category": "Infrared Spectroscopy",
+    "tags": ["jcamp-dx", "ftir", "polystyrene", "transmittance"],
+    "activeFile": "polystyrene_ir.jdx",
+    "fileNames": ["polystyrene_ir.jdx"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "##TITLE=Polystyrene Film Reference FTIR Spectrum (1650-1550 cm-1)\n##JCAMP-DX=4.24\n##DATA TYPE=INFRARED SPECTRUM\n##ORIGIN=NIST Standard Reference Material 1921b\n##OWNER=PUBLIC DOMAIN\n##XUNITS=1/CM\n##YUNITS=TRANSMITTANCE\n##FIRSTX=1650\n##LASTX=1550\n##NPOINTS=11\n##XFACTOR=1\n##YFACTOR=0.01\n$$ Characteristic 1601 cm-1 aromatic ring stretching band\n##XYDATA=(X++(Y..Y))\n1650 94 93 91 84 62 28 59 86 92 94 95\n##END=\n"
+  },
+  {
+    "id": "jcamp-dx-02-ethanol-ir-oh-stretch",
+    "lang": "jcamp-dx",
+    "subFormats": ["jcamp-dx-4.24"],
+    "difficulty": 2,
+    "title": "Ethanol FTIR Absorbance Spectrum (O-H & C-H Stretch)",
+    "description": "JCAMP-DX 4.24 liquid-phase ethanol infrared absorbance spectrum capturing the broad hydrogen-bonded O-H stretch centered at 3350 cm-1 and aliphatic C-H band near 2970 cm-1.",
+    "category": "Infrared Spectroscopy",
+    "tags": ["jcamp-dx", "ethanol", "absorbance", "oh-stretch"],
+    "activeFile": "ethanol_ir.jdx",
+    "fileNames": ["ethanol_ir.jdx"],
+    "fileCount": 1,
+    "code": "##TITLE=Ethanol Liquid Film FTIR Absorbance Spectrum\n##JCAMP-DX=4.24\n##DATA TYPE=INFRARED SPECTRUM\n##ORIGIN=Analytical Chemistry Reference Lab\n##OWNER=PUBLIC DOMAIN\n##MOLFORM=C2 H6 O\n##XUNITS=1/CM\n##YUNITS=ABSORBANCE\n##FIRSTX=3600\n##LASTX=2800\n##NPOINTS=17\n##XFACTOR=1\n##YFACTOR=0.01\n$$ Broad hydrogen-bonded O-H stretch (3350 cm-1) and C-H stretch (2970 cm-1)\n##XYDATA=(X++(Y..Y))\n3600 4 12 31 64 98 118 112 88 52 24 14 28 74 96 58 18 6\n##END=\n"
+  },
+  {
+    "id": "jcamp-dx-03-aspirin-1h-nmr-peaks",
+    "lang": "jcamp-dx",
+    "subFormats": ["jcamp-dx-5.00"],
+    "difficulty": 3,
+    "title": "Aspirin (Acetylsalicylic Acid) 1H-NMR Chemical Shift Table",
+    "description": "JCAMP-DX 5.00 proton NMR peak table for acetylsalicylic acid in CDCl3 resolving the acetyl methyl singlet (2.35 ppm), four aromatic protons (7.1-8.1 ppm), and carboxylic acid proton (11.4 ppm).",
+    "category": "NMR Spectroscopy",
+    "tags": ["jcamp-dx", "nmr", "aspirin", "peak-table", "chemical-shift"],
+    "activeFile": "aspirin_1h_nmr.jdx",
+    "fileNames": ["aspirin_1h_nmr.jdx"],
+    "fileCount": 1,
+    "code": "##TITLE=Aspirin (Acetylsalicylic Acid) 400 MHz 1H-NMR Peak Table\n##JCAMP-DX=5.00\n##DATA TYPE=NMR PEAK TABLE\n##ORIGIN=Organic Structure Elucidation Lab\n##OWNER=PUBLIC DOMAIN\n##MOLFORM=C9 H8 O4\n##XUNITS=PPM\n##YUNITS=RELATIVE INTENSITY\n##FIRSTX=2.35\n##LASTX=11.40\n##NPOINTS=6\n##XFACTOR=1\n##YFACTOR=1\n$$ Methyl singlet (2.35), ortho/meta/para aromatic ring (7.12-8.12), COOH (11.40)\n##PEAK TABLE=(XY..XY)\n2.35, 100.0; 7.12, 34.5; 7.36, 36.2; 7.62, 35.8; 8.12, 33.9; 11.40, 28.0\n##END=\n"
+  },
+  {
+    "id": "jcamp-dx-04-caffeine-ei-mass-spec",
+    "lang": "jcamp-dx",
+    "subFormats": ["jcamp-dx-5.00"],
+    "difficulty": 4,
+    "title": "Caffeine 70 eV Electron-Ionization Mass Spectrum",
+    "description": "JCAMP-DX 5.00 EI-MS fragmentation spectrum of caffeine (C8H10N4O2) displaying the molecular ion base peak at m/z 194, retro-Diels-Alder fragment at m/z 109, and diagnostic ions at m/z 82, 67, and 55.",
+    "category": "Mass Spectrometry",
+    "tags": ["jcamp-dx", "mass-spec", "caffeine", "ei-ms", "fragmentation"],
+    "activeFile": "caffeine_eims.jdx",
+    "fileNames": ["caffeine_eims.jdx"],
+    "fileCount": 1,
+    "code": "##TITLE=Caffeine 70 eV Electron-Ionization Mass Spectrum\n##JCAMP-DX=5.00\n##DATA TYPE=MASS SPECTRUM\n##ORIGIN=NIST/EPA/NIH Mass Spectral Reference\n##OWNER=PUBLIC DOMAIN\n##MOLFORM=C8 H10 N4 O2\n##XUNITS=M/Z\n##YUNITS=RELATIVE ABUNDANCE\n##FIRSTX=42\n##LASTX=195\n##NPOINTS=10\n##XFACTOR=1\n##YFACTOR=1\n$$ Molecular ion M+ at m/z 194 (100%), M-CH3NCO at m/z 109 (66%), imidazole ring at m/z 82\n##PEAK TABLE=(XY..XY)\n42, 18.5; 55, 34.2; 67, 29.8; 82, 39.4; 109, 66.1; 137, 12.4; 165, 6.8; 193, 9.2; 194, 100.0; 195, 10.6\n##END=\n"
+  },
+  {
+    "id": "jcamp-dx-05-compound-multiblock-archive",
+    "lang": "jcamp-dx",
+    "subFormats": ["jcamp-dx-link"],
+    "difficulty": 5,
+    "title": "Benzaldehyde Multi-Block LINK Spectral Archive (IR + MS + UV-Vis)",
+    "description": "Compound JCAMP-DX LINK archive bundling three child spectral blocks for benzaldehyde (C7H6O): carbonyl FTIR absorbance, 70 eV EI-MS fragmentation peaks, and UV-Vis electronic absorption.",
+    "category": "Multimodal Spectroscopy",
+    "tags": ["jcamp-dx", "link", "multi-block", "ir", "ms", "uv-vis"],
+    "activeFile": "benzaldehyde_archive.jdx",
+    "fileNames": ["benzaldehyde_archive.jdx"],
+    "fileCount": 1,
+    "code": "##TITLE=Benzaldehyde Multimodal Spectral Archive (IR + EI-MS + UV-Vis)\n##JCAMP-DX=5.00\n##DATA TYPE=LINK\n##BLOCKS=3\n##ORIGIN=Integrated Molecular Spectroscopy Facility\n##OWNER=PUBLIC DOMAIN\n##TITLE=Benzaldehyde FTIR Carbonyl Region\n##JCAMP-DX=4.24\n##DATA TYPE=INFRARED SPECTRUM\n##XUNITS=1/CM\n##YUNITS=ABSORBANCE\n##FIRSTX=1740\n##LASTX=1660\n##NPOINTS=9\n##XFACTOR=1\n##YFACTOR=0.01\n$$ Conjugated aldehyde C=O stretch at 1702 cm-1\n##XYDATA=(X++(Y..Y))\n1740 8 15 34 78 124 85 38 14 7\n##END=\n##TITLE=Benzaldehyde 70 eV EI-MS\n##JCAMP-DX=5.00\n##DATA TYPE=MASS SPECTRUM\n##XUNITS=M/Z\n##YUNITS=RELATIVE ABUNDANCE\n##FIRSTX=51\n##LASTX=106\n##NPOINTS=5\n##XFACTOR=1\n##YFACTOR=1\n$$ Phenyl cation m/z 77, benzoyl cation m/z 105, molecular ion m/z 106\n##PEAK TABLE=(XY..XY)\n51, 38.0; 77, 96.5; 78, 12.2; 105, 98.4; 106, 100.0\n##END=\n##TITLE=Benzaldehyde UV-Vis Electronic Absorption\n##JCAMP-DX=5.00\n##DATA TYPE=UV/VIS SPECTRUM\n##XUNITS=NANOMETERS\n##YUNITS=ABSORBANCE\n##FIRSTX=220\n##LASTX=300\n##NPOINTS=9\n##XFACTOR=1\n##YFACTOR=0.01\n$$ pi-to-pi* aromatic transition maximum near 248 nm\n##XYDATA=(X++(Y..Y))\n220 42 76 118 132 94 48 26 14 6\n##END=\n##END=\n"
+  }
+]

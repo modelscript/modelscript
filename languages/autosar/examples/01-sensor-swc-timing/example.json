@@ -1,0 +1,12 @@
+{
+  "id": "autosar-01-sensor-swc-timing",
+  "lang": "autosar",
+  "subFormats": ["arxml"],
+  "difficulty": 1,
+  "title": "Single Sensor Application SWC with Valid Timing",
+  "description": "AUTOSAR Classic Application Software Component for a wheel speed sensor with a provided sender-receiver port and a 10 ms periodic runnable meeting its 1.5 ms WCET budget.",
+  "category": "Automotive Software Architecture",
+  "tags": ["autosar", "swc", "wcet", "timing-event"],
+  "activeFile": "SensorSwc.arxml",
+  "isDefaultStarter": true
+}

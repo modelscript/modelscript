@@ -1,0 +1,11 @@
+{
+  "id": "matpower-03-ieee14-ac-opf",
+  "lang": "matpower",
+  "subFormats": ["m"],
+  "difficulty": 3,
+  "title": "IEEE 14-Bus AC-OPF with Quadratic Generator Costs",
+  "description": "Standard IEEE 14-bus transmission benchmark featuring 5 synchronous generators/condensers, 3 tap-changing transformers, shunt compensation, and OPF cost curves.",
+  "category": "Optimal Power Flow",
+  "tags": ["matpower", "ieee14", "ac-opf", "benchmark"],
+  "activeFile": "case14.m"
+}

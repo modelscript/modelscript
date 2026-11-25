@@ -1,0 +1,11 @@
+{
+  "id": "plcopen-02-conveyor-batch-counter",
+  "lang": "plcopen",
+  "subFormats": ["st"],
+  "difficulty": 2,
+  "title": "Conveyor Batch Counter & Pneumatic Diverter Timer",
+  "description": "IEC 61131-3 Structured Text conveyor automation controller using R_TRIG edge detection, CTU batch counting, and TON pneumatic diverter pulse timing for automated palletizing lines.",
+  "category": "Material Handling",
+  "tags": ["plcopen", "iec61131-3", "conveyor", "ton", "ctu"],
+  "activeFile": "conveyor_batch.st"
+}

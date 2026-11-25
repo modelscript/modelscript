@@ -1,0 +1,12 @@
+{
+  "id": "nmea0183-01-static-gps-fix",
+  "lang": "nmea0183",
+  "subFormats": ["nmea0183"],
+  "difficulty": 1,
+  "title": "Static GPS Position Fix ($GPGGA & $GPRMC)",
+  "description": "Clean NMEA 0183 static GPS receiver log combining GGA fix quality/altitude and RMC recommended minimum navigation sentences with exact XOR checksums.",
+  "category": "GNSS Navigation",
+  "tags": ["nmea0183", "gps", "gga", "rmc", "checksum"],
+  "activeFile": "static_gps_fix.nmea",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "gpss-02-emergency-room-mmc",
+  "lang": "gpss",
+  "subFormats": ["gps"],
+  "difficulty": 2,
+  "title": "Multi-Server M/M/c Emergency Room",
+  "description": "Hospital emergency department with multiple treatment bays modeled as a GPSS STORAGE pool, exponential interarrival FUNCTION, and waiting-time TABLE.",
+  "category": "Healthcare Operations",
+  "tags": ["gpss", "storage", "mmc", "healthcare", "table"],
+  "activeFile": "emergency_room.gps"
+}

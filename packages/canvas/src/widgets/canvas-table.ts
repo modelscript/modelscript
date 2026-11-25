@@ -2,6 +2,7 @@
 
 import type { Canvas2DContextLike } from "../engine/glyph-compiler.js";
 import { paintWidgetLeaderTether, type WidgetTetherTarget } from "./canvas-plot.js";
+import type { CanvasWidgetPalette } from "./palette.js";
 
 /**
  * Canvas2D Compact Table & KPI Sticky Badge Painter.
@@ -32,6 +33,8 @@ export interface CanvasTableSpec {
   /** Optional list of row IDs brushed/linked from another widget (e.g. Monte Carlo scatter). */
   highlightedRowIds?: string[] | undefined;
   dark?: boolean | undefined;
+  /** Optional colour overrides (board themes such as `blueprint`). Unset keys fall back to the `dark` defaults. */
+  palette?: Partial<CanvasWidgetPalette> | undefined;
 }
 
 export interface StickyBadgeSpec {
@@ -41,6 +44,8 @@ export interface StickyBadgeSpec {
   status?: "ok" | "warning" | "error" | "stale" | undefined;
   tetherTarget?: WidgetTetherTarget | undefined;
   dark?: boolean | undefined;
+  /** Optional colour overrides (board themes such as `blueprint`). */
+  palette?: Partial<CanvasWidgetPalette> | undefined;
 }
 
 const STATUS_COLORS: Record<NonNullable<CanvasTableRow["status"]>, string> = {
@@ -81,11 +86,14 @@ export function paintCanvasTable(
   height: number,
 ): { visibleRowCount: number; highlightedRowCount: number } {
   const dark = spec.dark ?? true;
-  const bg = dark ? "#0f172a" : "#ffffff";
-  const headerBg = dark ? "#1e293b" : "#f1f5f9";
-  const border = dark ? "#334155" : "#cbd5e1";
-  const text = dark ? "#e2e8f0" : "#0f172a";
-  const muted = dark ? "#94a3b8" : "#475569";
+  const pal = spec.palette;
+  const bg = pal?.background ?? (dark ? "#0f172a" : "#ffffff");
+  const headerBg = pal?.headerBackground ?? (dark ? "#1e293b" : "#f1f5f9");
+  const border = pal?.border ?? (dark ? "#334155" : "#cbd5e1");
+  const text = pal?.text ?? (dark ? "#e2e8f0" : "#0f172a");
+  const muted = pal?.mutedText ?? (dark ? "#94a3b8" : "#475569");
+  const stripe = pal?.stripe ?? (dark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)");
+  const highlightText = pal?.highlightText ?? (dark ? "#fef3c7" : "#92400e");
   const highlightedSet =
     spec.highlightedRowIds && spec.highlightedRowIds.length > 0 ? new Set(spec.highlightedRowIds) : null;
 
@@ -166,7 +174,7 @@ export function paintCanvasTable(
       ctx.rect(2, ry + 1, 3, rowH - 2);
       ctx.fill();
     } else if ((r - startRow) % 2 === 1) {
-      ctx.fillStyle = dark ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)";
+      ctx.fillStyle = stripe;
       ctx.beginPath();
       ctx.rect(1, ry, width - 2, rowH);
       ctx.fill();
@@ -183,7 +191,7 @@ export function paintCanvasTable(
     for (const col of spec.columns) {
       const cw = ((usableW - 4) * Math.max(0.05, col.widthRatio)) / totalRatio;
       const cellText = row.cells[col.key] ?? "";
-      ctx.fillStyle = isHighlighted ? (dark ? "#fef3c7" : "#92400e") : text;
+      ctx.fillStyle = isHighlighted ? highlightText : text;
       ctx.textAlign = col.align === "right" ? "right" : "left";
       ctx.fillText(
         cellText.slice(0, Math.max(3, Math.floor(cw / 6))),
@@ -208,6 +216,7 @@ export function paintStickyBadge(
   height = 38,
 ): void {
   const dark = spec.dark ?? true;
+  const pal = spec.palette;
   const accent =
     spec.status === "error" ? "#ef4444" : spec.status === "warning" || spec.status === "stale" ? "#f59e0b" : "#10b981";
 
@@ -232,20 +241,20 @@ export function paintStickyBadge(
   } else {
     ctx.rect(0, 0, width, height);
   }
-  ctx.fillStyle = dark ? "#0f172a" : "#ffffff";
+  ctx.fillStyle = pal?.background ?? (dark ? "#0f172a" : "#ffffff");
   ctx.fill();
-  ctx.strokeStyle = accent;
+  ctx.strokeStyle = pal?.border ?? accent;
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
   ctx.font = "600 9px sans-serif";
-  ctx.fillStyle = dark ? "#94a3b8" : "#64748b";
+  ctx.fillStyle = pal?.mutedText ?? (dark ? "#94a3b8" : "#64748b");
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText(spec.label, 8, 12);
 
   ctx.font = "700 12px monospace";
-  ctx.fillStyle = dark ? "#f8fafc" : "#0f172a";
+  ctx.fillStyle = pal?.text ?? (dark ? "#f8fafc" : "#0f172a");
   const display = spec.unit ? `${spec.value} ${spec.unit}` : spec.value;
   ctx.fillText(display, 8, 26);
 

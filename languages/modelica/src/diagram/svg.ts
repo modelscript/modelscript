@@ -240,7 +240,7 @@ export function computeIconPlacement(
     precomputedPlacement !== undefined
       ? precomputedPlacement
       : typeof component?.annotation === "function"
-        ? component.annotation("Placement")
+        ? (component.annotation("Placement") as IPlacement | null)
         : null;
   if (!placement) return null;
   if (placement.visible === false || !placement.transformation) return null;
@@ -256,7 +256,7 @@ export function computePortPlacement(
     precomputedPlacement !== undefined
       ? precomputedPlacement
       : typeof component?.annotation === "function"
-        ? component.annotation("Placement")
+        ? (component.annotation("Placement") as IPlacement | null)
         : null;
   if (!placement) return null;
   if (placement.iconVisible === false || (placement.iconVisible === undefined && placement.visible === false)) {
@@ -736,7 +736,7 @@ function renderGraphicItemString(
       if (!href && bmp.fileName) {
         const resolved = resolveModelicaBitmapUri(
           bmp.fileName,
-          (classInstance as ModelicaClassInstance) ?? (componentInstance as any)?.classInstance,
+          (classInstance as ModelicaClassInstance) ?? componentInstance?.classInstance ?? undefined,
         );
         href = resolved || bmp.fileName;
       }
@@ -779,7 +779,7 @@ function renderIconGroupsString(
     }
   }
 
-  const icon: IIcon | null = classInstance.annotation?.("Icon", componentInstance) ?? null;
+  const icon: IIcon | null = (classInstance.annotation?.("Icon", componentInstance) as IIcon | null) ?? null;
   if (icon?.graphics && icon.graphics.length > 0) {
     let groupContent = "";
     for (const graphicItem of icon.graphics) {
@@ -795,7 +795,8 @@ function renderIconGroupsString(
     const allComponents = collectAllDiagramComponents(classInstance);
     let portsContent = "";
     for (const component of allComponents) {
-      const compPlacement = typeof component?.annotation === "function" ? component.annotation("Placement") : null;
+      const compPlacement =
+        typeof component?.annotation === "function" ? (component.annotation("Placement") as IPlacement | null) : null;
       if (!compPlacement) continue;
 
       const compKind = component["classKind"] ?? component.classInstance?.["classKind"];
@@ -913,7 +914,7 @@ function renderDiagramBackgroundGraphicsString(
     }
   }
   const diagram: IDiagram | null =
-    typeof classInstance.annotation === "function" ? classInstance.annotation("Diagram") : null;
+    typeof classInstance.annotation === "function" ? (classInstance.annotation("Diagram") as IDiagram | null) : null;
   if (diagram?.graphics && diagram.graphics.length > 0) {
     let groupContent = "";
     for (const graphicItem of diagram.graphics) {

@@ -156,7 +156,7 @@ export interface WorkspaceSnapshotPayload {
   primaryFile: string;
   dialect: string;
   forkedFromArtifactId?: number | string | null;
-  morselPayload: {
+  ansatzPayload: {
     title: string;
     code: string;
     dialect: string;
@@ -459,8 +459,8 @@ export class HostBridgeService implements vscode.Disposable {
         : null;
 
     const contentSummary = isMultiFile
-      ? `Sharing multi-file workspace **${baseTitle}** (${allFileKeys.length} files, primary \`${primaryFile}\`) from ModelScript IDE:`
-      : `Sharing model \`${primaryFile}\` from ModelScript IDE workbench:\n\n\`\`\`${meta.langTag}\n${snippet}\n\`\`\``;
+      ? `Sharing multi-file workspace **${baseTitle}** (${allFileKeys.length} files, primary \`${primaryFile}\`) from Ansatz Studio:`
+      : `Sharing model \`${primaryFile}\` from Ansatz Studio workbench:\n\n\`\`\`${meta.langTag}\n${snippet}\n\`\`\``;
 
     return {
       title: baseTitle,
@@ -472,7 +472,7 @@ export class HostBridgeService implements vscode.Disposable {
       primaryFile,
       dialect: meta.dialect,
       forkedFromArtifactId,
-      morselPayload: {
+      ansatzPayload: {
         title: baseTitle,
         code: snippet,
         dialect: meta.dialect,
@@ -572,7 +572,7 @@ export class HostBridgeService implements vscode.Disposable {
 
     const payload: WorkspaceSnapshotPayload = {
       title: options.title || snapshot.title,
-      content: options.summaryMarkdown || `Published 3D simulation result \`${cleanFileName}\` from ModelScript IDE.`,
+      content: options.summaryMarkdown || `Published 3D simulation result \`${cleanFileName}\` from Ansatz Studio.`,
       codeSnippet: options.vtuXml,
       viewType: "simulation-result",
       isMultiFile: Object.keys(files).length > 1,
@@ -580,7 +580,7 @@ export class HostBridgeService implements vscode.Disposable {
       primaryFile: cleanFileName,
       dialect: "vtk",
       forkedFromArtifactId,
-      morselPayload: {
+      ansatzPayload: {
         title: options.title || snapshot.title,
         code: options.vtuXml,
         dialect: "vtk",

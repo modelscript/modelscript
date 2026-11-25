@@ -1,0 +1,5 @@
+component LDORegulator:
+    signal v_in
+    signal v_out
+    signal fb
+    signal gnd

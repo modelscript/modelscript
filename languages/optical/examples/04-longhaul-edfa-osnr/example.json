@@ -1,0 +1,11 @@
+{
+  "id": "optical-04-longhaul-edfa-osnr",
+  "lang": "optical",
+  "subFormats": ["openroadm.json"],
+  "difficulty": 4,
+  "title": "Long-Haul 340 km EDFA Amplified Span OSNR Budget",
+  "description": "Multi-span long-haul OpenROADM corridor with intermediate in-line EDFA amplification stages and dual C-band coherent DWDM wavelengths.",
+  "category": "Long-Haul Optical Transmission",
+  "tags": ["optical", "openroadm", "edfa", "osnr", "coherent"],
+  "activeFile": "longhaul.openroadm.json"
+}

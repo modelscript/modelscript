@@ -1,0 +1,11 @@
+{
+  "id": "relap5-02-natural-circulation-loop",
+  "lang": "relap5",
+  "subFormats": ["r5"],
+  "difficulty": 2,
+  "title": "Closed Natural-Circulation Thermal-Siphon Loop",
+  "description": "Buoyancy-driven closed natural-circulation loop with a lower heated core riser, elevated heat-sink cooler, and cold-leg downcomer modeling passive decay-heat removal.",
+  "category": "Nuclear Thermal-Hydraulics",
+  "tags": ["relap5", "natural-circulation", "passive-cooling", "thermosiphon"],
+  "activeFile": "natural_circ.r5"
+}

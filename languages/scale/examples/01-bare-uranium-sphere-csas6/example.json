@@ -1,0 +1,12 @@
+{
+  "id": "scale-01-bare-uranium-sphere-csas6",
+  "lang": "scale",
+  "subFormats": ["csas6", "keno-vi"],
+  "difficulty": 1,
+  "title": "Bare Uranium Sphere KENO-VI Criticality",
+  "description": "ORNL SCALE CSAS6 KENO-VI criticality calculation for a bare highly enriched uranium metal sphere in vacuum boundary conditions.",
+  "category": "Nuclear Criticality Safety",
+  "tags": ["scale", "csas6", "keno-vi", "criticality"],
+  "activeFile": "bare_sphere.scale",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,88 @@
+[
+  {
+    "id": "fea-01-axial-rod-tension",
+    "lang": "fea",
+    "subFormats": ["inp"],
+    "difficulty": 1,
+    "title": "Three-Element Axial Rod Tension Test (CalculiX)",
+    "description": "CalculiX/Abaqus static uniaxial tension deck for a 3-element steel rod fixed at one end and loaded axially at the free tip.",
+    "category": "Linear Static FEA",
+    "tags": ["fea", "calculix", "inp", "axial-rod", "static"],
+    "activeFile": "axial_rod.inp",
+    "fileNames": ["axial_rod.inp"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "*HEADING\nThree-Element Steel Axial Rod Uniaxial Tension Test\n*NODE\n1, 0.0, 0.0, 0.0\n2, 0.5, 0.0, 0.0\n3, 1.0, 0.0, 0.0\n4, 1.5, 0.0, 0.0\n*ELEMENT, TYPE=T3D2, ELSET=ROD_ELEMS\n1, 1, 2\n2, 2, 3\n3, 3, 4\n*NSET, NSET=FIXED_END\n1\n*NSET, NSET=LOAD_END\n4\n*MATERIAL, NAME=STRUCTURAL_STEEL\n*ELASTIC\n210000000000.0, 0.3\n*DENSITY\n7850.0\n*SOLID SECTION, ELSET=ROD_ELEMS, MATERIAL=STRUCTURAL_STEEL\n0.0004\n*STEP\n*STATIC\n*BOUNDARY\nFIXED_END, 1, 3, 0.0\n2, 2, 3, 0.0\n3, 2, 3, 0.0\n4, 2, 3, 0.0\n*CLOAD\nLOAD_END, 1, 25000.0\n*NODE FILE\nU\n*EL FILE\nS\n*END STEP\n"
+  },
+  {
+    "id": "fea-02-cantilever-beam-bending",
+    "lang": "fea",
+    "subFormats": ["inp"],
+    "difficulty": 2,
+    "title": "Solid Hexahedral Cantilever Beam Static Bending",
+    "description": "3D C3D8 hexahedral finite element model of an aluminum cantilever beam clamped at the root face under a transverse tip bending load.",
+    "category": "Structural Bending FEA",
+    "tags": ["fea", "calculix", "c3d8", "beam-bending", "static"],
+    "activeFile": "beam_bending.inp",
+    "fileNames": ["beam_bending.inp"],
+    "fileCount": 1,
+    "code": "*HEADING\n3D Hexahedral Aluminum Cantilever Beam Static Bending\n*NODE\n1, 0.0, 0.0, 0.0\n2, 1.0, 0.0, 0.0\n3, 2.0, 0.0, 0.0\n4, 0.0, 0.2, 0.0\n5, 1.0, 0.2, 0.0\n6, 2.0, 0.2, 0.0\n7, 0.0, 0.0, 0.1\n8, 1.0, 0.0, 0.1\n9, 2.0, 0.0, 0.1\n10, 0.0, 0.2, 0.1\n11, 1.0, 0.2, 0.1\n12, 2.0, 0.2, 0.1\n*ELEMENT, TYPE=C3D8, ELSET=BEAM_SOLID\n1, 1, 2, 5, 4, 7, 8, 11, 10\n2, 2, 3, 6, 5, 8, 9, 12, 11\n*NSET, NSET=CLAMPED_ROOT\n1, 4, 7, 10\n*NSET, NSET=FREE_TIP\n3, 6, 9, 12\n*MATERIAL, NAME=ALUMINUM_6061\n*ELASTIC\n68900000000.0, 0.33\n*DENSITY\n2700.0\n*SOLID SECTION, ELSET=BEAM_SOLID, MATERIAL=ALUMINUM_6061\n*STEP\n*STATIC\n*BOUNDARY\nCLAMPED_ROOT, 1, 3, 0.0\n*CLOAD\n3, 2, -500.0\n6, 2, -500.0\n*NODE FILE\nU\n*EL FILE\nS\n*END STEP\n"
+  },
+  {
+    "id": "fea-03-nastran-truss-modal",
+    "lang": "fea",
+    "subFormats": ["bdf", "inp"],
+    "difficulty": 3,
+    "title": "Nastran Bulk Data & CalculiX Planar Warren Truss",
+    "description": "Statically determinate 5-member steel Warren truss provided in both MSC/NX Nastran Bulk Data (.bdf) and CalculiX (.inp) formats with matched nodal loads and supports.",
+    "category": "Nastran Structural FEA",
+    "tags": ["fea", "nastran", "bdf", "truss", "multi-file"],
+    "activeFile": "truss_modal.inp",
+    "fileNames": ["truss_modal.inp", "truss_modal.bdf"],
+    "fileCount": 2,
+    "code": "*HEADING\nFive-Member Steel Warren Truss Static Analysis (Paired with truss_modal.bdf)\n*NODE\n1, 0.0, 0.0, 0.0\n2, 2.0, 0.0, 0.0\n3, 4.0, 0.0, 0.0\n4, 1.0, 1.5, 0.0\n5, 3.0, 1.5, 0.0\n*ELEMENT, TYPE=T3D2, ELSET=TRUSS_MEMBERS\n1, 1, 2\n2, 2, 3\n3, 1, 4\n4, 4, 2\n5, 4, 5\n6, 2, 5\n7, 5, 3\n*MATERIAL, NAME=TRUSS_STEEL\n*ELASTIC\n210000000000.0, 0.3\n*DENSITY\n7850.0\n*SOLID SECTION, ELSET=TRUSS_MEMBERS, MATERIAL=TRUSS_STEEL\n0.0012\n*STEP\n*STATIC\n*BOUNDARY\n1, 1, 3, 0.0\n3, 2, 3, 0.0\n2, 3, 3, 0.0\n4, 3, 3, 0.0\n5, 3, 3, 0.0\n*CLOAD\n2, 2, -50000.0\n*NODE FILE\nU\n*EL FILE\nS\n*END STEP\n",
+    "files": {
+      "truss_modal.inp": "*HEADING\nFive-Member Steel Warren Truss Static Analysis (Paired with truss_modal.bdf)\n*NODE\n1, 0.0, 0.0, 0.0\n2, 2.0, 0.0, 0.0\n3, 4.0, 0.0, 0.0\n4, 1.0, 1.5, 0.0\n5, 3.0, 1.5, 0.0\n*ELEMENT, TYPE=T3D2, ELSET=TRUSS_MEMBERS\n1, 1, 2\n2, 2, 3\n3, 1, 4\n4, 4, 2\n5, 4, 5\n6, 2, 5\n7, 5, 3\n*MATERIAL, NAME=TRUSS_STEEL\n*ELASTIC\n210000000000.0, 0.3\n*DENSITY\n7850.0\n*SOLID SECTION, ELSET=TRUSS_MEMBERS, MATERIAL=TRUSS_STEEL\n0.0012\n*STEP\n*STATIC\n*BOUNDARY\n1, 1, 3, 0.0\n3, 2, 3, 0.0\n2, 3, 3, 0.0\n4, 3, 3, 0.0\n5, 3, 3, 0.0\n*CLOAD\n2, 2, -50000.0\n*NODE FILE\nU\n*EL FILE\nS\n*END STEP\n",
+      "truss_modal.bdf": "$ MSC/NX NASTRAN Bulk Data Deck - 5-Member Steel Warren Truss\nSOL 101\nCEND\nTITLE = Five-Member Steel Warren Truss Static Analysis\nSPC = 1\nLOAD = 2\nBEGIN BULK\n$ Grid points (mm)\nGRID, 1, , 0.0, 0.0, 0.0\nGRID, 2, , 2000.0, 0.0, 0.0\nGRID, 3, , 4000.0, 0.0, 0.0\nGRID, 4, , 1000.0, 1500.0, 0.0\nGRID, 5, , 3000.0, 1500.0, 0.0\n$ Rod elements\nCROD, 1, 10, 1, 2\nCROD, 2, 10, 2, 3\nCROD, 3, 10, 1, 4\nCROD, 4, 10, 4, 2\nCROD, 5, 10, 4, 5\nCROD, 6, 10, 2, 5\nCROD, 7, 10, 5, 3\n$ Rod cross-section property (A = 1200 mm2)\nPROD, 10, 100, 1200.0\n$ Isotropic Steel Material (E = 210000 MPa, nu = 0.3, rho = 7.85e-9 t/mm3)\nMAT1, 100, 210000.0, , 0.3, 7.85e-9\n$ Boundary conditions (pin at node 1, roller at node 3, out-of-plane Z fixed)\nSPC1, 1, 123, 1\nSPC1, 1, 23, 3\nSPC1, 1, 3, 2, 4, 5\n$ Vertical downward load at center bottom joint (node 2)\nFORCE, 2, 2, 0, 50000.0, 0.0, -1.0, 0.0\nENDDATA\n"
+    }
+  },
+  {
+    "id": "fea-04-plate-hole-stress-concentration",
+    "lang": "fea",
+    "subFormats": ["inp"],
+    "difficulty": 4,
+    "title": "Plate with Circular Hole Stress Concentration",
+    "description": "Multi-file CalculiX structural analysis of a quarter-symmetry steel plate with a central hole using *INCLUDE companion mesh and material library files.",
+    "category": "Continuum Mechanics FEA",
+    "tags": ["fea", "calculix", "include", "stress-concentration", "multi-file"],
+    "activeFile": "plate_hole.inp",
+    "fileNames": ["plate_hole.inp", "mesh.inp", "steel_mat.inp"],
+    "fileCount": 3,
+    "code": "*HEADING\nQuarter-Symmetry Steel Plate with Circular Hole Stress Concentration\n*NODE\n1, 0.02, 0.0, 0.0\n2, 0.10, 0.0, 0.0\n3, 0.10, 0.10, 0.0\n4, 0.0, 0.02, 0.0\n5, 0.02, 0.0, 0.01\n6, 0.10, 0.0, 0.01\n7, 0.10, 0.10, 0.01\n8, 0.0, 0.02, 0.01\n*ELEMENT, TYPE=C3D8, ELSET=PLATE_ELEMS\n1, 1, 2, 3, 4, 5, 6, 7, 8\n*INCLUDE, INPUT=mesh.inp\n*INCLUDE, INPUT=steel_mat.inp\n*MATERIAL, NAME=PLATE_STEEL\n*ELASTIC\n205000000000.0, 0.29\n*DENSITY\n7850.0\n*SOLID SECTION, ELSET=PLATE_ELEMS, MATERIAL=PLATE_STEEL\n*STEP\n*STATIC\n*BOUNDARY\n1, 1, 3, 0.0\n4, 1, 3, 0.0\n5, 1, 3, 0.0\n8, 1, 3, 0.0\n*CLOAD\n2, 1, 12000.0\n3, 1, 12000.0\n6, 1, 12000.0\n7, 1, 12000.0\n*NODE FILE\nU\n*EL FILE\nS\n*END STEP\n",
+    "files": {
+      "plate_hole.inp": "*HEADING\nQuarter-Symmetry Steel Plate with Circular Hole Stress Concentration\n*NODE\n1, 0.02, 0.0, 0.0\n2, 0.10, 0.0, 0.0\n3, 0.10, 0.10, 0.0\n4, 0.0, 0.02, 0.0\n5, 0.02, 0.0, 0.01\n6, 0.10, 0.0, 0.01\n7, 0.10, 0.10, 0.01\n8, 0.0, 0.02, 0.01\n*ELEMENT, TYPE=C3D8, ELSET=PLATE_ELEMS\n1, 1, 2, 3, 4, 5, 6, 7, 8\n*INCLUDE, INPUT=mesh.inp\n*INCLUDE, INPUT=steel_mat.inp\n*MATERIAL, NAME=PLATE_STEEL\n*ELASTIC\n205000000000.0, 0.29\n*DENSITY\n7850.0\n*SOLID SECTION, ELSET=PLATE_ELEMS, MATERIAL=PLATE_STEEL\n*STEP\n*STATIC\n*BOUNDARY\n1, 1, 3, 0.0\n4, 1, 3, 0.0\n5, 1, 3, 0.0\n8, 1, 3, 0.0\n*CLOAD\n2, 1, 12000.0\n3, 1, 12000.0\n6, 1, 12000.0\n7, 1, 12000.0\n*NODE FILE\nU\n*EL FILE\nS\n*END STEP\n",
+      "mesh.inp": "** Companion refined mesh near circular cutout\n*NSET, NSET=HOLE_RIM\n1, 4\n*ELSET, ELSET=REFINED_ZONE\n1\n",
+      "steel_mat.inp": "** Reusable AISI 4140 Alloy Steel Material Card\n*MATERIAL, NAME=AISI_4140_ALLOY\n*ELASTIC\n205000000000.0, 0.29\n*DENSITY\n7850.0\n*PLASTIC\n655000000.0, 0.0\n720000000.0, 0.05\n"
+    }
+  },
+  {
+    "id": "fea-05-thermo-mechanical-brake-disc",
+    "lang": "fea",
+    "subFormats": ["inp"],
+    "difficulty": 5,
+    "title": "Thermo-Mechanical Coupled Brake Disc Analysis",
+    "description": "Four-file CalculiX thermo-mechanical brake rotor analysis composing disc mesh sets, grey cast-iron thermal-elastic properties, and braking heat-flux boundary conditions.",
+    "category": "Multiphysics FEA",
+    "tags": ["fea", "calculix", "thermo-mechanical", "brake-disc", "multi-file"],
+    "activeFile": "brake_coupled.inp",
+    "fileNames": ["brake_coupled.inp", "cast_iron.inp", "disc_mesh.inp", "thermal_bc.inp"],
+    "fileCount": 4,
+    "code": "*HEADING\nThermo-Mechanical Coupled Automotive Brake Disc Sector Analysis\n*NODE\n1, 0.08, 0.0, 0.0\n2, 0.16, 0.0, 0.0\n3, 0.15, 0.05, 0.0\n4, 0.075, 0.025, 0.0\n5, 0.08, 0.0, 0.024\n6, 0.16, 0.0, 0.024\n7, 0.15, 0.05, 0.024\n8, 0.075, 0.025, 0.024\n*ELEMENT, TYPE=C3D8, ELSET=DISC_ELEMS\n1, 1, 2, 3, 4, 5, 6, 7, 8\n*INCLUDE, INPUT=disc_mesh.inp\n*INCLUDE, INPUT=cast_iron.inp\n*INCLUDE, INPUT=thermal_bc.inp\n*MATERIAL, NAME=CAST_IRON_GG25\n*ELASTIC\n110000000000.0, 0.26\n*DENSITY\n7200.0\n*EXPANSION\n1.15e-5\n*SOLID SECTION, ELSET=DISC_ELEMS, MATERIAL=CAST_IRON_GG25\n*STEP\n*STATIC\n*BOUNDARY\n1, 1, 3, 0.0\n4, 1, 3, 0.0\n5, 1, 3, 0.0\n8, 1, 3, 0.0\n*CLOAD\n2, 3, -4500.0\n3, 3, -4500.0\n*NODE FILE\nU, NT\n*EL FILE\nS\n*END STEP\n",
+    "files": {
+      "brake_coupled.inp": "*HEADING\nThermo-Mechanical Coupled Automotive Brake Disc Sector Analysis\n*NODE\n1, 0.08, 0.0, 0.0\n2, 0.16, 0.0, 0.0\n3, 0.15, 0.05, 0.0\n4, 0.075, 0.025, 0.0\n5, 0.08, 0.0, 0.024\n6, 0.16, 0.0, 0.024\n7, 0.15, 0.05, 0.024\n8, 0.075, 0.025, 0.024\n*ELEMENT, TYPE=C3D8, ELSET=DISC_ELEMS\n1, 1, 2, 3, 4, 5, 6, 7, 8\n*INCLUDE, INPUT=disc_mesh.inp\n*INCLUDE, INPUT=cast_iron.inp\n*INCLUDE, INPUT=thermal_bc.inp\n*MATERIAL, NAME=CAST_IRON_GG25\n*ELASTIC\n110000000000.0, 0.26\n*DENSITY\n7200.0\n*EXPANSION\n1.15e-5\n*SOLID SECTION, ELSET=DISC_ELEMS, MATERIAL=CAST_IRON_GG25\n*STEP\n*STATIC\n*BOUNDARY\n1, 1, 3, 0.0\n4, 1, 3, 0.0\n5, 1, 3, 0.0\n8, 1, 3, 0.0\n*CLOAD\n2, 3, -4500.0\n3, 3, -4500.0\n*NODE FILE\nU, NT\n*EL FILE\nS\n*END STEP\n",
+      "cast_iron.inp": "** Grey Cast Iron GG25 Thermo-Mechanical Material Definition\n*MATERIAL, NAME=CAST_IRON_GG25_LIB\n*ELASTIC\n110000000000.0, 0.26\n*DENSITY\n7200.0\n*EXPANSION\n1.15e-5\n*CONDUCTIVITY\n48.0\n*SPECIFIC HEAT\n460.0\n",
+      "disc_mesh.inp": "** Brake Rotor Sector Node and Element Sets\n*NSET, NSET=HUB_BOLT_CIRCLE\n1, 4, 5, 8\n*NSET, NSET=RUBBING_RING\n2, 3, 6, 7\n*ELSET, ELSET=ROTOR_SECTOR\n1\n",
+      "thermal_bc.inp": "** Emergency Braking Thermal Initial Condition and Pad Contact Pressure\n*INITIAL CONDITIONS, TYPE=TEMPERATURE\n1, 293.15\n2, 293.15\n3, 293.15\n4, 293.15\n5, 293.15\n6, 293.15\n7, 293.15\n8, 293.15\n"
+    }
+  }
+]

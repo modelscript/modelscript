@@ -1,0 +1,15 @@
+-- ESA ESL Linear Series RL Circuit Step Transient
+MODEL RLCircuit
+  CONSTANT REAL: R = 12.0;      -- Resistance (Ohm)
+  CONSTANT REAL: L = 0.08;      -- Inductance (H)
+  CONSTANT REAL: VIN = 24.0;    -- Step supply voltage (V)
+  REAL: i_curr, v_ind, power_r;
+INITIAL
+  i_curr = 0.0;
+DYNAMIC
+  i_curr' = (VIN - R * i_curr) / L;
+  v_ind = VIN - R * i_curr;
+  power_r = R * i_curr ** 2;
+TERMINAL
+  v_ind = 0.0;
+END MODEL RLCircuit

@@ -1,0 +1,195 @@
+[
+  {
+    "namePath": "GDSII.Layers.NWELL",
+    "aliases": [
+      "NW",
+      "L1"
+    ],
+    "label": "N-Well Implant (Layer 1)",
+    "category": "Foundry Layer",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#93c5fd\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#93c5fd\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#93c5fd\">LAYER</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">NWELL</text>\n</svg>",
+    "ports": []
+  },
+  {
+    "namePath": "GDSII.Layers.ACTIVE",
+    "aliases": [
+      "DIFF",
+      "OD",
+      "L2"
+    ],
+    "label": "Active Diffusion (Layer 2)",
+    "category": "Foundry Layer",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#4ade80\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#4ade80\">LAYER</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">ACTIVE</text>\n</svg>",
+    "ports": []
+  },
+  {
+    "namePath": "GDSII.Layers.POLY",
+    "aliases": [
+      "PO",
+      "GATE",
+      "L3"
+    ],
+    "label": "Polysilicon Gate (Layer 3)",
+    "category": "Foundry Layer",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f87171\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#f87171\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f87171\">LAYER</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">POLY</text>\n</svg>",
+    "ports": []
+  },
+  {
+    "namePath": "GDSII.Layers.CONTACT",
+    "aliases": [
+      "CO",
+      "CONT",
+      "L4"
+    ],
+    "label": "Contact Cut (Layer 4)",
+    "category": "Foundry Layer",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#facc15\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#facc15\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#facc15\">LAYER</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">CONTACT</text>\n</svg>",
+    "ports": []
+  },
+  {
+    "namePath": "GDSII.Layers.METAL1",
+    "aliases": [
+      "M1",
+      "L5"
+    ],
+    "label": "Metal 1 Interconnect (Layer 5)",
+    "category": "Foundry Layer",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#60a5fa\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">LAYER</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">METAL1</text>\n</svg>",
+    "ports": []
+  },
+  {
+    "namePath": "GDSII.Layers.VIA1",
+    "aliases": [
+      "V1",
+      "L6"
+    ],
+    "label": "Via 1 Cut (Layer 6)",
+    "category": "Foundry Layer",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#c084fc\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">LAYER</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">VIA1</text>\n</svg>",
+    "ports": []
+  },
+  {
+    "namePath": "GDSII.Layers.METAL2",
+    "aliases": [
+      "M2",
+      "L7"
+    ],
+    "label": "Metal 2 Interconnect (Layer 7)",
+    "category": "Foundry Layer",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f472b6\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#f472b6\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#f472b6\">LAYER</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">METAL2</text>\n</svg>",
+    "ports": []
+  },
+  {
+    "namePath": "GDSII.Cells.INV",
+    "aliases": [
+      "INV_X1",
+      "INVERTER"
+    ],
+    "label": "CMOS Inverter (INV)",
+    "category": "Standard Cell",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#38bdf8\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">CELL</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">INV</text>\n</svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "Y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "VDD",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "VSS",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "GDSII.Cells.NAND2",
+    "aliases": [
+      "NAND2_X1"
+    ],
+    "label": "2-Input CMOS NAND (NAND2)",
+    "category": "Standard Cell",
+    "domain": "semiconductor",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"88\" height=\"52\" viewBox=\"0 0 88 52\">\n  <rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#34d399\" stroke-width=\"2\" />\n  <rect x=\"6\" y=\"6\" width=\"76\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\" />\n  <text x=\"44\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">CELL</text>\n  <text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">NAND2</text>\n</svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 16
+      },
+      {
+        "name": "B",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 36
+      },
+      {
+        "name": "Y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "VDD",
+        "kind": "electrical",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      },
+      {
+        "name": "VSS",
+        "kind": "electrical",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  }
+]

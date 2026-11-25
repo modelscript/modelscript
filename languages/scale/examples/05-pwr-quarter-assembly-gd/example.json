@@ -1,0 +1,11 @@
+{
+  "id": "scale-05-pwr-quarter-assembly-gd",
+  "lang": "scale",
+  "subFormats": ["csas6", "array", "burnable-absorber"],
+  "difficulty": 5,
+  "title": "PWR Quarter-Assembly Array with Gadolinium Absorber Pins",
+  "description": "3x3 mini-assembly lattice combining standard UO2 fuel pins, gadolinium burnable-absorber pins, and a central water guide tube with companion burnup schedule.",
+  "category": "Nuclear Reactor Physics",
+  "tags": ["scale", "csas6", "array", "gadolinium", "multi-file"],
+  "activeFile": "assembly_gd.scale"
+}

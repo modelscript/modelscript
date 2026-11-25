@@ -1,0 +1,12 @@
+{
+  "id": "mcnp-01-water-sphere-neutron",
+  "lang": "mcnp",
+  "subFormats": ["mcnp6", "fixed-source"],
+  "difficulty": 1,
+  "title": "14 MeV Point Neutron Source in Water Sphere",
+  "description": "Fixed-source 14.1 MeV D-T fusion point neutron source at the center of a 30 cm light-water moderation sphere with F4 cell-averaged flux tally.",
+  "category": "Nuclear Transport & Shielding",
+  "tags": ["mcnp", "neutron-transport", "fixed-source", "f4-tally"],
+  "activeFile": "water_sphere.mcnp",
+  "isDefaultStarter": true
+}

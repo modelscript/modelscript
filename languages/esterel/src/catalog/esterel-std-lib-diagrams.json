@@ -1,0 +1,260 @@
+[
+  {
+    "namePath": "Esterel.Std.ABRO",
+    "aliases": [
+      "BerryABRO",
+      "SyncReset"
+    ],
+    "label": "ABRO Synchronizer",
+    "category": "Synchronization",
+    "domain": "reactive",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SYNC</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ABRO</text></svg>",
+    "ports": [
+      {
+        "name": "A",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 13
+      },
+      {
+        "name": "B",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "R",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 39
+      },
+      {
+        "name": "O",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Esterel.Std.Watchdog",
+    "aliases": [
+      "WDT",
+      "LivenessWatchdog"
+    ],
+    "label": "Reactive Watchdog",
+    "category": "Preemption & Timing",
+    "domain": "reactive",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">TIME</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WATCHDOG</text></svg>",
+    "ports": [
+      {
+        "name": "TICK",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 13
+      },
+      {
+        "name": "KICK",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "RESET",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 39
+      },
+      {
+        "name": "ALARM",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Esterel.Std.Debouncer",
+    "aliases": [
+      "SignalDebouncer",
+      "GlitchFilter"
+    ],
+    "label": "Input Debouncer",
+    "category": "Signal Conditioning",
+    "domain": "reactive",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">COND</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">DEBOUNCER</text></svg>",
+    "ports": [
+      {
+        "name": "RAW",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 17
+      },
+      {
+        "name": "RESET",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 35
+      },
+      {
+        "name": "STABLE",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Esterel.Std.Arbiter",
+    "aliases": [
+      "PriorityArbiter",
+      "BusArbiter"
+    ],
+    "label": "Priority Bus Arbiter",
+    "category": "Arbitration & Control",
+    "domain": "reactive",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">CTRL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ARBITER</text></svg>",
+    "ports": [
+      {
+        "name": "REQ1",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 17
+      },
+      {
+        "name": "REQ2",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 35
+      },
+      {
+        "name": "GNT1",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 17
+      },
+      {
+        "name": "GNT2",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 35
+      }
+    ]
+  },
+  {
+    "namePath": "Esterel.Std.Timeout",
+    "aliases": [
+      "DeadlineTimer",
+      "OneShotTimer"
+    ],
+    "label": "Deadline Timeout",
+    "category": "Preemption & Timing",
+    "domain": "reactive",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">TIME</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TIMEOUT</text></svg>",
+    "ports": [
+      {
+        "name": "START",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 13
+      },
+      {
+        "name": "TICK",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "CANCEL",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 39
+      },
+      {
+        "name": "EXPIRED",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Esterel.Std.Stopwatch",
+    "aliases": [
+      "Chronometer",
+      "ReactiveStopwatch"
+    ],
+    "label": "Reactive Stopwatch",
+    "category": "Preemption & Timing",
+    "domain": "reactive",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">TIME</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">STOPWATCH</text></svg>",
+    "ports": [
+      {
+        "name": "START_STOP",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 13
+      },
+      {
+        "name": "TICK",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "RESET",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 39
+      },
+      {
+        "name": "COUNT_TICK",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 17
+      },
+      {
+        "name": "RUNNING",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 35
+      }
+    ]
+  }
+]

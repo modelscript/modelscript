@@ -1,0 +1,11 @@
+{
+  "id": "step-03-countersunk-l-bracket",
+  "lang": "step",
+  "subFormats": ["step"],
+  "difficulty": 3,
+  "title": "Countersunk L-Bracket with Fillet Geometry",
+  "description": "STEP AP242 sheet-metal structural L-bracket combining planar web faces, cylindrical inner bend fillet, and conical countersunk mounting holes.",
+  "category": "Structural CAD",
+  "tags": ["step", "ap242", "bracket", "fillet", "countersink"],
+  "activeFile": "l_bracket.step"
+}

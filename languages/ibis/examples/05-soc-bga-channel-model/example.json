@@ -1,0 +1,11 @@
+{
+  "id": "ibis-05-soc-bga-channel-model",
+  "lang": "ibis",
+  "subFormats": ["ibs", "pkg"],
+  "difficulty": 5,
+  "title": "High-Speed SoC Multi-Bank I/O & BGA Package Model",
+  "description": "Multi-file IBIS workspace combining a multi-voltage SoC I/O buffer file (.ibs) with a coupled BGA substrate package parasitic matrix (.pkg).",
+  "category": "Package & Channel Co-Design",
+  "tags": ["ibis", "pkg", "bga", "soc", "multi-file"],
+  "activeFile": "soc_io.ibs"
+}

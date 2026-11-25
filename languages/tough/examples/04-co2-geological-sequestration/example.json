@@ -1,0 +1,11 @@
+{
+  "id": "tough-04-co2-geological-sequestration",
+  "lang": "tough",
+  "subFormats": ["tgh", "mesh"],
+  "difficulty": 4,
+  "title": "Supercritical CO2 Geological Sequestration",
+  "description": "Deep saline sandstone aquifer overlaid by low-permeability shale caprock for supercritical CO2 plume migration and pressure buildup, shipped with a companion TOUGH MESH file.",
+  "category": "Carbon Capture & Storage",
+  "tags": ["tough", "co2-sequestration", "caprock", "multi-file", "mesh"],
+  "activeFile": "co2_storage.tgh"
+}

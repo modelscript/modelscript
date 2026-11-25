@@ -115,7 +115,9 @@ export function batchLoadPostPolls(
             votes_count: Number(o.votes_count || 0),
           }));
         }
-      } catch {}
+      } catch {
+        // Malformed metadata JSON falls back to defaults
+      }
 
       const ownVotes = votesByPollId.get(row.id) ?? [];
       const expired = Boolean(row.expires_at && new Date(row.expires_at).getTime() <= nowMs);

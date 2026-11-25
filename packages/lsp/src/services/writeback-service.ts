@@ -1,12 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { CstUnparser, type SyntaxNode, type WritebackContext, type WritebackEdit } from "@modelscript/dsl";
+import {
+  CstUnparser,
+  type SymbolEntry as DslSymbolEntry,
+  type SyntaxNode,
+  type WritebackContext,
+  type WritebackEdit,
+} from "@modelscript/dsl";
+import type { SymbolEntry } from "@modelscript/runtime";
 import { Range, TextEdit, type WorkspaceEdit } from "vscode-languageserver";
 import type { LspContext } from "../lsp-context.js";
-import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import { getCompositeName } from "../utils/hierarchy-utils.js";
+import { globalLanguageRegistry, type LanguageRegistry } from "../registry/LanguageRegistry.js";
+import { getCompositeName, type HierarchySymbolIndexLike } from "../utils/hierarchy-utils.js";
 
 import { isIdentContCode, skipWs, trimTrailingChars } from "../utils/lexical-utils.js";
+
+type WritebackSymbolEntry = SymbolEntry & {
+  fieldRanges?: Record<string, { startOffset: number; endOffset: number } | undefined> | undefined;
+};
+
+interface WritebackSymbolIndexLike {
+  symbols?: Map<number, WritebackSymbolEntry> | undefined;
+  childrenOf?: ReadonlyMap<number | null, readonly number[]> | undefined;
+}
 
 export interface ComputeWritebackEditParams {
   target: string;
@@ -68,7 +84,7 @@ function readAssignmentValueSpan(text: string, afterOpIdx: number): { start: num
  */
 function computeGenericWriteback(
   fullText: string,
-  entry: any,
+  entry: WritebackSymbolEntry,
   newValue: string,
   doc?: { positionAt: (offset: number) => { line: number; character: number } },
   operators: string[] = [":=", "="],
@@ -79,10 +95,16 @@ function computeGenericWriteback(
 
   // Tier 0: Canonical CstUnparser CST field/value replacement
   const cstRoot = ((rootCst as { rootNode?: SyntaxNode } | undefined)?.rootNode ?? rootCst) as SyntaxNode | undefined;
-  const cstUnparse = CstUnparser.patchWritebackValue(fullText, cstRoot, entry, newValue, {
-    valueFields: customValueField ? [customValueField] : undefined,
-    operators: sortedOps,
-  });
+  const cstUnparse = CstUnparser.patchWritebackValue(
+    fullText,
+    cstRoot,
+    entry as Parameters<typeof CstUnparser.patchWritebackValue>[2],
+    newValue,
+    {
+      valueFields: customValueField ? [customValueField] : undefined,
+      operators: sortedOps,
+    },
+  );
   if (cstUnparse) {
     const startPos = doc ? doc.positionAt(cstUnparse.startIndex) : offsetToPosition(fullText, cstUnparse.startIndex);
     const endPos = doc ? doc.positionAt(cstUnparse.endIndex) : offsetToPosition(fullText, cstUnparse.endIndex);
@@ -91,20 +113,21 @@ function computeGenericWriteback(
 
   // Tier 1: Check precomputed CST fieldRanges from AST indexing (without rootCst alignment)
   if (entry.fieldRanges) {
+    const fr = entry.fieldRanges;
     const valField =
-      (customValueField ? entry.fieldRanges[customValueField] : undefined) ??
-      entry.fieldRanges.value ??
-      entry.fieldRanges.expression ??
-      entry.fieldRanges.val ??
-      entry.fieldRanges.modification ??
-      entry.fieldRanges.initializer ??
-      entry.fieldRanges.init ??
-      entry.fieldRanges.binding ??
-      entry.fieldRanges.defaultValue ??
-      entry.fieldRanges.default ??
-      entry.fieldRanges.assignedExpression ??
-      entry.fieldRanges.ownedRelatedElement ??
-      entry.fieldRanges.featureValue;
+      (customValueField ? fr[customValueField] : undefined) ??
+      fr["value"] ??
+      fr["expression"] ??
+      fr["val"] ??
+      fr["modification"] ??
+      fr["initializer"] ??
+      fr["init"] ??
+      fr["binding"] ??
+      fr["defaultValue"] ??
+      fr["default"] ??
+      fr["assignedExpression"] ??
+      fr["ownedRelatedElement"] ??
+      fr["featureValue"];
 
     const rawStart = valField?.startOffset;
     const rawEnd = valField?.endOffset;
@@ -193,7 +216,7 @@ export async function computeWritebackEdit(
   const db = context.workspaceManager.unifiedWorkspace.getIndex();
   const qualifiedTarget = target.trim();
 
-  const matchesUri = (entry: any): boolean => {
+  const matchesUri = (entry: WritebackSymbolEntry | null | undefined): boolean => {
     if (!documentUri) return true;
     if (!entry?.resourceId) return false;
     if (entry.resourceId === documentUri) return true;
@@ -204,13 +227,17 @@ export async function computeWritebackEdit(
     }
   };
 
-  const findMatchInIndex = (idx: any, requireDocumentUri: boolean): any => {
+  const findMatchInIndex = (
+    idx: WritebackSymbolIndexLike | null | undefined,
+    requireDocumentUri: boolean,
+  ): WritebackSymbolEntry | null => {
     if (!idx?.symbols) return null;
+    const hIdx = idx as HierarchySymbolIndexLike;
     // 1. Exact FQN match
     for (const entry of idx.symbols.values()) {
       if (!entry.name) continue;
       if (requireDocumentUri && !matchesUri(entry)) continue;
-      const fqn = getCompositeName(entry, idx);
+      const fqn = getCompositeName(entry, hIdx);
       if (fqn === qualifiedTarget) {
         return entry;
       }
@@ -219,7 +246,7 @@ export async function computeWritebackEdit(
     for (const entry of idx.symbols.values()) {
       if (!entry.name) continue;
       if (requireDocumentUri && !matchesUri(entry)) continue;
-      const fqn = getCompositeName(entry, idx);
+      const fqn = getCompositeName(entry, hIdx);
       if (fqn.endsWith("." + qualifiedTarget) || entry.name === qualifiedTarget) {
         return entry;
       }
@@ -227,21 +254,25 @@ export async function computeWritebackEdit(
     return null;
   };
 
-  let matchedEntry: any = documentUri ? findMatchInIndex(db, true) : findMatchInIndex(db, false);
+  let matchedEntry: WritebackSymbolEntry | null = documentUri
+    ? findMatchInIndex(db, true)
+    : findMatchInIndex(db, false);
 
   // Check language workspace indices in the target document before falling back globally
   if (!matchedEntry) {
     const allPlugins = globalLanguageRegistry.getAllPlugins();
     if (documentUri) {
       for (const plugin of allPlugins) {
-        const idx = plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id);
+        const idx = (plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id)) as
+          WritebackSymbolIndexLike | undefined;
         matchedEntry = findMatchInIndex(idx, true);
         if (matchedEntry) break;
       }
     }
     if (!matchedEntry && !documentUri) {
       for (const plugin of allPlugins) {
-        const idx = plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id);
+        const idx = (plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id)) as
+          WritebackSymbolIndexLike | undefined;
         matchedEntry = findMatchInIndex(idx, false);
         if (matchedEntry) break;
       }
@@ -253,7 +284,8 @@ export async function computeWritebackEdit(
     matchedEntry = findMatchInIndex(db, false);
     if (!matchedEntry) {
       for (const plugin of globalLanguageRegistry.getAllPlugins()) {
-        const idx = plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id);
+        const idx = (plugin.workspaceIndex ?? context.workspaceManager.getWorkspaceIndex(plugin.id)) as
+          WritebackSymbolIndexLike | undefined;
         matchedEntry = findMatchInIndex(idx, false);
         if (matchedEntry) break;
       }
@@ -272,7 +304,7 @@ export async function computeWritebackEdit(
   }
 
   // Retrieve the language plugin for this file
-  const registry = (context as any).languageRegistry ?? globalLanguageRegistry;
+  const registry = (context as { languageRegistry?: LanguageRegistry }).languageRegistry ?? globalLanguageRegistry;
   const plugin = registry.getPluginForUri(uri);
 
   let edits: TextEdit[] = [];
@@ -283,7 +315,7 @@ export async function computeWritebackEdit(
 
   if (handler) {
     const wbContext: WritebackContext = {
-      entry: matchedEntry,
+      entry: matchedEntry as unknown as DslSymbolEntry,
       fullText,
       newValue,
       rootCst: context.documentManager?.documentTrees?.get(uri)?.tree,
@@ -293,7 +325,7 @@ export async function computeWritebackEdit(
     const result = handler(wbContext);
     if (result) {
       const rawEdits: WritebackEdit[] = Array.isArray(result) ? result : [result];
-      edits = rawEdits.map((e: any) => {
+      edits = rawEdits.map((e: WritebackEdit) => {
         const sOff = e.startOffset;
         const eOff = e.endOffset;
         const startPos = doc ? doc.positionAt(sOff) : offsetToPosition(fullText, sOff);

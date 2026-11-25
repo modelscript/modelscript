@@ -1,0 +1,77 @@
+[
+  {
+    "id": "mcnp-01-water-sphere-neutron",
+    "lang": "mcnp",
+    "subFormats": ["mcnp6", "fixed-source"],
+    "difficulty": 1,
+    "title": "14 MeV Point Neutron Source in Water Sphere",
+    "description": "Fixed-source 14.1 MeV D-T fusion point neutron source at the center of a 30 cm light-water moderation sphere with F4 cell-averaged flux tally.",
+    "category": "Nuclear Transport & Shielding",
+    "tags": ["mcnp", "neutron-transport", "fixed-source", "f4-tally"],
+    "activeFile": "water_sphere.mcnp",
+    "fileNames": ["water_sphere.mcnp"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "14.1 MeV Point Neutron Source in 30 cm Light-Water Sphere\nC Block 1: Cell Cards\n1 1 -1.00 -1 IMP:N=1 VOL=113097.3 $ Light water moderator sphere\n2 0        1 IMP:N=0              $ External void graveyard\n\nC Block 2: Surface Cards\n1 SO 30.0 $ Outer water sphere radius (cm)\n\nC Block 3: Data Cards\nMODE N\nM1 1001.80c 2.0 8016.80c 1.0\nMT1 lwtr.01t\nSDEF POS=0 0 0 ERG=14.1 PAR=N\nF4:N 1\nE4 1.0e-7 1.0e-4 0.1 1.0 14.2\nNPS 10000\n"
+  },
+  {
+    "id": "mcnp-02-layered-gamma-neutron-shield",
+    "lang": "mcnp",
+    "subFormats": ["mcnp6", "shielding"],
+    "difficulty": 2,
+    "title": "Lead and Polyethylene Layered Gamma-Neutron Shield",
+    "description": "Coupled neutron-photon transport through a two-layer borated polyethylene and lead biological slab shield with surface flux tallies.",
+    "category": "Nuclear Transport & Shielding",
+    "tags": ["mcnp", "shielding", "coupled-np", "slab"],
+    "activeFile": "layered_shield.mcnp",
+    "fileNames": ["layered_shield.mcnp"],
+    "fileCount": 1,
+    "code": "Lead and Borated Polyethylene Layered Gamma-Neutron Shield\nC Block 1: Cell Cards\n1 0        -1 2 -3 4 -5 6 IMP:N=1 IMP:P=1 $ Source air cavity\n2 1 -0.95  -7 1 -3 4 -5 6 IMP:N=1 IMP:P=1 $ 20 cm Polyethylene neutron shield\n3 2 -11.35 -8 7 -3 4 -5 6 IMP:N=1 IMP:P=1 $ 10 cm Lead gamma shield\n4 0         8:-2:3:-4:5:-6 IMP:N=0 IMP:P=0 $ External graveyard\n\nC Block 2: Surface Cards\n1 PX 10.0  $ Front of polyethylene slab\n2 PX 0.0   $ Source cavity back plane\n3 PY 50.0  $ Top Y boundary\n4 PY -50.0 $ Bottom Y boundary\n5 PZ 50.0  $ Top Z boundary\n6 PZ -50.0 $ Bottom Z boundary\n7 PX 30.0  $ Polyethylene-Lead interface\n8 PX 40.0  $ Outer shield exit face\n\nC Block 3: Data Cards\nMODE N P\nM1 6000.80c 1.0 1001.80c 2.0\nM2 82206.80c 0.241 82207.80c 0.221 82208.80c 0.524\nSDEF POS=2.0 0.0 0.0 VEC=1 0 0 DIR=1 ERG=2.5 PAR=N\nF2:N 8\nF2:P 8\nNPS 20000\n"
+  },
+  {
+    "id": "mcnp-03-godiva-heu-criticality",
+    "lang": "mcnp",
+    "subFormats": ["mcnp6", "criticality"],
+    "difficulty": 3,
+    "title": "Godiva Bare HEU Sphere Criticality Benchmark",
+    "description": "ICSBEP HEU-MET-FAST-001 Godiva bare highly enriched uranium metal sphere KCODE eigenvalue criticality benchmark with fast energy spectrum tally.",
+    "category": "Nuclear Reactor Physics",
+    "tags": ["mcnp", "criticality", "kcode", "godiva", "benchmark"],
+    "activeFile": "godiva.mcnp",
+    "fileNames": ["godiva.mcnp"],
+    "fileCount": 1,
+    "code": "Godiva Bare Highly Enriched Uranium Sphere (HEU-MET-FAST-001)\nC Block 1: Cell Cards\n1 1 -18.74 -1 IMP:N=1 VOL=2797.5 $ HEU metal sphere (93.71 wt% U-235)\n2 0         1 IMP:N=0            $ External vacuum graveyard\n\nC Block 2: Surface Cards\n1 SO 8.7407 $ Critical bare sphere radius (cm)\n\nC Block 3: Data Cards\nMODE N\nM1 92234.80c 0.0102 &\n   92235.80c 0.9371 &\n   92238.80c 0.0527\nKCODE 5000 1.0 20 120\nKSRC 0.0 0.0 0.0\nF4:N 1\nE4 0.01 0.1 0.5 1.0 2.0 5.0 10.0 20.0\nPHYS:N 20.0 0.0\n"
+  },
+  {
+    "id": "mcnp-04-pwr-uo2-pincell",
+    "lang": "mcnp",
+    "subFormats": ["mcnp6", "criticality", "lattice"],
+    "difficulty": 4,
+    "title": "PWR UO2 Fuel Pin Cell Criticality Benchmark",
+    "description": "Infinite-lattice 17x17 PWR 4.2% enriched UO2 fuel pin cell with helium gap, Zircaloy-4 cladding, light-water moderator, and reflective boundaries.",
+    "category": "Nuclear Reactor Physics",
+    "tags": ["mcnp", "pwr", "pincell", "kcode", "reflective"],
+    "activeFile": "pwr_pincell.mcnp",
+    "fileNames": ["pwr_pincell.mcnp"],
+    "fileCount": 1,
+    "code": "PWR 17x17 UO2 Fuel Pin Cell Infinite Lattice Criticality\nC Block 1: Cell Cards\n1 1 -10.29 -1 4 -5       IMP:N=1 $ UO2 fuel pellet (r = 0.4096 cm)\n2 0         1 -2 4 -5    IMP:N=1 $ Helium fuel-clad gap (r = 0.4180 cm)\n3 2 -6.55   2 -3 4 -5    IMP:N=1 $ Zircaloy-4 cladding (r = 0.4750 cm)\n4 3 -0.71   3 -6 7 -8 9 4 -5 IMP:N=1 $ Pressurized light-water moderator\n5 0         6:-7:8:-9:-4:5   IMP:N=0 $ External graveyard\n\nC Block 2: Surface Cards\n1 CZ 0.4096  $ Fuel pellet outer radius\n2 CZ 0.4180  $ Cladding inner radius\n3 CZ 0.4750  $ Cladding outer radius\n*4 PZ -182.88 $ Active fuel bottom reflective plane\n*5 PZ  182.88 $ Active fuel top reflective plane\n*6 PX  0.6300 $ Pin pitch +X reflective boundary\n*7 PX -0.6300 $ Pin pitch -X reflective boundary\n*8 PY  0.6300 $ Pin pitch +Y reflective boundary\n*9 PY -0.6300 $ Pin pitch -Y reflective boundary\n\nC Block 3: Data Cards\nMODE N\nM1 92235.80c 0.042 &\n   92238.80c 0.958 &\n   8016.80c  2.000\nM2 40090.80c 0.507 &\n   40091.80c 0.111 &\n   40092.80c 0.170 &\n   40094.80c 0.172 &\n   50120.80c 0.015 &\n   26056.80c 0.025\nM3 1001.80c 2.0 8016.80c 1.0\nMT3 lwtr.01t\nKCODE 4000 1.25 25 125\nKSRC 0.0 0.0 0.0\nF4:N 1 4\nE4 0.625e-6 0.1 1.0 20.0\n"
+  },
+  {
+    "id": "mcnp-05-tokamak-blanket-sector",
+    "lang": "mcnp",
+    "subFormats": ["mcnp6", "fusion", "neutronics"],
+    "difficulty": 5,
+    "title": "Tokamak Blanket Tritium-Breeding and Shielding Sector",
+    "description": "14.1 MeV D-T fusion neutronics model of a tungsten first-wall, LiPb tritium-breeding blanket, and stainless-steel vacuum vessel with companion material library.",
+    "category": "Fusion Neutronics",
+    "tags": ["mcnp", "fusion", "tokamak", "tritium-breeding", "multi-file"],
+    "activeFile": "tokamak.mcnp",
+    "fileNames": ["tokamak.mcnp", "materials.inc"],
+    "fileCount": 2,
+    "code": "Tokamak First-Wall, LiPb Tritium-Breeding Blanket and Vacuum Vessel Sector\nC Companion isotopic specifications archived in materials.inc\nC Block 1: Cell Cards\n1 0        -1 6 -7    IMP:N=1 IMP:P=1 $ D-T plasma chamber\n2 1 -19.25  1 -2 6 -7 IMP:N=1 IMP:P=1 $ 2 cm Tungsten armor first wall\n3 2 -9.40   2 -3 6 -7 IMP:N=1 IMP:P=1 $ 48 cm Li-17Pb-83 breeding blanket\n4 3 -7.90   3 -4 6 -7 IMP:N=1 IMP:P=1 $ 30 cm SS316LN vacuum vessel shield\n5 4 -8.96   4 -5 6 -7 IMP:N=1 IMP:P=1 $ 20 cm TF magnet winding pack\n6 0         5:-6:7    IMP:N=0 IMP:P=0 $ External graveyard\n\nC Block 2: Surface Cards\n1 CZ 200.0  $ First-wall plasma-facing radius (cm)\n2 CZ 202.0  $ Back of tungsten armor\n3 CZ 250.0  $ Back of LiPb breeding blanket\n4 CZ 280.0  $ Back of SS316LN vacuum vessel\n5 CZ 300.0  $ Outer boundary of TF coil casing\n*6 PZ -150.0 $ Lower poloidal symmetry plane\n*7 PZ  150.0 $ Upper poloidal symmetry plane\n\nC Block 3: Data Cards\nMODE N P\nM1 74182.80c 0.265 74183.80c 0.143 74184.80c 0.306 74186.80c 0.284\nM2 3006.80c 0.153 3007.80c 0.017 82206.80c 0.200 82207.80c 0.183 82208.80c 0.447\nM3 26056.80c 0.680 24052.80c 0.170 28058.80c 0.120 42096.80c 0.030\nM4 29063.80c 0.692 29065.80c 0.308\nSDEF POS=0 0 0 ERG=14.1 PAR=N\nF4:N 2 3 4 5\nF6:N 2 3 5\nF6:P 2 3 5\nE4 1.0e-6 0.1 1.0 10.0 14.5\nNPS 50000\n",
+    "files": {
+      "tokamak.mcnp": "Tokamak First-Wall, LiPb Tritium-Breeding Blanket and Vacuum Vessel Sector\nC Companion isotopic specifications archived in materials.inc\nC Block 1: Cell Cards\n1 0        -1 6 -7    IMP:N=1 IMP:P=1 $ D-T plasma chamber\n2 1 -19.25  1 -2 6 -7 IMP:N=1 IMP:P=1 $ 2 cm Tungsten armor first wall\n3 2 -9.40   2 -3 6 -7 IMP:N=1 IMP:P=1 $ 48 cm Li-17Pb-83 breeding blanket\n4 3 -7.90   3 -4 6 -7 IMP:N=1 IMP:P=1 $ 30 cm SS316LN vacuum vessel shield\n5 4 -8.96   4 -5 6 -7 IMP:N=1 IMP:P=1 $ 20 cm TF magnet winding pack\n6 0         5:-6:7    IMP:N=0 IMP:P=0 $ External graveyard\n\nC Block 2: Surface Cards\n1 CZ 200.0  $ First-wall plasma-facing radius (cm)\n2 CZ 202.0  $ Back of tungsten armor\n3 CZ 250.0  $ Back of LiPb breeding blanket\n4 CZ 280.0  $ Back of SS316LN vacuum vessel\n5 CZ 300.0  $ Outer boundary of TF coil casing\n*6 PZ -150.0 $ Lower poloidal symmetry plane\n*7 PZ  150.0 $ Upper poloidal symmetry plane\n\nC Block 3: Data Cards\nMODE N P\nM1 74182.80c 0.265 74183.80c 0.143 74184.80c 0.306 74186.80c 0.284\nM2 3006.80c 0.153 3007.80c 0.017 82206.80c 0.200 82207.80c 0.183 82208.80c 0.447\nM3 26056.80c 0.680 24052.80c 0.170 28058.80c 0.120 42096.80c 0.030\nM4 29063.80c 0.692 29065.80c 0.308\nSDEF POS=0 0 0 ERG=14.1 PAR=N\nF4:N 2 3 4 5\nF6:N 2 3 5\nF6:P 2 3 5\nE4 1.0e-6 0.1 1.0 10.0 14.5\nNPS 50000\n",
+      "materials.inc": "C Companion Fusion Material Reference Library for Tokamak Blanket Sector\nC M1: Tungsten Armor (rho = 19.25 g/cm3)\nM1 74182.80c 0.265 74183.80c 0.143 74184.80c 0.306 74186.80c 0.284\nC M2: Enriched Li17Pb83 Eutectic Breeder (90% Li-6, rho = 9.40 g/cm3)\nM2 3006.80c 0.153 3007.80c 0.017 82206.80c 0.200 82207.80c 0.183 82208.80c 0.447\nC M3: SS316LN-IG Vacuum Vessel Steel (rho = 7.90 g/cm3)\nM3 26056.80c 0.680 24052.80c 0.170 28058.80c 0.120 42096.80c 0.030\nC M4: Copper Stabilizer TF Coil Pack (rho = 8.96 g/cm3)\nM4 29063.80c 0.692 29065.80c 0.308\n"
+    }
+  }
+]

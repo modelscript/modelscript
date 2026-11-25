@@ -1,0 +1,73 @@
+-- Layered Heterogeneous Black-Oil Reservoir
+RUNSPEC
+TITLE
+  Layered Heterogeneous Black-Oil Reservoir Sector
+/
+
+DIMENS
+  12 12 4 /
+
+FIELD
+OIL
+WATER
+GAS
+DISGAS
+
+START
+  1 'JUN' 2026 /
+
+GRID
+INCLUDE
+  'grid.grdecl' /
+
+PROPS
+DENSITY
+  51.8 63.8 0.064 /
+
+PVTW
+  4200.0 1.024 3.0e-6 0.34 0.0 /
+
+PVDO
+  1200.0 1.16 1.40
+  2400.0 1.22 1.18
+  3600.0 1.28 0.98
+  4800.0 1.26 1.04 /
+
+INCLUDE
+  'relperm.inc' /
+
+SOLUTION
+EQUIL
+  8100.0 4200.0 8450.0 0.0 7800.0 0.0 1 0 0 /
+
+PRESSURE
+  576*4200.0 /
+SWAT
+  576*0.20 /
+
+SCHEDULE
+WELSPECS
+  'PROD_A' 'NORTH' 3  3  8150.0 'OIL' /
+  'PROD_B' 'NORTH' 10 4  8150.0 'OIL' /
+  'INJ_W1' 'INJ'   6  10 8200.0 'WATER' /
+/
+
+COMPDAT
+  'PROD_A' 3  3  1 4 'OPEN' 1* 16.5 0.5 /
+  'PROD_B' 10 4  1 4 'OPEN' 1* 14.0 0.5 /
+  'INJ_W1' 6  10 2 4 'OPEN' 1* 22.0 0.5 /
+/
+
+WCONPROD
+  'PROD_A' 'OPEN' 'ORAT' 3200.0 1* 1* 1* 2100.0 /
+  'PROD_B' 'OPEN' 'ORAT' 2800.0 1* 1* 1* 2100.0 /
+/
+
+WCONINJE
+  'INJ_W1' 'WATER' 'OPEN' 'RATE' 6500.0 5200.0 /
+/
+
+TSTEP
+  30.0 60.0 90.0 180.0 365.0 /
+
+END

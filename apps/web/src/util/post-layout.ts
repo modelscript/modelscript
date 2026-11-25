@@ -93,8 +93,8 @@ export function estimatePostHeight(post: PostLayoutTarget | null | undefined): n
 
       case "modelica-diagram":
       case "modelica":
-      case "morsel":
-      case "polyglot-morsel":
+      case "ansatz":
+      case "polyglot-ansatz":
       case "modelscript":
       case "msx":
       case "simulation-plot":

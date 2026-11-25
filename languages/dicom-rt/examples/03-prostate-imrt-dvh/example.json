@@ -1,0 +1,11 @@
+{
+  "id": "dicom-rt-03-prostate-imrt-dvh",
+  "lang": "dicom-rt",
+  "subFormats": ["rtplan", "dcm.json"],
+  "difficulty": 3,
+  "title": "Seven-Beam Prostate IMRT Plan with DVH Dose Grid",
+  "description": "7-field 6 MV step-and-shoot prostate IMRT plan prescribing 78 Gy in 39 fractions with dynamic MLC modulation, rectum/bladder QUANTEC limits, and companion RTSTRUCT and RTDOSE JSON files.",
+  "category": "Radiation Oncology & Dosimetry",
+  "tags": ["dicom-rt", "imrt", "prostate", "dvh", "multi-file"],
+  "activeFile": "imrt_plan.rtplan"
+}

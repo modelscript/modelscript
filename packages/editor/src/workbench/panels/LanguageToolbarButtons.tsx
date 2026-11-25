@@ -37,7 +37,7 @@ import {
   type EditorToolbarView,
 } from "../../host.js";
 
-const ICON_MAP: Record<string, React.ComponentType<any>> = {
+const ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
   play: PlayIcon,
   pulse: PulseIcon,
   flowchart: FlowchartIcon,
@@ -71,7 +71,7 @@ const ICON_MAP: Record<string, React.ComponentType<any>> = {
  * Resolves a canonical icon token or VS Code codicon string (e.g. `"pulse"` or `"$(pulse)"`)
  * to a Primer Octicon component, falling back to `ZapIcon`.
  */
-export function resolveToolbarIcon(iconToken?: string): React.ComponentType<any> {
+export function resolveToolbarIcon(iconToken?: string): React.ComponentType<{ size?: number }> {
   if (!iconToken) return ZapIcon;
   const normalized = iconToken
     .trim()
@@ -138,7 +138,7 @@ export const LanguageToolbarButtons: React.FC<LanguageToolbarButtonsProps> = ({
     overflow: baseOverflow,
     all,
   } = useLanguageToolbarButtons(languageId, activeView, {
-    target: "morsel",
+    target: "ansatz",
     maxPrimary: maxPrimary === 0 ? 0 : autoFit ? 99 : maxPrimary,
   });
 

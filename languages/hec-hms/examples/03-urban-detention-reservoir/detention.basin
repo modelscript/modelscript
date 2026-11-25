@@ -1,0 +1,39 @@
+Basin: Urban Detention Basin
+  Last Modified Date: 15 May 2026
+  Unit System: Metric
+End:
+
+Subbasin: Suburban West
+  Area: 18.6
+  Downstream: Detention Pond
+  Loss: SCS
+  Transform: SCS
+End:
+
+Subbasin-Loss: Suburban West
+  Curve Number: 86.0
+  Initial Abstraction: 8.2
+  Impervious: 42.0
+End:
+
+Subbasin-Transform: Suburban West
+  Lag: 35.0
+End:
+
+Reservoir: Detention Pond
+  Downstream: Outfall Channel
+End:
+
+Reach: Outfall Channel
+  Downstream: Creek Outlet
+  Route: Muskingum
+End:
+
+Reach-Route: Outfall Channel
+  Muskingum K: 0.75
+  Muskingum X: 0.20
+  Subreaches: 2
+End:
+
+Sink: Creek Outlet
+End:

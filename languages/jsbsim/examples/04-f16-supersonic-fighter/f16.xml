@@ -1,0 +1,105 @@
+<?xml version="1.0"?>
+<fdm_config name="F16_Supersonic" version="2.0" release="PRODUCTION">
+  <fileheader>
+    <author>Ansatz Aerospace Team</author>
+    <description>F-16 Fighting Falcon Supersonic 6-DOF Flight Dynamics Model</description>
+  </fileheader>
+  <metrics>
+    <wingarea unit="FT2"> 300.0 </wingarea>
+    <wingspan unit="FT"> 31.0 </wingspan>
+    <chord unit="FT"> 11.32 </chord>
+    <htailarea unit="FT2"> 63.7 </htailarea>
+    <htailarm unit="FT"> 16.5 </htailarm>
+    <vtailarea unit="FT2"> 54.8 </vtailarea>
+    <vtailarm unit="FT"> 15.8 </vtailarm>
+    <location name="AERORP" unit="IN">
+      <x> 189.0 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+  </metrics>
+  <mass_balance>
+    <emptywt unit="LBS"> 19200.0 </emptywt>
+    <location name="CG" unit="IN">
+      <x> 188.0 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+    <ixx unit="SLUG*FT2"> 9496.0 </ixx>
+    <iyy unit="SLUG*FT2"> 55814.0 </iyy>
+    <izz unit="SLUG*FT2"> 63100.0 </izz>
+    <ixz unit="SLUG*FT2"> 982.0 </ixz>
+  </mass_balance>
+  <ground_reactions>
+    <contact type="BOGEY" name="NOSE">
+      <location unit="IN"> <x> 95.0 </x> <y> 0.0 </y> <z> -68.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 14000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 3800.0 </damping_coeff>
+      <steerable> 1 </steerable>
+    </contact>
+    <contact type="BOGEY" name="MAIN_LEFT">
+      <location unit="IN"> <x> 212.0 </x> <y> -46.0 </y> <z> -68.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 28000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 7200.0 </damping_coeff>
+      <brake_group> LEFT </brake_group>
+    </contact>
+    <contact type="BOGEY" name="MAIN_RIGHT">
+      <location unit="IN"> <x> 212.0 </x> <y> 46.0 </y> <z> -68.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 28000.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 7200.0 </damping_coeff>
+      <brake_group> RIGHT </brake_group>
+    </contact>
+  </ground_reactions>
+  <propulsion>
+    <engine file="f100">
+      <location unit="IN"> <x> 320.0 </x> <y> 0.0 </y> <z> 0.0 </z> </location>
+      <thruster file="direct">
+        <location unit="IN"> <x> 395.0 </x> <y> 0.0 </y> <z> 0.0 </z> </location>
+      </thruster>
+    </engine>
+  </propulsion>
+  <flight_control name="F16_FLCS">
+    <channel name="Pitch">
+      <pure_gain name="fcs/pitch-damper-gain">
+        <input>velocities/q-rad_sec</input>
+        <gain> -0.35 </gain>
+      </pure_gain>
+    </channel>
+  </flight_control>
+  <aerodynamics>
+    <axis name="LIFT">
+      <function name="aero/coefficient/CLalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 3.95 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="DRAG">
+      <function name="aero/coefficient/CD0">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 0.018 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/coefficient/Cmalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/cbarw-ft</property>
+          <value> -0.15 </value>
+        </product>
+      </function>
+    </axis>
+  </aerodynamics>
+</fdm_config>

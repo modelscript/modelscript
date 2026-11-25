@@ -1,0 +1,11 @@
+{
+  "id": "magicdraw-04-uav-flight-control-profile",
+  "lang": "magicdraw",
+  "subFormats": ["mdxml", "xmi"],
+  "difficulty": 4,
+  "title": "UAV Flight Control Architecture with SysML Profile Library",
+  "description": "Multi-file MagicDraw XMI workspace combining a UAV flight-control architecture model with a companion reusable avionics profile XMI defining flight-critical stereotypes and requirements.",
+  "category": "MBSE & SysML",
+  "tags": ["magicdraw", "sysml", "uav", "profile", "multi-file"],
+  "activeFile": "uav_model.mdxml"
+}

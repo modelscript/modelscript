@@ -26,23 +26,35 @@ function hasWordMatch(text: string, word: string): boolean {
   return new RegExp(`\\b${escaped}\\b`).test(text);
 }
 
+export interface SysML2CrossLanguageDropResult {
+  baseName?: string | undefined;
+  className: string;
+  importPath?: string | undefined;
+  stubName?: string | undefined;
+  stubBlock?: string | undefined;
+  sysmlUsageKind?: string | undefined;
+}
+
 export interface SysML2BackendDeps {
   getDocumentText: (uri: string) => string | undefined;
-  getLayout: (uri: string) => any;
-  setLayout: (uri: string, layout: any) => void;
-  createEmptyLayout: () => any;
+  getLayout: (uri: string) => unknown;
+  setLayout: (uri: string, layout: unknown) => void;
+  createEmptyLayout: () => unknown;
   updateElementPositions: (
-    layout: any,
+    layout: unknown,
     items: { name: string; x: number; y: number; width: number; height: number; rotation?: number | undefined }[],
-  ) => any;
-  updateConnectionVertices: (layout: any, updates: { id: string; vertices: { x: number; y: number }[] }[]) => any;
-  removeElements: (layout: any, names: string[]) => any;
-  renameElement?: ((layout: any, oldName: string, newName: string) => any) | undefined;
-  serializeLayout?: ((layout: any) => string) | undefined;
-  parseLayout?: ((text: string) => any) | undefined;
+  ) => unknown;
+  updateConnectionVertices: (
+    layout: unknown,
+    updates: { id: string; vertices: { x: number; y: number }[] }[],
+  ) => unknown;
+  removeElements: (layout: unknown, names: string[]) => unknown;
+  renameElement?: ((layout: unknown, oldName: string, newName: string) => unknown) | undefined;
+  serializeLayout?: ((layout: unknown) => string) | undefined;
+  parseLayout?: ((text: string) => unknown) | undefined;
   getSidecarUri?: ((uri: string) => string) | undefined;
 
-  buildDiagramData: (params: DiagramGetDataParams) => any;
+  buildDiagramData: (params: DiagramGetDataParams) => DiagramData | null;
   getSysML2Parser: () => { parse: (text: string) => unknown } | null;
   computeConnectionInsert: (text: string, source: string, target: string, tree?: unknown) => TextEdit[];
   computeConnectionDelete: (text: string, source: string, target: string, tree?: unknown) => TextEdit[];
@@ -79,9 +91,14 @@ export interface SysML2BackendDeps {
           | undefined;
       } | null)
     | undefined;
-  getUnifiedIndex?: (() => any) | undefined;
+  getUnifiedIndex?: (() => unknown) | undefined;
   resolveCrossLanguageDrop?:
-    | ((unifiedIndex: any, className: string, targetLang: "modelica" | "sysml2", docText: string) => any)
+    | ((
+        unifiedIndex: unknown,
+        className: string,
+        targetLang: "modelica" | "sysml2",
+        docText: string,
+      ) => SysML2CrossLanguageDropResult)
     | undefined;
 }
 
@@ -101,7 +118,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
     const parameters: ComponentPropertyData["parameters"] = [];
     const attrFields: PropertyFieldConfig[] = [];
     const portFields: PropertyFieldConfig[] = [];
-    const values: Record<string, any> = {
+    const values: Record<string, unknown> = {
       name: data.name,
       description: data.description ?? "",
     };
@@ -211,7 +228,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
     let layout = this.deps.getLayout(params.uri) ?? this.deps.createEmptyLayout();
 
     const parser = this.deps.getSysML2Parser ? this.deps.getSysML2Parser() : null;
-    let tree: any = null;
+    let tree: unknown = null;
     if (parser && typeof parser.parse === "function") {
       try {
         tree = parser.parse(docText);
@@ -305,7 +322,14 @@ export class SysML2DiagramBackend implements DiagramBackend {
           }
           case "addComponent": {
             const unifiedIndex = this.deps.getUnifiedIndex?.() ?? null;
-            const resolved = this.deps.resolveCrossLanguageDrop?.(unifiedIndex, action.className, "sysml2", docText);
+            const resolved = this.deps.resolveCrossLanguageDrop?.(
+              unifiedIndex,
+              action.className,
+              "sysml2",
+              docText,
+            ) ?? {
+              className: action.className,
+            };
             const candidateBase = action.name || resolved.baseName || "part";
             let uniqueName = this.deps.generateUniqueName(docText, candidateBase);
             if (!action.name) {
@@ -359,13 +383,13 @@ export class SysML2DiagramBackend implements DiagramBackend {
     } catch (e) {
       console.error("[sysml2-diagram] diagramEdit error:", e);
     } finally {
-      tree?.delete?.();
+      (tree as { delete?: () => void } | null)?.delete?.();
     }
 
     let sidecarUri: string | undefined;
     let sidecarContent: string | undefined;
     if (layout) {
-      const serialize = this.deps.serializeLayout ?? ((l: any) => JSON.stringify(l, null, 2) + "\n");
+      const serialize = this.deps.serializeLayout ?? ((l: unknown) => JSON.stringify(l, null, 2) + "\n");
       try {
         sidecarContent = serialize(layout);
         sidecarUri = this.deps.getSidecarUri ? this.deps.getSidecarUri(params.uri) : `${params.uri}.layout`;
@@ -426,7 +450,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
         { id: "root", label: "Root", uri: params.uri },
         { id: params.nodeId || targetName, label: targetName, uri: params.uri },
       ],
-      data: childData ?? undefined,
+      data: childData ?? null,
     };
   }
 }

@@ -1,0 +1,11 @@
+{
+  "id": "cplex-lp-02-diet-optimization-bounded",
+  "lang": "cplex-lp",
+  "subFormats": ["cplex-lp", "lp"],
+  "difficulty": 2,
+  "title": "Diet Optimization with Bounded Nutrients",
+  "description": "Minimum-cost clinical diet formulation with lower and upper bounds on daily servings, calories, protein, and sodium intake.",
+  "category": "Linear Programming",
+  "tags": ["cplex-lp", "lp", "diet", "bounds"],
+  "activeFile": "diet_bounded.lp"
+}

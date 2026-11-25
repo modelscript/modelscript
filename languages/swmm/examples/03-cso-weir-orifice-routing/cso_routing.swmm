@@ -1,0 +1,54 @@
+[TITLE]
+Combined Sewer Overflow (CSO) Diversion Chamber with Weir and Orifice
+
+[OPTIONS]
+FLOW_UNITS          CMS
+FLOW_ROUTING        DYNWAVE
+INFILTRATION        HORTON
+START_DATE          05/01/2026
+START_TIME          00:00:00
+REPORT_START_DATE   05/01/2026
+REPORT_START_TIME   00:00:00
+END_DATE            05/01/2026
+END_TIME            12:00:00
+ALLOW_PONDING       YES
+
+[JUNCTIONS]
+;;Name           Elevation  MaxDepth   InitDepth  SurDepth   Apond
+J_TRUNK1         26.00      3.50       0.35       0.00       50.0
+J_DIVERT         24.20      3.80       0.40       0.50       60.0
+J_INTERC         22.80      3.20       0.30       0.00       40.0
+J_RELIEF         23.00      3.00       0.00       0.00       40.0
+
+[OUTFALLS]
+;;Name           Elevation  Type       Stage Data       Gated
+OF_WWTP          21.00      FREE                        NO
+OF_RIVER         21.50      FREE                        NO
+
+[CONDUITS]
+;;Name           From Node        To Node          Length     Roughness  InOffset   OutOffset  InitFlow   MaxFlow
+C_TRUNK          J_TRUNK1         J_DIVERT         240.00     0.013      0.00       0.00       0.50       0.00
+C_WWTP           J_INTERC         OF_WWTP          300.00     0.013      0.00       0.00       0.50       0.00
+C_CSO            J_RELIEF         OF_RIVER         160.00     0.014      0.00       0.00       0.00       0.00
+C_LOWFLOW        J_DIVERT         J_INTERC         45.00      0.012      0.00       0.00       0.50       0.00
+C_OVERFLOW       J_DIVERT         J_RELIEF         40.00      0.014      0.90       0.00       0.00       0.00
+
+[XSECTIONS]
+;;Link           Shape        Geom1      Geom2      Geom3      Geom4      Barrels
+C_TRUNK          RECT_CLOSED  2.00       1.80       0.00       0.00       1
+C_WWTP           CIRCULAR     1.20       0.00       0.00       0.00       1
+C_CSO            RECT_CLOSED  1.80       1.50       0.00       0.00       1
+C_LOWFLOW        CIRCULAR     0.75       0.00       0.00       0.00       1
+C_OVERFLOW       RECT_OPEN    1.50       2.00       0.00       0.00       1
+
+[SUBCATCHMENTS]
+;;Name           RainGage         Outlet           Area     PctImperv Width    PctSlope CurbLen  SnowPack
+SC_DOWNTOWN      RG1              J_TRUNK1         14.00    85.00     480.00   2.10     0.00
+
+[INFILTRATION]
+;;Subcatchment   MaxRate    MinRate    Decay      DryTime    MaxInfil
+SC_DOWNTOWN      70.00      7.00       3.00       7.00       0.00
+
+[INFLOWS]
+;;Node           Parameter        Time Series      Type     Mfactor  Sfactor  Base     Pat
+J_TRUNK1         FLOW             ""               FLOW     1.0      1.0      2.40     ""

@@ -1,0 +1,11 @@
+{
+  "id": "usgs-dem-04-coastal-peninsula-ridge",
+  "lang": "usgs-dem",
+  "subFormats": ["free-format"],
+  "difficulty": 4,
+  "title": "Coastal Peninsula Sea-Level to Ridge Elevation Model",
+  "description": "High-resolution 10 m spacing 7x7 USGS DEM transitioning from sea-level coastal bluffs up to a 245 m central headlands ridge.",
+  "category": "Coastal Topography",
+  "tags": ["usgs-dem", "coastal", "peninsula", "high-res"],
+  "activeFile": "marin_headlands.dem"
+}

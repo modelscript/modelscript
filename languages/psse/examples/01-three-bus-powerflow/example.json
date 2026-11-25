@@ -1,0 +1,12 @@
+{
+  "id": "psse-01-three-bus-powerflow",
+  "lang": "psse",
+  "subFormats": ["raw"],
+  "difficulty": 1,
+  "title": "3-Bus Generator-Load Power Flow",
+  "description": "Minimal 3-bus 138 kV PSS/E Rev 33 power flow network with one slack generator, one PV generator, and a meshed load substation.",
+  "category": "Power Flow",
+  "tags": ["psse", "raw", "power-flow", "3-bus"],
+  "activeFile": "case3.raw",
+  "isDefaultStarter": true
+}

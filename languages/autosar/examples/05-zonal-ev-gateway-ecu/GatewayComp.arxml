@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>EvGateway</SHORT-NAME>
+      <ELEMENTS>
+        <COMPOSITION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>ZonalEvGatewayComposition</SHORT-NAME>
+          <COMPONENTS>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>BmsMgr</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/EvSwcs/BmsManagerSwc</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>TractionInv</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/EvSwcs/TractionInverterSwc</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+          </COMPONENTS>
+          <CONNECTORS>
+            <ASSEMBLY-SW-CONNECTOR>
+              <SHORT-NAME>Conn_BmsToInverter</SHORT-NAME>
+              <PROVIDER-IREF>
+                <CONTEXT-COMPONENT-REF>BmsMgr</CONTEXT-COMPONENT-REF>
+                <TARGET-P-PORT-REF>PowerLimitsOut</TARGET-P-PORT-REF>
+              </PROVIDER-IREF>
+              <REQUESTER-IREF>
+                <CONTEXT-COMPONENT-REF>TractionInv</CONTEXT-COMPONENT-REF>
+                <TARGET-R-PORT-REF>PowerLimitsIn</TARGET-R-PORT-REF>
+              </REQUESTER-IREF>
+            </ASSEMBLY-SW-CONNECTOR>
+          </CONNECTORS>
+        </COMPOSITION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

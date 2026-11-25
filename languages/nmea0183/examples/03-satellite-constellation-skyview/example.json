@@ -1,0 +1,11 @@
+{
+  "id": "nmea0183-03-satellite-constellation-skyview",
+  "lang": "nmea0183",
+  "subFormats": ["nmea0183"],
+  "difficulty": 3,
+  "title": "GPS Satellite Constellation Skyview & DOP (GGA, GSA, GSV)",
+  "description": "Multi-sentence GPS skyplot stream reporting 8 tracked satellites with elevation, azimuth, C/N0 SNR values (GSV), and PDOP/HDOP/VDOP dilution of precision (GSA).",
+  "category": "GNSS Telemetry",
+  "tags": ["nmea0183", "gsv", "gsa", "skyview", "dop"],
+  "activeFile": "skyview_constellation.nmea"
+}

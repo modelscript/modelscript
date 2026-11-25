@@ -1,0 +1,11 @@
+{
+  "id": "dicom-rt-02-pelvis-3dcrt-box",
+  "lang": "dicom-rt",
+  "subFormats": ["rtplan", "dcm.json"],
+  "difficulty": 2,
+  "title": "Four-Field 3D-CRT Pelvis Box Plan with PTV and OARs",
+  "description": "Standard 4-field coplanar 10 MV pelvic box plan (AP/PA/RLat/LLat) prescribing 45 Gy in 25 fractions with QUANTEC bladder and rectum OAR constraints and companion RTSTRUCT JSON.",
+  "category": "Radiation Oncology & Dosimetry",
+  "tags": ["dicom-rt", "3d-crt", "pelvis", "quantec", "multi-file"],
+  "activeFile": "plan.rtplan"
+}

@@ -3,27 +3,31 @@
 import { AlertIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { Button, Dialog, Text } from "@primer/react";
 import React, { useEffect, useMemo, useState } from "react";
+import type { AccountSigningKeyInfo } from "../../types/api";
 import { canonicalizeJson } from "../../util/crypto/jcs";
+import { asRecord } from "../../util/error";
 import Box from "../Box";
 
 export interface PostSignatureModalProps {
   onClose: () => void;
   displayPost: {
-    id?: number | string;
+    id?: number | string | undefined;
     username: string;
-    display_name?: string | null;
-    ap_id?: string | null;
-    content?: string | null;
-    signature?: string | null;
-    client_signature?: string | null;
-    public_key?: string | JsonWebKey | null;
-    publicKey?: string | JsonWebKey | null;
-    author_public_key?: string | JsonWebKey | null;
-    authorPublicKey?: string | JsonWebKey | null;
-    signed_payload?: string | null;
-    signedPayload?: string | null;
-    metadata?: Record<string, any> | null;
-    [key: string]: any;
+    display_name?: string | null | undefined;
+    ap_id?: string | null | undefined;
+    content?: string | null | undefined;
+    signature?: string | null | undefined;
+    client_signature?: string | null | undefined;
+    public_key?: string | JsonWebKey | null | undefined;
+    publicKey?: string | JsonWebKey | null | undefined;
+    author_public_key?: string | JsonWebKey | null | undefined;
+    authorPublicKey?: string | JsonWebKey | null | undefined;
+    signed_payload?: string | null | undefined;
+    signedPayload?: string | null | undefined;
+    reply_to_id?: number | string | null | undefined;
+    quote_post_id?: number | string | null | undefined;
+    artifact_view_id?: number | string | null | undefined;
+    metadata?: Record<string, unknown> | string | null | undefined;
   };
   signatureScheme: string;
   keyIdentifier: string;
@@ -191,33 +195,39 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
   const [copiedDigest, setCopiedDigest] = useState(false);
   const effectiveDigest = (signatureDigest || displayPost.signature || displayPost.client_signature || "").trim();
 
-  const embeddedPublicKey = useMemo(() => {
-    return (
+  const metaObj = useMemo(() => asRecord(displayPost.metadata), [displayPost.metadata]);
+  const proofObj = useMemo(() => asRecord(metaObj?.proof), [metaObj]);
+
+  const embeddedPublicKey = useMemo<string | JsonWebKey | null>(() => {
+    const candidate =
       displayPost.publicKey ||
       displayPost.public_key ||
       displayPost.authorPublicKey ||
       displayPost.author_public_key ||
-      displayPost.metadata?.publicKey ||
-      displayPost.metadata?.public_key ||
-      displayPost.metadata?.authorPublicKey ||
-      displayPost.metadata?.author_public_key ||
-      displayPost.metadata?.proof?.publicKeyPem ||
-      displayPost.metadata?.proof?.publicKeyJwk ||
-      displayPost.metadata?.proof?.publicKeyMultibase ||
-      null
-    );
-  }, [displayPost]);
+      metaObj?.publicKey ||
+      metaObj?.public_key ||
+      metaObj?.authorPublicKey ||
+      metaObj?.author_public_key ||
+      proofObj?.publicKeyPem ||
+      proofObj?.publicKeyJwk ||
+      proofObj?.publicKeyMultibase ||
+      null;
+    if (typeof candidate === "string" || (candidate && typeof candidate === "object")) {
+      return candidate as string | JsonWebKey;
+    }
+    return null;
+  }, [displayPost, metaObj, proofObj]);
 
   const signedPayloadText = useMemo(() => {
     return String(
       displayPost.signedPayload ??
         displayPost.signed_payload ??
-        displayPost.metadata?.signedPayload ??
-        displayPost.metadata?.signed_payload ??
+        metaObj?.signedPayload ??
+        metaObj?.signed_payload ??
         displayPost.content ??
         "",
     );
-  }, [displayPost]);
+  }, [displayPost, metaObj]);
 
   const decodedSignatureBytes = useMemo(() => decodeEncodedBytes(effectiveDigest), [effectiveDigest]);
   const isValidEnvelope = Boolean(decodedSignatureBytes && decodedSignatureBytes.length >= 12);
@@ -231,8 +241,8 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
   }));
 
   const [resolvedKeyData, setResolvedKeyData] = useState<{
-    signingKey?: any;
-    masterKey?: any;
+    signingKey?: AccountSigningKeyInfo | null | undefined;
+    masterKey?: AccountSigningKeyInfo | null | undefined;
   } | null>(null);
 
   useEffect(() => {
@@ -264,29 +274,30 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
       }
 
       let activePublicKey = embeddedPublicKey;
-      let matchedSigningKey: any = null;
-      let matchedMasterKey: any = null;
+      let matchedSigningKey: AccountSigningKeyInfo | null = null;
+      let matchedMasterKey: AccountSigningKeyInfo | null = null;
 
       if (!activePublicKey && displayPost.username) {
         try {
           const res = await fetch(`/api/v1/users/${encodeURIComponent(displayPost.username)}/signing-keys`);
           if (res.ok) {
-            const data = await res.json();
-            const keys: any[] = data.keys || [];
-            matchedSigningKey = keys.find(
-              (k) =>
-                (keyIdentifier &&
-                  (k.fingerprint_sha256.includes(keyIdentifier) || keyIdentifier.includes(k.fingerprint_sha256))) ||
-                (displayPost.metadata?.proof?.verificationMethod &&
-                  String(displayPost.metadata.proof.verificationMethod).includes(k.public_key_multibase)),
-            );
+            const data = (await res.json()) as { keys?: AccountSigningKeyInfo[] };
+            const keys: AccountSigningKeyInfo[] = data.keys || [];
+            matchedSigningKey =
+              keys.find(
+                (k) =>
+                  (keyIdentifier &&
+                    (k.fingerprint_sha256.includes(keyIdentifier) || keyIdentifier.includes(k.fingerprint_sha256))) ||
+                  (proofObj?.verificationMethod &&
+                    String(proofObj.verificationMethod).includes(k.public_key_multibase)),
+              ) ?? null;
             if (!matchedSigningKey && keys.length === 1) {
-              matchedSigningKey = keys[0];
+              matchedSigningKey = keys[0] ?? null;
             }
             if (matchedSigningKey) {
               activePublicKey = matchedSigningKey.public_key_openssh || matchedSigningKey.public_key_multibase;
               if (matchedSigningKey.prev_key_id) {
-                matchedMasterKey = keys.find((k) => k.id === matchedSigningKey.prev_key_id);
+                matchedMasterKey = keys.find((k) => k.id === matchedSigningKey!.prev_key_id) ?? null;
               }
             }
           }
@@ -303,20 +314,19 @@ export const PostSignatureModal: React.FC<PostSignatureModalProps> = ({
           signatureScheme,
         );
 
-        if (!verified && displayPost.metadata?.proof) {
+        if (!verified && proofObj) {
           try {
-            const proof = displayPost.metadata.proof;
             const proofConfig = {
-              type: proof.type,
-              cryptosuite: proof.cryptosuite,
-              created: proof.created,
-              verificationMethod: proof.verificationMethod,
-              proofPurpose: proof.proofPurpose,
+              type: proofObj.type,
+              cryptosuite: proofObj.cryptosuite,
+              created: proofObj.created,
+              verificationMethod: proofObj.verificationMethod,
+              proofPurpose: proofObj.proofPurpose,
             };
-            const payload = (displayPost.metadata?.signedPayload as Record<string, unknown> | undefined) ||
-              (displayPost.metadata?.proof_payload as Record<string, unknown> | undefined) || {
+            const payload = asRecord(metaObj?.signedPayload) ||
+              asRecord(metaObj?.proof_payload) || {
                 content: signedPayloadText,
-                created_at: proof.created,
+                created_at: proofObj.created,
                 ...(displayPost.reply_to_id ? { reply_to_id: String(displayPost.reply_to_id) } : {}),
                 ...(displayPost.quote_post_id ? { quote_post_id: String(displayPost.quote_post_id) } : {}),
                 ...(displayPost.artifact_view_id ? { artifact_id: String(displayPost.artifact_view_id) } : {}),

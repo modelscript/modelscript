@@ -23,12 +23,39 @@
  *   Algorithms, Theory, and Parallel Implementation. SIAM.
  */
 
-import { WasmScratchPool } from "@modelscript/solve";
+import { WasmScratchPool, type WasmMemoryHost } from "@modelscript/solve";
 import { getDefaultWasmExports } from "../dae/wasm_loader.js";
+
+interface DistributedKrylovWasmExports extends WasmMemoryHost {
+  dk_dense_lu_factor?: (m: number, luPtr: number, permPtr: number) => void;
+  dk_dense_lu_solve?: (m: number, luPtr: number, permPtr: number, rhsPtr: number, xPtr: number) => void;
+  dk_csr_spmv_rows?: (
+    numRows: number,
+    rowsPtr: number,
+    rowPtrPtr: number,
+    colIdxPtr: number,
+    valuesPtr: number,
+    xPtr: number,
+    yPtr: number,
+  ) => void;
+  dk_csr_spmv?: (
+    n: number,
+    rowPtrPtr: number,
+    colIdxPtr: number,
+    valuesPtr: number,
+    inPtr: number,
+    wPtr: number,
+  ) => void;
+  dk_norm2?: (n: number, ptr: number) => number;
+  dk_mgs_arnoldi_step?: (n: number, k: number, m: number, vBasisPtr: number, wPtr: number, hPtr: number) => void;
+  dk_gmres_givens_step?: (k: number, m: number, hPtr: number, csPtr: number, snPtr: number, gPtr: number) => number;
+  dk_gmres_back_sub?: (k: number, m: number, hPtr: number, gPtr: number, yCoeffPtr: number) => void;
+  dk_gmres_update_solution?: (n: number, k: number, zBasisPtr: number, yCoeffPtr: number, xPtr: number) => void;
+}
 
 const _dkScratchPools = new WeakMap<object, WasmScratchPool>();
 
-function hasWasmAllocator(wasm: ReturnType<typeof getDefaultWasmExports>): boolean {
+function hasWasmAllocator(wasm: DistributedKrylovWasmExports | null): boolean {
   return Boolean(
     wasm?.memory &&
     (typeof wasm.atomicChunkAlloc === "function" ||
@@ -39,7 +66,7 @@ function hasWasmAllocator(wasm: ReturnType<typeof getDefaultWasmExports>): boole
   );
 }
 
-function getDkPool(wasm: NonNullable<ReturnType<typeof getDefaultWasmExports>>): WasmScratchPool {
+function getDkPool(wasm: DistributedKrylovWasmExports): WasmScratchPool {
   let pool = _dkScratchPools.get(wasm);
   if (!pool) {
     pool = new WasmScratchPool(wasm, 65536);
@@ -128,7 +155,7 @@ export function factorDenseLU(matrix: Float64Array, m: number): DenseLUFactoriza
   const perm = new Int32Array(m);
 
   if (m > 0) {
-    const wasm = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as DistributedKrylovWasmExports | null;
     if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_dense_lu_factor === "function") {
       const scope = getDkPool(wasm).scope();
       try {
@@ -195,7 +222,7 @@ export function solveDenseLU(fact: DenseLUFactorization, rhs: Float64Array): Flo
   const x = new Float64Array(m);
 
   if (m > 0) {
-    const wasm = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as DistributedKrylovWasmExports | null;
     if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_dense_lu_solve === "function") {
       const scope = getDkPool(wasm).scope();
       try {
@@ -354,7 +381,7 @@ export function applyRASPreconditioner(partitions: SubdomainPartition[], r: Floa
   const z = new Float64Array(r.length);
 
   if (partitions.length > 0) {
-    const wasm = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as DistributedKrylovWasmExports | null;
     if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_dense_lu_solve === "function") {
       let maxM = 0;
       for (const part of partitions) {
@@ -438,7 +465,7 @@ export function haloExchangeMatVec(
   let haloMessagesExchanged = 0;
 
   if (n > 0 && partitions.length > 0) {
-    const wasm = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as DistributedKrylovWasmExports | null;
     if (wasm && hasWasmAllocator(wasm) && typeof wasm.dk_csr_spmv_rows === "function") {
       let maxInterior = 0;
       for (const part of partitions) {
@@ -556,11 +583,11 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
   const x = x0 ? new Float64Array(x0) : new Float64Array(n);
 
   const m = Math.min(restart, n);
-  const wasm = getDefaultWasmExports();
+  const wasm = getDefaultWasmExports() as DistributedKrylovWasmExports | null;
   const canUseWasm =
     n > 0 &&
     m > 0 &&
-    Boolean(wasm) &&
+    wasm !== null &&
     hasWasmAllocator(wasm) &&
     typeof wasm.dk_norm2 === "function" &&
     typeof wasm.dk_mgs_arnoldi_step === "function" &&
@@ -570,7 +597,7 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
     typeof wasm.dk_dense_lu_solve === "function" &&
     (Boolean(customMatVec) || typeof wasm.dk_csr_spmv === "function");
 
-  if (canUseWasm) {
+  if (canUseWasm && wasm) {
     let haloPerMatVec = 0;
     let maxSubM = 0;
     for (const part of partitions) {
@@ -642,7 +669,7 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
           wView.set(res);
           return;
         }
-        wasm.dk_csr_spmv(n, rowPtrSlice!.ptr, colIdxSlice!.ptr, valuesSlice!.ptr, inPtr, wSlice.ptr);
+        wasm.dk_csr_spmv!(n, rowPtrSlice!.ptr, colIdxSlice!.ptr, valuesSlice!.ptr, inPtr, wSlice.ptr);
       };
 
       const applyRASIntoZ = (vOffset: number, zOffset: number): void => {
@@ -656,7 +683,7 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
           for (let i = 0; i < subM; i++) {
             rhsScratchView[i] = vBasisView[vOffset + part.overlapIndices[i]!]!;
           }
-          wasm.dk_dense_lu_solve(
+          wasm.dk_dense_lu_solve!(
             subM,
             luScratchSlice.ptr,
             permScratchSlice.ptr,
@@ -670,14 +697,14 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
         }
       };
 
-      const bNorm: number = wasm.dk_norm2(n, bSlice.ptr);
+      const bNorm: number = wasm.dk_norm2!(n, bSlice.ptr);
       const tol = atol + rtol * bNorm;
 
       // Initial residual r = b - A x
       evalMatVecIntoW(xView, 0, xSlice.ptr);
       for (let i = 0; i < n; i++) rView[i] = bView[i]! - wView[i]!;
 
-      let resNorm: number = wasm.dk_norm2(n, rSlice.ptr);
+      let resNorm: number = wasm.dk_norm2!(n, rSlice.ptr);
       const residualHistory: number[] = [resNorm];
       let totalIters = 0;
 
@@ -713,8 +740,8 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
           evalMatVecIntoW(zBasisView, vecOffset, zBasisSlice.ptr + vecOffset * 8);
 
           // Modified Gram-Schmidt Arnoldi orthogonalization + Givens QR update
-          wasm.dk_mgs_arnoldi_step(n, k, m, vBasisSlice.ptr, wSlice.ptr, hSlice.ptr);
-          resNorm = wasm.dk_gmres_givens_step(k, m, hSlice.ptr, csSlice.ptr, snSlice.ptr, gSlice.ptr);
+          wasm.dk_mgs_arnoldi_step!(n, k, m, vBasisSlice.ptr, wSlice.ptr, hSlice.ptr);
+          resNorm = wasm.dk_gmres_givens_step!(k, m, hSlice.ptr, csSlice.ptr, snSlice.ptr, gSlice.ptr);
           residualHistory.push(resNorm);
 
           if (resNorm <= tol) {
@@ -724,14 +751,14 @@ export function distributedGMRES(options: DistributedGMRESOptions): DistributedG
         }
 
         // Back-substitution for upper triangular H(0..k-1, 0..k-1) y = g(0..k-1)
-        wasm.dk_gmres_back_sub(k, m, hSlice.ptr, gSlice.ptr, yCoeffSlice.ptr);
+        wasm.dk_gmres_back_sub!(k, m, hSlice.ptr, gSlice.ptr, yCoeffSlice.ptr);
         // Update global solution x += sum_{i=0}^{k-1} yCoeff[i] * Z[i]
-        wasm.dk_gmres_update_solution(n, k, zBasisSlice.ptr, yCoeffSlice.ptr, xSlice.ptr);
+        wasm.dk_gmres_update_solution!(n, k, zBasisSlice.ptr, yCoeffSlice.ptr, xSlice.ptr);
 
         // Recompute true residual r = b - A x
         evalMatVecIntoW(xView, 0, xSlice.ptr);
         for (let i = 0; i < n; i++) rView[i] = bView[i]! - wView[i]!;
-        resNorm = wasm.dk_norm2(n, rSlice.ptr);
+        resNorm = wasm.dk_norm2!(n, rSlice.ptr);
       }
 
       x.set(xView);

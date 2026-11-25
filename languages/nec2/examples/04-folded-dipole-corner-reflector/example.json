@@ -1,0 +1,11 @@
+{
+  "id": "nec2-04-folded-dipole-corner-reflector",
+  "lang": "nec2",
+  "subFormats": ["nec2", "reflector-array"],
+  "difficulty": 4,
+  "title": "Folded Dipole and Corner Reflector Array",
+  "description": "432 MHz UHF folded dipole driven element backed by a 90-degree wire-grid corner reflector for high front-to-back ratio and directional gain.",
+  "category": "Antennas & Electromagnetics",
+  "tags": ["nec2", "folded-dipole", "corner-reflector", "uhf"],
+  "activeFile": "corner_reflector.nec"
+}

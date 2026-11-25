@@ -130,23 +130,23 @@ export default function SignupPage() {
 
     let widgetId: string | undefined;
     const renderWidget = () => {
-      const turnstile = (window as any).turnstile;
+      const turnstile = window.turnstile;
       if (turnstile && turnstileContainerRef.current && !widgetId) {
         widgetId = turnstile.render(turnstileContainerRef.current, {
           sitekey: turnstileSiteKey,
           callback: (token: string) => {
-            (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__ = token;
+            window.__MODEL_SCRIPT_CAPTCHA_TOKEN__ = token;
             setCaptchaToken(token);
           },
           "expired-callback": () => {
-            (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__ = "";
+            window.__MODEL_SCRIPT_CAPTCHA_TOKEN__ = "";
             setCaptchaToken("");
           },
         });
       }
     };
 
-    if ((window as any).turnstile) {
+    if (window.turnstile) {
       renderWidget();
     } else {
       const existingScript = document.querySelector<HTMLScriptElement>(
@@ -165,7 +165,7 @@ export default function SignupPage() {
     }
 
     return () => {
-      const turnstile = (window as any).turnstile;
+      const turnstile = window.turnstile;
       if (turnstile && widgetId) {
         try {
           turnstile.remove(widgetId);
@@ -198,7 +198,7 @@ export default function SignupPage() {
     setLoading(true);
     try {
       const effectiveCaptchaToken =
-        captchaToken || (typeof window !== "undefined" && (window as any).__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "";
+        captchaToken || (typeof window !== "undefined" && window.__MODEL_SCRIPT_CAPTCHA_TOKEN__) || "";
 
       if (turnstileSiteKey && !effectiveCaptchaToken) {
         setError("Please complete the security verification challenge before registering.");

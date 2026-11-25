@@ -1,0 +1,26 @@
+TITLE 1D Advective-Dispersive Reactive Ion-Exchange Column
+SOLUTION 0 Influent CaCl2 Brine
+    temp      25.0
+    pH        7.0
+    pe        4.0
+    units     mmol/kgw
+    Ca        1.2
+    Cl        2.4
+
+SOLUTION 1 Background Na-K Aquifer Water
+    temp      25.0
+    pH        7.2
+    pe        4.0
+    units     mmol/kgw
+    Na        1.0
+    K         0.2
+    Cl        1.2
+
+MIX 1
+    0 0.5
+    1 0.5
+
+EQUILIBRIUM_PHASES 1
+    Calcite   0.0 5.0
+
+END

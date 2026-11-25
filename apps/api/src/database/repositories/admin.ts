@@ -108,7 +108,9 @@ export class AdminRepository extends BaseRepository {
         if (Array.isArray(arr)) {
           parsedRuleIds = arr.map((n) => Number(n)).filter((n) => Number.isFinite(n));
         }
-      } catch {}
+      } catch {
+        // Malformed rule_ids JSON falls back to empty array
+      }
     }
 
     const postContent = raw.post_content ?? snapshot?.postContent ?? null;

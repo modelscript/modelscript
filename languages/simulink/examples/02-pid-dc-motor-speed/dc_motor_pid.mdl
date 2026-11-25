@@ -1,0 +1,143 @@
+Model {
+  Name "DcMotorSpeedLoop"
+  System {
+    Name "DcMotorSpeedLoop"
+    Block {
+      BlockType Constant
+      Name "SpeedSetpoint"
+      SID "1"
+      Value 100.0
+    }
+    Block {
+      BlockType Sum
+      Name "SpeedError"
+      SID "2"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Gain
+      Name "KpGain"
+      SID "3"
+      Gain 0.85
+    }
+    Block {
+      BlockType Gain
+      Name "KiGain"
+      SID "4"
+      Gain 4.2
+    }
+    Block {
+      BlockType Integrator
+      Name "KiIntegrator"
+      SID "5"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Sum
+      Name "ControlTorqueSum"
+      SID "6"
+      Inputs "++"
+    }
+    Block {
+      BlockType Sum
+      Name "NetTorqueSum"
+      SID "7"
+      Inputs "+-"
+    }
+    Block {
+      BlockType Gain
+      Name "InvInertia"
+      SID "8"
+      Gain 25.0
+    }
+    Block {
+      BlockType Integrator
+      Name "RotorSpeed"
+      SID "9"
+      InitialCondition 0.0
+    }
+    Block {
+      BlockType Gain
+      Name "ViscousDamping"
+      SID "10"
+      Gain 0.05
+    }
+    Block {
+      BlockType Scope
+      Name "SpeedScope"
+      SID "11"
+    }
+    Line {
+      SrcBlock "SpeedSetpoint"
+      SrcPort 1
+      DstBlock "SpeedError"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "SpeedError"
+      SrcPort 1
+      DstBlock "KpGain"
+      DstPort 1
+      Branch {
+        DstBlock "KiGain"
+        DstPort 1
+      }
+    }
+    Line {
+      SrcBlock "KiGain"
+      SrcPort 1
+      DstBlock "KiIntegrator"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "KpGain"
+      SrcPort 1
+      DstBlock "ControlTorqueSum"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "KiIntegrator"
+      SrcPort 1
+      DstBlock "ControlTorqueSum"
+      DstPort 2
+    }
+    Line {
+      SrcBlock "ControlTorqueSum"
+      SrcPort 1
+      DstBlock "NetTorqueSum"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "NetTorqueSum"
+      SrcPort 1
+      DstBlock "InvInertia"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "InvInertia"
+      SrcPort 1
+      DstBlock "RotorSpeed"
+      DstPort 1
+    }
+    Line {
+      SrcBlock "RotorSpeed"
+      SrcPort 1
+      DstBlock "SpeedScope"
+      DstPort 1
+      Branch {
+        DstBlock "SpeedError"
+        DstPort 2
+      }
+      Branch {
+        DstBlock "ViscousDamping"
+        DstPort 1
+      }
+    }
+    Line {
+      SrcBlock "ViscousDamping"
+      SrcPort 1
+      DstBlock "NetTorqueSum"
+      DstPort 2
+    }
+  }
+}

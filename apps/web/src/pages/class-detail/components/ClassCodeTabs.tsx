@@ -282,7 +282,7 @@ export const ClassEquationsTab: React.FC<ClassEquationsTabProps> = ({ equations,
     setTimeout(() => setCopiedEquations(false), 2000);
   };
 
-  const playgroundSnippet = useMemo(() => {
+  const ansatzSnippet = useMemo(() => {
     if (cls?.sourceCode && cls.sourceCode.trim().length > 0) {
       return cls.sourceCode;
     }
@@ -372,7 +372,7 @@ export const ClassEquationsTab: React.FC<ClassEquationsTabProps> = ({ equations,
             <Box display="flex" alignItems="center" gap="6px">
               <Button
                 as={Link}
-                to={`/editor?source=${encodeURIComponent(playgroundSnippet)}&title=${encodeURIComponent(className || "Equations")}`}
+                to={`/editor?source=${encodeURIComponent(ansatzSnippet)}&title=${encodeURIComponent(className || "Equations")}`}
                 size="small"
                 variant="invisible"
                 leadingVisual={PlayIcon}

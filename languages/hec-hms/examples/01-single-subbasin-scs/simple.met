@@ -1,0 +1,9 @@
+Meteorology: Design_Storm
+  Unit System: Metric
+  Precipitation Method: Frequency Storm
+End:
+
+Subbasin: Meadow Creek
+  Gage: StormGage_1
+  Depth: 115.0
+End:

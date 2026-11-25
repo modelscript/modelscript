@@ -52,31 +52,31 @@ end RLC;`;
     );
   });
 
-  it("ensures MorselVisualizerPane suppresses empty state modal when code is present or in embedded mode", () => {
+  it("ensures AnsatzVisualizerPane suppresses empty state modal when code is present or in embedded mode", () => {
     const paneSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx"),
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx"),
       "utf8",
     );
     assert.ok(
       paneSrc.includes("!hideCenterFloatingToolbar &&") &&
         paneSrc.includes("!hasUserCode &&") &&
         paneSrc.includes("hasUserCode = useMemo"),
-      "MorselVisualizerPane must suppress starter modal when user code is present or in embedded viewer mode",
+      "AnsatzVisualizerPane must suppress starter modal when user code is present or in embedded viewer mode",
     );
     assert.ok(
       !paneSrc.includes("Equation-based model · No schematic components"),
-      "MorselVisualizerPane must not render the Equation-based model floating pill that overlaps canvas controls",
+      "AnsatzVisualizerPane must not render the Equation-based model floating pill that overlaps canvas controls",
     );
   });
 
-  it("ensures duplicate floating corner Diagram/Icon switcher is removed from MorselVisualizerPane", () => {
+  it("ensures duplicate floating corner Diagram/Icon switcher is removed from AnsatzVisualizerPane", () => {
     const paneSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/MorselVisualizerPane.tsx"),
+      path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx"),
       "utf8",
     );
     assert.ok(
       !paneSrc.includes("Compact corner Diagram/Icon switcher"),
-      "MorselVisualizerPane must not have duplicate corner Diagram/Icon switcher overlapping control bar",
+      "AnsatzVisualizerPane must not have duplicate corner Diagram/Icon switcher overlapping control bar",
     );
   });
 

@@ -1,0 +1,11 @@
+{
+  "id": "asn1-03-snmpv1-pdu-imports",
+  "lang": "asn1",
+  "subFormats": ["x680", "snmp"],
+  "difficulty": 3,
+  "title": "SNMPv1 Protocol Data Unit Importing RFC 1155 SMI",
+  "description": "Multi-module ASN.1 network management specification pairing RFC 1157 SNMPv1 Message/PDU definitions with a companion RFC1155-SMI module exporting ObjectName and ObjectSyntax.",
+  "category": "Network Management",
+  "tags": ["asn1", "snmp", "smi", "imports", "multi-file"],
+  "activeFile": "snmpv1.asn"
+}

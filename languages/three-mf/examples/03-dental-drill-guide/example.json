@@ -1,0 +1,11 @@
+{
+  "id": "three-mf-03-dental-drill-guide",
+  "lang": "three-mf",
+  "subFormats": ["3mf"],
+  "difficulty": 3,
+  "title": "Patient-Specific Dental Surgical Drill Guide (USP Class VI Resin)",
+  "description": "SLA-printed Dental SG biocompatible resin implantology drill guide incorporating dual cylindrical drill sleeves with verified trajectory axes and minimum 1.4 mm sleeve wall thickness.",
+  "category": "Medical Additive Manufacturing & 3MF",
+  "tags": ["three-mf", "dental-guide", "usp-class-vi", "drill-sleeve"],
+  "activeFile": "dental_guide.3mf"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "edif-04-dff-shift-register",
+  "lang": "edif",
+  "subFormats": ["edf"],
+  "difficulty": 4,
+  "title": "D-Flip-Flop 4-Bit Shift Register",
+  "description": "Sequential 4-bit serial-in parallel-out shift register EDIF 2.0.0 netlist connecting four positive-edge-triggered DFFR standard cells with shared clock and reset distribution.",
+  "category": "Sequential Netlists",
+  "tags": ["edif", "dff", "shift-register", "sequential"],
+  "activeFile": "shift_reg4.edf"
+}

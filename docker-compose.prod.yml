@@ -28,7 +28,7 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - MSX_EDITION=ee
-      - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-false}
+      - MSX_LICENSE_ENFORCE=${MSX_LICENSE_ENFORCE:-true}
       - MSX_LICENSE_KEY=${MSX_LICENSE_KEY:-}
       - TRUST_PROXY=true
       - PUBLIC_URL=${PUBLIC_URL:-https://ansatz.social}

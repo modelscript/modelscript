@@ -102,7 +102,7 @@ end PartialTwoPin;`;
     },
   );
 
-  await t.test("End-to-end POST /api/v1/social/artifact-views enriches morsel and modelica-diagram posts", async () => {
+  await t.test("End-to-end POST /api/v1/social/artifact-views enriches ansatz and modelica-diagram posts", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "modelica-artifact-e2e-"));
     const db = new LibraryDatabase(tmpDir);
     const app = createApp({ database: db });

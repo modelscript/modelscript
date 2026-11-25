@@ -1,0 +1,26 @@
+`include "disciplines.vams"
+`include "constants.vams"
+
+module rf_vco(vctrl, vout, gnd);
+  input vctrl;
+  output vout;
+  inout gnd;
+  electrical vctrl, vout, gnd;
+
+  parameter real Fcenter = 2.4e9 from (0:inf);
+  parameter real Kvco = 150.0e6 from (0:inf);
+  parameter real Vamp = 0.5 from (0:inf);
+  parameter real Vmin = 0.0;
+  parameter real Vmax = 1.8;
+
+  real freq, phase;
+
+  analog begin
+    freq = Fcenter + Kvco * V(vctrl, gnd);
+    if (freq < 1.0e6) begin
+      freq = 1.0e6;
+    end
+    phase = 2.0 * 3.141592653589793 * idtmod(freq, 0.0, 1.0, 0.0);
+    V(vout, gnd) <+ Vamp * sin(phase);
+  end
+endmodule

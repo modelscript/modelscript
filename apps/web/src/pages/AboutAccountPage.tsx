@@ -22,6 +22,7 @@ import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
 import VerifiedAccountBadge from "../components/VerifiedAccountBadge";
 import { getAvatarUrl } from "../util/avatar";
+import { getApiErrorData, getApiErrorMessage } from "../util/error";
 import { parseFederatedHandle } from "../util/federation";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
@@ -161,11 +162,11 @@ export default function AboutAccountPage() {
           setData(res);
           setIsBlocked(Boolean(res.isBlocked));
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
-          const msg = err?.response?.data?.error || err?.message || "Failed to load account information";
+          const msg = getApiErrorMessage(err, "Failed to load account information");
           setError(msg);
-          if (err?.response?.data?.isBlockedBy) {
+          if (getApiErrorData(err)?.isBlockedBy) {
             setData((prev) => ({
               ...(prev || {
                 username,
@@ -277,9 +278,11 @@ export default function AboutAccountPage() {
                 @{data.username}
               </Text>
             </Box>
-            <Button as={Link as any} to={`/@${data.username}`} style={{ borderRadius: "9999px", fontWeight: 600 }}>
-              View Profile
-            </Button>
+            <Link to={`/@${data.username}`} style={{ textDecoration: "none" }}>
+              <Button as="span" style={{ borderRadius: "9999px", fontWeight: 600 }}>
+                View Profile
+              </Button>
+            </Link>
           </Box>
 
           {isBlocked && (

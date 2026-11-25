@@ -1,0 +1,11 @@
+{
+  "id": "fits-04-mef-science-variance-mask",
+  "lang": "fits",
+  "subFormats": ["fits"],
+  "difficulty": 4,
+  "title": "Multi-Extension FITS (MEF) Science, Variance, and Mask HDUs",
+  "description": "Four-HDU Multi-Extension FITS (MEF) pipeline data product containing a metadata-only Primary HDU (EXTEND=T) followed by SCI flux, VAR inverse-variance, and DQ bitmask IMAGE extensions with matched TAN WCS.",
+  "category": "Astronomy & Scientific Imaging",
+  "tags": ["fits", "mef", "multi-extension", "pipeline"],
+  "activeFile": "mef_science.fits"
+}

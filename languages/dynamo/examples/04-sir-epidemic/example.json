@@ -1,0 +1,11 @@
+{
+  "id": "dynamo-04-sir-epidemic",
+  "lang": "dynamo",
+  "subFormats": ["dyn"],
+  "difficulty": 4,
+  "title": "SIR Epidemic with Behavioral Feedback Delay",
+  "description": "Compartmental Susceptible-Infectious-Recovered (SIR) epidemic model with third-order information delay (DELAY3) modulating contact rate as perceived prevalence rises.",
+  "category": "Epidemiology",
+  "tags": ["dynamo", "sir", "epidemic", "delay3", "feedback"],
+  "activeFile": "sir_epidemic.dyn"
+}

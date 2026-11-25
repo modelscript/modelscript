@@ -1,0 +1,11 @@
+{
+  "id": "cantera-03-ch4-air-laminar-flame",
+  "lang": "cantera",
+  "subFormats": ["cantera-yaml"],
+  "difficulty": 3,
+  "title": "CH4/Air Skeletal Premixed Laminar Flame Mechanism",
+  "description": "Two-step methane oxidation pathway via CO intermediate with OH radical chain propagation and water-gas shift kinetics for premixed laminar flame speed studies.",
+  "category": "Combustion & Thermochemistry",
+  "tags": ["cantera", "methane", "laminar-flame", "kinetics"],
+  "activeFile": "ch4_air_flame.cantera.yaml"
+}

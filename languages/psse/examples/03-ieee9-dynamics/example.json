@@ -1,0 +1,11 @@
+{
+  "id": "psse-03-ieee9-dynamics",
+  "lang": "psse",
+  "subFormats": ["raw", "dyr"],
+  "difficulty": 3,
+  "title": "IEEE 9-Bus Power Flow + GENROU Dynamics",
+  "description": "Multi-file WSCC 9-bus power flow paired with GENROU synchronous generator, SEXS exciter, and TGOV1 governor dynamic models.",
+  "category": "Transient Stability",
+  "tags": ["psse", "dyr", "genrou", "dynamics", "multi-file"],
+  "activeFile": "ieee9.raw"
+}

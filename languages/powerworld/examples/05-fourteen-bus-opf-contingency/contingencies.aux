@@ -1,0 +1,15 @@
+// Companion N-1 Contingency Definition Deck for IEEE 14-Bus Case
+DATA (Contingency, [CTGName, CTGSkip])
+{
+  "CTG_LN_1_2" NO
+  "CTG_LN_1_5" NO
+  "CTG_LN_2_3" NO
+  "CTG_XF_4_7" NO
+  "CTG_XF_5_6" NO
+}
+
+SCRIPT
+{
+  EnterMode(RUN);
+  CTGSolveAll();
+}

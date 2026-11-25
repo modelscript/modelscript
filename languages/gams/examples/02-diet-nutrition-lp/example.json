@@ -1,0 +1,11 @@
+{
+  "id": "gams-02-diet-nutrition-lp",
+  "lang": "gams",
+  "subFormats": ["gams", "lp"],
+  "difficulty": 2,
+  "title": "Diet and Nutrition Cost-Minimization LP",
+  "description": "Minimum-cost daily ration formulation selecting food servings to satisfy minimum calorie, protein, and calcium requirements with upper sodium limits.",
+  "category": "Mathematical Optimization",
+  "tags": ["gams", "lp", "diet-problem", "nutrition"],
+  "activeFile": "diet.gms"
+}

@@ -1,0 +1,12 @@
+{
+  "id": "automationml-01-conveyor-station-caex",
+  "lang": "automationml",
+  "subFormats": ["aml", "caex"],
+  "difficulty": 1,
+  "title": "Single Conveyor Station CAEX Hierarchy",
+  "description": "IEC 62714 AutomationML (CAEX 2.15) plant topology modeling an automated conveyor belt station and PLC drive controller with 6-DOF spatial frame, signal interfaces, and typed internal links.",
+  "category": "Factory Automation",
+  "tags": ["automationml", "caex", "conveyor", "plc", "iec62714"],
+  "activeFile": "conveyor_station.aml",
+  "isDefaultStarter": true
+}

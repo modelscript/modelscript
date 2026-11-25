@@ -112,9 +112,12 @@ export const Irig106Panel: React.FC<LanguagePanelProps> = ({
                 Export CSV
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "irig106", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton
+                variant="primary"
+                onClick={() => host.openInAnsatzEditor?.(code, dialect || "irig106", title)}
+              >
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

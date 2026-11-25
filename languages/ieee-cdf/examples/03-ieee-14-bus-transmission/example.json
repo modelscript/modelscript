@@ -1,0 +1,11 @@
+{
+  "id": "ieee-cdf-03-ieee-14-bus-transmission",
+  "lang": "ieee-cdf",
+  "subFormats": ["cdf"],
+  "difficulty": 3,
+  "title": "IEEE 14-Bus Standard Transmission Benchmark",
+  "description": "Canonical IEEE 14-bus American Electric Power (AEP) transmission test system with 20 branches, three off-nominal tap-changing transformers, synchronous condensers, and shunt capacitor compensation.",
+  "category": "Power Flow & Grid Heritage",
+  "tags": ["ieee-cdf", "ieee-14", "transformers", "benchmark"],
+  "activeFile": "ieee14.cdf"
+}

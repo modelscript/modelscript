@@ -20,7 +20,7 @@ export interface FeedEmptyStateProps {
   activeFilter: string;
   activeTag: string | null;
   onClearFilters: () => void;
-  openCompose?: ((opts?: any) => void) | undefined;
+  openCompose?: ((opts?: { content?: string; defaultText?: string; [key: string]: unknown }) => void) | undefined;
   followedHandles?: Record<string, boolean> | undefined;
   onToggleFollow?: ((handle: string) => void) | undefined;
 }

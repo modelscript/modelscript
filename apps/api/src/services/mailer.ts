@@ -883,7 +883,9 @@ export class MailerService {
         settled = true;
         try {
           activeSocket.write("QUIT\r\n");
-        } catch {}
+        } catch {
+          // Socket may already be closed or half-closed
+        }
         activeSocket.removeAllListeners();
         activeSocket.destroy();
         resolve(ok);

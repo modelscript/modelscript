@@ -1,0 +1,11 @@
+{
+  "id": "stl-05-stepped-flanged-housing",
+  "lang": "stl",
+  "subFormats": ["ascii-stl"],
+  "difficulty": 5,
+  "title": "Watertight Stepped Flanged Motor Shaft Housing",
+  "description": "Multi-diameter 12-segment revolved mechanical housing (base flange r=20 mm, mid boss r=12 mm, upper collar r=8 mm) with 144 watertight manifold facets.",
+  "category": "Precision Machining",
+  "tags": ["stl", "flange", "housing", "revolved", "watertight"],
+  "activeFile": "stepped_housing.stl"
+}

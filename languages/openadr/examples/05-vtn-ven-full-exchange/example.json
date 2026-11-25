@@ -1,0 +1,11 @@
+{
+  "id": "openadr-05-vtn-ven-full-exchange",
+  "lang": "openadr",
+  "subFormats": ["oadr", "oadr.xml"],
+  "difficulty": 5,
+  "title": "VTN-to-VEN Multi-Site Demand Response Exchange",
+  "description": "Multi-file OpenADR workspace pairing a declarative utility VTN program schedule with companion OpenADR 2.0b XML dispatch payloads for commercial and EV depot VENs.",
+  "category": "Utility VTN/VEN Operations",
+  "tags": ["openadr", "vtn", "ven", "xml", "multi-file"],
+  "activeFile": "vtn_program.oadr"
+}

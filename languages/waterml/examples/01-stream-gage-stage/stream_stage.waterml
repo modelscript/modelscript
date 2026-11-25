@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0"
+                 xmlns:gml="http://www.opengis.net/gml/3.2"
+                 xmlns:om="http://www.opengis.net/om/2.0"
+                 xmlns:xlink="http://www.w3.org/1999/xlink"
+                 gml:id="COLLECTION_STAGE_01646500">
+  <gml:description>Hourly River Stage Hydrograph at Potomac River Little Falls</gml:description>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_STAGE_01">
+      <om:observedProperty xlink:title="Gage Height"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_01646500">
+          <gml:identifier>01646500</gml:identifier>
+          <gml:name>POTOMAC RIVER NEAR WASH DC LITTLE FALLS</gml:name>
+          <wml2:shape>
+            <gml:Point gml:id="P_01646500">
+              <gml:pos>38.94977 -77.12763 11.5</gml:pos>
+            </gml:Point>
+          </wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_STAGE_POTOMAC">
+          <wml2:defaultPointMetadata>
+            <wml2:DefaultTVPMeasurementMetadata>
+              <wml2:uom code="m"/>
+              <wml2:interpolationType xlink:title="Instantaneous"/>
+            </wml2:DefaultTVPMeasurementMetadata>
+          </wml2:defaultPointMetadata>
+          <wml2:point>
+            <wml2:MeasurementTVP>
+              <wml2:time>2026-05-01T00:00:00Z</wml2:time>
+              <wml2:value>1.42</wml2:value>
+              <wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata>
+            </wml2:MeasurementTVP>
+          </wml2:point>
+          <wml2:point>
+            <wml2:MeasurementTVP>
+              <wml2:time>2026-05-01T01:00:00Z</wml2:time>
+              <wml2:value>1.58</wml2:value>
+              <wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata>
+            </wml2:MeasurementTVP>
+          </wml2:point>
+          <wml2:point>
+            <wml2:MeasurementTVP>
+              <wml2:time>2026-05-01T02:00:00Z</wml2:time>
+              <wml2:value>1.84</wml2:value>
+              <wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata>
+            </wml2:MeasurementTVP>
+          </wml2:point>
+          <wml2:point>
+            <wml2:MeasurementTVP>
+              <wml2:time>2026-05-01T03:00:00Z</wml2:time>
+              <wml2:value>2.10</wml2:value>
+              <wml2:metadata><wml2:TVPMeasurementMetadata><wml2:qualifier xlink:title="good"/></wml2:TVPMeasurementMetadata></wml2:metadata>
+            </wml2:MeasurementTVP>
+          </wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+</wml2:Collection>

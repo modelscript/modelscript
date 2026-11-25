@@ -1,0 +1,36 @@
+PROGRAM CSTR_LIMIT_CYCLE
+  ! Non-isothermal exothermic CSTR with Arrhenius kinetics and jacket cooling
+  INITIAL
+    CONSTANT q_flow = 100.0   ! Volumetric flow rate (L/min)
+    CONSTANT vol = 100.0      ! Reactor volume (L)
+    CONSTANT caf = 1.0        ! Feed concentration of species A (mol/L)
+    CONSTANT tf = 350.0       ! Feed temperature (K)
+    CONSTANT tc = 300.0       ! Cooling jacket temperature (K)
+    CONSTANT k0 = 7.2e10      ! Pre-exponential factor (1/min)
+    CONSTANT ear = 8750.0     ! Activation energy / R (K)
+    CONSTANT dh_rcp = 209.2   ! (-DeltaH) / (rho * Cp) (K*L/mol)
+    CONSTANT ua_vrcp = 2.092  ! U*A / (V * rho * Cp) (1/min)
+    CONSTANT ca0 = 0.5        ! Initial concentration (mol/L)
+    CONSTANT temp0 = 350.0    ! Initial reactor temperature (K)
+    CINTERVAL cint = 0.05
+    MAXTERVAL maxt = 0.005
+    ALGORITHM ialg = 5
+  END
+
+  DYNAMIC
+    DERIVATIVE
+      rate = k0 * EXP(-ear / temp) * ca
+      dca = (q_flow / vol) * (caf - ca) - rate
+      dtemp = (q_flow / vol) * (tf - temp) + dh_rcp * rate - ua_vrcp * (temp - tc)
+      ca = INTEG(dca, ca0)
+      temp = INTEG(dtemp, temp0)
+      conversion = (caf - ca) / caf
+    END
+
+    TERMT(t .GE. 15.0, 'CSTR transient complete')
+  END
+
+  TERMINAL
+    final_conversion = (caf - ca) / caf
+  END
+END

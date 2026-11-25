@@ -1,0 +1,11 @@
+{
+  "id": "matpower-05-multiperiod-sc-opf",
+  "lang": "matpower",
+  "subFormats": ["m", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Period Security-Constrained OPF Study",
+  "description": "Multi-file MATPOWER workspace pairing a 10-bus 345 kV regional network with a 24-hour system load and renewable wind availability CSV profile.",
+  "category": "Security-Constrained OPF",
+  "tags": ["matpower", "sc-opf", "multi-period", "load-profile", "multi-file"],
+  "activeFile": "case10_scopf.m"
+}

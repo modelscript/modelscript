@@ -62,7 +62,7 @@ export const ExploreTopicView: React.FC<ExploreTopicViewProps> = ({
       .then((res) => {
         if (!active || !Array.isArray(res?.topics)) return;
         const items: RelatedTagItem[] = res.topics
-          .map((t: any) => ({
+          .map((t) => ({
             tag: String(t.display_name || t.concept || "").replace(/^#/, ""),
             coOccurrenceCount: Number(t.co_occurrence_count ?? t.coOccurrenceCount ?? 0),
           }))

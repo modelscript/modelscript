@@ -1,0 +1,708 @@
+[
+  {
+    "name": "APERTURE_CIRCLE",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.APERTURE_CIRCLE",
+    "exports": [
+      "diameter",
+      "holeDiameter"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Circle Aperture (C)",
+      "category": "Aperture Primitives",
+      "domain": "electronics",
+      "description": "Standard Gerber RS-274X circular aperture (%ADD<n>C,<diameter>[X<hole>]*%).",
+      "provenance": "Ucamco Gerber Layer Format Specification (RS-274X) §4.4.2",
+      "aliases": [
+        "C",
+        "CIRCLE",
+        "CIRCULAR"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.254,
+          "unit": "mm",
+          "description": "Outer circle diameter (default 10 mil)"
+        },
+        {
+          "key": "holeDiameter",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Optional concentric circular hole diameter"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "APERTURE_RECTANGLE",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.APERTURE_RECTANGLE",
+    "exports": [
+      "xSize",
+      "ySize",
+      "holeDiameter"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rectangle Aperture (R)",
+      "category": "Aperture Primitives",
+      "domain": "electronics",
+      "description": "Standard Gerber RS-274X rectangular aperture (%ADD<n>R,<xSize>X<ySize>[X<hole>]*%).",
+      "provenance": "Ucamco Gerber Layer Format Specification (RS-274X) §4.4.3",
+      "aliases": [
+        "R",
+        "RECT",
+        "RECTANGLE"
+      ],
+      "parameters": [
+        {
+          "key": "xSize",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "mm",
+          "description": "Rectangle X width"
+        },
+        {
+          "key": "ySize",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "mm",
+          "description": "Rectangle Y height"
+        },
+        {
+          "key": "holeDiameter",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Optional concentric circular hole diameter"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "APERTURE_OBROUND",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.APERTURE_OBROUND",
+    "exports": [
+      "xSize",
+      "ySize",
+      "holeDiameter"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Obround Aperture (O)",
+      "category": "Aperture Primitives",
+      "domain": "electronics",
+      "description": "Standard Gerber RS-274X obround (stadium/oval) aperture (%ADD<n>O,<xSize>X<ySize>[X<hole>]*%).",
+      "provenance": "Ucamco Gerber Layer Format Specification (RS-274X) §4.4.4",
+      "aliases": [
+        "O",
+        "OBROUND",
+        "OVAL"
+      ],
+      "parameters": [
+        {
+          "key": "xSize",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "mm",
+          "description": "Obround X outer length"
+        },
+        {
+          "key": "ySize",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "mm",
+          "description": "Obround Y outer width"
+        },
+        {
+          "key": "holeDiameter",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Optional concentric circular hole diameter"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "APERTURE_POLYGON",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.APERTURE_POLYGON",
+    "exports": [
+      "outerDiameter",
+      "vertices",
+      "rotationDeg",
+      "holeDiameter"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Regular Polygon Aperture (P)",
+      "category": "Aperture Primitives",
+      "domain": "electronics",
+      "description": "Standard Gerber RS-274X regular polygon aperture (%ADD<n>P,<outerDia>X<vertices>[X<rot>[X<hole>]]*%).",
+      "provenance": "Ucamco Gerber Layer Format Specification (RS-274X) §4.4.5",
+      "aliases": [
+        "P",
+        "POLYGON",
+        "POLY"
+      ],
+      "parameters": [
+        {
+          "key": "outerDiameter",
+          "type": "real",
+          "defaultValue": 1.6,
+          "unit": "mm",
+          "description": "Circumscribed outer diameter"
+        },
+        {
+          "key": "vertices",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "count",
+          "description": "Number of polygon vertices (3..12)"
+        },
+        {
+          "key": "rotationDeg",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "deg",
+          "description": "Counter-clockwise rotation angle"
+        },
+        {
+          "key": "holeDiameter",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Optional concentric circular hole diameter"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "MACRO_THERMAL",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.MACRO_THERMAL",
+    "exports": [
+      "outerDiameter",
+      "innerDiameter",
+      "gapThickness",
+      "rotationDeg"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Thermal Relief Macro (Code 7)",
+      "category": "Aperture Primitives",
+      "domain": "electronics",
+      "description": "Gerber RS-274X aperture macro primitive code 7: annular thermal relief pad with 4 spoke gaps.",
+      "provenance": "Ucamco Gerber Layer Format Specification (RS-274X) §4.5.1.8",
+      "aliases": [
+        "THERMAL",
+        "AM_THERMAL",
+        "PRIMITIVE_7"
+      ],
+      "parameters": [
+        {
+          "key": "outerDiameter",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "mm",
+          "description": "Outer thermal ring diameter"
+        },
+        {
+          "key": "innerDiameter",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "mm",
+          "description": "Inner thermal ring diameter"
+        },
+        {
+          "key": "gapThickness",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "mm",
+          "description": "Cross-hair isolation gap width"
+        },
+        {
+          "key": "rotationDeg",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "deg",
+          "description": "Cross-hair rotation angle"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MACRO_MOIRE",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.MACRO_MOIRE",
+    "exports": [
+      "outerDiameter",
+      "ringThickness",
+      "ringGap",
+      "maxRings"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Moire Target Macro (Code 6)",
+      "category": "Aperture Primitives",
+      "domain": "electronics",
+      "description": "Gerber RS-274X aperture macro primitive code 6: registration fiducial target with concentric rings.",
+      "provenance": "Ucamco Gerber Layer Format Specification (RS-274X) §4.5.1.7",
+      "aliases": [
+        "MOIRE",
+        "AM_MOIRE",
+        "PRIMITIVE_6"
+      ],
+      "parameters": [
+        {
+          "key": "outerDiameter",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "mm",
+          "description": "Outer ring diameter"
+        },
+        {
+          "key": "ringThickness",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm",
+          "description": "Concentric ring stroke width"
+        },
+        {
+          "key": "ringGap",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm",
+          "description": "Gap between concentric rings"
+        },
+        {
+          "key": "maxRings",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "count",
+          "description": "Maximum number of concentric rings"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "IPC2221_CLASS1_TRACE",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_CLASS1_TRACE",
+    "exports": [
+      "minTraceWidthMm",
+      "minSpacingMm",
+      "minAnnularRingMm",
+      "tempRiseC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IPC-2221 Class 1 Trace DFM",
+      "category": "IPC-2221 DFM Presets",
+      "domain": "electronics",
+      "description": "IPC-2221A Class 1 (General Electronic Products) minimum trace width, spacing, and annular ring.",
+      "provenance": "IPC-2221A Generic Standard on Printed Board Design §6.2 & Table 6-1",
+      "aliases": [
+        "IPC_CLASS1",
+        "CLASS1_TRACE"
+      ],
+      "parameters": [
+        {
+          "key": "minTraceWidthMm",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm",
+          "description": "Minimum conductor width (6 mil)"
+        },
+        {
+          "key": "minSpacingMm",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm",
+          "description": "Minimum conductor spacing (6 mil)"
+        },
+        {
+          "key": "minAnnularRingMm",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "mm",
+          "description": "Minimum supported hole annular ring"
+        },
+        {
+          "key": "tempRiseC",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "degC",
+          "description": "Allowable conductor temperature rise"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "IPC2221_CLASS2_TRACE",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_CLASS2_TRACE",
+    "exports": [
+      "minTraceWidthMm",
+      "minSpacingMm",
+      "minAnnularRingMm",
+      "tempRiseC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IPC-2221 Class 2 Trace DFM",
+      "category": "IPC-2221 DFM Presets",
+      "domain": "electronics",
+      "description": "IPC-2221A Class 2 (Dedicated Service Electronics) trace width, spacing, and annular ring preset.",
+      "provenance": "IPC-2221A Generic Standard on Printed Board Design §6.2 & §9.1",
+      "aliases": [
+        "IPC_CLASS2",
+        "CLASS2_TRACE",
+        "IPC2221_STANDARD"
+      ],
+      "parameters": [
+        {
+          "key": "minTraceWidthMm",
+          "type": "real",
+          "defaultValue": 0.127,
+          "unit": "mm",
+          "description": "Minimum conductor width (5 mil)"
+        },
+        {
+          "key": "minSpacingMm",
+          "type": "real",
+          "defaultValue": 0.127,
+          "unit": "mm",
+          "description": "Minimum conductor spacing (5 mil)"
+        },
+        {
+          "key": "minAnnularRingMm",
+          "type": "real",
+          "defaultValue": 0.127,
+          "unit": "mm",
+          "description": "Minimum annular ring (5 mil)"
+        },
+        {
+          "key": "tempRiseC",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "degC",
+          "description": "Allowable conductor temperature rise"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "IPC2221_CLASS3_TRACE",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_CLASS3_TRACE",
+    "exports": [
+      "minTraceWidthMm",
+      "minSpacingMm",
+      "minAnnularRingMm",
+      "tempRiseC"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "IPC-2221 Class 3 Trace DFM",
+      "category": "IPC-2221 DFM Presets",
+      "domain": "electronics",
+      "description": "IPC-2221A Class 3 (High-Reliability Aerospace/Medical) conservative trace and annular ring limits.",
+      "provenance": "IPC-2221A Generic Standard on Printed Board Design §9.1.2 (Class 3)",
+      "aliases": [
+        "IPC_CLASS3",
+        "CLASS3_TRACE",
+        "AEROSPACE_TRACE"
+      ],
+      "parameters": [
+        {
+          "key": "minTraceWidthMm",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm",
+          "description": "Minimum conductor width"
+        },
+        {
+          "key": "minSpacingMm",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm",
+          "description": "Minimum conductor spacing"
+        },
+        {
+          "key": "minAnnularRingMm",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm",
+          "description": "Minimum annular ring (Class 3)"
+        },
+        {
+          "key": "tempRiseC",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "degC",
+          "description": "Allowable conductor temperature rise"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "IPC2221_VIA_STANDARD",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_VIA_STANDARD",
+    "exports": [
+      "padDiameterMm",
+      "drillDiameterMm",
+      "minAnnularRingMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Standard Through-Hole Via",
+      "category": "IPC-2221 DFM Presets",
+      "domain": "electronics",
+      "description": "Standard 0.30 mm drill / 0.60 mm pad through-hole PCB via (0.15 mm annular ring).",
+      "provenance": "IPC-2221A / IPC-2222 Sectional Design Standard for Rigid Organic Printed Boards",
+      "aliases": [
+        "VIA_STD",
+        "STANDARD_VIA"
+      ],
+      "parameters": [
+        {
+          "key": "padDiameterMm",
+          "type": "real",
+          "defaultValue": 0.6,
+          "unit": "mm",
+          "description": "Outer via pad diameter"
+        },
+        {
+          "key": "drillDiameterMm",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "mm",
+          "description": "Finished hole drill diameter"
+        },
+        {
+          "key": "minAnnularRingMm",
+          "type": "real",
+          "defaultValue": 0.127,
+          "unit": "mm",
+          "description": "Minimum annular ring requirement"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "IPC2221_VIA_MICRO",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_VIA_MICRO",
+    "exports": [
+      "padDiameterMm",
+      "drillDiameterMm",
+      "minAnnularRingMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "HDI Laser Microvia",
+      "category": "IPC-2221 DFM Presets",
+      "domain": "electronics",
+      "description": "IPC-2226 HDI laser-drilled microvia preset (0.10 mm drill / 0.25 mm capture pad).",
+      "provenance": "IPC-2226 Sectional Design Standard for High Density Interconnect (HDI) Boards",
+      "aliases": [
+        "MICROVIA",
+        "HDI_VIA"
+      ],
+      "parameters": [
+        {
+          "key": "padDiameterMm",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "mm",
+          "description": "Capture pad diameter"
+        },
+        {
+          "key": "drillDiameterMm",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "mm",
+          "description": "Laser drill hole diameter"
+        },
+        {
+          "key": "minAnnularRingMm",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "mm",
+          "description": "Minimum HDI annular ring"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "IPC2221_COPPER_1OZ",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_COPPER_1OZ",
+    "exports": [
+      "thicknessUm",
+      "resistivityOhmM",
+      "tempCoeffPerK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1 oz/ft^2 Copper Foil",
+      "category": "PCB Stackup Materials",
+      "domain": "electronics",
+      "description": "Standard 1 oz/ft^2 electrodeposited copper foil (34.8 um nominal thickness, rho_20 = 1.7241e-8 Ohm*m).",
+      "provenance": "IPC-4562A Metal Foil for Printed Board Applications & IEC 60028",
+      "aliases": [
+        "COPPER_1OZ",
+        "CU_1OZ"
+      ],
+      "parameters": [
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 34.8,
+          "unit": "um",
+          "description": "Nominal 1 oz copper foil thickness"
+        },
+        {
+          "key": "resistivityOhmM",
+          "type": "real",
+          "defaultValue": 1.7241e-8,
+          "unit": "Ohm.m",
+          "description": "Annealed copper resistivity at 20 C"
+        },
+        {
+          "key": "tempCoeffPerK",
+          "type": "real",
+          "defaultValue": 0.00393,
+          "unit": "1/K",
+          "description": "Copper resistance temperature coefficient"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "IPC2221_COPPER_2OZ",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_COPPER_2OZ",
+    "exports": [
+      "thicknessUm",
+      "resistivityOhmM",
+      "tempCoeffPerK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2 oz/ft^2 Heavy Copper Foil",
+      "category": "PCB Stackup Materials",
+      "domain": "electronics",
+      "description": "Heavy power-electronics 2 oz/ft^2 copper foil (69.6 um nominal thickness).",
+      "provenance": "IPC-4562A Metal Foil for Printed Board Applications",
+      "aliases": [
+        "COPPER_2OZ",
+        "CU_2OZ"
+      ],
+      "parameters": [
+        {
+          "key": "thicknessUm",
+          "type": "real",
+          "defaultValue": 69.6,
+          "unit": "um",
+          "description": "Nominal 2 oz copper foil thickness"
+        },
+        {
+          "key": "resistivityOhmM",
+          "type": "real",
+          "defaultValue": 1.7241e-8,
+          "unit": "Ohm.m",
+          "description": "Annealed copper resistivity at 20 C"
+        },
+        {
+          "key": "tempCoeffPerK",
+          "type": "real",
+          "defaultValue": 0.00393,
+          "unit": "1/K",
+          "description": "Copper resistance temperature coefficient"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "IPC2221_FR4_SUBSTRATE",
+    "kind": "Component",
+    "namePath": "Gerber.StdLib.IPC2221_FR4_SUBSTRATE",
+    "exports": [
+      "thicknessMm",
+      "relativePermittivity",
+      "lossTangent"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FR-4 Epoxy Glass Dielectric",
+      "category": "PCB Stackup Materials",
+      "domain": "electronics",
+      "description": "Standard 1.6 mm FR-4 woven glass-epoxy PCB substrate (eps_r = 4.4, tan_delta = 0.02).",
+      "provenance": "IPC-4101E Specification for Base Materials for Rigid and Multilayer Printed Boards",
+      "aliases": [
+        "FR4",
+        "SUBSTRATE_FR4"
+      ],
+      "parameters": [
+        {
+          "key": "thicknessMm",
+          "type": "real",
+          "defaultValue": 1.6,
+          "unit": "mm",
+          "description": "Nominal board dielectric thickness"
+        },
+        {
+          "key": "relativePermittivity",
+          "type": "real",
+          "defaultValue": 4.4,
+          "unit": "1",
+          "description": "Relative permittivity (Dk) at 1 MHz"
+        },
+        {
+          "key": "lossTangent",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "1",
+          "description": "Dissipation factor (Df)"
+        }
+      ],
+      "wasmKernel": "gerberModelEval",
+      "archetypeId": 22
+    }
+  }
+]

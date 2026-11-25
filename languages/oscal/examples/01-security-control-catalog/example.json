@@ -1,0 +1,12 @@
+{
+  "id": "oscal-01-security-control-catalog",
+  "lang": "oscal",
+  "subFormats": ["oscal.json"],
+  "difficulty": 1,
+  "title": "Industrial Control System Security Catalog",
+  "description": "Minimal NIST OSCAL 1.1 security control catalog defining access control, audit logging, and boundary protection controls for industrial automation.",
+  "category": "Cybersecurity Compliance",
+  "tags": ["oscal", "catalog", "nist", "security-controls", "ics"],
+  "activeFile": "catalog.oscal.json",
+  "isDefaultStarter": true
+}

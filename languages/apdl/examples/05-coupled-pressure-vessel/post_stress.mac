@@ -1,0 +1,6 @@
+! Companion Post-Processing Macro: Hoop & Von Mises Stress Summary
+/POST1
+SET, LAST
+PRNSOL, U, COMP
+PRNSOL, S, PRIN
+FINISH

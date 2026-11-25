@@ -16,7 +16,7 @@ import { renderQifMbdHeatmapSvg } from "@modelscript/diagram/qif-diagram-builder
 import { parseSimulinkTextToSystem, renderSimulinkSvg } from "@modelscript/diagram/simulink-diagram-builder";
 import { renderPolyglotDiagramToSvg } from "@modelscript/diagram/svg";
 import { parseDicomRt } from "@modelscript/dicom-rt/parser";
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import { parseIgtl } from "@modelscript/igtl/parser";
 import { parseOpenSim } from "@modelscript/opensim/parser";
 import { parseOscal } from "@modelscript/oscal";
@@ -37,11 +37,31 @@ import ReqifViewer from "./ReqifViewer";
 import StudyTemplateViewer from "./StudyTemplateViewer";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
-const MorselEditorLazy = React.lazy(() => import("@modelscript/editor/workbench/Morsel"));
+const AnsatzEditorLazy = React.lazy(() => import("@modelscript/editor/workbench/AnsatzEditor"));
 const CadStepViewer = React.lazy(() => import("./CadStepViewer"));
 
+export interface PolyglotArtifactViewConfig {
+  dialect?: string | undefined;
+  code?: string | undefined;
+  rawText?: string | undefined;
+  source?: string | undefined;
+  files?: Record<string, string> | undefined;
+  primaryFile?: string | undefined;
+  url?: string | undefined;
+  title?: string | undefined;
+  filename?: string | undefined;
+  path?: string | undefined;
+  svg?: string | undefined;
+  rawStandardSource?: string | undefined;
+  artifactId?: string | number | undefined;
+  packageName?: string | undefined;
+  packageVersion?: string | undefined;
+  standalone?: boolean | undefined;
+  [key: string]: unknown;
+}
+
 export interface PolyglotArtifactViewerProps {
-  viewConfig: any;
+  viewConfig?: PolyglotArtifactViewConfig | null | undefined;
   viewType?: string;
   artifactId?: string | number;
   isFullScreen?: boolean | undefined;
@@ -747,7 +767,7 @@ export function renderSourceToDiagramSvg(
         edges,
         coordinateSystem: null,
         diagramBackground: null,
-      } as any,
+      } as unknown as Parameters<typeof renderPolyglotDiagramToSvg>[0],
       { theme: isDark ? "dark" : "light" },
     );
     setBoundedMap(diagramSourceCache, cacheKey, { rawSvg, nodeCount: nodes.length, edgeCount: edges.length });
@@ -1528,7 +1548,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
 
   useEffect(() => {
     if (!loadingText && typeof window !== "undefined") {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [loadingText]);
 
@@ -1646,9 +1666,9 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
     }
     const ext = meta.ext || ".msx";
     const resolvedTitle = title.includes(".") ? title : `${title.replace(/\s+/g, "_")}${ext}`;
-    const hash = compressMorselPayload({
+    const hash = compressAnsatzPayload({
       v: 1,
-      lang: dialect as any,
+      lang: dialect,
       code: rawCode || `// ${title}\n`,
       title: resolvedTitle,
     });
@@ -1787,7 +1807,7 @@ export const PolyglotArtifactViewer: React.FC<PolyglotArtifactViewerProps> = ({
               </Box>
             }
           >
-            <MorselEditorLazy
+            <AnsatzEditorLazy
               dataUrl={null}
               initialCode={rawCode}
               initialDialect={dialect as never}

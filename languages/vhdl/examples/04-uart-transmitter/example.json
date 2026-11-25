@@ -1,0 +1,11 @@
+{
+  "id": "vhdl-04-uart-transmitter",
+  "lang": "vhdl",
+  "subFormats": ["vhd"],
+  "difficulty": 4,
+  "title": "UART Serial Transmitter with Package Constants",
+  "description": "Multi-file synthesizable 8N1 UART serial transmitter with baud-rate shift FSM, shared configuration package (uart_pkg.vhd), and structural verification testbench (tb_uart.vhd).",
+  "category": "Serial Communications",
+  "tags": ["vhdl", "uart", "package", "testbench", "multi-file"],
+  "activeFile": "uart_tx.vhd"
+}

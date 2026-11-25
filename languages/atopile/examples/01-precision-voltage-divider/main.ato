@@ -1,0 +1,17 @@
+from "generics/resistors.ato" import Resistor
+
+module VoltageDivider:
+    signal v_in
+    signal v_out
+    signal gnd
+
+    r_top = new Resistor
+    r_bot = new Resistor
+    r_top.resistance = 10kohm +/- 1%
+    r_bot.resistance = 10kohm +/- 1%
+
+    v_in ~> r_top ~> v_out
+    v_out ~> r_bot ~> gnd
+
+    assert r_top.resistance within 9.8kohm to 10.2kohm
+    assert r_bot.resistance within 9.8kohm to 10.2kohm

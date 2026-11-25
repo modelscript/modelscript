@@ -1,0 +1,11 @@
+{
+  "id": "gensys-03-bogie-curved-track",
+  "lang": "gensys",
+  "subFormats": ["tsimf"],
+  "difficulty": 3,
+  "title": "Passenger Bogie Curved Track Flange Contact",
+  "description": "Two-axle passenger bogie with bolster, primary chevron springs, secondary air springs, and anti-yaw dampers configured for tight-curve flange contact and Nadal Y/Q derailment evaluation.",
+  "category": "Rail Vehicle Dynamics",
+  "tags": ["bogie", "curving", "nadal-yq", "flange-contact"],
+  "activeFile": "bogie_curve.tsimf"
+}

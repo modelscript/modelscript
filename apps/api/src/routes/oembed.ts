@@ -95,7 +95,7 @@ export function renderStandaloneEmbedBundle(defaultHost: string = ""): string {
 
   class ModelScriptViewerElement extends HTMLElement {
     static get observedAttributes() {
-      return ["src", "morsel", "artifact-id", "embed-token", "code", "dialect", "view", "theme", "height", "host"];
+      return ["src", "ansatz", "artifact-id", "embed-token", "code", "dialect", "view", "theme", "height", "host"];
     }
     constructor() {
       super();
@@ -127,26 +127,26 @@ export function renderStandaloneEmbedBundle(defaultHost: string = ""): string {
         try {
           var parsedSrc = new URL(trimmedSrc, window.location.href);
           if (parsedSrc.protocol === "https:" || parsedSrc.protocol === "http:") return parsedSrc.toString();
-        } catch (e) {}
+        } catch (e) { /* Ignore invalid embed src URL and fall back to computed host */ }
       }
       var host = (this.getAttribute("host") || SCRIPT_ORIGIN).replace(/\\/$/, "");
       var params = new URLSearchParams();
-      var morsel = this.getAttribute("morsel");
+      var ansatz = this.getAttribute("ansatz");
       var artifactId = this.getAttribute("artifact-id");
       var embedToken = this.getAttribute("embed-token");
       var view = this.getAttribute("view");
       var theme = this.getAttribute("theme");
       var dialect = this.getAttribute("dialect");
       var code = this.getAttribute("code") || (this.textContent ? this.textContent.trim() : "");
-      if (morsel) params.set("morsel", morsel);
+      if (ansatz) params.set("ansatz", ansatz);
       if (artifactId) params.set("fromArtifact", artifactId);
       if (embedToken) params.set("embed_token", embedToken);
       if (view) params.set("view", view);
       if (theme) params.set("theme", theme);
       if (dialect) params.set("dialect", dialect);
-      if (code && !morsel && !artifactId) params.set("code", code);
+      if (code && !ansatz && !artifactId) params.set("code", code);
       var qs = params.toString();
-      return host + "/embed/playground" + (qs ? "?" + qs : "");
+      return host + "/embed/editor" + (qs ? "?" + qs : "");
     }
     _render() {
       var rawHeight = this.getAttribute("height") || "480px";
@@ -200,8 +200,8 @@ export function renderStandaloneEmbedBundle(defaultHost: string = ""): string {
       if (!customElements.get("modelscript-viewer")) {
         customElements.define("modelscript-viewer", ModelScriptViewerElement);
       }
-      if (!customElements.get("modelscript-morsel")) {
-        customElements.define("modelscript-morsel", class ModelScriptMorselElement extends ModelScriptViewerElement {});
+      if (!customElements.get("ansatz-editor")) {
+        customElements.define("ansatz-editor", class AnsatzEditorElement extends ModelScriptViewerElement {});
       }
     }
   }
@@ -214,13 +214,13 @@ export function renderStandaloneEmbedBundle(defaultHost: string = ""): string {
     nodes.forEach(function(node) {
       if (node.getAttribute("data-ms-hydrated") === "true") return;
       node.setAttribute("data-ms-hydrated", "true");
-      var el = document.createElement("modelscript-morsel");
-      ["morsel", "artifact-id", "embed-token", "view", "theme", "height", "dialect", "src", "host"].forEach(function(attr) {
+      var el = document.createElement("ansatz-editor");
+      ["ansatz", "artifact-id", "embed-token", "view", "theme", "height", "dialect", "src", "host"].forEach(function(attr) {
         var val = node.getAttribute("data-" + attr) || node.getAttribute(attr);
         if (val) el.setAttribute(attr, val);
       });
       var link = node.querySelector("a[href]");
-      if (link && !el.getAttribute("src") && !el.getAttribute("morsel")) {
+      if (link && !el.getAttribute("src") && !el.getAttribute("ansatz")) {
         el.setAttribute("src", link.getAttribute("href"));
       }
       node.replaceWith(el);
@@ -251,7 +251,7 @@ export function renderStandaloneEmbedBundle(defaultHost: string = ""): string {
 export function oembedRouter(database: LibraryDatabase): Router {
   const router = createRouter();
 
-  // ── Standalone Browser Bundle for <modelscript-morsel> / <modelscript-viewer> ──
+  // ── Standalone Browser Bundle for <ansatz-editor> / <modelscript-viewer> ──
   router.get("/embed.js", (req: Request, res: Response): void => {
     const origin = resolveRequestHost(req, "http://localhost:3000");
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
@@ -260,10 +260,10 @@ export function oembedRouter(database: LibraryDatabase): Router {
     res.send(renderStandaloneEmbedBundle(origin));
   });
 
-  // ── Short-Link Morsel Snippet Storage (Solves URL length limits for large models) ──
-  router.post("/morsels", optionalAuth, (req: Request, res: Response): void => {
+  // ── Short-Link Ansatz Snippet Storage (Solves URL length limits for large models) ──
+  router.post("/ansatz-snippets", optionalAuth, (req: Request, res: Response): void => {
     if (requiresCorporateEmbedAuth(database) && !req.user) {
-      res.status(401).json({ error: "Authentication required to create morsels on corporate air-gapped instances." });
+      res.status(401).json({ error: "Authentication required to create ansatzs on corporate air-gapped instances." });
       return;
     }
 
@@ -273,7 +273,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
       return;
     }
     if (code.length > 2 * 1024 * 1024) {
-      res.status(413).json({ error: "Morsel snippet exceeds maximum size of 2 MB." });
+      res.status(413).json({ error: "Ansatz snippet exceeds maximum size of 2 MB." });
       return;
     }
 
@@ -289,31 +289,31 @@ export function oembedRouter(database: LibraryDatabase): Router {
       view: effectiveView,
     });
     if (serializedPayload.length > 2.5 * 1024 * 1024) {
-      res.status(413).json({ error: "Morsel payload exceeds maximum size of 2.5 MB." });
+      res.status(413).json({ error: "Ansatz payload exceeds maximum size of 2.5 MB." });
       return;
     }
 
-    const id = database.saveMorselSnippet(serializedPayload, effectiveDialect, effectiveTitle, req.user?.id ?? null);
+    const id = database.saveAnsatzSnippet(serializedPayload, effectiveDialect, effectiveTitle, req.user?.id ?? null);
 
     res.status(201).json({
       id,
       dialect: effectiveDialect,
       title: effectiveTitle,
       view: effectiveView,
-      embedUrl: `/embed/playground?morsel=${id}`,
+      embedUrl: `/embed/editor?ansatz=${id}`,
     });
   });
 
-  router.get("/morsels/:id", optionalAuth, (req: Request, res: Response): void => {
+  router.get("/ansatz-snippets/:id", optionalAuth, (req: Request, res: Response): void => {
     const rawId = req.params["id"];
     const id = Array.isArray(rawId) ? rawId[0] : rawId;
     if (!id) {
-      res.status(400).json({ error: "Missing morsel ID" });
+      res.status(400).json({ error: "Missing ansatz ID" });
       return;
     }
-    const snippet = database.getMorselSnippet(id);
+    const snippet = database.getAnsatzSnippet(id);
     if (!snippet) {
-      res.status(404).json({ error: "Morsel snippet not found" });
+      res.status(404).json({ error: "Ansatz snippet not found" });
       return;
     }
     let parsedPayload: Record<string, unknown> = {};
@@ -356,7 +356,9 @@ export function oembedRouter(database: LibraryDatabase): Router {
         if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
           isPrivate = true;
         }
-      } catch {}
+      } catch {
+        // Default to non-private when view_config JSON is malformed
+      }
       const ownerId = artifact.creator_id ?? artifact.author_id;
       const isAdmin = req.user?.role === "admin" || req.user?.accountType === "admin";
       if (isPrivate && !isAdmin && (!req.user || (ownerId && ownerId !== req.user.id))) {
@@ -382,7 +384,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
       artifactId,
       embedToken: token,
       expiresAt: new Date(exp).toISOString(),
-      embedUrl: `/embed/playground?fromArtifact=${encodeURIComponent(artifactId)}&embed_token=${encodeURIComponent(token)}`,
+      embedUrl: `/embed/editor?fromArtifact=${encodeURIComponent(artifactId)}&embed_token=${encodeURIComponent(token)}`,
     });
   });
 
@@ -423,7 +425,9 @@ export function oembedRouter(database: LibraryDatabase): Router {
           res.status(400).json({ error: "URL origin is not supported by this oEmbed provider" });
           return;
         }
-      } catch {}
+      } catch {
+        // Ignore malformed PUBLIC_URL environment variable
+      }
     }
 
     const settings = database.getInstanceSettings();
@@ -436,17 +440,17 @@ export function oembedRouter(database: LibraryDatabase): Router {
     let thumbnailUrl = `${host}/api/v1/artifacts/default-thumb.webp`;
     let embedSrc = "";
 
-    // 1. Check if URL references a stored morsel snippet (?morsel=<id>)
-    const morselId = parsedUrl.searchParams.get("morsel");
-    if (morselId) {
-      const snippet = database.getMorselSnippet(morselId);
+    // 1. Check if URL references a stored ansatz snippet (?ansatz=<id>)
+    const ansatzId = parsedUrl.searchParams.get("ansatz");
+    if (ansatzId) {
+      const snippet = database.getAnsatzSnippet(ansatzId);
       if (snippet) {
         title = snippet.title || `${snippet.dialect.toUpperCase()} Engineering Simulation`;
       }
-      embedSrc = `${host}/embed/playground?morsel=${encodeURIComponent(morselId)}`;
+      embedSrc = `${host}/embed/editor?ansatz=${encodeURIComponent(ansatzId)}`;
     }
 
-    // 2. Check if URL contains compressed Morsel/Embed permalink hash (#m=...)
+    // 2. Check if URL contains compressed Ansatz/Embed permalink hash (#m=...)
     if (!embedSrc && parsedUrl.hash && parsedUrl.hash.includes("m=")) {
       const hashPart = parsedUrl.hash.startsWith("#") ? parsedUrl.hash.slice(1) : parsedUrl.hash;
       const mIdx = hashPart.indexOf("m=");
@@ -464,7 +468,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
           }
         }
       }
-      embedSrc = `${host}/embed/playground#m=${token}`;
+      embedSrc = `${host}/embed/editor#m=${token}`;
     }
 
     // 3. Check if URL is a social post permalink (/p/:id or /posts/:id)
@@ -522,7 +526,7 @@ export function oembedRouter(database: LibraryDatabase): Router {
           }
           if (!embedSrc && (postExt.artifact_id || post.artifact_view_id)) {
             const artId = postExt.artifact_id || post.artifact_view_id;
-            embedSrc = `${host}/embed/playground#m=artifact-${artId}`;
+            embedSrc = `${host}/embed/editor#m=artifact-${artId}`;
           }
         }
       } catch {
@@ -535,12 +539,12 @@ export function oembedRouter(database: LibraryDatabase): Router {
     const renderArtifactMatch = parsedUrl.pathname.match(/\/render-artifact\/([^/]+)/);
     if (!embedSrc && (fromArtifactParam || renderArtifactMatch?.[1])) {
       const artId = fromArtifactParam || renderArtifactMatch![1]!;
-      embedSrc = `${host}/embed/playground?fromArtifact=${encodeURIComponent(artId)}#m=artifact-${encodeURIComponent(artId)}`;
+      embedSrc = `${host}/embed/editor?fromArtifact=${encodeURIComponent(artId)}#m=artifact-${encodeURIComponent(artId)}`;
     }
 
     // Default fallback embed src if none derived
     if (!embedSrc) {
-      embedSrc = `${host}/embed/playground${parsedUrl.search || ""}${parsedUrl.hash || ""}`;
+      embedSrc = `${host}/embed/editor${parsedUrl.search || ""}${parsedUrl.hash || ""}`;
     }
 
     const width = Math.min(maxWidth, 1200);

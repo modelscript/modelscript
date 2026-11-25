@@ -1,0 +1,11 @@
+{
+  "id": "ccsds-02-sso-leo-state-vector",
+  "lang": "ccsds",
+  "subFormats": ["opm"],
+  "difficulty": 2,
+  "title": "Sun-Synchronous LEO State Vector and Maneuver (OPM)",
+  "description": "CCSDS Orbit Parameter Message (OPM) for a Sentinel-class Earth-observation spacecraft in a 693 km sun-synchronous orbit with GCRF state vector, osculating Keplerian elements, and spacecraft drag/SRP parameters.",
+  "category": "Earth Observation Orbits",
+  "tags": ["ccsds", "opm", "sun-synchronous", "state-vector"],
+  "activeFile": "sso_leo.opm"
+}

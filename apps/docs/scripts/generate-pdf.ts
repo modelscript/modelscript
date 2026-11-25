@@ -22,7 +22,7 @@ interface DocSection {
 
 const DOCUMENT_STRUCTURE: DocSection[] = [
   {
-    partTitle: "Part I: Getting Started, Operations & Ansatz Platform",
+    partTitle: "Part I: Getting Started, Operations & Ansatz Network",
     files: [
       { title: "Introduction", relativePath: "guide/introduction.md" },
       { title: "Installation & Requirements", relativePath: "guide/installation.md" },
@@ -31,7 +31,7 @@ const DOCUMENT_STRUCTURE: DocSection[] = [
       { title: "CI/CD & GitHub Actions", relativePath: "guide/ci-cd.md" },
       { title: "Embedding & React SDK", relativePath: "guide/embedding.md" },
       { title: "Platform Administration", relativePath: "guide/administration.md" },
-      { title: "Ansatz Platform Overview", relativePath: "ansatz/overview.md" },
+      { title: "Ansatz Network Overview", relativePath: "ansatz/overview.md" },
       { title: "Legacy Workflow Replacement", relativePath: "ansatz/workflow-replacement.md" },
       { title: "ActivityPub Federation", relativePath: "ansatz/federation.md" },
       { title: "Content-Addressable Package Registry", relativePath: "ansatz/package-registry.md" },

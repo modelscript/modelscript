@@ -1,0 +1,11 @@
+{
+  "id": "ccsds-03-gto-ephemeris",
+  "lang": "ccsds",
+  "subFormats": ["oem"],
+  "difficulty": 3,
+  "title": "Geostationary Transfer Orbit Ephemeris (OEM)",
+  "description": "CCSDS Orbit Ephemeris Message (OEM) recording time-ordered EME2000 inertial position and velocity state vectors during perigee passage of a Geostationary Transfer Orbit (GTO) telecom satellite.",
+  "category": "Orbital Ephemerides",
+  "tags": ["ccsds", "oem", "gto", "ephemeris"],
+  "activeFile": "gto_orbit.oem"
+}

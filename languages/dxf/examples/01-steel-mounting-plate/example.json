@@ -1,0 +1,12 @@
+{
+  "id": "dxf-01-steel-mounting-plate",
+  "lang": "dxf",
+  "subFormats": ["dxf-ascii", "ac1027"],
+  "difficulty": 1,
+  "title": "Dimensioned Steel Mounting Plate",
+  "description": "ASCII DXF mechanical drawing of a 120 mm x 80 mm steel mounting plate with four M8 corner bolt holes and a 30 mm central shaft bore.",
+  "category": "2D Mechanical CAD",
+  "tags": ["dxf", "mechanical", "mounting-plate", "2d-cad"],
+  "activeFile": "mounting_plate.dxf",
+  "isDefaultStarter": true
+}

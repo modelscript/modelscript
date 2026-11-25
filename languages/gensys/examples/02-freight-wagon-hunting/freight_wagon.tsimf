@@ -1,0 +1,14 @@
+# GENSYS Model: Two-Axle Freight Wagon Tangent Track Hunting
+# Wheelbase = 9.0 m, standard gauge 1.435 m
+set m_wagon = 14500.0
+set kx_leaf = 4500000.0
+set ky_leaf = 1800000.0
+set kz_leaf = 1650000.0
+
+body wagon_body m_wagon 28000.0 420000.0 410000.0 0.0 0.0 1.45
+wheelset ws_lead 1350.0 1.435 0.46 0.08 "S1002_freight.wheel"
+wheelset ws_trail 1350.0 1.435 0.46 0.08 "S1002_freight.wheel"
+
+# Parabolic leaf-spring primary suspension couplings
+spring susp_lead wagon_body ws_lead kx_leaf ky_leaf kz_leaf 18000 14000 22000
+spring susp_trail wagon_body ws_trail kx_leaf ky_leaf kz_leaf 18000 14000 22000

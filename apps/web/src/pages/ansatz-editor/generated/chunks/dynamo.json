@@ -1,0 +1,73 @@
+[
+  {
+    "id": "dynamo-01-population-growth",
+    "lang": "dynamo",
+    "subFormats": ["dyn"],
+    "difficulty": 1,
+    "title": "Exponential Population Growth and Carrying Capacity",
+    "description": "Classic MIT DYNAMO logistic population model with crowding-dependent birth rate lookup table (TABHL) and carrying capacity feedback.",
+    "category": "System Dynamics",
+    "tags": ["dynamo", "population", "logistic", "tabhl"],
+    "activeFile": "population_growth.dyn",
+    "fileNames": ["population_growth.dyn"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "NOTE LOGISTIC POPULATION GROWTH WITH CARRYING CAPACITY\n* MIT DYNAMO SYSTEM DYNAMICS MODEL\nL POP.K=POP.J+(DT)*(BIRTH.JK-DEATH.JK)\nN POP=1000\nR BIRTH.KL=POP.K*BR.K\nR DEATH.KL=POP.K*DR\nA BR.K=TABHL(BRTAB,CROWD.K,0,2,0.5)\nA CROWD.K=POP.K/CAP\nS NETGR.K=BIRTH.JK-DEATH.JK\nC DR=0.02, CAP=10000\nT BRTAB=0.06/0.05/0.035/0.02/0.01\nSPEC DT=0.25/LENGTH=80/PRTPER=5/PLTPER=2\nPRINT POP,BIRTH,DEATH,CROWD\nPLOT POP=P(0,12000)/BIRTH=B\nRUN BASE\n"
+  },
+  {
+    "id": "dynamo-02-supply-chain",
+    "lang": "dynamo",
+    "subFormats": ["dyn"],
+    "difficulty": 2,
+    "title": "Inventory-Workforce Supply Chain Oscillation",
+    "description": "Forrester industrial dynamics production-inventory-workforce loop exhibiting damped inventory cycles in response to a step increase in customer orders.",
+    "category": "Industrial Dynamics",
+    "tags": ["dynamo", "forrester", "supply-chain", "inventory"],
+    "activeFile": "supply_chain.dyn",
+    "fileNames": ["supply_chain.dyn"],
+    "fileCount": 1,
+    "code": "NOTE FORRESTER INVENTORY-WORKFORCE SUPPLY CHAIN OSCILLATION\nL INV.K=INV.J+(DT)*(PROD.JK-SHIP.JK)\nN INV=400\nL WORK.K=WORK.J+(DT)*(HIRE.JK)\nN WORK=20\nR PROD.KL=WORK.K*PRODW\nR SHIP.KL=DEMAND.K\nR HIRE.KL=(DWORK.K-WORK.K)/THIRE\nA DEMAND.K=BASEDEM+STEP(20,5)\nA DINV.K=DEMAND.K*ICOV\nA DPROD.K=DEMAND.K+(DINV.K-INV.K)/TINV\nA DWORK.K=DPROD.K/PRODW\nC PRODW=5, BASEDEM=100, ICOV=4, TINV=6, THIRE=8\nSPEC DT=0.25/LENGTH=60/PRTPER=4/PLTPER=2\nPRINT INV,WORK,PROD,SHIP\nPLOT INV=I(0,800)/WORK=W(0,40)\nRUN STEP_DEMAND\n"
+  },
+  {
+    "id": "dynamo-03-bass-diffusion",
+    "lang": "dynamo",
+    "subFormats": ["dyn"],
+    "difficulty": 3,
+    "title": "Bass New-Product Diffusion Market Adoption",
+    "description": "Two-stock Bass market diffusion model coupling advertising-driven innovation with word-of-mouth social imitation across a fixed addressable market.",
+    "category": "Market Dynamics",
+    "tags": ["dynamo", "bass-diffusion", "adoption", "marketing"],
+    "activeFile": "bass_diffusion.dyn",
+    "fileNames": ["bass_diffusion.dyn"],
+    "fileCount": 1,
+    "code": "NOTE BASS NEW-PRODUCT DIFFUSION MARKET ADOPTION MODEL\nL POT.K=POT.J+(DT)*(-ADOPT.JK)\nN POT=100000\nL ADOPTERS.K=ADOPTERS.J+(DT)*(ADOPT.JK)\nN ADOPTERS=0\nR ADOPT.KL=AD_ADOPT.K+WOM_ADOPT.K\nA AD_ADOPT.K=POT.K*P_ADV\nA WOM_ADOPT.K=CONTACT*FRAC_AD.K*POT.K*ADOPTERS.K/TMKT\nA FRAC_AD.K=Q_WOM\nA PENET.K=ADOPTERS.K/TMKT\nC TMKT=100000, P_ADV=0.015, Q_WOM=0.08, CONTACT=5\nSPEC DT=0.125/LENGTH=20/PRTPER=1/PLTPER=0.5\nPRINT POT,ADOPTERS,ADOPT,PENET\nPLOT ADOPTERS=A(0,100000)/ADOPT=R(0,15000)\nRUN LAUNCH\n"
+  },
+  {
+    "id": "dynamo-04-sir-epidemic",
+    "lang": "dynamo",
+    "subFormats": ["dyn"],
+    "difficulty": 4,
+    "title": "SIR Epidemic with Behavioral Feedback Delay",
+    "description": "Compartmental Susceptible-Infectious-Recovered (SIR) epidemic model with third-order information delay (DELAY3) modulating contact rate as perceived prevalence rises.",
+    "category": "Epidemiology",
+    "tags": ["dynamo", "sir", "epidemic", "delay3", "feedback"],
+    "activeFile": "sir_epidemic.dyn",
+    "fileNames": ["sir_epidemic.dyn"],
+    "fileCount": 1,
+    "code": "NOTE SIR EPIDEMIC MODEL WITH BEHAVIORAL PERCEPTION DELAY\nL SUSC.K=SUSC.J+(DT)*(-INFECT.JK)\nN SUSC=9990\nL INF.K=INF.J+(DT)*(INFECT.JK-RECOV.JK)\nN INF=10\nL REC.K=REC.J+(DT)*(RECOV.JK)\nN REC=0\nR INFECT.KL=CONT_EFF.K*BETA*SUSC.K*INF.K/NTOT\nR RECOV.KL=INF.K/DUR\nA PREV.K=INF.K/NTOT\nA PERC_PREV.K=DELAY3(PREV.K,TDEL)\nA CONT_EFF.K=TABHL(CTAB,PERC_PREV.K,0,0.2,0.05)\nA R_EFF.K=CONT_EFF.K*BETA*DUR*SUSC.K/NTOT\nC NTOT=10000, BETA=0.08, DUR=7, TDEL=5\nT CTAB=10/7.5/5.0/3.2/2.0\nSPEC DT=0.25/LENGTH=120/PRTPER=10/PLTPER=4\nPRINT SUSC,INF,REC,R_EFF\nPLOT SUSC=S(0,10000)/INF=I(0,4000)/REC=R(0,10000)\nRUN EPIDEMIC\n"
+  },
+  {
+    "id": "dynamo-05-world3-coupled",
+    "lang": "dynamo",
+    "subFormats": ["dyn"],
+    "difficulty": 5,
+    "title": "World3-Inspired Resource-Capital-Pollution System Dynamics",
+    "description": "Coupled four-sector Meadows World3-style global dynamics model linking industrial capital, nonrenewable resources, persistent pollution, and population mortality feedback.",
+    "category": "Global System Dynamics",
+    "tags": ["dynamo", "world3", "sustainability", "coupled", "nonlinear"],
+    "activeFile": "world3_coupled.dyn",
+    "fileNames": ["world3_coupled.dyn"],
+    "fileCount": 1,
+    "code": "NOTE WORLD3-INSPIRED RESOURCE-CAPITAL-POLLUTION COUPLED SYSTEM DYNAMICS\nL POP.K=POP.J+(DT)*(BIRTH.JK-DEATH.JK)\nN POP=3000\nL CAP.K=CAP.J+(DT)*(INVEST.JK-DEPREC.JK)\nN CAP=600\nL RES.K=RES.J+(DT)*(-USE.JK)\nN RES=100000\nL POL.K=POL.J+(DT)*(POLGEN.JK-POLABS.JK)\nN POL=50\nR BIRTH.KL=POP.K*BR_NORM*BMULT.K\nR DEATH.KL=POP.K*DR_NORM*DMULT.K\nR INVEST.KL=OUTPUT.K*INVFRAC\nR DEPREC.KL=CAP.K/CAPLIFE\nR USE.KL=OUTPUT.K*RESINT\nR POLGEN.KL=OUTPUT.K*POLINT\nR POLABS.KL=POL.K/POLTIME\nA RESFRAC.K=RES.K/RES0\nA RESMULT.K=TABHL(RMULT,RESFRAC.K,0,1,0.25)\nA OUTPUT.K=CAP.K*CAP_PROD*RESMULT.K\nA OUT_PC.K=OUTPUT.K/POP.K\nA POLRATIO.K=POL.K/POL0\nA BMULT.K=TABHL(BTAB,OUT_PC.K,0,1,0.25)\nA DMULT.K=TABHL(DTAB,POLRATIO.K,0,10,2.5)\nC BR_NORM=0.032, DR_NORM=0.014, INVFRAC=0.22, CAPLIFE=15\nC CAP_PROD=0.35, RESINT=0.8, POLINT=0.04, POLTIME=10\nC RES0=100000, POL0=50\nT RMULT=0.05/0.35/0.70/0.92/1.00\nT BTAB=1.20/1.05/0.85/0.65/0.55\nT DTAB=0.90/1.05/1.35/1.85/2.60\nSPEC DT=0.5/LENGTH=150/PRTPER=10/PLTPER=5\nPRINT POP,CAP,RES,POL,OUTPUT\nPLOT POP=P(0,12000)/CAP=C(0,4000)/POL=X(0,1000)\nRUN STANDARD_RUN\n"
+  }
+]

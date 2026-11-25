@@ -350,7 +350,7 @@ test("gPROMS Modelica Projection, UnifiedWorkspace, and LSP services", async () 
 
   // WASM GLR parser and syntax diagnostic validation
   const { getGpromsWasmParser } = await import("../src/index.js");
-  const morselDefault = `MODEL JacketedCSTR
+  const ansatzDefault = `MODEL JacketedCSTR
   PARAMETER
     V_reactor AS REAL DEFAULT 2.5 ;
     k0        AS REAL DEFAULT 1200.0 ;
@@ -362,7 +362,7 @@ test("gPROMS Modelica Projection, UnifiedWorkspace, and LSP services", async () 
     $T_react = 0.05 * (310.0 - T_react) ;
 END
 `;
-  const tree = getGpromsWasmParser().parse(morselDefault);
+  const tree = getGpromsWasmParser().parse(ansatzDefault);
   assert.equal(tree?.rootNode.hasError, false);
 
   const badSyntaxDiags = validateGproms("MODEL Broken\n  EQUATION\n    $C = PARTIAL(C, Axial ;\nEND\n");

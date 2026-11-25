@@ -1,0 +1,12 @@
+{
+  "id": "easy5-01-spring-mass-damper",
+  "lang": "easy5",
+  "subFormats": ["ez5"],
+  "difficulty": 1,
+  "title": "Second-Order Spring-Mass-Damper Oscillator",
+  "description": "Closed-loop second-order mechanical spring-mass-damper system with dual velocity and displacement integrators, spring stiffness and viscous damping feedback gains, and all component ports wired.",
+  "category": "Mechanical Control Systems",
+  "tags": ["easy5", "spring-mass-damper", "second-order", "integrator"],
+  "activeFile": "spring_mass_damper.ez5",
+  "isDefaultStarter": true
+}

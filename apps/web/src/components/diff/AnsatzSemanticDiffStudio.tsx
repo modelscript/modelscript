@@ -222,7 +222,12 @@ export const AnsatzSemanticDiffStudio: React.FC<AnsatzSemanticDiffStudioProps> =
   onOpenDiagramWorkbench,
 }) => {
   const { theme } = useTheme();
-  const diffEditorRef = useRef<any>(null);
+  const diffEditorRef = useRef<{
+    getModifiedEditor?: () => {
+      revealLineInCenter?: (lineNumber: number) => void;
+      setPosition?: (position: { lineNumber: number; column: number }) => void;
+    };
+  } | null>(null);
 
   const [activeLens, setActiveLens] = useState<SemanticStudioLens>(initialLens);
   const [orderAgnostic, setOrderAgnostic] = useState<boolean>(true);

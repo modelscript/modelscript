@@ -673,7 +673,7 @@ export const Verify: CommandModule<{}, VerifyArgs> = {
       },
       undefined,
       undefined,
-      sysmlFactory.queryHooks,
+      sysmlFactory.queryHooks as unknown as Parameters<typeof createModelicaQueryEngine>[4],
     );
     const db = engine.toQueryDB();
     context.setQueryEngine(engine);

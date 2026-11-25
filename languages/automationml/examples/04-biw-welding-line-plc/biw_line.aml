@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="biw_line.aml" SchemaVersion="2.15">
+  <ExternalReference Path="interfaces.aml" Alias="IfLib" />
+  <InstanceHierarchy Name="BIW_SpotWeldingLine">
+    <Version>3.1.0</Version>
+    <InternalElement Name="SpotWeldRobot_L1" ID="weld-rob-01">
+      <Attribute Name="weldCurrentKA" AttributeDataType="xs:double" Unit="kA">
+        <Value>11.5</Value>
+      </Attribute>
+      <Attribute Name="electrodeForceKN" AttributeDataType="xs:double" Unit="kN">
+        <Value>4.2</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>3.0</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>-1.8</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>45.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="weldTrigger" ID="weld-rob-01-trig" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="weldComplete" ID="weld-rob-01-done" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="currentActual" ID="weld-rob-01-curr" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="REAL" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+    <InternalElement Name="BodyFixtureClamp" ID="clamp-01">
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>3.0</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.9</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="clampCloseCmd" ID="clamp-01-cmd" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="clampedOK" ID="clamp-01-ok" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+    <InternalElement Name="LineSafetyPLC" ID="plc-biw-01">
+      <ExternalInterface Name="outClampClose" ID="plc-biw-01-clmp" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="inClampedOK" ID="plc-biw-01-clmp-ok" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="outWeldStart" ID="plc-biw-01-weld" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="inWeldDone" ID="plc-biw-01-done" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="inWeldCurrent" ID="plc-biw-01-curr" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="REAL" />
+      <ExternalInterface Name="plcLogic" ID="plc-biw-01-st" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/PLCopenXMLInterface" RefURI="plc_signals.st" />
+      <InternalLink Name="ClampCmdLink" RefPartnerSideA="plc-biw-01:outClampClose" RefPartnerSideB="clamp-01:clampCloseCmd" />
+      <InternalLink Name="ClampFbLink" RefPartnerSideA="clamp-01:clampedOK" RefPartnerSideB="plc-biw-01:inClampedOK" />
+      <InternalLink Name="WeldTriggerLink" RefPartnerSideA="plc-biw-01:outWeldStart" RefPartnerSideB="weld-rob-01:weldTrigger" />
+      <InternalLink Name="WeldDoneLink" RefPartnerSideA="weld-rob-01:weldComplete" RefPartnerSideB="plc-biw-01:inWeldDone" />
+      <InternalLink Name="WeldCurrentLink" RefPartnerSideA="weld-rob-01:currentActual" RefPartnerSideB="plc-biw-01:inWeldCurrent" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+  </InstanceHierarchy>
+</CAEXFile>

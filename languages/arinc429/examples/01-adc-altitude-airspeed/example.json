@@ -1,0 +1,12 @@
+{
+  "id": "arinc429-01-adc-altitude-airspeed",
+  "lang": "arinc429",
+  "subFormats": ["arinc429-low"],
+  "difficulty": 1,
+  "title": "Air Data Computer Altitude & Airspeed Low-Speed Bus",
+  "description": "Low-speed (12.5 kbps) ARINC 429 Air Data Computer bus carrying pressure altitude (Label 203) and computed airspeed (Label 206) with valid odd-parity BNR words.",
+  "category": "Avionics Data Bus",
+  "tags": ["arinc429", "adc", "altitude", "airspeed", "bnr"],
+  "activeFile": "adc_low_speed.a429",
+  "isDefaultStarter": true
+}

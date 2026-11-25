@@ -1,0 +1,27 @@
+SIMPLE  =                    T / Conforms to FITS 4.0 standard
+BITPIX  =                  -32 / IEEE 32-bit floating-point flux
+NAXIS   =                    2 / 2D celestial image
+NAXIS1  =                 2048 / Image width [pixels]
+NAXIS2  =                 2048 / Image height [pixels]
+OBJECT  = 'M67_CLUSTER'        / Open star cluster target
+TELESCOP= 'KPNO-2.1M'          / Observatory telescope
+INSTRUME= 'DIRECT-CCD'         / Photometric imager
+FILTER  = 'JOHNSON-V'          / Photometric bandpass
+EXPTIME =                120.0 / Exposure time [s]
+AIRMASS =                1.142 / Mean airmass during exposure
+BUNIT   = 'ELECTRON/S'         / Physical pixel flux unit
+RADESYS = 'ICRS    '           / Equatorial coordinate reference frame
+EQUINOX =               2000.0 / Julian equinox of coordinates
+CTYPE1  = 'RA---TAN'           / Gnomonic tangent-plane Right Ascension
+CTYPE2  = 'DEC--TAN'           / Gnomonic tangent-plane Declination
+CUNIT1  = 'deg     '           / Axis 1 angle unit
+CUNIT2  = 'deg     '           / Axis 2 angle unit
+CRPIX1  =               1024.5 / Reference pixel along X
+CRPIX2  =               1024.5 / Reference pixel along Y
+CRVAL1  =             132.8250 / Right Ascension at reference [deg]
+CRVAL2  =              11.8167 / Declination at reference [deg]
+CD1_1   =         -0.000111111 / WCS Jacobian dRA/dx [deg/pix]
+CD1_2   =                  0.0 / WCS Jacobian dRA/dy [deg/pix]
+CD2_1   =                  0.0 / WCS Jacobian dDec/dx [deg/pix]
+CD2_2   =          0.000111111 / WCS Jacobian dDec/dy [deg/pix]
+END

@@ -1,0 +1,12 @@
+{
+  "id": "antimony-05-glucose-insulin-homeostasis",
+  "lang": "antimony",
+  "subFormats": ["antimony"],
+  "difficulty": 5,
+  "title": "Multi-Compartment Glucose-Insulin Homeostasis",
+  "description": "Whole-body physiological glucose-insulin regulation integrating plasma kinetics with modular pancreatic beta-cell secretion and hepatic glycogenolysis submodels.",
+  "category": "Systems Physiology",
+  "tags": ["antimony", "physiology", "glucose-insulin", "multi-file"],
+  "activeFile": "patient.ant",
+  "fileOrder": ["patient.ant", "pancreas.ant", "liver.ant"]
+}

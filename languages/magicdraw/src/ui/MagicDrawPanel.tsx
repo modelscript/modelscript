@@ -146,12 +146,12 @@ export function MagicDrawPanel({
       {onExportSysml2 && <PanelButton onClick={onExportSysml2}>Export SysML v2</PanelButton>}
       {onExportReqif && <PanelButton onClick={onExportReqif}>Export ReqIF</PanelButton>}
       {onExportModelica && <PanelButton onClick={onExportModelica}>Export Modelica</PanelButton>}
-      {mode === "artifact" && host?.openInMorsel && typeof effectiveSource === "string" && effectiveSource && (
+      {mode === "artifact" && host?.openInAnsatzEditor && typeof effectiveSource === "string" && effectiveSource && (
         <PanelButton
           variant="primary"
-          onClick={() => host.openInMorsel?.(effectiveSource, dialect || "magicdraw", resolvedName)}
+          onClick={() => host.openInAnsatzEditor?.(effectiveSource, dialect || "magicdraw", resolvedName)}
         >
-          Open in Morsel
+          Open in Ansatz Editor
         </PanelButton>
       )}
     </div>

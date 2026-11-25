@@ -28,7 +28,7 @@ export const usgsDemLanguage = language({
         shortTitle: "USGS DEM",
         selector: ["*.dem", "*.usgs-dem"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/UsgsDemPanel.tsx",
         artifactViewTypes: ["usgs-dem", "dem"],
       },

@@ -1,0 +1,11 @@
+{
+  "id": "scl-05-digital-substation-sv-goose",
+  "lang": "scl",
+  "subFormats": ["scd", "ssd", "icd"],
+  "difficulty": 5,
+  "title": "Full Digital Substation with IEC 61850-9-2LE Sampled Values & GOOSE",
+  "description": "Four-file IEC 61850 digital substation workspace uniting system configuration (.scd), substation single-line specification (.ssd), merging unit (.icd), and protection IED (.icd).",
+  "category": "Process Bus Digital Substation",
+  "tags": ["scl", "sampled-values", "goose", "merging-unit", "multi-file"],
+  "activeFile": "digital_sub.scd"
+}

@@ -386,13 +386,19 @@ const ExplorePage: React.FC = () => {
       .map((t) => t.replace(/^#/, ""))
       .filter(Boolean);
     if (tokens.length === 0) return true;
+    const postExt = p as PostData & {
+      display_name?: string | undefined;
+      title?: string | undefined;
+      artifact_title?: string | undefined;
+      view_type?: string | undefined;
+    };
     const haystack = [
       p.content,
       p.username,
-      (p as any).display_name,
-      (p as any).title,
-      (p as any).artifact_title,
-      (p as any).view_type,
+      postExt.display_name,
+      postExt.title,
+      postExt.artifact_title,
+      postExt.view_type,
     ]
       .filter(Boolean)
       .join(" ")

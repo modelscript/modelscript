@@ -1,0 +1,11 @@
+{
+  "id": "sinda-04-cubesat-orbital-eclipse",
+  "lang": "sinda",
+  "subFormats": ["sinda-fluint", "transient"],
+  "difficulty": 4,
+  "title": "CubeSat 6-Face Orbital Eclipse Transient Thermal Model",
+  "description": "3U CubeSat six-face aluminum chassis and internal Li-ion battery pack cycling through a 90-minute LEO sunlit-to-eclipse orbit with radiation to space.",
+  "category": "Spacecraft Thermal Control",
+  "tags": ["sinda", "cubesat", "transient", "eclipse", "orbit"],
+  "activeFile": "cubesat_orbit.sin"
+}

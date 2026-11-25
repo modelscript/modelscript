@@ -1,0 +1,11 @@
+{
+  "id": "cantera-04-nh3-h2-carbon-free-combustion",
+  "lang": "cantera",
+  "subFormats": ["cantera-yaml"],
+  "difficulty": 4,
+  "title": "Ammonia/Hydrogen Carbon-Free Combustion Kinetics",
+  "description": "Zero-carbon NH3/H2 dual-fuel oxidation kinetics capturing ammonia dehydrogenation, NH2/NH/NO formation, and thermal DeNOx reduction pathways.",
+  "category": "Clean Energy & Combustion",
+  "tags": ["cantera", "ammonia", "hydrogen", "carbon-free", "nox"],
+  "activeFile": "nh3_h2_combustion.cantera.yaml"
+}

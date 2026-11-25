@@ -103,8 +103,13 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
             if (data.post.content) {
               setContent((prev) => (prev ? prev : data.post.content));
             }
-            if (data.post.content_warning || (data.post.metadata as any)?.contentWarning) {
-              const cw = data.post.content_warning || (data.post.metadata as any)?.contentWarning;
+            const metaCw =
+              data.post.metadata && typeof data.post.metadata.contentWarning === "string"
+                ? data.post.metadata.contentWarning
+                : undefined;
+            const postCw = typeof data.post.content_warning === "string" ? data.post.content_warning : undefined;
+            const cw = postCw || metaCw;
+            if (cw) {
               setContentWarning((prev) => (prev ? prev : cw));
             }
           }
@@ -118,10 +123,10 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({
     if (initializedPayloadRef.current === initialState) return;
     initializedPayloadRef.current = initialState;
 
-    if (initialState.morselPayload && artifactId === null) {
+    if (initialState.ansatzPayload && artifactId === null) {
       const { code, title, dialect, isMultiFile, files, primaryFile, forkedFromArtifactId } =
-        initialState.morselPayload;
-      const viewConfigObj: Record<string, any> = {
+        initialState.ansatzPayload;
+      const viewConfigObj: Record<string, unknown> = {
         code,
         dialect: dialect || "modelica",
         title: title || "Model",

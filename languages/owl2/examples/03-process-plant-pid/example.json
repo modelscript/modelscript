@@ -1,0 +1,11 @@
+{
+  "id": "owl2-03-process-plant-pid",
+  "lang": "owl2",
+  "subFormats": ["ofn"],
+  "difficulty": 3,
+  "title": "Process Plant P&ID Restrictions & Inverse Roles",
+  "description": "OWL 2 Functional-Style ontology encoding chemical process P&ID equipment connectivity, existential restrictions, and inverse upstream/downstream flow roles.",
+  "category": "Process Engineering",
+  "tags": ["owl2", "pid", "process-plant", "restrictions", "inverse-roles"],
+  "activeFile": "process_pid.ofn"
+}

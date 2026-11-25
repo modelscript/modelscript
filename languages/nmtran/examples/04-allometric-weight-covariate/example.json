@@ -1,0 +1,12 @@
+{
+  "id": "nmtran-04-allometric-weight-covariate",
+  "lang": "nmtran",
+  "subFormats": ["nmtran"],
+  "difficulty": 4,
+  "title": "Covariate-Adjusted Allometric Pediatric Clearance Model",
+  "description": "Two-compartment oral population PK model (ADVAN4 TRANS4) incorporating allometric body-weight scaling on clearance and central volume for pediatric dosing.",
+  "category": "Clinical Pharmacology",
+  "tags": ["nmtran", "allometry", "covariates", "pediatrics", "multi-file"],
+  "activeFile": "cov_pk.ctl",
+  "fileOrder": ["cov_pk.ctl", "pediatric_pk.csv"]
+}

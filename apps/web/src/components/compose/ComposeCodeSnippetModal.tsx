@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { CodeEditorHandle } from "@modelscript/editor/workbench/Code";
-import { getLanguageInfo, useVisibleMorselLanguages } from "@modelscript/editor/workbench/constants";
+import { getLanguageInfo, useVisibleAnsatzLanguages } from "@modelscript/editor/workbench/constants";
 import {
   AlertIcon,
   CheckCircleIcon,
@@ -75,7 +75,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
   isEditingExistingBlock = false,
 }) => {
   const { resolvedColorMode } = useTheme();
-  const visibleMorselLanguages = useVisibleMorselLanguages();
+  const visibleAnsatzLanguages = useVisibleAnsatzLanguages();
   const [embedMode, setEmbedMode] = useState<SnippetEmbedMode>("markdown");
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -86,10 +86,10 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
   const monacoEditorRef = useRef<editor.ICodeEditor | null>(null);
 
   const generalLang = useMemo(() => GENERAL_CODE_LANGUAGES.find((g) => g.id === snippetLang), [snippetLang]);
-  const morselLang = useMemo(() => (generalLang ? null : getLanguageInfo(snippetLang)), [generalLang, snippetLang]);
+  const ansatzLang = useMemo(() => (generalLang ? null : getLanguageInfo(snippetLang)), [generalLang, snippetLang]);
 
-  const langLabel = generalLang?.label || morselLang?.label || morselLang?.name || snippetLang;
-  const langExt = generalLang?.ext || morselLang?.ext || snippetLang;
+  const langLabel = generalLang?.label || ansatzLang?.label || ansatzLang?.name || snippetLang;
+  const langExt = generalLang?.ext || ansatzLang?.ext || snippetLang;
   const isEngineeringLang = !generalLang;
   const documentUri = useMemo(() => `file:///compose_snippet.${langExt}`, [langExt]);
 
@@ -181,10 +181,10 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
   );
 
   const handleLanguageChange = (nextLang: string) => {
-    const prevDefault = generalLang?.defaultCode || morselLang?.defaultCode || "";
+    const prevDefault = generalLang?.defaultCode || ansatzLang?.defaultCode || "";
     const nextGeneral = GENERAL_CODE_LANGUAGES.find((g) => g.id === nextLang);
-    const nextMorsel = nextGeneral ? null : getLanguageInfo(nextLang);
-    const nextDefault = nextGeneral?.defaultCode || nextMorsel?.defaultCode || "";
+    const nextAnsatz = nextGeneral ? null : getLanguageInfo(nextLang);
+    const nextDefault = nextGeneral?.defaultCode || nextAnsatz?.defaultCode || "";
 
     setSnippetLang(nextLang);
     setSubmitError(null);
@@ -197,7 +197,7 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
   const handleLoadStarter = () => {
     const sample =
       generalLang?.defaultCode ||
-      morselLang?.defaultCode ||
+      ansatzLang?.defaultCode ||
       `model DampedOscillator\n  parameter Real k = 100.0 "Spring constant [N/m]";\n  parameter Real d = 1.5 "Damping coefficient [N.s/m]";\n  Real x(start = 1.0, fixed = true) "Position [m]";\n  Real v(start = 0.0, fixed = true) "Velocity [m/s]";\nequation\n  der(x) = v;\n  der(v) = -k * x - d * v;\nend DampedOscillator;\n`;
     setSnippetCode(sample);
     setSubmitError(null);
@@ -404,8 +404,8 @@ export const ComposeCodeSnippetModal: React.FC<ComposeCodeSnippetModalProps> = (
                 cursor: "pointer",
               }}
             >
-              <optgroup label={`Engineering & Simulation Languages (${visibleMorselLanguages.length})`}>
-                {visibleMorselLanguages.map((lang) => (
+              <optgroup label={`Engineering & Simulation Languages (${visibleAnsatzLanguages.length})`}>
+                {visibleAnsatzLanguages.map((lang) => (
                   <option key={lang.id} value={lang.id}>
                     {lang.label || lang.name} (.{lang.ext})
                   </option>

@@ -1,0 +1,12 @@
+{
+  "id": "c-03-kalman-state-estimator",
+  "lang": "c",
+  "subFormats": ["c99"],
+  "difficulty": 3,
+  "title": "Fixed-Step Kalman Filter State Estimator",
+  "description": "Two-state position-velocity linear Kalman filter in C99 separated into a reusable header API and prediction-update estimation implementation.",
+  "category": "State Estimation",
+  "tags": ["c", "kalman-filter", "sensor-fusion", "multi-file"],
+  "activeFile": "kalman.c",
+  "fileOrder": ["kalman.c", "kalman.h"]
+}

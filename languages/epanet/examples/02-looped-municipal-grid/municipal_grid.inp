@@ -1,0 +1,37 @@
+[TITLE]
+Looped 6-Node Municipal Pipe Grid (Hazen-Williams)
+
+[JUNCTIONS]
+;ID              Elev         Demand       Pattern
+ J1              55           15           ;
+ J2              52           22           ;
+ J3              48           18           ;
+ J4              45           25           ;
+ J5              42           20           ;
+ J6              38           16           ;
+
+[RESERVOIRS]
+;ID              Head         Pattern
+ SourceRes       105          ;
+
+[PIPES]
+;ID              Node1        Node2        Length       Diam         Roughness    MinorLoss    Status
+ P0              SourceRes    J1           600          400          130          0            OPEN
+ P1              J1           J2           500          300          120          0            OPEN
+ P2              J2           J3           450          250          120          0            OPEN
+ P3              J1           J4           520          300          120          0            OPEN
+ P4              J2           J5           480          200          110          0            OPEN
+ P5              J4           J5           500          250          120          0            OPEN
+ P6              J5           J6           460          200          110          0            OPEN
+
+[VALVES]
+;ID              Node1        Node2        Diam         Type         Setting      MinorLoss
+ V1              J3           J6           200          PRV          40           0
+
+[OPTIONS]
+ Units                LPS
+ Headloss             H-W
+ Accuracy             0.001
+ Trials               40
+
+[END]

@@ -25,6 +25,7 @@ import {
   type AdminEmailTemplateId,
 } from "../../../api/admin";
 import Box from "../../../components/Box";
+import { getApiErrorMessage } from "../../../util/error";
 import { ActionButton, Badge, Card, FilterPill, Input, Select, Table, Textarea } from "../styles";
 
 export interface AdminEmailStudioCardProps {
@@ -145,8 +146,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       const res = await getAdminEmailConfig();
       applyConfigToState(res.config, selectedTemplateId);
       setOutbox(res.outbox || []);
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Failed to load email configuration");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Failed to load email configuration"));
     } finally {
       setLoading(false);
     }
@@ -281,8 +282,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       setResendApiKeyInput("");
       applyConfigToState(res.config, selectedTemplateId);
       notifySuccess(`Saved email transport settings. Active driver: ${res.config.activeDriver.toUpperCase()}.`);
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Failed to save email transport configuration");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Failed to save email transport configuration"));
     } finally {
       setLoading(false);
     }
@@ -309,8 +310,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       } else {
         notifyError(`Connection diagnostic reported issues for ${diag.driver.toUpperCase()}.`);
       }
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Connection handshake test failed");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Connection handshake test failed"));
     } finally {
       setTestingConnection(false);
     }
@@ -326,8 +327,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       );
       const refreshed = await getAdminEmailConfig();
       setOutbox(refreshed.outbox || []);
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Failed to send test email");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Failed to send test email"));
     } finally {
       setSendingTest(false);
     }
@@ -356,8 +357,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       applyConfigToState(res.config, selectedTemplateId);
       await refreshLivePreview();
       notifySuccess(`Saved template '${res.config.templates[selectedTemplateId].name}' and global email theme.`);
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Failed to save template customizations");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Failed to save template customizations"));
     } finally {
       setLoading(false);
     }
@@ -372,8 +373,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       applyConfigToState(res.config, selectedTemplateId);
       await refreshLivePreview();
       notifySuccess(`Reset '${res.config.templates[selectedTemplateId].name}' to factory default.`);
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Failed to reset template");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Failed to reset template"));
     } finally {
       setLoading(false);
     }
@@ -392,8 +393,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       notifySuccess(
         `Dispatched ${freq || "all"} digests to ${res.dispatchedUsers} user(s) (${res.totalItemsCompiled} notifications compiled).`,
       );
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Failed to dispatch digest emails");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Failed to dispatch digest emails"));
     } finally {
       setLoading(false);
     }
@@ -405,8 +406,8 @@ export const AdminEmailStudioCard: React.FC<AdminEmailStudioCardProps> = ({ onSt
       const res = await retryAdminEmailOutboxItem(id);
       setOutbox(res.outbox || []);
       notifySuccess(`Retried message ${id} → new delivery ID ${res.messageId}.`);
-    } catch (err: any) {
-      notifyError(err?.response?.data?.error || "Failed to retry outbox email");
+    } catch (err: unknown) {
+      notifyError(getApiErrorMessage(err, "Failed to retry outbox email"));
     } finally {
       setLoading(false);
     }

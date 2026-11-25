@@ -8,6 +8,7 @@
  * Executes until all gates pass or max iterations (default: 4) are exhausted.
  */
 
+import type { CstParserLike } from "../utils/ast-utils.js";
 import {
   ClosedLoopCompilerEngine,
   countChar,
@@ -376,7 +377,7 @@ export interface SelfHealingPipelineOptions {
   synthesizer?: CodeSynthesizer | undefined;
   maxIterations?: number | undefined;
   targetGates?: (1 | 2 | 3 | 4)[] | undefined;
-  parser?: any;
+  parser?: CstParserLike | null | undefined;
   onStep?: ((step: SelfHealingIterationStep) => void) | undefined;
 }
 
@@ -769,8 +770,9 @@ export async function runSelfHealingPipeline(options: SelfHealingPipelineOptions
         feedbackPrompt,
       );
       currentCode = cleanEmittedCode(repaired);
-    } catch (synthErr: any) {
+    } catch (synthErr: unknown) {
       const failingGate = failedGates[0];
+      const errMsg = synthErr instanceof Error ? synthErr.message : String(synthErr);
       return {
         success: false,
         certifiedCode: bestCandidate?.code ?? currentCode,
@@ -783,7 +785,7 @@ export async function runSelfHealingPipeline(options: SelfHealingPipelineOptions
             gate: failingGate?.gate ?? 1,
             gateName: failingGate?.gateName ?? "WASM GLR Syntax",
             severity: "error",
-            message: `Synthesizer error: ${synthErr?.message ?? String(synthErr)}`,
+            message: `Synthesizer error: ${errMsg}`,
           },
         ],
         bestScore: bestCandidate?.score ?? currentScore,

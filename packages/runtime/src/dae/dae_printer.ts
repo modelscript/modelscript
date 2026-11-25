@@ -1544,9 +1544,7 @@ export class ArenaDAEPrinter {
     this.out.write(" " + varName);
 
     // Expression (binding)
-    const expr = (a as any).getExplicitVarExpression
-      ? (a as any).getExplicitVarExpression(idx)
-      : a.getVarExpression(idx);
+    const expr = a.getExplicitVarExpression(idx);
     const hasBindingExpr = expr != null && typeof expr === "number" && expr >= 0;
 
     // Attributes — emit in OMC canonical order for consistent output
@@ -1754,7 +1752,7 @@ export class ArenaDAEPrinter {
       case EqKind.If: {
         const meta = a.getIfEquationMeta(idx);
         if (meta) {
-          if ((meta as any).hasResolvedConnectionQuery) {
+          if (meta.hasResolvedConnectionQuery) {
             const evalConstNum = (id: number): number | null => {
               if (id < 0) return null;
               const k = a.getExprKind(id);
@@ -1885,18 +1883,27 @@ export class ArenaDAEPrinter {
   }
 
   /** Print an inline body equation (from when/for/if side-tables). */
-  private printInlineEq(body: { kind: EqKind; lhsExprId: number; rhsExprId: number }): void {
-    const anyBody = body as any;
-    if (body.kind === EqKind.If && Array.isArray(anyBody.thenEquations)) {
+  private printInlineEq(body: {
+    kind: EqKind;
+    lhsExprId: number;
+    rhsExprId: number;
+    thenEquations?: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] | undefined;
+    elseIfClauses?:
+      | { conditionExprId: number; bodyEquations: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] }[]
+      | undefined;
+    elseEquations?: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] | undefined;
+    bodyEquations?: { kind: EqKind; lhsExprId: number; rhsExprId: number }[] | undefined;
+  }): void {
+    if (body.kind === EqKind.If && Array.isArray(body.thenEquations)) {
       this.out.write(this.indent() + "if ");
       this.printExpr(body.lhsExprId);
       this.out.write(" then\n");
       this.depth++;
-      for (const sub of anyBody.thenEquations) {
+      for (const sub of body.thenEquations) {
         this.printInlineEq(sub);
       }
       this.depth--;
-      for (const clause of anyBody.elseIfClauses || []) {
+      for (const clause of body.elseIfClauses || []) {
         this.out.write(this.indent() + "elseif ");
         this.printExpr(clause.conditionExprId);
         this.out.write(" then\n");
@@ -1906,10 +1913,10 @@ export class ArenaDAEPrinter {
         }
         this.depth--;
       }
-      if (Array.isArray(anyBody.elseEquations) && anyBody.elseEquations.length > 0) {
+      if (Array.isArray(body.elseEquations) && body.elseEquations.length > 0) {
         this.out.write(this.indent() + "else\n");
         this.depth++;
-        for (const sub of anyBody.elseEquations) {
+        for (const sub of body.elseEquations) {
           this.printInlineEq(sub);
         }
         this.depth--;
@@ -1917,7 +1924,7 @@ export class ArenaDAEPrinter {
       this.out.write(this.indent() + "end if;\n");
       return;
     }
-    if ((body.kind === EqKind.For || body.kind === EqKind.InitialFor) && Array.isArray(anyBody.bodyEquations)) {
+    if ((body.kind === EqKind.For || body.kind === EqKind.InitialFor) && Array.isArray(body.bodyEquations)) {
       const a = this.arena;
       const indexNameRaw = a.interner.resolve(body.lhsExprId);
       const indexName = indexNameRaw?.startsWith("\0loop\0") ? indexNameRaw.substring(6) : indexNameRaw || "i";
@@ -1925,7 +1932,7 @@ export class ArenaDAEPrinter {
       this.printExpr(body.rhsExprId);
       this.out.write(" loop\n");
       this.depth++;
-      for (const sub of anyBody.bodyEquations) {
+      for (const sub of body.bodyEquations) {
         this.printInlineEq(sub);
       }
       this.depth--;
@@ -2526,7 +2533,7 @@ export class ArenaDAEPrinter {
       const end = sec.start + sec.count;
       while (idx < end) idx = walkStmtCalls(dae, idx);
     }
-    for (const sec of (dae as any).initialAlgorithmSections ?? []) {
+    for (const sec of dae.initialAlgorithmSections ?? []) {
       let idx = sec.start;
       const end = sec.start + sec.count;
       while (idx < end) idx = walkStmtCalls(dae, idx);
@@ -2609,8 +2616,8 @@ export class ArenaDAEPrinter {
 
     const uniqueFns = Array.from(new Set(dae.functions.values())).filter((fn) => {
       if (
-        (fn as any).wasInlined ||
-        (fn as any).isEarlyInline ||
+        fn.wasInlined ||
+        fn.isEarlyInline ||
         (fn.externalDecl && fn.externalDecl.includes('"builtin"')) ||
         fn.name === "String" ||
         fn.name === "Real" ||
@@ -2620,14 +2627,14 @@ export class ArenaDAEPrinter {
         return false;
       }
       if (
-        (fn as any).isNestedMember &&
-        !(fn as any).wasCalled &&
+        fn.isNestedMember &&
+        !fn.wasCalled &&
         !calledFnNames.has(fn.name) &&
         !calledFnNames.has(fn.name.split(".").pop()!)
       ) {
         return false;
       }
-      if ((fn as any).wasInlined) {
+      if (fn.wasInlined) {
         return false;
       }
       if (this.omcCompatibility && !isOldFrontend) {
@@ -2653,9 +2660,9 @@ export class ArenaDAEPrinter {
             usedTypeNames.has(baseName) ||
             (parentTypeName !== "" &&
               (usedTypeNames.has(parentTypeName) || usedTypeNames.has(parentTypeName.split(".").pop()!))) ||
-            Boolean((fn as any).isDerivativeFunction);
+            Boolean(fn.isDerivativeFunction);
           const hasActiveOp =
-            Boolean((fn as any).isOperatorRecord || fn.extensionMetadata?.isOperatorRecord) &&
+            Boolean(fn.isOperatorRecord || fn.extensionMetadata?.isOperatorRecord) &&
             Array.from(activeCalledFnNames).some((c) => c.startsWith(`${fn.name}.'`) || c.startsWith(`${baseName}.'`));
           if (!isCalled && !isTypeUsed && !hasActiveOp) {
             return false;
@@ -2714,7 +2721,7 @@ export class ArenaDAEPrinter {
       : uniqueFns.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     const seenFnNames = new Set<string>();
     for (const fn of sortedFns) {
-      if ((fn as any).aliasTo) continue;
+      if (fn.aliasTo) continue;
       if (this.visitedFunctions.has(fn) || seenFnNames.has(fn.name)) continue;
       seenFnNames.add(fn.name);
       this.printFunction(fn);
@@ -2732,8 +2739,8 @@ export class ArenaDAEPrinter {
     // Collect state machine variables and equations to avoid duplicate printing at top level
     const stateVarIndices = new Set<number>();
     const stateEqIndices = new Set<number>();
-    if ((dae as any).ignoredEqIndices) {
-      for (const eqIdx of (dae as any).ignoredEqIndices) {
+    if (dae.ignoredEqIndices) {
+      for (const eqIdx of dae.ignoredEqIndices) {
         stateEqIndices.add(eqIdx);
       }
     }
@@ -2881,7 +2888,7 @@ export class ArenaDAEPrinter {
       const end = sec.start + sec.count;
       while (idx < end) idx = this.printStmt(idx);
     }
-    if (dae.algorithmSections.length === 0 && (dae.hasAlgorithmSection || (dae as any).hasAlgorithmSection)) {
+    if (dae.algorithmSections.length === 0 && dae.hasAlgorithmSection) {
       this.out.write("algorithm\n");
     }
 
@@ -2913,9 +2920,7 @@ export class ArenaDAEPrinter {
         if (varName) {
           const varIdx = a.getVarIdxByName(varName);
           if (varIdx >= 0) {
-            const varExpr = (a as any).getExplicitVarExpression
-              ? (a as any).getExplicitVarExpression(varIdx)
-              : a.getVarExpression(varIdx);
+            const varExpr = a.getExplicitVarExpression(varIdx);
             if (varExpr === a.getEqRhs(idx)) {
               return true;
             }
@@ -2942,8 +2947,7 @@ export class ArenaDAEPrinter {
     this.arena = fn;
 
     const isExplicitImpure = Boolean(
-      (fn as any).isExplicitImpure ||
-      ((fn as any).cstNode?.text && /\bimpure\s+function\b/.test((fn as any).cstNode.text)),
+      fn.isExplicitImpure || (fn.cstNode?.text && /\bimpure\s+function\b/.test(fn.cstNode.text)),
     );
     if (isExplicitImpure || (fn.isImpure && !this.isOldFrontend)) {
       this.out.write("impure ");
@@ -3017,7 +3021,7 @@ export class ArenaDAEPrinter {
       const hasProtParam = allProtected.some((v) => fn.getVarVariability(v) === Variability.Parameter);
       const orderedProtected = fn.externalDecl
         ? [...protScalarNoBinding, ...protWithBinding, ...protArrayNoBinding]
-        : (fn.extensionMetadata as any)?.hasOldInstOption && hasProtParam
+        : fn.extensionMetadata?.hasOldInstOption && hasProtParam
           ? allProtected
           : [...protNoBinding, ...protWithBinding];
       for (const i of [...publicVars, ...orderedProtected, ...outputVars]) {
@@ -3051,7 +3055,7 @@ export class ArenaDAEPrinter {
         while (idx < end) idx = this.printStmt(idx);
       }
     }
-    if (!hasPrintedAlg && ((fn as any).hasAlgorithmSection || fn.algorithmSections.length > 0)) {
+    if (!hasPrintedAlg && (fn.hasAlgorithmSection || fn.algorithmSections.length > 0)) {
       this.out.write("algorithm\n");
     }
 

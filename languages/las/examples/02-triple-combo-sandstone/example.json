@@ -1,0 +1,11 @@
+{
+  "id": "las-02-triple-combo-sandstone",
+  "lang": "las",
+  "subFormats": ["las"],
+  "difficulty": 2,
+  "title": "Triple-Combo Porosity-Resistivity Sandstone Reservoir Log",
+  "description": "Standard petrophysical triple-combo LAS 2.0 suite combining gamma-ray, deep induction resistivity (ILD), bulk density (RHOB), and neutron porosity (NPHI) showing classic gas-effect crossover.",
+  "category": "Subsurface & Petrophysics",
+  "tags": ["las", "triple-combo", "resistivity", "porosity", "sandstone"],
+  "activeFile": "triple_combo.las"
+}

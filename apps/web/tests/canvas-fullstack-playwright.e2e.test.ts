@@ -306,7 +306,7 @@ function createVirtualHarnessPlugin(): Plugin {
       if (id === VIRTUAL_LANGUAGE_UI_RESOLVED) {
         return `
 export const LANGUAGE_PANEL_META = [];
-export const MORSEL_PANEL_LOADERS = {};
+export const ANSATZ_PANEL_LOADERS = {};
 export const ARTIFACT_PANEL_LOADERS = {};
 export const LANGUAGE_STENCILS = {};
 export const LANGUAGE_SIMULATION_CARDS = [];
@@ -885,10 +885,10 @@ describe("Full-Stack Real Chromium + Vite + SwiftShader WebGL Canvas E2E", () =>
       );
       assert.equal(diagramWebGl.contextLost, false, "Editor Diagram WebGL context must not be lost");
 
-      // Dispatch real morsel:time-scrub event and verify HUD + Pin Plot interaction
+      // Dispatch real ansatz:time-scrub event and verify HUD + Pin Plot interaction
       await diagramPage.evaluate(() => {
         window.dispatchEvent(
-          new CustomEvent("morsel:time-scrub", {
+          new CustomEvent("ansatz:time-scrub", {
             detail: { time: 2.5, values: { "motor.omega": 142.3, "thermal.T_max": 348.2 } },
           }),
         );

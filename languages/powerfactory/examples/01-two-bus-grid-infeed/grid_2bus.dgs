@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmSubstat" loc_name="Main_Substation">
+    <desc>110 kV Grid Infeed Substation</desc>
+  </DataObject>
+  <DataObject class="ElmTerm" loc_name="Bus_Infeed_110">
+    <uknom>110.0</uknom>
+    <fnom>50.0</fnom>
+    <substat>Main_Substation</substat>
+  </DataObject>
+  <DataObject class="ElmTerm" loc_name="Bus_Load_110">
+    <uknom>110.0</uknom>
+    <fnom>50.0</fnom>
+  </DataObject>
+  <DataObject class="TypLne" loc_name="OHL_110kV">
+    <uline>110.0</uline>
+    <r1>0.12</r1>
+    <x1>0.39</x1>
+    <b1>2.85</b1>
+    <snom>95.0</snom>
+    <inom>0.50</inom>
+  </DataObject>
+  <DataObject class="ElmLne" loc_name="Line_Infeed_Load">
+    <bus1>Bus_Infeed_110</bus1>
+    <bus2>Bus_Load_110</bus2>
+    <dline>22.0</dline>
+    <typ_id>OHL_110kV</typ_id>
+  </DataObject>
+  <DataObject class="TypSym" loc_name="GenType_Slack">
+    <snom>120.0</snom>
+    <unom>110.0</unom>
+    <cosn>0.85</cosn>
+    <H>5.0</H>
+  </DataObject>
+  <DataObject class="ElmSym" loc_name="Grid_Infeed">
+    <bus1>Bus_Infeed_110</bus1>
+    <pgini>60.0</pgini>
+    <qgini>15.0</qgini>
+    <usetp>1.02</usetp>
+    <typ_id>GenType_Slack</typ_id>
+  </DataObject>
+  <DataObject class="ElmLod" loc_name="Bulk_Load">
+    <bus1>Bus_Load_110</bus1>
+    <plini>58.0</plini>
+    <qlini>14.0</qlini>
+  </DataObject>
+</PowerFactory>

@@ -1,0 +1,157 @@
+[
+  {
+    "namePath": "Plot3d.Grid3D",
+    "aliases": [
+      "XYZ",
+      "PLOT3D_GRID",
+      "StructuredGrid3D"
+    ],
+    "label": "3D Multi-Block Grid (.xyz)",
+    "category": "Structured Grids",
+    "domain": "cfd",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#172554\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">GRID</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">Grid3D</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      },
+      {
+        "name": "metrics",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 54
+      }
+    ]
+  },
+  {
+    "namePath": "Plot3d.SolutionQ",
+    "aliases": [
+      "QFILE",
+      "PLOT3D_Q",
+      "ConservativeSolution"
+    ],
+    "label": "Conservative Solution (.q)",
+    "category": "Flow Solutions",
+    "domain": "cfd",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">FLOW</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SolutionQ</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "flow_out",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "Plot3d.FunctionF",
+    "aliases": [
+      "FFILE",
+      "PLOT3D_F",
+      "FunctionField"
+    ],
+    "label": "Scalar Function File (.f)",
+    "category": "Flow Solutions",
+    "domain": "cfd",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#1e1b4b\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#a78bfa\">FLOW</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">FunctionF</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "fields_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "Plot3d.IsentropicNozzle",
+    "aliases": [
+      "Nozzle3D",
+      "ConvergingDivergingNozzle"
+    ],
+    "label": "Isentropic C-D Nozzle",
+    "category": "CFD Benchmarks",
+    "domain": "cfd",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#14532d\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">BNCH</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">IsentropicNo</text></svg>",
+    "ports": [
+      {
+        "name": "inlet",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "outlet",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      }
+    ]
+  },
+  {
+    "namePath": "Plot3d.FlatPlateMesh",
+    "aliases": [
+      "FlatPlate",
+      "BoundaryLayerMesh"
+    ],
+    "label": "Flat Plate Boundary Layer Mesh",
+    "category": "CFD Benchmarks",
+    "domain": "cfd",
+    "width": 96,
+    "height": 54,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 54\" width=\"96\" height=\"54\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"50\" rx=\"6\" fill=\"#14532d\" stroke=\"#4ade80\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#4ade80\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#4ade80\">BNCH</text><text x=\"48\" y=\"37\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">FlatPlateMes</text></svg>",
+    "ports": [
+      {
+        "name": "inflow",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 27
+      },
+      {
+        "name": "outflow",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 96,
+        "dy": 27
+      },
+      {
+        "name": "wall",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 54
+      }
+    ]
+  }
+]

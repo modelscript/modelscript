@@ -1,0 +1,11 @@
+{
+  "id": "plscadd-04-500kv-deadend-wind-load",
+  "lang": "plscadd",
+  "subFormats": ["pol"],
+  "difficulty": 4,
+  "title": "500 kV Dead-End Strain Tower High-Wind Corridor",
+  "description": "500 kV EHV transmission corridor anchored by heavy dead-end strain towers using 1272 kcmil Bittern ACSR conductors across a 420 m river-valley crossing.",
+  "category": "Transmission Line Structural",
+  "tags": ["plscadd", "500kv", "dead-end", "ehv", "wind-load"],
+  "activeFile": "deadend_500kv.pol"
+}

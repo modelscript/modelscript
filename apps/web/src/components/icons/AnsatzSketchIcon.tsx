@@ -50,9 +50,7 @@ export const AnsatzSketchIcon: React.FC<AnsatzSketchIconProps> = ({
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className={
-          className
-            ? `ansatz-sketch-icon ansatz-sketch-pen ${className}`
-            : "ansatz-sketch-icon ansatz-sketch-pen"
+          className ? `ansatz-sketch-icon ansatz-sketch-pen ${className}` : "ansatz-sketch-icon ansatz-sketch-pen"
         }
         style={{
           flexShrink: 0,
@@ -349,8 +347,7 @@ export const PenIcon: React.FC<AnsatzSketchIconProps> = (props) => (
   <AnsatzSketchIcon color={props.color ?? "currentColor"} size={props.size ?? 16} {...props} variant="pen" />
 );
 
-export const MorselIcon = PenIcon;
-export const AnsatzMorselIcon = AnsatzSketchIcon;
+export const AnsatzIcon = PenIcon;
+export const AnsatzAnsatzIcon = AnsatzSketchIcon;
 export { AnsatzSketchIcon as SketchIcon };
 export default AnsatzSketchIcon;
-

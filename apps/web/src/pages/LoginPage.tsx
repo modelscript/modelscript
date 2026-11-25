@@ -6,6 +6,7 @@ import api, { requestPasswordReset } from "../api";
 import { useAuth } from "../AuthContext";
 import AnsatzMark from "../components/AnsatzLogo";
 import { useInstanceBranding } from "../InstanceBrandingContext";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 import {
   Card,
@@ -136,8 +137,8 @@ export default function LoginPage() {
     try {
       await requestPasswordReset(forgotEmail);
       setForgotSent(true);
-    } catch (err: any) {
-      setForgotError(err.response?.data?.error || "Failed to send password reset link. Please try again.");
+    } catch (err: unknown) {
+      setForgotError(getApiErrorMessage(err, "Failed to send password reset link. Please try again."));
     } finally {
       setForgotLoading(false);
     }

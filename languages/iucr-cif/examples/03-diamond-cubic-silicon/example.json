@@ -1,0 +1,11 @@
+{
+  "id": "iucr-cif-03-diamond-cubic-silicon",
+  "lang": "iucr-cif",
+  "subFormats": ["cif-1.1"],
+  "difficulty": 3,
+  "title": "Diamond Cubic Silicon Semiconductor (Fd-3m)",
+  "description": "High-precision NIST SRM 640 silicon lattice parameter standard (a = 5.4310(2) A, Fd-3m #227) generating all 8 tetrahedral atoms in the conventional cubic unit cell.",
+  "category": "Semiconductor Materials",
+  "tags": ["iucr-cif", "silicon", "diamond-cubic", "semiconductor", "fd-3m"],
+  "activeFile": "silicon_fd3m.cif"
+}

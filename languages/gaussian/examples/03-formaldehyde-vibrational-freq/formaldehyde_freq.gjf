@@ -1,0 +1,13 @@
+%chk=formaldehyde_freq.chk
+%mem=4GB
+%nprocshared=4
+#p B3LYP/6-311++G(d,p) Opt Freq
+
+Formaldehyde C2v geometry optimization and harmonic IR frequencies
+
+0 1
+C    0.000000    0.000000   -0.528800
+O    0.000000    0.000000    0.675200
+H    0.000000    0.937500   -1.116000
+H    0.000000   -0.937500   -1.116000
+

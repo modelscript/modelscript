@@ -1,0 +1,11 @@
+{
+  "id": "ran-04-planet-downtilt-panel",
+  "lang": "ran",
+  "subFormats": ["pat", "msi"],
+  "difficulty": 4,
+  "title": "Multi-Tilt Urban Microcell Panel Pattern (Planet/MSI)",
+  "description": "Planet/MSI antenna pattern for a 2.6 GHz urban macro/microcell panel with 4-degree electrical downtilt and upper-sidelobe suppression.",
+  "category": "RF Planning Formats",
+  "tags": ["ran", "planet", "msi", "downtilt"],
+  "activeFile": "urban_panel_tilt4.msi"
+}

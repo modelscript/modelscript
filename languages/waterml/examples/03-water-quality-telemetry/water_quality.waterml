@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0"
+                 xmlns:gml="http://www.opengis.net/gml/3.2"
+                 xmlns:om="http://www.opengis.net/om/2.0"
+                 xmlns:xlink="http://www.w3.org/1999/xlink"
+                 gml:id="COLLECTION_WQ_SONDE_07">
+  <gml:description>Diurnal Dissolved Oxygen and Water Temperature Sonde Telemetry</gml:description>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_DO_MG_L">
+      <om:observedProperty xlink:title="Dissolved Oxygen"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_WQ_07">
+          <gml:identifier>02037500</gml:identifier>
+          <gml:name>JAMES RIVER NEAR RICHMOND VA</gml:name>
+          <wml2:shape><gml:Point gml:id="P_WQ_07"><gml:pos>37.5631 -77.5472 30.1</gml:pos></gml:Point></wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_DO">
+          <wml2:defaultPointMetadata><wml2:DefaultTVPMeasurementMetadata><wml2:uom code="mg/L"/><wml2:interpolationType xlink:title="Instantaneous"/></wml2:DefaultTVPMeasurementMetadata></wml2:defaultPointMetadata>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T00:00:00Z</wml2:time><wml2:value>7.4</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T06:00:00Z</wml2:time><wml2:value>6.8</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T12:00:00Z</wml2:time><wml2:value>8.5</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T18:00:00Z</wml2:time><wml2:value>9.1</wml2:value></wml2:MeasurementTVP></wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_TEMP_C">
+      <om:observedProperty xlink:title="Water Temperature"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_WQ_07B">
+          <gml:identifier>02037500</gml:identifier>
+          <gml:name>JAMES RIVER NEAR RICHMOND VA</gml:name>
+          <wml2:shape><gml:Point gml:id="P_WQ_07B"><gml:pos>37.5631 -77.5472 30.1</gml:pos></gml:Point></wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_TEMP">
+          <wml2:defaultPointMetadata><wml2:DefaultTVPMeasurementMetadata><wml2:uom code="degC"/><wml2:interpolationType xlink:title="Instantaneous"/></wml2:DefaultTVPMeasurementMetadata></wml2:defaultPointMetadata>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T00:00:00Z</wml2:time><wml2:value>23.2</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T06:00:00Z</wml2:time><wml2:value>22.4</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T12:00:00Z</wml2:time><wml2:value>25.1</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-07-10T18:00:00Z</wml2:time><wml2:value>26.4</wml2:value></wml2:MeasurementTVP></wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+</wml2:Collection>

@@ -9,7 +9,7 @@
  *  - FederatedQueryCacheStore: multi-endpoint remote query cache store
  */
 
-import type { Memo, QueryCacheStore, SymbolId } from "../runtime.js";
+import type { DependencyKey, Memo, QueryCacheStore, SymbolId } from "../runtime.js";
 
 /**
  * Computes a deterministic, process-independent 53-bit positive safe integer cache key
@@ -81,6 +81,18 @@ export class MemoryQueryCacheStore implements QueryCacheStore {
   }
 }
 
+interface LegacyMemoFields {
+  lookups?: Set<string> | string[] | undefined;
+}
+
+type SerializedMemoInput = Omit<Memo, "inputs" | "dependencies" | "byNameLookups" | "reverseDependencies"> & {
+  inputs?: Int32Array | number[] | undefined;
+  dependencies?: DependencyKey[] | Set<DependencyKey> | undefined;
+  byNameLookups?: Set<string> | string[] | undefined;
+  lookups?: Set<string> | string[] | undefined;
+  reverseDependencies?: Set<number> | number[] | undefined;
+};
+
 export function serializeMemo(memo: Memo): Record<string, unknown> {
   const out: Record<string, unknown> = {
     ...memo,
@@ -113,13 +125,10 @@ export function serializeMemo(memo: Memo): Record<string, unknown> {
           ? memo.byNameLookups
           : [];
   }
-  if ((memo as any).lookups !== undefined) {
+  const legacyLookups = (memo as Memo & LegacyMemoFields).lookups;
+  if (legacyLookups !== undefined) {
     out["lookups"] =
-      (memo as any).lookups instanceof Set
-        ? Array.from((memo as any).lookups)
-        : Array.isArray((memo as any).lookups)
-          ? (memo as any).lookups
-          : [];
+      legacyLookups instanceof Set ? Array.from(legacyLookups) : Array.isArray(legacyLookups) ? legacyLookups : [];
   }
   if (memo.reverseDependencies !== undefined) {
     out["reverseDependencies"] =
@@ -132,30 +141,31 @@ export function serializeMemo(memo: Memo): Record<string, unknown> {
   return out;
 }
 
-export function deserializeMemo(raw: any): Memo {
-  if (!raw || typeof raw !== "object") return raw;
-  const memo: any = { ...raw };
-  if (Array.isArray(raw.inputs)) {
-    memo.inputs = new Int32Array(raw.inputs);
+export function deserializeMemo(raw: unknown): Memo {
+  if (!raw || typeof raw !== "object") return raw as Memo;
+  const src = raw as SerializedMemoInput;
+  const memo: Memo & { lookups?: Set<string> | undefined } = { ...(src as unknown as Memo) };
+  if (Array.isArray(src.inputs)) {
+    memo.inputs = new Int32Array(src.inputs);
   }
-  if (Array.isArray(raw.queries)) {
-    memo.queries = raw.queries;
+  if (Array.isArray(src.queries)) {
+    memo.queries = src.queries;
   }
-  if (Array.isArray(raw.byNames)) {
-    memo.byNames = raw.byNames;
+  if (Array.isArray(src.byNames)) {
+    memo.byNames = src.byNames;
   }
-  if (Array.isArray(raw.domains)) {
-    memo.domains = raw.domains;
+  if (Array.isArray(src.domains)) {
+    memo.domains = src.domains;
   }
-  if (Array.isArray(raw.dependencies)) {
-    memo.dependencies = raw.dependencies;
+  if (Array.isArray(src.dependencies)) {
+    memo.dependencies = src.dependencies;
     // Migrate legacy dependencies to compact typed inputs if missing
     if (!memo.inputs) {
       const inputs: number[] = [];
-      const queries: any[] = [];
+      const queries: NonNullable<Memo["queries"]> = [];
       const byNames: string[] = [];
       const domains: number[] = [];
-      for (const dep of raw.dependencies) {
+      for (const dep of src.dependencies) {
         if (dep.kind === "input") inputs.push(dep.symbolId);
         else if (dep.kind === "query") queries.push(dep);
         else if (dep.kind === "byName") byNames.push(dep.name);
@@ -166,28 +176,28 @@ export function deserializeMemo(raw: any): Memo {
       if (byNames.length > 0) memo.byNames = byNames;
       if (domains.length > 0) memo.domains = domains;
     }
-  } else if (raw.dependencies instanceof Set) {
-    memo.dependencies = Array.from(raw.dependencies);
+  } else if (src.dependencies instanceof Set) {
+    memo.dependencies = Array.from(src.dependencies);
   }
-  if (raw.byNameLookups !== undefined) {
+  if (src.byNameLookups !== undefined) {
     memo.byNameLookups =
-      raw.byNameLookups instanceof Set
-        ? raw.byNameLookups
-        : new Set(Array.isArray(raw.byNameLookups) ? raw.byNameLookups : []);
+      src.byNameLookups instanceof Set
+        ? src.byNameLookups
+        : new Set(Array.isArray(src.byNameLookups) ? src.byNameLookups : []);
   }
-  if (raw.lookups !== undefined) {
-    memo.lookups = raw.lookups instanceof Set ? raw.lookups : new Set(Array.isArray(raw.lookups) ? raw.lookups : []);
+  if (src.lookups !== undefined) {
+    memo.lookups = src.lookups instanceof Set ? src.lookups : new Set(Array.isArray(src.lookups) ? src.lookups : []);
     if (memo.byNameLookups === undefined) {
       memo.byNameLookups = memo.lookups;
     }
   }
-  if (raw.reverseDependencies !== undefined) {
+  if (src.reverseDependencies !== undefined) {
     memo.reverseDependencies =
-      raw.reverseDependencies instanceof Set
-        ? raw.reverseDependencies
-        : new Set(Array.isArray(raw.reverseDependencies) ? raw.reverseDependencies : []);
+      src.reverseDependencies instanceof Set
+        ? src.reverseDependencies
+        : new Set(Array.isArray(src.reverseDependencies) ? src.reverseDependencies : []);
   }
-  return memo as Memo;
+  return memo;
 }
 
 /**

@@ -1,0 +1,11 @@
+{
+  "id": "fea-02-cantilever-beam-bending",
+  "lang": "fea",
+  "subFormats": ["inp"],
+  "difficulty": 2,
+  "title": "Solid Hexahedral Cantilever Beam Static Bending",
+  "description": "3D C3D8 hexahedral finite element model of an aluminum cantilever beam clamped at the root face under a transverse tip bending load.",
+  "category": "Structural Bending FEA",
+  "tags": ["fea", "calculix", "c3d8", "beam-bending", "static"],
+  "activeFile": "beam_bending.inp"
+}

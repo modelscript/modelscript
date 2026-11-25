@@ -1,0 +1,12 @@
+{
+  "id": "opendrive-05-cloverleaf-interchange",
+  "lang": "opendrive",
+  "subFormats": ["xodr", "xosc"],
+  "difficulty": 5,
+  "title": "Highway Cloverleaf Interchange and Merge Scenario",
+  "description": "Grade-separated highway cloverleaf interchange featuring east-west and north-south freeways, a 270-degree circular loop ramp with elevation separation, and a companion OpenSCENARIO merge test.",
+  "category": "Highway Interchanges",
+  "tags": ["cloverleaf", "interchange", "openscenario", "multi-file"],
+  "activeFile": "interchange.xodr",
+  "fileOrder": ["interchange.xodr", "merge_test.xosc"]
+}

@@ -85,8 +85,8 @@ export function runDevDoctor(): boolean {
     );
   }
 
-  // 4. Track B: Ansatz Platform & Cloud
-  console.log("\n--- Track B: Ansatz Platform (Web, API & Federation) ---");
+  // 4. Track B: Ansatz Network & Cloud
+  console.log("\n--- Track B: Ansatz Network (Web, API & Federation) ---");
   const dataDir = path.join(REPO_ROOT, "data");
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });

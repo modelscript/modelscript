@@ -1,0 +1,77 @@
+[
+  {
+    "id": "olga-01-horizontal-gas-flowline",
+    "lang": "olga",
+    "subFormats": ["opi"],
+    "difficulty": 1,
+    "title": "Horizontal Single-Phase Gas Flowline",
+    "description": "CFL-stable horizontal dry natural gas export flowline with single-section discretization, inlet mass source, and topside pressure boundary.",
+    "category": "Multiphase Flow Assurance",
+    "tags": ["olga", "gas-flowline", "steady-state", "cfl-stable"],
+    "activeFile": "horizontal_gas.opi",
+    "fileNames": ["horizontal_gas.opi"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Model Title=\"Horizontal Single-Phase Gas Export Flowline\" Author=\"FlowAssuranceTeam\">\n  <Integration StartTime=\"0\" EndTime=\"1800\" MinDt=\"0.005\" MaxDt=\"0.5\" />\n\n  <Flowpath Name=\"GAS_EXPORT_LINE\">\n    <Pipe Label=\"TRUNK_SEG_1\" Length=\"4000\" Diameter=\"0.3048\" Elevation=\"0\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Pipe Label=\"TRUNK_SEG_2\" Length=\"4000\" Diameter=\"0.3048\" Elevation=\"0\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Source Name=\"GAS_WELLHEAD\" Position=\"0\" TotalMassRate=\"32.0\" GasMassFraction=\"0.98\" WaterCut=\"0.01\" Temperature=\"62C\" Pressure=\"115bar\" />\n    <HeatTransfer Type=\"AIR\" AmbientTemperature=\"15C\" AmbientHeatTransferCoeff=\"25\">\n      <Layer Material=\"CARBON_STEEL\" Thickness=\"0.016\" Conductivity=\"45.0\" />\n      <Layer Material=\"FBE_COATING\" Thickness=\"0.004\" Conductivity=\"0.30\" />\n    </HeatTransfer>\n  </Flowpath>\n\n  <Node Name=\"INLET_MANIFOLD\" Type=\"TERMINAL\" Flowpath=\"GAS_EXPORT_LINE\" BoundaryPosition=\"0.0\" MassRate=\"32.0\" Temperature=\"62C\" Pressure=\"115bar\" />\n  <Node Name=\"RECEIVING_STATION\" Type=\"PRESSURE\" Flowpath=\"GAS_EXPORT_LINE\" BoundaryPosition=\"1.0\" Pressure=\"68bar\" Temperature=\"28C\" />\n</Model>\n"
+  },
+  {
+    "id": "olga-02-inclined-gas-condensate-tieback",
+    "lang": "olga",
+    "subFormats": ["opi"],
+    "difficulty": 2,
+    "title": "Inclined Gas-Condensate Tieback with Liquid Holdup",
+    "description": "Undulating offshore gas-condensate pipeline with uphill and downhill terrain segments modeling condensate accumulation, pressure drop, and thermal heat loss.",
+    "category": "Multiphase Flow Assurance",
+    "tags": ["olga", "gas-condensate", "liquid-holdup", "inclined-pipe"],
+    "activeFile": "condensate_tieback.opi",
+    "fileNames": ["condensate_tieback.opi"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Model Title=\"Inclined Gas-Condensate Tieback\" Author=\"FlowAssuranceTeam\">\n  <Integration StartTime=\"0\" EndTime=\"3600\" MinDt=\"0.002\" MaxDt=\"0.4\" />\n\n  <Flowpath Name=\"CONDENSATE_TIEBACK\">\n    <Pipe Label=\"WELLHEAD_DROP\" Length=\"2500\" Diameter=\"0.254\" Elevation=\"-85\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Pipe Label=\"SEABED_VALLEY\" Length=\"3200\" Diameter=\"0.254\" Elevation=\"-25\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Pipe Label=\"SHORE_APPROACH\" Length=\"2800\" Diameter=\"0.254\" Elevation=\"115\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Valve Name=\"INLET_CHOKE\" AbsolutePosition=\"8450\" Diameter=\"0.18\" Opening=\"0.80\" Cd=\"0.84\" />\n    <Source Name=\"CONDENSATE_WELL\" Position=\"0\" TotalMassRate=\"48.5\" GasMassFraction=\"0.62\" WaterCut=\"0.06\" Temperature=\"78C\" Pressure=\"145bar\" />\n    <HeatTransfer Type=\"WATER\" AmbientTemperature=\"6C\" AmbientHeatTransferCoeff=\"180\">\n      <Layer Material=\"CARBON_STEEL\" Thickness=\"0.019\" Conductivity=\"45.0\" />\n      <Layer Material=\"POLYPROPYLENE\" Thickness=\"0.040\" Conductivity=\"0.22\" />\n    </HeatTransfer>\n  </Flowpath>\n\n  <Node Name=\"SUBSEA_TREE\" Type=\"TERMINAL\" Flowpath=\"CONDENSATE_TIEBACK\" BoundaryPosition=\"0.0\" MassRate=\"48.5\" Temperature=\"78C\" Pressure=\"145bar\" />\n  <Node Name=\"SLUG_CATCHER\" Type=\"PRESSURE\" Flowpath=\"CONDENSATE_TIEBACK\" BoundaryPosition=\"1.0\" Pressure=\"42bar\" Temperature=\"24C\" />\n</Model>\n"
+  },
+  {
+    "id": "olga-03-subsea-riser-severe-slugging",
+    "lang": "olga",
+    "subFormats": ["opi"],
+    "difficulty": 3,
+    "title": "Subsea S-Curve Riser Severe Slugging Analysis",
+    "description": "Deepwater seabed tieback feeding a steep catenary riser equipped with a PID topside anti-slug choke controller to mitigate severe riser-base terrain slugging.",
+    "category": "Multiphase Flow Assurance",
+    "tags": ["olga", "severe-slugging", "riser", "pid-controller"],
+    "activeFile": "riser_slugging.opi",
+    "fileNames": ["riser_slugging.opi"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Model Title=\"Subsea S-Curve Riser Severe Slugging Analysis\" Author=\"FlowAssuranceTeam\">\n  <Integration StartTime=\"0\" EndTime=\"7200\" MinDt=\"0.001\" MaxDt=\"0.3\" />\n\n  <Flowpath Name=\"DEEPWATER_RISER_LOOP\">\n    <Pipe Label=\"SEABED_DECLINE\" Length=\"3600\" Diameter=\"0.254\" Elevation=\"-420\" Roughness=\"4.5e-5\" Discretization=\"12\" />\n    <Pipe Label=\"RISER_BASE_SAG\" Length=\"1200\" Diameter=\"0.254\" Elevation=\"-40\" Roughness=\"4.5e-5\" Discretization=\"8\" />\n    <Pipe Label=\"LAZY_WAVE_RISER\" Length=\"1500\" Diameter=\"0.254\" Elevation=\"480\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Valve Name=\"ANTISLUG_CHOKE\" AbsolutePosition=\"6250\" Diameter=\"0.16\" Opening=\"0.65\" Cd=\"0.82\" />\n    <Controller Name=\"RISER_BASE_PID\" Type=\"PID\" SetPoint=\"62.0\" Gain=\"0.85\" Ti=\"45.0\" Td=\"2.0\" Transmitter=\"PT_RISER_BASE\" ControlledValve=\"ANTISLUG_CHOKE\" />\n    <Source Name=\"MANIFOLD_SRC\" Position=\"0\" TotalMassRate=\"38.0\" GasMassFraction=\"0.24\" WaterCut=\"0.12\" Temperature=\"72C\" Pressure=\"165bar\" />\n    <HeatTransfer Type=\"WATER\" AmbientTemperature=\"4C\" AmbientHeatTransferCoeff=\"220\">\n      <Layer Material=\"CARBON_STEEL\" Thickness=\"0.022\" Conductivity=\"45.0\" />\n      <Layer Material=\"SYNTACTIC_FOAM\" Thickness=\"0.055\" Conductivity=\"0.14\" />\n    </HeatTransfer>\n  </Flowpath>\n\n  <Node Name=\"SUBSEA_MANIFOLD\" Type=\"TERMINAL\" Flowpath=\"DEEPWATER_RISER_LOOP\" BoundaryPosition=\"0.0\" MassRate=\"38.0\" Temperature=\"72C\" Pressure=\"165bar\" />\n  <Node Name=\"FPSO_SEPARATOR\" Type=\"PRESSURE\" Flowpath=\"DEEPWATER_RISER_LOOP\" BoundaryPosition=\"1.0\" Pressure=\"34bar\" Temperature=\"25C\" />\n</Model>\n"
+  },
+  {
+    "id": "olga-04-cold-shutdown-hydrate-cooldown",
+    "lang": "olga",
+    "subFormats": ["opi"],
+    "difficulty": 4,
+    "title": "Cold Shutdown & Hydrate Cooldown Thermal Profile",
+    "description": "Insulated pipe-in-pipe subsea oil-gas tieback with multi-layer thermal coating, wax cloud-point monitoring, and controlled low-rate turndown to evaluate hydrate cooldown margin.",
+    "category": "Multiphase Flow Assurance",
+    "tags": ["olga", "hydrate-cooldown", "thermal-insulation", "wax"],
+    "activeFile": "hydrate_cooldown.opi",
+    "fileNames": ["hydrate_cooldown.opi"],
+    "fileCount": 1,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Model Title=\"Cold Shutdown and Hydrate Cooldown Thermal Profile\" Author=\"FlowAssuranceTeam\">\n  <Integration StartTime=\"0\" EndTime=\"28800\" MinDt=\"0.005\" MaxDt=\"0.5\" />\n\n  <Flowpath Name=\"INSULATED_PIP_TIEBACK\">\n    <Pipe Label=\"WELLHEAD_JUMPER\" Length=\"1800\" Diameter=\"0.2032\" Elevation=\"-90\" Roughness=\"4.5e-5\" Discretization=\"6\" />\n    <Pipe Label=\"MAIN_PIP_TRUNK\" Length=\"6000\" Diameter=\"0.254\" Elevation=\"-40\" Roughness=\"4.5e-5\" Discretization=\"15\" />\n    <Pipe Label=\"RISER_SPOOL\" Length=\"1600\" Diameter=\"0.254\" Elevation=\"135\" Roughness=\"4.5e-5\" Discretization=\"8\" />\n    <Valve Name=\"SHUTDOWN_CHOKE\" AbsolutePosition=\"9350\" Diameter=\"0.14\" Opening=\"0.25\" Cd=\"0.82\" />\n    <Source Name=\"SUBSEA_WELL_B\" Position=\"0\" TotalMassRate=\"26.0\" GasMassFraction=\"0.18\" WaterCut=\"0.15\" Temperature=\"84C\" Pressure=\"175bar\" />\n    <Wax CloudPointTemp=\"32C\" MolecularDiffusionCoeff=\"1.5e-9\" WaxDensity=\"885\" />\n    <HeatTransfer Type=\"WATER\" AmbientTemperature=\"3.5C\" AmbientHeatTransferCoeff=\"260\">\n      <Layer Material=\"DUPLEX_STEEL\" Thickness=\"0.018\" Conductivity=\"19.0\" />\n      <Layer Material=\"AEROGEL_BLANKET\" Thickness=\"0.035\" Conductivity=\"0.024\" />\n      <Layer Material=\"CARRIER_STEEL\" Thickness=\"0.014\" Conductivity=\"45.0\" />\n    </HeatTransfer>\n  </Flowpath>\n\n  <Node Name=\"WELLHEAD_XMT\" Type=\"TERMINAL\" Flowpath=\"INSULATED_PIP_TIEBACK\" BoundaryPosition=\"0.0\" MassRate=\"26.0\" Temperature=\"84C\" Pressure=\"175bar\" />\n  <Node Name=\"HOST_PLATFORM_SEP\" Type=\"PRESSURE\" Flowpath=\"INSULATED_PIP_TIEBACK\" BoundaryPosition=\"1.0\" Pressure=\"30bar\" Temperature=\"22C\" />\n</Model>\n"
+  },
+  {
+    "id": "olga-05-subsea-tieback-pvt-restart",
+    "lang": "olga",
+    "subFormats": ["opi", "tab"],
+    "difficulty": 5,
+    "title": "Subsea Tieback with PVT Table & Restart Ramp",
+    "description": "Full deepwater subsea tieback coupled to an external tabular PVT fluid property file with Vogel wellbore IPR, insulated riser, and active anti-slug choke control for restart ramp-up.",
+    "category": "Multiphase Flow Assurance",
+    "tags": ["olga", "pvt-table", "restart-ramp", "multi-file", "deepwater"],
+    "activeFile": "tieback.opi",
+    "fileNames": ["tieback.opi", "fluid_pvt.tab"],
+    "fileCount": 2,
+    "code": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Model Title=\"Deepwater Subsea Tieback with PVT Table and Restart Ramp\" Author=\"FlowAssuranceTeam\" TableFile=\"fluid_pvt.tab\">\n  <Integration StartTime=\"0\" EndTime=\"14400\" MinDt=\"0.002\" MaxDt=\"0.35\" />\n\n  <Flowpath Name=\"NORTH_FIELD_TIEBACK\">\n    <Pipe Label=\"FLOWLINE_EAST\" Length=\"4200\" Diameter=\"0.273\" Elevation=\"-310\" Roughness=\"4.5e-5\" Discretization=\"14\" />\n    <Pipe Label=\"FLOWLINE_WEST\" Length=\"3000\" Diameter=\"0.273\" Elevation=\"-60\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Pipe Label=\"STEEL_CATENARY_RISER\" Length=\"1600\" Diameter=\"0.254\" Elevation=\"380\" Roughness=\"4.5e-5\" Discretization=\"8\" />\n    <Valve Name=\"RESTART_CHOKE\" AbsolutePosition=\"8750\" Diameter=\"0.16\" Opening=\"0.72\" Cd=\"0.83\" />\n    <Controller Name=\"RESTART_PID\" Type=\"PID\" SetPoint=\"58.0\" Gain=\"0.90\" Ti=\"40.0\" Td=\"1.5\" Transmitter=\"PT_RISER_TOP\" ControlledValve=\"RESTART_CHOKE\" />\n    <Ipr Type=\"VOGEL\" ReservoirPressure=\"230bar\" ReservoirTemperature=\"88C\" BubblePointPressure=\"145bar\" MaxLiquidRate=\"55.0\" GasMassFraction=\"0.22\" WaterCut=\"0.08\" />\n    <HeatTransfer Type=\"WATER\" AmbientTemperature=\"4C\" AmbientHeatTransferCoeff=\"240\">\n      <Layer Material=\"CARBON_STEEL\" Thickness=\"0.022\" Conductivity=\"45.0\" />\n      <Layer Material=\"POLYURETHANE\" Thickness=\"0.050\" Conductivity=\"0.15\" />\n    </HeatTransfer>\n  </Flowpath>\n\n  <Node Name=\"MANIFOLD_NORTH\" Type=\"TERMINAL\" Flowpath=\"NORTH_FIELD_TIEBACK\" BoundaryPosition=\"0.0\" MassRate=\"42.0\" Temperature=\"82C\" Pressure=\"185bar\" />\n  <Node Name=\"TOPSIDE_FIRST_STAGE\" Type=\"PRESSURE\" Flowpath=\"NORTH_FIELD_TIEBACK\" BoundaryPosition=\"1.0\" Pressure=\"35bar\" Temperature=\"26C\" />\n</Model>\n",
+    "files": {
+      "tieback.opi": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<Model Title=\"Deepwater Subsea Tieback with PVT Table and Restart Ramp\" Author=\"FlowAssuranceTeam\" TableFile=\"fluid_pvt.tab\">\n  <Integration StartTime=\"0\" EndTime=\"14400\" MinDt=\"0.002\" MaxDt=\"0.35\" />\n\n  <Flowpath Name=\"NORTH_FIELD_TIEBACK\">\n    <Pipe Label=\"FLOWLINE_EAST\" Length=\"4200\" Diameter=\"0.273\" Elevation=\"-310\" Roughness=\"4.5e-5\" Discretization=\"14\" />\n    <Pipe Label=\"FLOWLINE_WEST\" Length=\"3000\" Diameter=\"0.273\" Elevation=\"-60\" Roughness=\"4.5e-5\" Discretization=\"10\" />\n    <Pipe Label=\"STEEL_CATENARY_RISER\" Length=\"1600\" Diameter=\"0.254\" Elevation=\"380\" Roughness=\"4.5e-5\" Discretization=\"8\" />\n    <Valve Name=\"RESTART_CHOKE\" AbsolutePosition=\"8750\" Diameter=\"0.16\" Opening=\"0.72\" Cd=\"0.83\" />\n    <Controller Name=\"RESTART_PID\" Type=\"PID\" SetPoint=\"58.0\" Gain=\"0.90\" Ti=\"40.0\" Td=\"1.5\" Transmitter=\"PT_RISER_TOP\" ControlledValve=\"RESTART_CHOKE\" />\n    <Ipr Type=\"VOGEL\" ReservoirPressure=\"230bar\" ReservoirTemperature=\"88C\" BubblePointPressure=\"145bar\" MaxLiquidRate=\"55.0\" GasMassFraction=\"0.22\" WaterCut=\"0.08\" />\n    <HeatTransfer Type=\"WATER\" AmbientTemperature=\"4C\" AmbientHeatTransferCoeff=\"240\">\n      <Layer Material=\"CARBON_STEEL\" Thickness=\"0.022\" Conductivity=\"45.0\" />\n      <Layer Material=\"POLYURETHANE\" Thickness=\"0.050\" Conductivity=\"0.15\" />\n    </HeatTransfer>\n  </Flowpath>\n\n  <Node Name=\"MANIFOLD_NORTH\" Type=\"TERMINAL\" Flowpath=\"NORTH_FIELD_TIEBACK\" BoundaryPosition=\"0.0\" MassRate=\"42.0\" Temperature=\"82C\" Pressure=\"185bar\" />\n  <Node Name=\"TOPSIDE_FIRST_STAGE\" Type=\"PRESSURE\" Flowpath=\"NORTH_FIELD_TIEBACK\" BoundaryPosition=\"1.0\" Pressure=\"35bar\" Temperature=\"26C\" />\n</Model>\n",
+      "fluid_pvt.tab": "TITLE = \"Deepwater Black Oil Subsea Fluid\"\nPRESSURE = 20, 50, 100, 200 BAR\nTEMPERATURE = 4, 30, 60, 90 C\nCOLUMNS = PRESSURE, TEMPERATURE, ROG, ROL, VISG, VISL, STG\n20, 4, 17.8, 842.0, 1.22e-5, 0.0031, 0.027\n20, 30, 16.2, 825.0, 1.32e-5, 0.0023, 0.025\n20, 60, 14.7, 804.0, 1.44e-5, 0.0016, 0.022\n20, 90, 13.5, 782.0, 1.56e-5, 0.0012, 0.019\n50, 4, 46.5, 838.0, 1.35e-5, 0.0029, 0.025\n50, 30, 42.1, 820.0, 1.46e-5, 0.0021, 0.023\n50, 60, 37.9, 798.0, 1.59e-5, 0.0015, 0.020\n50, 90, 34.4, 776.0, 1.72e-5, 0.0011, 0.017\n100, 4, 101.2, 830.0, 1.58e-5, 0.0026, 0.022\n100, 30, 91.8, 811.0, 1.71e-5, 0.0019, 0.020\n100, 60, 82.5, 789.0, 1.85e-5, 0.0013, 0.018\n100, 90, 74.6, 767.0, 1.98e-5, 0.0010, 0.015\n200, 4, 210.4, 818.0, 2.05e-5, 0.0022, 0.018\n200, 30, 192.0, 799.0, 2.18e-5, 0.0016, 0.016\n200, 60, 174.5, 777.0, 2.32e-5, 0.0011, 0.014\n200, 90, 159.0, 755.0, 2.45e-5, 0.0008, 0.012\n"
+    }
+  }
+]

@@ -22,7 +22,7 @@ import {
   updateGitlabMergeRequestState,
 } from "../src/api/vcs.js";
 import {
-  canOpenFileInPlayground,
+  canOpenFileInAnsatzEditor,
   formatBytes,
   getDialectForFileName,
   getFileDomainBadge,
@@ -87,14 +87,14 @@ describe("Repository Workspace UX & VCS Integration Suite", () => {
     it("recognizes engineering file dialects, languages, and domain badges", () => {
       assert.equal(getLanguageFromFileName("ChuaCircuit.mo"), "modelica");
       assert.equal(getDialectForFileName("ChuaCircuit.mo"), "modelica");
-      assert.equal(canOpenFileInPlayground("ChuaCircuit.mo"), true);
+      assert.equal(canOpenFileInAnsatzEditor("ChuaCircuit.mo"), true);
       assert.equal(getFileDomainBadge("ChuaCircuit.mo")?.label, "Modelica");
 
       assert.equal(getDialectForFileName("VehicleArchitecture.sysml"), "sysml2");
-      assert.equal(canOpenFileInPlayground("VehicleArchitecture.sysml"), true);
+      assert.equal(canOpenFileInAnsatzEditor("VehicleArchitecture.sysml"), true);
       assert.equal(getFileDomainBadge("VehicleArchitecture.sysml")?.label, "SysML v2");
 
-      assert.equal(canOpenFileInPlayground("LICENSE"), false);
+      assert.equal(canOpenFileInAnsatzEditor("LICENSE"), false);
       assert.equal(formatBytes(2048), "2.00 KB");
       assert.equal(getRelativeTime(new Date().toISOString()), "just now");
     });

@@ -1,0 +1,623 @@
+[
+  {
+    "name": "JobID",
+    "kind": "Class",
+    "namePath": "SEGY.JobID",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Job Identification Number",
+      "category": "Binary Reel Header",
+      "domain": "geophysics",
+      "description": "SEG-Y 400-byte binary reel header bytes 3201–3204 (int32): Job identification number.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.3 Bytes 3201–3204",
+      "aliases": [
+        "JOB_ID",
+        "JOBID"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 3201,
+          "unit": "bytes",
+          "description": "1-based byte offset in SEG-Y stream"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Field width (int32 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Default Job ID"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "SampleIntervalUs",
+    "kind": "Class",
+    "namePath": "SEGY.SampleIntervalUs",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sample Interval (µs)",
+      "category": "Binary Reel Header",
+      "domain": "geophysics",
+      "description": "SEG-Y binary reel header bytes 3217–3218 (uint16): Sample interval Δt in microseconds.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.3 Bytes 3217–3218",
+      "aliases": [
+        "DT",
+        "SAMPLE_INTERVAL",
+        "HNS_DT"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 3217,
+          "unit": "bytes",
+          "description": "1-based byte offset in SEG-Y stream"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "bytes",
+          "description": "Field width (uint16 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 2000,
+          "unit": "us",
+          "description": "Nominal sample interval (2 ms = 2000 µs)"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "SampleFormatCode",
+    "kind": "Class",
+    "namePath": "SEGY.SampleFormatCode",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Data Sample Format Code",
+      "category": "Binary Reel Header",
+      "domain": "geophysics",
+      "description": "SEG-Y binary reel header bytes 3225–3226 (int16): 1=IBM float32, 2=int32, 3=int16, 5=IEEE float32, 8=int8.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.3 Bytes 3225–3226",
+      "aliases": [
+        "FORMAT",
+        "SAMPLE_FORMAT"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 3225,
+          "unit": "bytes",
+          "description": "1-based byte offset in SEG-Y stream"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "bytes",
+          "description": "Field width (int16 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Default format code (1 = IBM System/360 float32)"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "SamplesPerTrace",
+    "kind": "Class",
+    "namePath": "SEGY.SamplesPerTrace",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Samples Per Data Trace",
+      "category": "Binary Reel Header",
+      "domain": "geophysics",
+      "description": "SEG-Y binary reel header bytes 3221–3222 (uint16): Number of samples per data trace.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.3 Bytes 3221–3222",
+      "aliases": [
+        "NS",
+        "HNS"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 3221,
+          "unit": "bytes",
+          "description": "1-based byte offset in SEG-Y stream"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "bytes",
+          "description": "Field width (uint16 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 512,
+          "unit": "samples",
+          "description": "Default number of samples per trace"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "MeasurementSystem",
+    "kind": "Class",
+    "namePath": "SEGY.MeasurementSystem",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Measurement System",
+      "category": "Binary Reel Header",
+      "domain": "geophysics",
+      "description": "SEG-Y binary reel header bytes 3255–3256 (int16): 1 = Meters, 2 = Feet.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.3 Bytes 3255–3256",
+      "aliases": [
+        "MEAS_SYS",
+        "UNITS"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 3255,
+          "unit": "bytes",
+          "description": "1-based byte offset in SEG-Y stream"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "bytes",
+          "description": "Field width (int16 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "1 = Meters, 2 = Feet"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "Inline3D",
+    "kind": "Class",
+    "namePath": "SEGY.Inline3D",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3D Poststack Inline Number",
+      "category": "Trace Header",
+      "domain": "geophysics",
+      "description": "SEG-Y Rev 1 trace header bytes 189–192 (int32): 3D poststack inline number.",
+      "provenance": "SEG-Y Rev 1 (2002) Section 3.5 Bytes 189–192",
+      "aliases": [
+        "INLINE",
+        "IL"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 189,
+          "unit": "bytes",
+          "description": "1-based byte offset within 240-byte trace header"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Field width (int32 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Default inline number"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "Crossline3D",
+    "kind": "Class",
+    "namePath": "SEGY.Crossline3D",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3D Poststack Crossline Number",
+      "category": "Trace Header",
+      "domain": "geophysics",
+      "description": "SEG-Y Rev 1 trace header bytes 193–196 (int32): 3D poststack crossline number.",
+      "provenance": "SEG-Y Rev 1 (2002) Section 3.5 Bytes 193–196",
+      "aliases": [
+        "CROSSLINE",
+        "XL",
+        "XLINE"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 193,
+          "unit": "bytes",
+          "description": "1-based byte offset within 240-byte trace header"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Field width (int32 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Default crossline number"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "CDP",
+    "kind": "Class",
+    "namePath": "SEGY.CDP",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ensemble / CDP Number",
+      "category": "Trace Header",
+      "domain": "geophysics",
+      "description": "SEG-Y trace header bytes 21–24 (int32): Ensemble (CDP / CMP) number.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.5 Bytes 21–24",
+      "aliases": [
+        "ENSEMBLE",
+        "CMP"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 21,
+          "unit": "bytes",
+          "description": "1-based byte offset within 240-byte trace header"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Field width (int32 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Default CDP number"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "OffsetM",
+    "kind": "Class",
+    "namePath": "SEGY.OffsetM",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Source-Receiver Offset (m)",
+      "category": "Trace Header",
+      "domain": "geophysics",
+      "description": "SEG-Y trace header bytes 37–40 (int32): Distance from center of source point to center of receiver group.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.5 Bytes 37–40",
+      "aliases": [
+        "OFFSET",
+        "SOURCE_RECEIVER_OFFSET"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 37,
+          "unit": "bytes",
+          "description": "1-based byte offset within 240-byte trace header"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Field width (int32 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Default source-receiver offset"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "TraceSeqLine",
+    "kind": "Class",
+    "namePath": "SEGY.TraceSeqLine",
+    "exports": [
+      "byteOffset",
+      "byteLength",
+      "defaultValue"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Trace Sequence Number Within Line",
+      "category": "Trace Header",
+      "domain": "geophysics",
+      "description": "SEG-Y trace header bytes 1–4 (int32): Trace sequence number within line.",
+      "provenance": "SEG-Y Rev 0 (1975) / Rev 1 (2002) Section 3.5 Bytes 1–4",
+      "aliases": [
+        "TRACL",
+        "TRACE_SEQ"
+      ],
+      "parameters": [
+        {
+          "key": "byteOffset",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bytes",
+          "description": "1-based byte offset within 240-byte trace header"
+        },
+        {
+          "key": "byteLength",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "bytes",
+          "description": "Field width (int32 big-endian)"
+        },
+        {
+          "key": "defaultValue",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Default starting trace sequence number"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "Ricker",
+    "kind": "Class",
+    "namePath": "SEGY.Ricker",
+    "exports": [
+      "f0Hz",
+      "dtSec",
+      "delaySec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ricker Zero-Phase Wavelet",
+      "category": "Seismic Wavelets",
+      "domain": "geophysics",
+      "description": "Zero-phase Ricker wavelet w(t) = (1 - 2*pi^2*f0^2*t^2) * exp(-pi^2*f0^2*t^2).",
+      "provenance": "Ricker (1953), Geophysics 18(1), 10–40",
+      "aliases": [
+        "RICKER_WAVELET",
+        "MEXICAN_HAT"
+      ],
+      "parameters": [
+        {
+          "key": "f0Hz",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "Hz",
+          "description": "Dominant peak frequency"
+        },
+        {
+          "key": "dtSec",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "s",
+          "description": "Sample interval"
+        },
+        {
+          "key": "delaySec",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Zero-phase center delay"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "Ormsby",
+    "kind": "Class",
+    "namePath": "SEGY.Ormsby",
+    "exports": [
+      "f1Hz",
+      "f2Hz",
+      "f3Hz",
+      "f4Hz"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ormsby Trapezoidal Wavelet",
+      "category": "Seismic Wavelets",
+      "domain": "geophysics",
+      "description": "Zero-phase Ormsby trapezoidal bandpass wavelet defined by corner frequencies f1 < f2 < f3 < f4.",
+      "provenance": "Ryan (1994), CSEG Recorder — Ricker, Ormsby, Klauder, Butterworth",
+      "aliases": [
+        "ORMSBY_WAVELET",
+        "TRAPEZOIDAL_WAVELET"
+      ],
+      "parameters": [
+        {
+          "key": "f1Hz",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "Hz",
+          "description": "Low-cut frequency"
+        },
+        {
+          "key": "f2Hz",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Hz",
+          "description": "Low-pass frequency"
+        },
+        {
+          "key": "f3Hz",
+          "type": "real",
+          "defaultValue": 40,
+          "unit": "Hz",
+          "description": "High-pass frequency"
+        },
+        {
+          "key": "f4Hz",
+          "type": "real",
+          "defaultValue": 55,
+          "unit": "Hz",
+          "description": "High-cut frequency"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "Klauder",
+    "kind": "Class",
+    "namePath": "SEGY.Klauder",
+    "exports": [
+      "fLowHz",
+      "fHighHz",
+      "sweepLenSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Klauder Vibroseis Wavelet",
+      "category": "Seismic Wavelets",
+      "domain": "geophysics",
+      "description": "Zero-phase autocorrelation of a linear FM Vibroseis sweep from fLow to fHigh over duration T.",
+      "provenance": "Klauder et al. (1960), Bell System Technical Journal 39(4), 745–808",
+      "aliases": [
+        "KLAUDER_WAVELET",
+        "VIBROSEIS_WAVELET"
+      ],
+      "parameters": [
+        {
+          "key": "fLowHz",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Hz",
+          "description": "Sweep start frequency"
+        },
+        {
+          "key": "fHighHz",
+          "type": "real",
+          "defaultValue": 60,
+          "unit": "Hz",
+          "description": "Sweep end frequency"
+        },
+        {
+          "key": "sweepLenSec",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "s",
+          "description": "Vibroseis sweep length"
+        }
+      ],
+      "wasmKernel": "evalSegyKernel",
+      "archetypeId": 22
+    }
+  }
+]

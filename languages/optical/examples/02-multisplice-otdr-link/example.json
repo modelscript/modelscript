@@ -1,0 +1,11 @@
+{
+  "id": "optical-02-multisplice-otdr-link",
+  "lang": "optical",
+  "subFormats": ["sor"],
+  "difficulty": 2,
+  "title": "Multi-Splice 24 km Metro Fiber Link with Connector Events",
+  "description": "Telcordia GR-196 v2.0 OTDR capture of a 24 km metro fiber link containing two fusion splice enclosures, one mid-span patch panel connector, and end reflection.",
+  "category": "OTDR Fiber Diagnostics",
+  "tags": ["optical", "sor", "otdr", "splice-loss"],
+  "activeFile": "metro_24km.sor"
+}

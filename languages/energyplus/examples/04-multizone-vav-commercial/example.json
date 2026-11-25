@@ -1,0 +1,11 @@
+{
+  "id": "energyplus-04-multizone-vav-commercial",
+  "lang": "energyplus",
+  "subFormats": ["idf", "epw", "csv"],
+  "difficulty": 4,
+  "title": "Multi-Zone VAV Reheat Commercial Building",
+  "description": "Three-zone commercial office floor with south perimeter, north perimeter, and core zones coupled to Denver TMY weather and an external hourly occupancy schedule CSV.",
+  "category": "Building Energy Modeling",
+  "tags": ["energyplus", "vav", "multi-zone", "epw", "multi-file"],
+  "activeFile": "vav_building.idf"
+}

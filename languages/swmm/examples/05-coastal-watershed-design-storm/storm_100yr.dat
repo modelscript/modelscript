@@ -1,0 +1,17 @@
+;; 100-Year 24-Hour SCS Type III Design Storm Rainfall Intensity (mm/hr)
+;; Station  Year  Month  Day  Hour  Min  Rainfall_mm_hr
+RG1  2026  9  15  0   0   2.5
+RG1  2026  9  15  2   0   4.0
+RG1  2026  9  15  4   0   6.5
+RG1  2026  9  15  6   0   10.2
+RG1  2026  9  15  8   0   16.8
+RG1  2026  9  15  10  0   28.5
+RG1  2026  9  15  11  0   54.0
+RG1  2026  9  15  12  0   98.5
+RG1  2026  9  15  13  0   46.0
+RG1  2026  9  15  14  0   24.2
+RG1  2026  9  15  16  0   14.0
+RG1  2026  9  15  18  0   8.5
+RG1  2026  9  15  20  0   5.2
+RG1  2026  9  15  22  0   3.1
+RG1  2026  9  15  24  0   1.5

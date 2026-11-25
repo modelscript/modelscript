@@ -1,0 +1,12 @@
+{
+  "id": "simpack-05-high-speed-rail-bogie",
+  "lang": "simpack",
+  "subFormats": ["spck", "sub"],
+  "difficulty": 5,
+  "title": "High-Speed Passenger Rail Bogie Assembly",
+  "description": "Multi-file high-speed rail bogie model comprising a sprung bogie frame, leading and trailing wheelsets, primary axlebox suspensions, yaw dampers, and companion wheelset and UIC60 rail substructure definitions.",
+  "category": "Rail Vehicle Dynamics",
+  "tags": ["rail-bogie", "wheel-rail", "substructure", "multi-file"],
+  "activeFile": "bogie.spck",
+  "fileOrder": ["bogie.spck", "wheelset.sub", "uic60_rail.sub"]
+}

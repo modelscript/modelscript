@@ -1,0 +1,78 @@
+[
+  {
+    "id": "csv-01-rc-step-response",
+    "lang": "csv",
+    "subFormats": ["csv"],
+    "difficulty": 1,
+    "title": "RC Low-Pass Filter Step-Response Time-Series",
+    "description": "Measured capacitor voltage and resistor current time-series for a 10V step applied to a 10 kOhm / 100 uF RC circuit (tau = 1.0 s).",
+    "category": "Electrical Measurements",
+    "tags": ["csv", "time-series", "rc-circuit", "step-response"],
+    "activeFile": "rc_step.csv",
+    "fileNames": ["rc_step.csv"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "time,v_source_v,v_cap_v,i_loop_ma\n0.0,10.0,0.000,1.000\n0.2,10.0,1.813,0.819\n0.4,10.0,3.297,0.670\n0.6,10.0,4.512,0.549\n0.8,10.0,5.507,0.449\n1.0,10.0,6.321,0.368\n1.5,10.0,7.769,0.223\n2.0,10.0,8.647,0.135\n3.0,10.0,9.502,0.050\n4.0,10.0,9.817,0.018\n5.0,10.0,9.933,0.007\n"
+  },
+  {
+    "id": "csv-02-inverter-harmonic-spectrum",
+    "lang": "csv",
+    "subFormats": ["csv"],
+    "difficulty": 2,
+    "title": "Three-Phase Inverter Harmonic Spectrum",
+    "description": "Captured three-phase PWM inverter line-to-line voltage and phase current harmonic sweep measurements across odd harmonic orders.",
+    "category": "Power Electronics",
+    "tags": ["csv", "harmonics", "inverter", "power-quality", "fft"],
+    "activeFile": "harmonics.csv",
+    "fileNames": ["harmonics.csv"],
+    "fileCount": 1,
+    "code": "time,harmonic_order,frequency_hz,v_rms_v,i_rms_a,thd_pct\n0.00,1,60.0,480.00,120.00,0.00\n0.01,3,180.0,2.40,0.48,0.50\n0.02,5,300.0,14.88,3.24,3.10\n0.03,7,420.0,9.60,2.04,2.00\n0.04,9,540.0,1.44,0.28,0.30\n0.05,11,660.0,6.24,1.32,1.30\n0.06,13,780.0,4.80,0.96,1.00\n0.07,17,1020.0,2.88,0.54,0.60\n0.08,19,1140.0,2.16,0.42,0.45\n0.09,23,1380.0,1.44,0.26,0.30\n"
+  },
+  {
+    "id": "csv-03-al6061-tensile-coupon",
+    "lang": "csv",
+    "subFormats": ["csv"],
+    "difficulty": 3,
+    "title": "Aluminum 6061-T6 Tensile Coupon Stress-Strain Curve",
+    "description": "Uniaxial tensile test log for an ASTM E8 Al 6061-T6 specimen capturing elastic modulus, 0.2% offset yield, ultimate tensile strength, and necking.",
+    "category": "Materials Testing",
+    "tags": ["csv", "tensile-test", "stress-strain", "al6061", "materials"],
+    "activeFile": "al6061_tensile.csv",
+    "fileNames": ["al6061_tensile.csv"],
+    "fileCount": 1,
+    "code": "time,crosshead_mm,axial_strain,eng_stress_mpa,true_stress_mpa\n0.0,0.000,0.0000,0.0,0.0\n2.0,0.050,0.0010,68.9,69.0\n4.0,0.100,0.0020,137.8,138.1\n6.0,0.150,0.0030,206.7,207.3\n8.0,0.200,0.0040,268.0,269.1\n10.0,0.300,0.0060,276.0,277.7\n15.0,0.750,0.0150,292.4,296.8\n25.0,1.750,0.0350,305.8,316.5\n40.0,3.500,0.0700,310.5,332.2\n55.0,5.250,0.1050,302.1,333.8\n65.0,6.250,0.1250,286.4,322.2\n"
+  },
+  {
+    "id": "csv-04-naca0012-wind-tunnel-polar",
+    "lang": "csv",
+    "subFormats": ["tsv"],
+    "difficulty": 4,
+    "title": "NACA 0012 Wind-Tunnel Aerodynamic Polar (TSV)",
+    "description": "Tab-separated multi-channel wind-tunnel angle-of-attack sweep for a NACA 0012 airfoil at Re = 3e6 recording lift, drag, pitching moment, and L/D ratio.",
+    "category": "Aerodynamics",
+    "tags": ["csv", "tsv", "aerodynamics", "naca0012", "wind-tunnel"],
+    "activeFile": "naca0012_polar.tsv",
+    "fileNames": ["naca0012_polar.tsv"],
+    "fileCount": 1,
+    "code": "time\talpha_deg\tcl\tcd\tcm_c4\tld_ratio\n0.0\t-4.0\t-0.432\t0.0068\t0.0012\t-63.53\n5.0\t-2.0\t-0.218\t0.0056\t0.0006\t-38.93\n10.0\t0.0\t0.000\t0.0052\t0.0000\t0.00\n15.0\t2.0\t0.218\t0.0056\t-0.0006\t38.93\n20.0\t4.0\t0.434\t0.0068\t-0.0011\t63.82\n25.0\t6.0\t0.648\t0.0085\t-0.0018\t76.24\n30.0\t8.0\t0.858\t0.0112\t-0.0024\t76.61\n35.0\t10.0\t1.062\t0.0154\t-0.0031\t68.96\n40.0\t12.0\t1.248\t0.0226\t-0.0042\t55.22\n45.0\t14.0\t1.395\t0.0368\t-0.0065\t37.91\n50.0\t16.0\t1.210\t0.0842\t-0.0210\t14.37\n"
+  },
+  {
+    "id": "csv-05-calibration-experiment-bundle",
+    "lang": "csv",
+    "subFormats": ["csv"],
+    "difficulty": 5,
+    "title": "Multi-Table Thermal Calibration Experiment Bundle",
+    "description": "Three-table engineering experiment dataset pairing transient thermal measurements, thermocouple calibration offsets, and operating point setpoints.",
+    "category": "Experimental Calibration",
+    "tags": ["csv", "calibration", "multi-table", "sensors", "multi-file"],
+    "activeFile": "measurements.csv",
+    "fileNames": ["measurements.csv", "operating_points.csv", "sensor_calibration.csv"],
+    "fileCount": 3,
+    "code": "time,tc_inlet_c,tc_outlet_c,flow_lpm,heater_w\n0.0,22.1,22.0,4.50,0.0\n10.0,22.2,26.8,4.52,1500.0\n20.0,22.3,31.4,4.51,1500.0\n30.0,22.4,35.2,4.49,1500.0\n40.0,22.5,38.1,4.50,1500.0\n50.0,22.5,40.3,4.50,1500.0\n60.0,22.6,41.8,4.51,1500.0\n70.0,22.6,42.9,4.50,1500.0\n80.0,22.6,43.6,4.50,1500.0\n",
+    "files": {
+      "measurements.csv": "time,tc_inlet_c,tc_outlet_c,flow_lpm,heater_w\n0.0,22.1,22.0,4.50,0.0\n10.0,22.2,26.8,4.52,1500.0\n20.0,22.3,31.4,4.51,1500.0\n30.0,22.4,35.2,4.49,1500.0\n40.0,22.5,38.1,4.50,1500.0\n50.0,22.5,40.3,4.50,1500.0\n60.0,22.6,41.8,4.51,1500.0\n70.0,22.6,42.9,4.50,1500.0\n80.0,22.6,43.6,4.50,1500.0\n",
+      "operating_points.csv": "time,op_point,target_flow_lpm,target_power_w,ambient_c\n0.0,1,4.50,0.0,22.0\n10.0,2,4.50,1500.0,22.0\n50.0,3,4.50,1500.0,22.1\n80.0,4,4.50,1500.0,22.1\n",
+      "sensor_calibration.csv": "time,channel_id,gain_factor,zero_offset_c,uncertainty_c\n0.0,1,1.0012,-0.15,0.25\n1.0,2,0.9994,0.08,0.25\n2.0,3,1.0005,-0.02,0.05\n3.0,4,1.0020,0.00,1.50\n"
+    }
+  }
+]

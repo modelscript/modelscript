@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="BessInverter" guid="{55555555-5555-5555-5555-555555555501}">
+  <CoSimulation modelIdentifier="BessInverter" />
+  <ModelVariables>
+    <ScalarVariable name="f_meas" valueReference="0" causality="input"><Real start="60.0" /></ScalarVariable>
+    <ScalarVariable name="v_meas" valueReference="1" causality="input"><Real start="1.0" /></ScalarVariable>
+    <ScalarVariable name="p_bess_kw" valueReference="2" causality="output"><Real /></ScalarVariable>
+    <ScalarVariable name="q_bess_kvar" valueReference="3" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

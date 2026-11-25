@@ -1,0 +1,11 @@
+{
+  "id": "iucr-cif-02-rocksalt-nacl-lattice",
+  "lang": "iucr-cif",
+  "subFormats": ["cif-1.1"],
+  "difficulty": 2,
+  "title": "Rocksalt Sodium Chloride (NaCl) Ionic Crystal Lattice",
+  "description": "IUCr CIF structure of halite (NaCl, a = 5.6402 A, Fm-3m) with interpenetrating FCC sodium and chloride sublattices and isotropic displacement parameters.",
+  "category": "Inorganic Crystallography",
+  "tags": ["iucr-cif", "nacl", "rocksalt", "ionic", "halite"],
+  "activeFile": "nacl_rocksalt.cif"
+}

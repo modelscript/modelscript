@@ -1,0 +1,27 @@
+% Safety-Critical Railway Level-Crossing Gate and Warning Interlock
+module RailwayCrossing:
+input TRAIN_ENTER, TRAIN_EXIT, GATE_DOWN, GATE_UP, EMERG_STOP;
+output LOWER_GATE, RAISE_GATE, FLASH_LIGHTS, RING_BELL, SAFE_CLEAR;
+relation TRAIN_ENTER # TRAIN_EXIT, GATE_DOWN # GATE_UP;
+
+loop
+  await TRAIN_ENTER;
+  weak abort
+    [
+      sustain FLASH_LIGHTS
+    ||
+      sustain RING_BELL
+    ||
+      abort
+        sustain LOWER_GATE
+      when GATE_DOWN;
+      await TRAIN_EXIT
+    ]
+  when TRAIN_EXIT;
+  abort
+    sustain RAISE_GATE
+  when GATE_UP;
+  emit SAFE_CLEAR;
+  pause
+end
+end module

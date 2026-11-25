@@ -1,0 +1,11 @@
+{
+  "id": "febio-04-sofa-liver-deformation",
+  "lang": "febio",
+  "subFormats": ["scn"],
+  "difficulty": 4,
+  "title": "SOFA Real-Time Soft-Tissue Liver Deformation Scene",
+  "description": "SOFA Framework surgical simulation scene graph (.scn) modeling hepatic parenchyma as a corotational tetrahedral FEM mesh with fixed ligament attachment and laparoscopic retraction.",
+  "category": "Soft-Tissue Biomechanics & FEA",
+  "tags": ["febio", "sofa", "surgical-simulation", "liver", "real-time-fem"],
+  "activeFile": "liver_sim.scn"
+}

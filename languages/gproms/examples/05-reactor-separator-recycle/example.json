@@ -1,0 +1,12 @@
+{
+  "id": "gproms-05-reactor-separator-recycle",
+  "lang": "gproms",
+  "subFormats": ["gproms"],
+  "difficulty": 5,
+  "title": "Integrated Reactor-Separator-Recycle Chemical Plant",
+  "description": "Closed-loop plantwide dynamic flowsheet coupling a CSTR with a flash separator and unreacted-feed recycle stream, paired with experimental kinetic calibration data.",
+  "category": "Process Systems Engineering",
+  "tags": ["gproms", "plantwide", "recycle-loop", "cstr", "multi-file"],
+  "activeFile": "plant.gproms",
+  "fileOrder": ["plant.gproms", "kinetics_data.csv"]
+}

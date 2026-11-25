@@ -1,0 +1,11 @@
+{
+  "id": "asn1-05-v2x-j2735-basic-safety-message",
+  "lang": "asn1",
+  "subFormats": ["x680", "v2x"],
+  "difficulty": 5,
+  "title": "SAE J2735 V2X Basic Safety Message (BSM) Schema",
+  "description": "Multi-module automotive V2X C-V2X / DSRC ASN.1 schema defining the SAE J2735 BasicSafetyMessage (BSMcoreData + safety extensions) importing shared kinematic primitives from J2735-Common.",
+  "category": "Connected & Autonomous Vehicles",
+  "tags": ["asn1", "v2x", "j2735", "bsm", "automotive", "multi-file"],
+  "activeFile": "j2735_bsm.asn"
+}

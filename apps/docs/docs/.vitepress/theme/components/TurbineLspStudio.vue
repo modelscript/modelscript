@@ -20,7 +20,7 @@ import {
   type StepGdtCalloutPayload,
   type StepGdtDatumPayload,
 } from "../util/docs-lsp-client.js";
-import { buildMorselHandoffUrl } from "../util/polyglot-paste-detector.js";
+import { buildAnsatzHandoffUrl } from "../util/polyglot-paste-detector.js";
 import { hasDiagramElements, type SandboxDiagramHandle } from "../util/sandbox-diagram.js";
 import type { SandboxMonacoHandle } from "../util/sandbox-monaco.js";
 import MsIcon from "./MsIcon.vue";
@@ -611,12 +611,12 @@ async function revealProblem(entry: ScopedDiagEntry): Promise<void> {
   );
 }
 
-async function openInMorsel(): Promise<void> {
+async function openInAnsatzEditor(): Promise<void> {
   const activeIdx = Math.max(
     0,
     artifacts.value.findIndex((t) => t.id === activeId.value),
   );
-  const url = await buildMorselHandoffUrl(ansatzOrigin.value, artifacts.value, activeIdx);
+  const url = await buildAnsatzHandoffUrl(ansatzOrigin.value, artifacts.value, activeIdx);
   if (typeof window !== "undefined") {
     window.open(url, "_blank", "noopener,noreferrer");
   }
@@ -1032,7 +1032,7 @@ function selectGdtRow(qifCharId: string): void {
           type="button"
           class="tls-mini-btn is-primary"
           title="Export all 4 turbofan digital-thread files directly into Ansatz"
-          @click="openInMorsel"
+          @click="openInAnsatzEditor"
         >
           <span>Ansatz</span>
           <MsIcon name="arrow-up-right" :size="11" :stroke="2.1" />

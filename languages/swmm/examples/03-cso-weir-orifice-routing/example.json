@@ -1,0 +1,11 @@
+{
+  "id": "swmm-03-cso-weir-orifice-routing",
+  "lang": "swmm",
+  "subFormats": ["swmm"],
+  "difficulty": 3,
+  "title": "Combined Sewer Overflow Weir & Orifice Routing",
+  "description": "Combined urban trunk sewer with a flow-diversion chamber separating dry-weather flow to the interceptor plant via an orifice and high-flow relief to a river outfall via an overflow conduit.",
+  "category": "Urban Stormwater Hydraulics",
+  "tags": ["swmm", "cso", "weir", "orifice", "dynamic-wave"],
+  "activeFile": "cso_routing.swmm"
+}

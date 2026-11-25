@@ -1,0 +1,12 @@
+{
+  "id": "doe2-01-single-zone-office-envelope",
+  "lang": "doe2",
+  "subFormats": ["inp"],
+  "difficulty": 1,
+  "title": "Single-Zone Office Envelope and Lighting Schedule",
+  "description": "Minimal DOE-2 BDL building loads model for a single-zone small office defining insulated masonry wall layers, double-pane glazing, fractional lighting schedule, and space geometry.",
+  "category": "Building Energy Simulation",
+  "tags": ["doe2", "bdl", "envelope", "loads"],
+  "activeFile": "office.inp",
+  "isDefaultStarter": true
+}

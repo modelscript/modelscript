@@ -15,14 +15,33 @@
  *  - FmuSubsystemRegistry for managing registered FMU/ROM subsystems
  */
 
+export interface TrainedRomNeuralLayer {
+  weights: number[][];
+  biases: number[];
+  activation?: string | undefined;
+}
+
+export interface TrainedRomMlpLayer {
+  W: number[][];
+  b: number[];
+  activation?: string | undefined;
+}
+
+export interface TrainedRomWeights {
+  type?: string | undefined;
+  layers?: (TrainedRomNeuralLayer | TrainedRomMlpLayer)[] | undefined;
+  activation?: string | undefined;
+  outputActivation?: string | undefined;
+  coefficients?: number[][] | undefined;
+}
+
 export interface TrainedROM {
   inputNames: string[];
   outputNames: string[];
   inputScaling?: { mean: number; std: number }[] | undefined;
   outputScaling?: { mean: number; std: number }[] | undefined;
-  weights?: any;
+  weights?: TrainedRomWeights | undefined;
   evaluate?: ((input: number[]) => number[]) | undefined;
-  [key: string]: any;
 }
 
 export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
@@ -58,15 +77,17 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
   const w = rom.weights;
   if (w && w.type === "neural_net" && Array.isArray(w.layers)) {
     let act = normInput;
-    for (let l = 0; l < w.layers.length; l++) {
-      const layer = w.layers[l];
-      const isLast = l === w.layers.length - 1;
+    const layers = w.layers as TrainedRomNeuralLayer[];
+    for (let l = 0; l < layers.length; l++) {
+      const layer = layers[l]!;
+      const isLast = l === layers.length - 1;
       const actType = layer.activation ?? (isLast ? (w.outputActivation ?? "tanh") : (w.activation ?? "tanh"));
       const next: number[] = [];
       for (let j = 0; j < layer.biases.length; j++) {
-        let sum = layer.biases[j];
+        let sum = layer.biases[j]!;
+        const row = layer.weights[j]!;
         for (let k = 0; k < act.length; k++) {
-          sum += layer.weights[j][k] * act[k]!;
+          sum += row[k]! * act[k]!;
         }
         next.push(applyActivation(sum, actType));
       }
@@ -75,10 +96,11 @@ export function evaluateROM(rom: TrainedROM, rawInput: number[]): number[] {
     normOutput = act;
   } else if (w && w.type === "mlp" && Array.isArray(w.layers)) {
     let a = normInput;
-    for (let l = 0; l < w.layers.length; l++) {
-      const layer = w.layers[l]!;
+    const layers = w.layers as TrainedRomMlpLayer[];
+    for (let l = 0; l < layers.length; l++) {
+      const layer = layers[l]!;
       const { W, b } = layer;
-      const isHidden = l < w.layers.length - 1;
+      const isHidden = l < layers.length - 1;
       const actType: string =
         layer.activation ?? (isHidden ? (w.activation ?? "tanh") : (w.outputActivation ?? "linear"));
       const next: number[] = [];

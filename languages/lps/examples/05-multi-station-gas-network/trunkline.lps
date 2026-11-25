@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineStudio id="interstate_trunkline" title="Multi-Station Gas Transmission Network" simulationType="TGNET">
+  <Nodes>
+    <Node name="Permian_Supply" type="SUPPLY" elevation="60m" pressure="76.0bar" flow="210.0" />
+    <Node name="CS_West_Suc" type="JUNCTION" elevation="75m" />
+    <Node name="CS_West_Dis" type="JUNCTION" elevation="75m" />
+    <Node name="Central_Split" type="JUNCTION" elevation="55m" />
+    <Node name="CS_East_Suc" type="JUNCTION" elevation="45m" />
+    <Node name="CS_East_Dis" type="JUNCTION" elevation="45m" />
+    <Node name="Reg_South_In" type="JUNCTION" elevation="40m" />
+    <Node name="Reg_South_Out" type="JUNCTION" elevation="40m" />
+    <Node name="Coastal_LNG_Hub" type="DELIVERY" elevation="8m" minDeliveryPressure="45.0bar" flow="135.0" />
+    <Node name="Southern_City_Gate" type="DELIVERY" elevation="15m" minDeliveryPressure="30.0bar" flow="75.0" />
+  </Nodes>
+  <Pipes>
+    <Pipe name="Seg_West_1" from="Permian_Supply" to="CS_West_Suc" length="95.0km" diameter="36inch" roughness="0.000045m" maop="100.0bar" />
+    <Pipe name="Seg_Central_2" from="CS_West_Dis" to="Central_Split" length="85.0km" diameter="36inch" roughness="0.000045m" maop="100.0bar" />
+    <Pipe name="Seg_East_3" from="Central_Split" to="CS_East_Suc" length="60.0km" diameter="30inch" roughness="0.000045m" maop="95.0bar" />
+    <Pipe name="Seg_Coastal_4" from="CS_East_Dis" to="Coastal_LNG_Hub" length="75.0km" diameter="30inch" roughness="0.000045m" maop="95.0bar" />
+    <Pipe name="Seg_South_Lateral" from="Central_Split" to="Reg_South_In" length="35.0km" diameter="24inch" roughness="0.000045m" maop="90.0bar" />
+    <Pipe name="Seg_South_Dist" from="Reg_South_Out" to="Southern_City_Gate" length="20.0km" diameter="20inch" roughness="0.000045m" maop="65.0bar" />
+  </Pipes>
+  <Compressors>
+    <Compressor name="CS_West" from="CS_West_Suc" to="CS_West_Dis" type="CENTRIFUGAL" power="26000000" maxRatio="1.75" efficiency="0.84" mode="DISCHARGE_PRESSURE" setpoint="88.0bar" status="RUNNING" />
+    <Compressor name="CS_East" from="CS_East_Suc" to="CS_East_Dis" type="CENTRIFUGAL" power="20000000" maxRatio="1.70" efficiency="0.84" mode="DISCHARGE_PRESSURE" setpoint="84.0bar" status="RUNNING" />
+  </Compressors>
+  <Regulators>
+    <Regulator name="South_Gate_PRV" from="Reg_South_In" to="Reg_South_Out" setpoint="46.0bar" capacity="110.0" preheater="true" />
+  </Regulators>
+  <GasComposition ch4="0.91" c2h6="0.048" c3h8="0.016" co2="0.012" n2="0.014" h2="0.04" ghv="38.9" />
+  <SimulationControls startTime="0" endTime="86400" timeStep="60" eos="AGA8" steadyStateFirst="true" />
+</PipelineStudio>

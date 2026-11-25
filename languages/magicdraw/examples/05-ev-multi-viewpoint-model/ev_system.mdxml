@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_ev_system" name="EVPowertrainArchitecture">
+    <packagedElement xmi:type="uml:Class" xmi:id="ev_vehicle" name="ElectricVehicle800V">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_p_pack" name="batteryPack" type="ev_pack" aggregation="composite"/>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_p_inv" name="sicInverter" type="ev_inv" aggregation="composite"/>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_bus_v_out" name="packBusVoltageV">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_inv_v_in" name="inverterDcLinkV">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedConnector xmi:type="uml:Connector" xmi:id="ev_hv_bus" name="hvDcBusLink">
+        <end xmi:id="ev_end_1" role="ev_bus_v_out"/>
+        <end xmi:id="ev_end_2" role="ev_inv_v_in"/>
+      </ownedConnector>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="ev_pack" name="BatteryPack800V">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_kwh" name="energyCapacityKwh">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="ev_inv" name="SiCTractionInverter">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="ev_eff" name="peakEfficiencyPct">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+  </uml:Model>
+  <sysml:Block xmi:id="st_ev_veh" base_Class="ev_vehicle"/>
+  <sysml:Block xmi:id="st_ev_pack" base_Class="ev_pack"/>
+  <sysml:Block xmi:id="st_ev_inv" base_Class="ev_inv"/>
+  <sysml:BindingConnector xmi:id="st_ev_hv" base_Connector="ev_hv_bus"/>
+</xmi:XMI>

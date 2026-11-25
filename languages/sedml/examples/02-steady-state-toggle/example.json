@@ -1,0 +1,12 @@
+{
+  "id": "sedml-02-steady-state-toggle",
+  "lang": "sedml",
+  "subFormats": ["sedml-l1v4", "sbml"],
+  "difficulty": 2,
+  "title": "Steady-State Equilibrium Analysis of Genetic Toggle Switch",
+  "description": "SED-ML steadyState solver protocol computing equilibrium repressor concentrations for a bistable genetic toggle switch SBML model with tabular report output.",
+  "category": "Simulation Experiments",
+  "tags": ["sedml", "steady-state", "toggle-switch", "sbml", "multi-file"],
+  "activeFile": "steady.sedml",
+  "fileOrder": ["steady.sedml", "toggle.sbml"]
+}

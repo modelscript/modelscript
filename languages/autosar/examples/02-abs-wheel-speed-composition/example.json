@@ -1,0 +1,11 @@
+{
+  "id": "autosar-02-abs-wheel-speed-composition",
+  "lang": "autosar",
+  "subFormats": ["arxml"],
+  "difficulty": 2,
+  "title": "Sender-Receiver ABS Wheel Speed Composition",
+  "description": "Two-component AUTOSAR composition connecting a WheelSpeedSensor SWC P-port to an AbsController SWC R-port over a typed Sender-Receiver interface with schedulable 5 ms and 10 ms runnables.",
+  "category": "Automotive Software Architecture",
+  "tags": ["abs", "composition", "sender-receiver", "autosar"],
+  "activeFile": "AbsComposition.arxml"
+}

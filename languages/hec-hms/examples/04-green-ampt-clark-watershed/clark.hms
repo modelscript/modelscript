@@ -1,0 +1,18 @@
+Project: Green-Ampt Clark Watershed
+     Description: Physically Based Infiltration and Clark Unit Hydrograph Model
+     Version: 4.11
+     Filepath Separator: /
+     DSS File Name: clark.dss
+End:
+
+Basin: Clark_Basin
+     Filename: clark.basin
+End:
+
+Precipitation: Design_Storm_72hr
+     Filename: clark.met
+End:
+
+Control: Clark_Control
+     Filename: clark.control
+End:

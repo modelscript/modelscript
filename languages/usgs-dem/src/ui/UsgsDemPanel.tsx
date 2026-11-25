@@ -124,9 +124,12 @@ export const UsgsDemPanel: React.FC<LanguagePanelProps> = ({
                 Export HEC-1
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "usgs-dem", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton
+                variant="primary"
+                onClick={() => host.openInAnsatzEditor?.(code, dialect || "usgs-dem", title)}
+              >
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

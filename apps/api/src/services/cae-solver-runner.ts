@@ -117,7 +117,9 @@ export class CaeSolverRunner {
     fs.mkdirSync(safeResultDir, { recursive: true });
     try {
       fs.writeFileSync(safeResultPath(safeResultDir, "job_spec.json"), JSON.stringify(spec, null, 2), "utf8");
-    } catch {}
+    } catch {
+      // Best-effort diagnostic snapshot; solver execution can proceed without it
+    }
 
     const logPath = safeResultPath(safeResultDir, "solver.log");
     const logStream = fs.createWriteStream(logPath, { flags: "a" });

@@ -1,0 +1,12 @@
+{
+  "id": "genbank-05-golden-gate-assembly",
+  "lang": "genbank",
+  "subFormats": ["genbank", "fasta"],
+  "difficulty": 5,
+  "title": "Multi-Plasmid Golden Gate Assembly Bundle",
+  "description": "Modular MoClo Golden Gate assembly workspace pairing a BsaI kanR acceptor plasmid backbone with a Level-0 promoter GenBank insert and FASTA GFP CDS.",
+  "category": "Synthetic Biology & Cloning",
+  "tags": ["genbank", "fasta", "golden-gate", "moclo", "multi-file"],
+  "activeFile": "backbone.gb",
+  "fileOrder": ["backbone.gb", "promoter_insert.gb", "cds_insert.fasta"]
+}

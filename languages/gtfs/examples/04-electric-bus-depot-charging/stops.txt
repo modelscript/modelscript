@@ -1,0 +1,5 @@
+stop_id,stop_name,stop_lat,stop_lon
+DEPOT_CHG,North Electric Bus Depot,37.8044,-122.2712
+UPTOWN_19,19th Street Uptown,37.8080,-122.2685
+LAKE_MERRITT,Lake Merritt Plaza,37.7975,-122.2650
+FRUITVALE,Fruitvale Transit Village,37.7748,-122.2242

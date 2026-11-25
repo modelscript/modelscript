@@ -1,0 +1,11 @@
+{
+  "id": "cea-03-ssme-lox-lh2-rocket",
+  "lang": "cea",
+  "subFormats": ["cea2", "rocket"],
+  "difficulty": 3,
+  "title": "SSME-Class LOX/LH2 Rocket Nozzle Equilibrium",
+  "description": "NASA RP-1311 RS-25 / SSME-class cryogenic LOX/LH2 rocket engine performance at 200 bar chamber pressure and 77.5:1 supersonic nozzle expansion ratio.",
+  "category": "Rocket Propulsion",
+  "tags": ["cea", "rocket", "lox-lh2", "ssme", "isp"],
+  "activeFile": "ssme_rocket.cea"
+}

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0"
+                 xmlns:gml="http://www.opengis.net/gml/3.2"
+                 xmlns:om="http://www.opengis.net/om/2.0"
+                 xmlns:xlink="http://www.w3.org/1999/xlink"
+                 gml:id="COLLECTION_RESERVOIR_OPS">
+  <gml:description>Paired Reservoir Inflow and Controlled Spillway Outflow Discharge</gml:description>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_RES_INFLOW">
+      <om:observedProperty xlink:title="Discharge"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_RES_IN">
+          <gml:identifier>14145500</gml:identifier>
+          <gml:name>CASCADE RESERVOIR HEADWATER INFLOW</gml:name>
+          <wml2:shape><gml:Point gml:id="P_RES_IN"><gml:pos>43.7512 -122.4210 340.0</gml:pos></gml:Point></wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_RES_IN">
+          <wml2:defaultPointMetadata><wml2:DefaultTVPMeasurementMetadata><wml2:uom code="m3/s"/><wml2:interpolationType xlink:title="Instantaneous"/></wml2:DefaultTVPMeasurementMetadata></wml2:defaultPointMetadata>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T00:00:00Z</wml2:time><wml2:value>85.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T06:00:00Z</wml2:time><wml2:value>210.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T12:00:00Z</wml2:time><wml2:value>465.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T18:00:00Z</wml2:time><wml2:value>310.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-13T00:00:00Z</wml2:time><wml2:value>165.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-13T12:00:00Z</wml2:time><wml2:value>95.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_RES_OUTFLOW">
+      <om:observedProperty xlink:title="Discharge"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_RES_OUT">
+          <gml:identifier>14145510</gml:identifier>
+          <gml:name>CASCADE DAM TAILWATER RELEASE</gml:name>
+          <wml2:shape><gml:Point gml:id="P_RES_OUT"><gml:pos>43.7485 -122.4350 285.0</gml:pos></gml:Point></wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_RES_OUT">
+          <wml2:defaultPointMetadata><wml2:DefaultTVPMeasurementMetadata><wml2:uom code="m3/s"/><wml2:interpolationType xlink:title="Instantaneous"/></wml2:DefaultTVPMeasurementMetadata></wml2:defaultPointMetadata>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T00:00:00Z</wml2:time><wml2:value>80.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T06:00:00Z</wml2:time><wml2:value>120.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T12:00:00Z</wml2:time><wml2:value>215.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-12T18:00:00Z</wml2:time><wml2:value>240.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-13T00:00:00Z</wml2:time><wml2:value>195.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-04-13T12:00:00Z</wml2:time><wml2:value>130.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+</wml2:Collection>

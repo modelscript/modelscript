@@ -1,0 +1,25 @@
+* Flat-Plate Solar Collector Instantaneous Thermal Efficiency
+VERSION 18
+SIMULATION 0 24 0.5
+TOLERANCES 0.001 0.001
+LIMITS 30 30 30
+
+UNIT 1 TYPE 15 Weather
+PARAMETERS 5
+  20.0 6.0 3060.0 6.0 18.0
+
+UNIT 2 TYPE 1 Collector
+PARAMETERS 5
+  4.0 4.19 0.78 14.5 0.05
+INPUTS 4
+  0,0 0,0 1,1 1,2
+  25.0 200.0 20.0 0.0
+
+UNIT 3 TYPE 25 Printer
+PARAMETERS 4
+  1.0 0.0 24.0 30
+INPUTS 4
+  1,1 1,2 2,1 2,3
+  T_amb I_sol T_out Q_useful
+
+END

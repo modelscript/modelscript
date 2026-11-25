@@ -1,0 +1,15 @@
+set ASSETS := BONDS EQUITIES REIT COMMOD ;
+
+param target_return := 0.065 ;
+
+param mu :=
+  BONDS    0.040
+  EQUITIES 0.095
+  REIT     0.075
+  COMMOD   0.060 ;
+
+param var_diag :=
+  BONDS    0.0025
+  EQUITIES 0.0324
+  REIT     0.0196
+  COMMOD   0.0256 ;

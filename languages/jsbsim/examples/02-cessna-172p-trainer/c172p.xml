@@ -1,0 +1,97 @@
+<?xml version="1.0"?>
+<fdm_config name="c172p" version="2.0" release="PRODUCTION">
+  <fileheader>
+    <author>Ansatz Aerospace Team</author>
+    <description>Cessna 172P Skyhawk General Aviation Trainer FDM</description>
+  </fileheader>
+  <metrics>
+    <wingarea unit="FT2"> 174.0 </wingarea>
+    <wingspan unit="FT"> 36.0 </wingspan>
+    <chord unit="FT"> 4.9 </chord>
+    <htailarea unit="FT2"> 21.9 </htailarea>
+    <htailarm unit="FT"> 15.7 </htailarm>
+    <vtailarea unit="FT2"> 16.5 </vtailarea>
+    <vtailarm unit="FT"> 15.7 </vtailarm>
+    <location name="AERORP" unit="IN">
+      <x> 43.2 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+  </metrics>
+  <mass_balance>
+    <emptywt unit="LBS"> 1500.0 </emptywt>
+    <location name="CG" unit="IN">
+      <x> 41.5 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+    <ixx unit="SLUG*FT2"> 948.0 </ixx>
+    <iyy unit="SLUG*FT2"> 1346.0 </iyy>
+    <izz unit="SLUG*FT2"> 1967.0 </izz>
+    <ixz unit="SLUG*FT2"> 0.0 </ixz>
+  </mass_balance>
+  <ground_reactions>
+    <contact type="BOGEY" name="NOSE">
+      <location unit="IN"> <x> -6.8 </x> <y> 0.0 </y> <z> -30.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 1800.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 600.0 </damping_coeff>
+      <steerable> 1 </steerable>
+    </contact>
+    <contact type="BOGEY" name="MAIN_LEFT">
+      <location unit="IN"> <x> 58.2 </x> <y> -43.0 </y> <z> -32.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 5400.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 1600.0 </damping_coeff>
+      <brake_group> LEFT </brake_group>
+    </contact>
+    <contact type="BOGEY" name="MAIN_RIGHT">
+      <location unit="IN"> <x> 58.2 </x> <y> 43.0 </y> <z> -32.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 5400.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 1600.0 </damping_coeff>
+      <brake_group> RIGHT </brake_group>
+    </contact>
+  </ground_reactions>
+  <propulsion>
+    <engine file="lycoming_o360">
+      <location unit="IN"> <x> -18.0 </x> <y> 0.0 </y> <z> 0.0 </z> </location>
+      <thruster file="sensenich">
+        <location unit="IN"> <x> -32.0 </x> <y> 0.0 </y> <z> 0.0 </z> </location>
+      </thruster>
+    </engine>
+  </propulsion>
+  <aerodynamics>
+    <axis name="LIFT">
+      <function name="aero/coefficient/CLalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 4.80 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="DRAG">
+      <function name="aero/coefficient/CD0">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 0.027 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/coefficient/Cmalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/cbarw-ft</property>
+          <value> -0.89 </value>
+        </product>
+      </function>
+    </axis>
+  </aerodynamics>
+</fdm_config>

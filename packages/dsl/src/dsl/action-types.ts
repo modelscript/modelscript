@@ -73,6 +73,7 @@ export interface ActionExecutionContext {
   uri?: string | undefined;
   languageId: string;
   documentText?: string | undefined;
+  projectFiles?: Record<string, string> | undefined;
   cstNode?: unknown;
   symbolIndex?: unknown;
   queryEngine?: unknown;

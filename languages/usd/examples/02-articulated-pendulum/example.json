@@ -1,0 +1,11 @@
+{
+  "id": "usd-02-articulated-pendulum",
+  "lang": "usd",
+  "subFormats": ["usda"],
+  "difficulty": 2,
+  "title": "Articulated Pendulum with PhysicsRevoluteJoint",
+  "description": "OpenUSD articulated mechanism linking a fixed pivot stanchion to a swinging pendulum arm via a bounded UsdPhysics revolute joint.",
+  "category": "Multibody Physics",
+  "tags": ["usd", "pendulum", "revolute-joint", "usdphysics", "kinematics"],
+  "activeFile": "pendulum.usda"
+}

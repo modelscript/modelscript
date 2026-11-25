@@ -1,0 +1,11 @@
+{
+  "id": "slam-02-serial-assembly-line",
+  "lang": "slam",
+  "subFormats": ["slam"],
+  "difficulty": 2,
+  "title": "Two-Stage Serial Assembly Line with Finite Buffer",
+  "description": "Two-workstation serial electronics assembly line with finite inter-stage buffer capacity, stochastic cycle times, and end-to-end throughput telemetry.",
+  "category": "Manufacturing Systems",
+  "tags": ["slam", "assembly", "buffer", "serial-line"],
+  "activeFile": "assembly_line.slam"
+}

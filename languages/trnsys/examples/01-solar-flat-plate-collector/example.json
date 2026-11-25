@@ -1,0 +1,12 @@
+{
+  "id": "trnsys-01-solar-flat-plate-collector",
+  "lang": "trnsys",
+  "subFormats": ["dck"],
+  "difficulty": 1,
+  "title": "Solar Flat-Plate Collector Instantaneous Efficiency",
+  "description": "Single-day Hottel-Whillier-Bliss flat-plate solar thermal collector (Type 1) driven by synthetic diurnal weather (Type 15) and tabular output printer (Type 25).",
+  "category": "Building & Solar Thermal",
+  "tags": ["trnsys", "solar-collector", "type1", "thermal"],
+  "activeFile": "collector.dck",
+  "isDefaultStarter": true
+}

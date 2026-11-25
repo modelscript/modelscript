@@ -1,0 +1,11 @@
+{
+  "id": "bufr-02-metar-aviation-report",
+  "lang": "bufr",
+  "subFormats": ["bufr-ed4"],
+  "difficulty": 2,
+  "title": "METAR Airport Aviation Weather Report",
+  "description": "BUFR Edition 4 aviation routine weather report (METAR) with custom Table B altimeter setting, runway visibility, and ceiling descriptors.",
+  "category": "Aviation Meteorology",
+  "tags": ["bufr", "metar", "aviation", "table-b", "table-d"],
+  "activeFile": "kjfk_metar.bufr"
+}

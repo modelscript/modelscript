@@ -1,0 +1,12 @@
+{
+  "id": "rocets-05-ffsc-lox-ch4-startup",
+  "lang": "rocets",
+  "subFormats": ["roc", "csv"],
+  "difficulty": 5,
+  "title": "Full-Flow Staged-Combustion LOX/CH4 Engine Startup",
+  "description": "High-chamber-pressure Full-Flow Staged-Combustion (FFSC) methalox rocket engine with dual oxidizer-rich and fuel-rich preburners, twin independent turbopumps, and a companion transient startup valve schedule.",
+  "category": "Advanced Rocket Cycles",
+  "tags": ["rocets", "ffsc", "methalox", "staged-combustion", "multi-file"],
+  "activeFile": "ffsc_engine.roc",
+  "fileOrder": ["ffsc_engine.roc", "valve_schedule.csv"]
+}

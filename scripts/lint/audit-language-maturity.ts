@@ -72,7 +72,7 @@ const CAD_LANGUAGES = new Set([
   "obj",
   "usgs-dem",
 ]);
-const SEMANTIC_LANGUAGES = new Set(["owl2", "reqif", "oscal"]);
+const SEMANTIC_LANGUAGES = new Set(["owl2", "reqif", "oscal", "sparql"]);
 const CONTAINER_LANGUAGES = new Set(["ssp", "csv"]);
 
 // Cache benchmark suite references across testsuite/benchmarks/*.test.ts
@@ -507,7 +507,7 @@ function run(): void {
     }
 
     // Update scripts/lint/lint-package-manifests.ts
-    const linterPath = path.join(REPO_ROOT, "scripts", "lint-package-manifests.ts");
+    const linterPath = path.join(REPO_ROOT, "scripts", "lint", "lint-package-manifests.ts");
     let linterSrc = fs.readFileSync(linterPath, "utf-8");
 
     const betaEntries = Array.from(newBeta)

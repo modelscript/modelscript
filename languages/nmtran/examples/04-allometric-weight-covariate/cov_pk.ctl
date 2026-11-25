@@ -1,0 +1,31 @@
+$PROBLEM Allometric Weight Covariate Two-Compartment Oral PK Model
+$INPUT ID TIME AMT DV CMT EVID WT
+$DATA pediatric_pk.csv IGNORE=@
+$SUBROUTINES ADVAN4 TRANS4
+$PK
+  TVCL = THETA(1) * (WT / 70.0)**0.75
+  TVV2 = THETA(2) * (WT / 70.0)
+  CL = TVCL * EXP(ETA(1))
+  V2 = TVV2 * EXP(ETA(2))
+  Q  = THETA(3)
+  V3 = THETA(4)
+  KA = THETA(5)
+  S2 = V2
+$ERROR
+  IPRED = F
+  W = IPRED * 0.1
+  Y = IPRED + W * EPS(1)
+$THETA
+  (0, 5.2, 50.0)   ; CL_70kg (L/h)
+  (0, 24.0, 200.0) ; V2_70kg (L)
+  (0, 3.8, 40.0)   ; Q (L/h)
+  (0, 42.0, 400.0) ; V3 (L)
+  (0, 1.3, 10.0)   ; KA (1/h)
+$OMEGA
+  0.04 ; IIV_CL
+  0.04 ; IIV_V2
+$SIGMA
+  0.01 ; RUV_PROP
+$ESTIMATION METHOD=1 INTERACTION MAXEVAL=9999 SIGDIGITS=3 PRINT=5 NOABORT POSTHOC
+$DOSE
+  TIME=0 AMT=150 RATE=0 CMT=1 EVID=1 II=12 ADDL=2

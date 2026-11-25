@@ -133,9 +133,9 @@ const CardFooterBar = styled(Box)`
 `;
 
 export interface CardFooterProps {
-  artifact: any;
+  artifact: import("./types").ArtifactCardRecord;
   artifactId: number;
-  viewConfig: any;
+  viewConfig: import("./types").ArtifactViewConfig;
   isLoaded: boolean;
   onOpenFullScreen: () => void;
   onRunOnHpc?: () => void;
@@ -307,11 +307,11 @@ export const CardFooter: React.FC<CardFooterProps> = ({
                 flexShrink: 0,
                 cursor: "pointer",
               }}
-              title={`External dependencies: ${viewConfig.dependencies.map((d: any) => `${d.name}@${d.version}`).join(", ")}`}
+              title={`External dependencies: ${viewConfig.dependencies.map((d) => `${d.name}@${d.version}`).join(", ")}`}
               onClick={(e) => {
                 e.stopPropagation();
-                if (viewConfig.dependencies.length === 1) {
-                  const first = viewConfig.dependencies[0];
+                if (viewConfig.dependencies && viewConfig.dependencies.length === 1) {
+                  const first = viewConfig.dependencies[0]!;
                   navigate(`/packages/${encodeURIComponent(first.name)}/${encodeURIComponent(first.version)}`);
                 } else {
                   navigate("/packages");
@@ -320,7 +320,7 @@ export const CardFooter: React.FC<CardFooterProps> = ({
             >
               📦{" "}
               {viewConfig.dependencies.length === 1
-                ? `${viewConfig.dependencies[0].name}@${viewConfig.dependencies[0].version}`
+                ? `${viewConfig.dependencies[0]!.name}@${viewConfig.dependencies[0]!.version}`
                 : `${viewConfig.dependencies.length} packages`}
             </span>
           )}

@@ -1,0 +1,4 @@
+! Standard Overhead and Underground LineCodes for IEEE 13-Bus Feeder
+New LineCode.OH601 nphases=3 r1=0.185 x1=0.380 r0=0.490 x0=1.250 units=km
+New LineCode.OH602 nphases=3 r1=0.290 x1=0.415 r0=0.620 x0=1.350 units=km
+New LineCode.UG606 nphases=3 r1=0.250 x1=0.190 r0=0.720 x0=0.680 units=km

@@ -1,0 +1,11 @@
+{
+  "id": "gaussian-04-sn2-transition-state",
+  "lang": "gaussian",
+  "subFormats": ["gjf"],
+  "difficulty": 4,
+  "title": "SN2 Identity Reaction Transition State Search",
+  "description": "Berny transition state saddle-point optimization (Opt=(TS,CalcFC,NoEigenTest)) with dispersion-corrected wB97XD/def2-TZVP for the anionic [Cl---CH3---Cl]- Walden inversion SN2 complex.",
+  "category": "Quantum Chemistry & Electronic Structure",
+  "tags": ["gaussian", "transition-state", "sn2", "wb97xd"],
+  "activeFile": "sn2_ts.gjf"
+}

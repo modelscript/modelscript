@@ -1,0 +1,381 @@
+[
+  {
+    "namePath": "Trasys.Surfaces.RECTANGLE",
+    "aliases": [
+      "RECT"
+    ],
+    "label": "Rectangular Surface",
+    "category": "Surface Primitives",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">RECTANGLE</text></svg>",
+    "ports": [
+      {
+        "name": "rad_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "rad_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "node",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Surfaces.DISK",
+    "aliases": [
+      "DISC",
+      "ANNULUS"
+    ],
+    "label": "Circular Disk Surface",
+    "category": "Surface Primitives",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">DISK</text></svg>",
+    "ports": [
+      {
+        "name": "rad_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "rad_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "node",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Surfaces.CYLINDER",
+    "aliases": [
+      "CYL"
+    ],
+    "label": "Cylindrical Shell",
+    "category": "Surface Primitives",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">CYLINDER</text></svg>",
+    "ports": [
+      {
+        "name": "rad_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "rad_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "node",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Surfaces.CONE",
+    "aliases": [
+      "FRUSTUM"
+    ],
+    "label": "Conical Frustum Surface",
+    "category": "Surface Primitives",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">CONE</text></svg>",
+    "ports": [
+      {
+        "name": "rad_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "rad_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "node",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Surfaces.SPHERE",
+    "aliases": [
+      "SPH"
+    ],
+    "label": "Spherical Surface",
+    "category": "Surface Primitives",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SPHERE</text></svg>",
+    "ports": [
+      {
+        "name": "rad_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "rad_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "node",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Surfaces.PARABOLOID",
+    "aliases": [
+      "PARAB",
+      "DISH"
+    ],
+    "label": "Paraboloid Reflector Dish",
+    "category": "Surface Primitives",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">PARABOLOID</text></svg>",
+    "ports": [
+      {
+        "name": "rad_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "rad_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "node",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Surfaces.POLYGON",
+    "aliases": [
+      "POLY"
+    ],
+    "label": "Planar Polygon Surface",
+    "category": "Surface Primitives",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e293b\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">SURF</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">POLYGON</text></svg>",
+    "ports": [
+      {
+        "name": "rad_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "rad_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "node",
+        "kind": "signal",
+        "side": "bottom",
+        "dx": 44,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Coatings.WHITE_PAINT_Z93",
+    "aliases": [
+      "Z93",
+      "WHITE_PAINT"
+    ],
+    "label": "White Paint Z-93",
+    "category": "Thermal Coatings",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1f2b\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">COAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">WHITE_PAIN</text></svg>",
+    "ports": [
+      {
+        "name": "optical",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Coatings.SILVER_TEFLON",
+    "aliases": [
+      "AG_TEFLON",
+      "FEP_SILVER"
+    ],
+    "label": "Silver Teflon (5 mil FEP)",
+    "category": "Thermal Coatings",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1f2b\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">COAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">SILVER_TEF</text></svg>",
+    "ports": [
+      {
+        "name": "optical",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Coatings.GOLD_KAPTON",
+    "aliases": [
+      "KAPTON_GOLD",
+      "MLI_GOLD"
+    ],
+    "label": "Gold Kapton MLI",
+    "category": "Thermal Coatings",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1f2b\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">COAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">GOLD_KAPTO</text></svg>",
+    "ports": [
+      {
+        "name": "optical",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Coatings.SOLAR_CELL",
+    "aliases": [
+      "PV_ARRAY",
+      "SOLAR_ARRAY"
+    ],
+    "label": "Spacecraft Solar Cell",
+    "category": "Thermal Coatings",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1f2b\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">COAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">SOLAR_CELL</text></svg>",
+    "ports": [
+      {
+        "name": "optical",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Coatings.BLACK_PAINT",
+    "aliases": [
+      "Z306",
+      "CHEMGLAZE_Z306"
+    ],
+    "label": "Black Paint (Z306)",
+    "category": "Thermal Coatings",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1f2b\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">COAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">BLACK_PAIN</text></svg>",
+    "ports": [
+      {
+        "name": "optical",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "Trasys.Coatings.OPTICAL_SOLAR_REFLECTOR",
+    "aliases": [
+      "OSR",
+      "QUARTZ_MIRROR"
+    ],
+    "label": "Optical Solar Reflector (OSR)",
+    "category": "Thermal Coatings",
+    "domain": "aerospace",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1f2b\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fbbf24\">COAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">OPTICAL_SO</text></svg>",
+    "ports": [
+      {
+        "name": "optical",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

@@ -1,0 +1,73 @@
+[
+  {
+    "id": "gcode-01-square-facing-perimeter",
+    "lang": "gcode",
+    "subFormats": ["iso-6983", "fanuc"],
+    "difficulty": 1,
+    "title": "Square Facing and Perimeter Milling Profile",
+    "description": "Metric ISO 6983 CNC milling program facing an aluminum block and profiling a 60 mm x 60 mm square perimeter with spindle start before cutting.",
+    "category": "CNC Machining & CAM",
+    "tags": ["gcode", "milling", "facing", "iso-6983"],
+    "activeFile": "square_face.nc",
+    "fileNames": ["square_face.nc"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "%\nO1001 (SQUARE FACING AND PERIMETER PROFILE)\nN10 G21 G90 G17 G54\nN20 T1 M06\nN30 S3000 M03\nN40 G00 X0.0 Y0.0 Z15.0\nN50 G00 Z2.0\nN60 G01 Z-1.5 F250\nN70 G01 X60.0 Y0.0 F600\nN80 G01 X60.0 Y60.0\nN90 G01 X0.0 Y60.0\nN100 G01 X0.0 Y0.0\nN110 G00 Z15.0\nN120 M05\nN130 M30\n%\n"
+  },
+  {
+    "id": "gcode-02-circular-pocket-arcs",
+    "lang": "gcode",
+    "subFormats": ["iso-6983", "fanuc"],
+    "difficulty": 2,
+    "title": "Circular Pocket and Arc Interpolation (G02/G03)",
+    "description": "Two-pass spiral circular pocket milling program demonstrating exact I/J arc interpolation with G03 counterclockwise lead-in and full-circle finish pass.",
+    "category": "CNC Machining & CAM",
+    "tags": ["gcode", "circular-pocket", "g02", "g03"],
+    "activeFile": "circular_pocket.nc",
+    "fileNames": ["circular_pocket.nc"],
+    "fileCount": 1,
+    "code": "%\nO1002 (CIRCULAR POCKET WITH ARC INTERPOLATION)\nN10 G21 G90 G17 G54\nN20 T2 M06\nN30 S6000 M03\nN40 G00 X0.0 Y0.0 Z20.0\nN50 G00 Z2.0\nN60 G01 Z-3.0 F200\nN70 G01 X10.0 Y0.0 F450\nN80 G03 X10.0 Y0.0 I-10.0 J0.0 F500\nN90 G01 X20.0 Y0.0 F450\nN100 G03 X20.0 Y0.0 I-20.0 J0.0 F500\nN110 G01 X0.0 Y0.0 F600\nN120 G00 Z20.0\nN130 M05\nN140 M30\n%\n"
+  },
+  {
+    "id": "gcode-03-peck-drilling-bolt-circle",
+    "lang": "gcode",
+    "subFormats": ["iso-6983", "canned-cycle"],
+    "difficulty": 3,
+    "title": "Peck-Drilling Bolt Circle (G83 Canned Cycle)",
+    "description": "Six-hole 80 mm bolt-circle deep-hole peck-drilling cycle using G83 with 4 mm Q-peck increments, R2.0 retract plane, and G80 cycle cancellation.",
+    "category": "CNC Machining & CAM",
+    "tags": ["gcode", "drilling", "g83", "bolt-circle"],
+    "activeFile": "bolt_circle.nc",
+    "fileNames": ["bolt_circle.nc"],
+    "fileCount": 1,
+    "code": "%\nO1003 (6-HOLE BOLT CIRCLE PECK DRILLING G83)\nN10 G21 G90 G17 G54\nN20 T3 M06\nN30 S2400 M03\nN40 G00 X40.0 Y0.0 Z25.0\nN50 G83 X40.0 Y0.0 Z-20.0 R2.0 Q4.0 F180\nN60 X20.0 Y34.641\nN70 X-20.0 Y34.641\nN80 X-40.0 Y0.0\nN90 X-20.0 Y-34.641\nN100 X20.0 Y-34.641\nN110 G80\nN120 G00 Z25.0\nN130 M05\nN140 M30\n%\n"
+  },
+  {
+    "id": "gcode-04-multitool-mill-drill-comp",
+    "lang": "gcode",
+    "subFormats": ["iso-6983", "cutter-comp"],
+    "difficulty": 4,
+    "title": "Multi-Tool Mill-Drill-Chamfer Operation with G41 Compensation",
+    "description": "Two-tool CNC machining sequence combining G41/G40 cutter radius compensation contour milling (T1) with G81 center-hole drilling (T2).",
+    "category": "CNC Machining & CAM",
+    "tags": ["gcode", "multi-tool", "g41", "cutter-compensation"],
+    "activeFile": "multitool_part.nc",
+    "fileNames": ["multitool_part.nc"],
+    "fileCount": 1,
+    "code": "%\nO1004 (MULTI-TOOL PROFILE WITH G41 COMP AND DRILLING)\nN10 G21 G90 G17 G54\n(TOOL 1: 10MM ENDMILL CONTOUR)\nN20 T1 M06\nN30 S8000 M03\nN40 G00 X-15.0 Y-15.0 Z20.0\nN50 G00 Z2.0\nN60 G01 Z-5.0 F250\nN70 G41 D1 G01 X0.0 Y0.0 F600\nN80 G01 X80.0 Y0.0\nN90 G03 X90.0 Y10.0 I0.0 J10.0\nN100 G01 X90.0 Y50.0\nN110 G01 X0.0 Y50.0\nN120 G01 X0.0 Y0.0\nN130 G40 G01 X-15.0 Y-15.0 F800\nN140 G00 Z25.0\nN150 M05\n(TOOL 2: 6MM DRILL CENTER BORES)\nN160 T2 M06\nN170 S3200 M03\nN180 G00 X25.0 Y25.0 Z25.0\nN190 G81 X25.0 Y25.0 Z-12.0 R2.0 F220\nN200 X65.0 Y25.0\nN210 G80\nN220 G00 Z25.0\nN230 M05\nN240 M30\n%\n"
+  },
+  {
+    "id": "gcode-05-3d-hemisphere-subprogram",
+    "lang": "gcode",
+    "subFormats": ["iso-6983", "subprogram", "3d-contour"],
+    "difficulty": 5,
+    "title": "3D Hemisphere Contouring with Parametric Subprogram",
+    "description": "Multi-pass 3D ball-endmill contouring program using RS-274 # parameters and an M98/O2000/M99 step-down subprogram for stepped hemisphere roughing.",
+    "category": "3D CNC Machining",
+    "tags": ["gcode", "3d-contour", "subprogram", "m98", "parametric"],
+    "activeFile": "hemisphere_3d.nc",
+    "fileNames": ["hemisphere_3d.nc"],
+    "fileCount": 1,
+    "code": "%\nO1005 (3D HEMISPHERE MULTI-LEVEL ROUGH AND FINISH CONTOUR)\n#100 = 25.0\nN10 G21 G90 G17 G54\n(TOOL 4: 8MM BALL-NOSE ENDMILL)\nN20 T4 M06\nN30 S10000 M03\nN40 G00 X0.0 Y0.0 Z30.0\n(LEVEL 1: Z = -5.0 MM, RADIUS = 24.495 MM)\nN50 G00 X24.495 Y0.0 Z5.0\nN60 G01 Z-5.0 F300\nN70 G02 X24.495 Y0.0 I-24.495 J0.0 F800\n(LEVEL 2: Z = -10.0 MM, RADIUS = 22.913 MM)\nN80 G01 X22.913 Y0.0 F600\nN90 G01 Z-10.0 F300\nN100 G02 X22.913 Y0.0 I-22.913 J0.0 F800\n(LEVEL 3: Z = -15.0 MM, RADIUS = 20.000 MM)\nN110 G01 X20.000 Y0.0 F600\nN120 G01 Z-15.0 F300\nN130 G02 X20.000 Y0.0 I-20.000 J0.0 F800\n(LEVEL 4: Z = -20.0 MM, RADIUS = 15.000 MM)\nN140 G01 X15.000 Y0.0 F600\nN150 G01 Z-20.0 F300\nN160 G02 X15.000 Y0.0 I-15.000 J0.0 F800\n(FINISH CROWN PASS: Z = -23.0 MM, RADIUS = 9.798 MM)\nN170 G01 X9.798 Y0.0 F500\nN180 G01 Z-23.0 F250\nN190 G03 X9.798 Y0.0 I-9.798 J0.0 F600\nN200 G00 Z30.0\nN210 G00 X0.0 Y0.0\nN220 M05\nN230 M30\n%\n"
+  }
+]

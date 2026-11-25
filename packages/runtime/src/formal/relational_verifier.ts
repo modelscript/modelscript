@@ -14,7 +14,7 @@
 import { TvpiDomain, TvpiState } from "./abstract_interpretation/tvpi_domain.js";
 import { CraigInterpolator, type LinearConstraint } from "./craig_interpolator.js";
 import { DpllTSolver } from "./dpll_t_solver.js";
-import { type NonlinearConstraint } from "./hc4_contractor.js";
+import { type ExprNode, type NonlinearConstraint } from "./hc4_contractor.js";
 
 export interface RelationalVariable {
   name: string;
@@ -356,7 +356,7 @@ export class RelationalVerifier {
     };
   }
 
-  private tagExpr(expr: any, suffix: string): any {
+  private tagExpr(expr: ExprNode, suffix: string): ExprNode {
     switch (expr.kind) {
       case "var":
         return { kind: "var", name: `${expr.name}${suffix}` };
@@ -369,7 +369,7 @@ export class RelationalVerifier {
       case "cos":
         return {
           kind: expr.kind,
-          child: this.tagExpr(expr.child ?? expr.arg, suffix),
+          child: this.tagExpr(expr.child, suffix),
         };
       case "add":
       case "sub":
@@ -384,11 +384,9 @@ export class RelationalVerifier {
       case "call":
         return {
           kind: "call",
-          fn: expr.fn ?? expr.name,
-          args: (expr.args ?? []).map((a: any) => this.tagExpr(a, suffix)),
+          fn: expr.fn,
+          args: expr.args.map((a) => this.tagExpr(a, suffix)),
         };
-      default:
-        return expr;
     }
   }
 

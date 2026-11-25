@@ -28,8 +28,15 @@
 import { getDefaultWasmExports } from "../dae/wasm_dae.js";
 import { type SparseCCSMatrix, sparseLuFactor, sparseLuSolve, SparseTripletBuilder } from "./sparse_lu.js";
 
+interface ArnoldiWasmExports {
+  memory: WebAssembly.Memory;
+  __new?: (size: number, id: number) => number;
+  __pin?: (ptr: number) => number;
+  mgsOrthogonalizeWasm?: (n: number, j: number, qMatPtr: number, wPtr: number, hColPtr: number) => number;
+}
+
 interface ArnoldiWasmScratch {
-  wasm: any;
+  wasm: ArnoldiWasmExports;
   capQ: number;
   capN: number;
   capM: number;
@@ -40,7 +47,7 @@ interface ArnoldiWasmScratch {
 
 let arnoldiScratch: ArnoldiWasmScratch | null = null;
 
-function ensureArnoldiScratch(wasm: any, n: number, m: number): ArnoldiWasmScratch | null {
+function ensureArnoldiScratch(wasm: ArnoldiWasmExports | null, n: number, m: number): ArnoldiWasmScratch | null {
   if (!wasm || typeof wasm.__new !== "function") return null;
   const qElems = n * (m + 1);
   if (
@@ -55,8 +62,9 @@ function ensureArnoldiScratch(wasm: any, n: number, m: number): ArnoldiWasmScrat
   const capN = Math.max(n, 64);
   const capM = Math.max(m, 32);
   const capQ = Math.max(qElems, capN * (capM + 1));
+  const newFn = wasm.__new;
   const alloc = (bytes: number): number => {
-    const ptr = wasm.__new(bytes, 0);
+    const ptr = newFn(bytes, 0);
     if (typeof wasm.__pin === "function") wasm.__pin(ptr);
     return ptr;
   };
@@ -165,9 +173,10 @@ export function arnoldiIteration(
   const w = new Float64Array(n);
   let actualSteps = m;
 
-  const wasm: any = n >= 16 ? getDefaultWasmExports() : null;
-  const wasmScratch = wasm && typeof wasm.mgsOrthogonalizeWasm === "function" ? ensureArnoldiScratch(wasm, n, m) : null;
-  if (wasmScratch) {
+  const wasm = n >= 16 ? (getDefaultWasmExports() as ArnoldiWasmExports | null) : null;
+  const mgsFn = wasm && typeof wasm.mgsOrthogonalizeWasm === "function" ? wasm.mgsOrthogonalizeWasm : null;
+  const wasmScratch = wasm && mgsFn ? ensureArnoldiScratch(wasm, n, m) : null;
+  if (wasmScratch && wasm) {
     new Float64Array(wasm.memory.buffer, wasmScratch.qMatPtr, n).set(v1);
   }
 
@@ -177,9 +186,9 @@ export function arnoldiIteration(
     op.apply(vj, w);
 
     let normW = 0;
-    if (wasmScratch) {
+    if (wasmScratch && wasm && mgsFn) {
       new Float64Array(wasm.memory.buffer, wasmScratch.wPtr, n).set(w);
-      normW = wasm.mgsOrthogonalizeWasm(n, j, wasmScratch.qMatPtr, wasmScratch.wPtr, wasmScratch.hColPtr);
+      normW = mgsFn(n, j, wasmScratch.qMatPtr, wasmScratch.wPtr, wasmScratch.hColPtr);
       const outBuf = wasm.memory.buffer;
       const hCol = new Float64Array(outBuf, wasmScratch.hColPtr, j + 1);
       for (let i = 0; i <= j; i++) {
@@ -234,7 +243,7 @@ export function arnoldiIteration(
     const vjNext = V.subarray((j + 1) * n, (j + 2) * n);
     const invNorm = 1.0 / normW;
     for (let k = 0; k < n; k++) vjNext[k] = w[k]! * invNorm;
-    if (wasmScratch) {
+    if (wasmScratch && wasm) {
       new Float64Array(wasm.memory.buffer, wasmScratch.qMatPtr + (j + 1) * n * 8, n).set(vjNext);
     }
   }

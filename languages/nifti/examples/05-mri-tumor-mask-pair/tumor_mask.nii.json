@@ -1,0 +1,23 @@
+{
+  "nifti_version": 1,
+  "sizeof_hdr": 348,
+  "magic": "n+1",
+  "descrip": "Co-Registered Glioblastoma Multi-Class Tumor Labelmap (1=Core, 2=Edema, 4=Enhancing)",
+  "dim": [3, 2, 2, 2, 1, 1, 1, 1],
+  "pixdim": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+  "datatype": "UINT8",
+  "scl_slope": 1.0,
+  "scl_inter": 0.0,
+  "qform_code": 2,
+  "sform_code": 2,
+  "quatern_b": 0.0,
+  "quatern_c": 0.0,
+  "quatern_d": 0.0,
+  "qoffset_x": -120.0,
+  "qoffset_y": -120.0,
+  "qoffset_z": -78.0,
+  "srow_x": [1.0, 0.0, 0.0, -120.0],
+  "srow_y": [0.0, 1.0, 0.0, -120.0],
+  "srow_z": [0.0, 0.0, 1.0, -78.0],
+  "voxels": [0, 2, 2, 0, 2, 4, 1, 0]
+}

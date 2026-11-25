@@ -1,0 +1,11 @@
+{
+  "id": "igtl-02-optical-tracker-tdata",
+  "lang": "igtl",
+  "subFormats": ["igtl"],
+  "difficulty": 2,
+  "title": "Optical Tracker Multi-Tool TDATA Coordinate Stream",
+  "description": "NDI Polaris optical tracker OpenIGTLink stream connecting StylusTip, Stylus, ReferenceFrame, and PatientRAS coordinate frames with verified SO(3) rotations and sub-millimeter RMS errors.",
+  "category": "Image-Guided Surgery & Navigation",
+  "tags": ["igtl", "polaris", "optical-tracker", "tdata", "se3"],
+  "activeFile": "tracker.igtl"
+}

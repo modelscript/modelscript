@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="roles.aml" SchemaVersion="2.15">
+  <RoleClassLib Name="AutomationMLBaseRoleClassLib">
+    <Version>2.2.2</Version>
+    <RoleClass Name="AutomationMLBaseRole" />
+    <RoleClass Name="Resource" RefBaseClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+    <RoleClass Name="Product" RefBaseClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+    <RoleClass Name="Process" RefBaseClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+    <RoleClass Name="Structure" RefBaseClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole" />
+  </RoleClassLib>
+</CAEXFile>

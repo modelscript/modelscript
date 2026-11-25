@@ -1,0 +1,37 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+def Xform "World"
+{
+    def PhysicsScene "physicsScene"
+    {
+        vector3f physics:gravityDirection = (0.0, 0.0, -1.0)
+        float physics:gravityMagnitude = 9.81
+    }
+
+    def Cube "GroundPlane" (
+        prepend apiSchemas = ["PhysicsCollisionAPI"]
+    )
+    {
+        double size = 1.0
+        double3 xformOp:scale = (20.0, 20.0, 0.2)
+        double3 xformOp:translate = (0.0, 0.0, -0.1)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+    }
+
+    def Cube "DropBox" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI", "PhysicsCollisionAPI"]
+    )
+    {
+        double size = 0.5
+        bool physics:rigidBodyEnabled = true
+        float physics:mass = 2.5
+        float3 physics:diagonalInertia = (0.104, 0.104, 0.104)
+        double3 xformOp:translate = (0.0, 0.0, 2.0)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+}

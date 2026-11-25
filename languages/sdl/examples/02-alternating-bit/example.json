@@ -1,0 +1,11 @@
+{
+  "id": "sdl-02-alternating-bit",
+  "lang": "sdl",
+  "subFormats": ["sdl"],
+  "difficulty": 2,
+  "title": "Alternating-Bit Reliable Data Link Protocol",
+  "description": "Reliable stop-and-wait Alternating-Bit Protocol (ABP) in SDL-88 featuring 1-bit sequence numbering, timeout retransmission, and duplicate frame filtering via DECISION.",
+  "category": "Data Link Protocols",
+  "tags": ["sdl", "abp", "retransmission", "decision"],
+  "activeFile": "abp.sdl"
+}

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  version="1.0"
+                  name="GridFeederParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="f_nom_hz"><ssv:Real value="60.0" /></ssv:Parameter>
+    <ssv:Parameter name="v_nom_kv"><ssv:Real value="13.8" /></ssv:Parameter>
+    <ssv:Parameter name="r_feeder_ohm"><ssv:Real value="0.18" /></ssv:Parameter>
+    <ssv:Parameter name="x_feeder_ohm"><ssv:Real value="0.42" /></ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>

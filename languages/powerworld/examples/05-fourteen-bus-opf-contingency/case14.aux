@@ -1,0 +1,73 @@
+// IEEE 14-Bus Optimal Power Flow & Contingency Benchmark
+DATA (Bus, [BusNum, BusName, BusNomVolt, BusPUVolt, BusAngle, BusSlack])
+{
+  1  "BUS1_138"  138.0 1.060  0.0 YES
+  2  "BUS2_138"  138.0 1.045 -5.0 NO
+  3  "BUS3_138"  138.0 1.010 -12.7 NO
+  4  "BUS4_138"  138.0 1.018 -10.3 NO
+  5  "BUS5_138"  138.0 1.020 -8.8 NO
+  6  "BUS6_69"   69.0  1.070 -14.2 NO
+  7  "BUS7_69"   69.0  1.062 -13.4 NO
+  8  "BUS8_18"   18.0  1.090 -13.4 NO
+  9  "BUS9_69"   69.0  1.056 -14.9 NO
+  10 "BUS10_69"  69.0  1.051 -15.1 NO
+  11 "BUS11_69"  69.0  1.057 -14.8 NO
+  12 "BUS12_69"  69.0  1.055 -15.1 NO
+  13 "BUS13_69"  69.0  1.050 -15.2 NO
+  14 "BUS14_69"  69.0  1.036 -16.0 NO
+}
+
+DATA (Gen, [BusNum, GenID, GenStatus, GenMW, GenMVR, GenMWMax, GenMWMin, GenVoltSet])
+{
+  1 "1" Closed 232.4 -16.5 332.4 0.0 1.060
+  2 "1" Closed  40.0  43.6 140.0 0.0 1.045
+  3 "1" Closed   0.0  25.1 100.0 0.0 1.010
+  6 "1" Closed   0.0  12.7 100.0 0.0 1.070
+  8 "1" Closed   0.0  17.6 100.0 0.0 1.090
+}
+
+DATA (Load, [BusNum, LoadID, LoadStatus, LoadMW, LoadMVR])
+{
+  2  "1" Closed 21.7 12.7
+  3  "1" Closed 94.2 19.0
+  4  "1" Closed 47.8 -3.9
+  5  "1" Closed  7.6  1.6
+  6  "1" Closed 11.2  7.5
+  9  "1" Closed 29.5 16.6
+  10 "1" Closed  9.0  5.8
+  11 "1" Closed  3.5  1.8
+  12 "1" Closed  6.1  1.6
+  13 "1" Closed 13.5  5.8
+  14 "1" Closed 14.9  5.0
+}
+
+DATA (Branch, [BusNumFrom, BusNumTo, LineCircuit, LineStatus, LineR, LineX, LineC, LineAMVA, LineXfmr])
+{
+  1  2  "1" Closed 0.0194 0.0592 0.0528 200.0 NO
+  1  5  "1" Closed 0.0540 0.2230 0.0492 150.0 NO
+  2  3  "1" Closed 0.0470 0.1980 0.0438 150.0 NO
+  2  4  "1" Closed 0.0581 0.1763 0.0340 150.0 NO
+  2  5  "1" Closed 0.0570 0.1739 0.0346 150.0 NO
+  3  4  "1" Closed 0.0670 0.1710 0.0128 150.0 NO
+  4  5  "1" Closed 0.0134 0.0421 0.0000 150.0 NO
+  4  7  "T1" Closed 0.0010 0.2091 0.0000 120.0 YES
+  4  9  "T2" Closed 0.0010 0.5562 0.0000 120.0 YES
+  5  6  "T3" Closed 0.0010 0.2520 0.0000 120.0 YES
+  6  11 "1" Closed 0.0950 0.1989 0.0000 100.0 NO
+  6  12 "1" Closed 0.1229 0.2558 0.0000 100.0 NO
+  6  13 "1" Closed 0.0662 0.1303 0.0000 100.0 NO
+  7  8  "T4" Closed 0.0010 0.1762 0.0000 120.0 YES
+  7  9  "1" Closed 0.0010 0.1100 0.0000 120.0 NO
+  9  10 "1" Closed 0.0318 0.0845 0.0000 100.0 NO
+  9  14 "1" Closed 0.1271 0.2704 0.0000 100.0 NO
+  10 11 "1" Closed 0.0821 0.1921 0.0000 100.0 NO
+  12 13 "1" Closed 0.2209 0.1999 0.0000 100.0 NO
+  13 14 "1" Closed 0.1709 0.3480 0.0000 100.0 NO
+}
+
+SCRIPT
+{
+  EnterMode(RUN);
+  SolvePowerFlow(RECTNEWT);
+  SolvePrimalLP();
+}

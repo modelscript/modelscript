@@ -31,7 +31,7 @@ export const objLanguage = language({
         shortTitle: "OBJ 3D",
         selector: ["*.obj", "*.mtl"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/ObjPanel.tsx",
         artifactViewTypes: ["obj", "mtl"],
       },

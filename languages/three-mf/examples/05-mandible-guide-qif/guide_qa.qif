@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<QIFDocument xmlns="http://qifstandards.org/xsd/qif3" versionQIF="3.0.0">
+  <Header>
+    <Application>
+      <Name>Ansatz Medical AM Metrology QA</Name>
+    </Application>
+    <Description>Dimensional verification plan for MandibleCuttingGuide (ISO 13485)</Description>
+  </Header>
+  <Characteristics>
+    <CharacteristicDefinitions>
+      <DiameterCharacteristicDefinition id="1">
+        <Name>FixationSleeveProx_ID</Name>
+        <Tolerance>
+          <MaxValue>2.08</MaxValue>
+          <MinValue>1.95</MinValue>
+        </Tolerance>
+      </DiameterCharacteristicDefinition>
+      <LinearCharacteristicDefinition id="2">
+        <Name>OsteotomySlotWidth</Name>
+        <Tolerance>
+          <MaxValue>1.28</MaxValue>
+          <MinValue>1.15</MinValue>
+        </Tolerance>
+      </LinearCharacteristicDefinition>
+    </CharacteristicDefinitions>
+  </Characteristics>
+</QIFDocument>

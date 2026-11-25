@@ -1,0 +1,12 @@
+{
+  "id": "lsdyna-01-uniaxial-cube-compression",
+  "lang": "lsdyna",
+  "subFormats": ["k"],
+  "difficulty": 1,
+  "title": "Uniaxial Cube Elastic Compression",
+  "description": "Single 8-node hexahedral solid steel cube subjected to uniaxial compressive nodal force with full bottom-face SPC constraints and explicit central-difference time integration.",
+  "category": "Explicit FEA & Impact",
+  "tags": ["lsdyna", "solid", "elastic", "compression"],
+  "activeFile": "cube_compress.k",
+  "isDefaultStarter": true
+}

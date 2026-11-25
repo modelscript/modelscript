@@ -1,0 +1,5 @@
+shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence,shape_dist_traveled
+SHP_1T,37.8044,-122.2712,1,0.0
+SHP_1T,37.8080,-122.2685,2,1400.0
+SHP_1T,37.7975,-122.2650,3,3100.0
+SHP_1T,37.7748,-122.2242,4,8200.0

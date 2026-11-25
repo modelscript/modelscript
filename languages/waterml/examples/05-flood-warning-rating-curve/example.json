@@ -1,0 +1,11 @@
+{
+  "id": "waterml-05-flood-warning-rating-curve",
+  "lang": "waterml",
+  "subFormats": ["waterml", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Station Flood Warning Network & Rating Table",
+  "description": "Three-station basin flood-warning WaterML 2.0 telemetry collection tracking upstream-to-downstream flood wave propagation paired with a stage-discharge rating curve CSV.",
+  "category": "Flood Forecasting",
+  "tags": ["waterml", "flood-warning", "rating-curve", "multi-station", "multi-file"],
+  "activeFile": "flood_gages.waterml"
+}

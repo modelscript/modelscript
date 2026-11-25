@@ -1,0 +1,12 @@
+{
+  "id": "csmp-01-rc-charging",
+  "lang": "csmp",
+  "subFormats": ["csmp"],
+  "difficulty": 1,
+  "title": "First-Order RC Charging Circuit",
+  "description": "Step charging response of a series resistor-capacitor network modeled with IBM CSMP/360 INTGRL and RKSFX fixed-step integration.",
+  "category": "Electrical Circuits",
+  "tags": ["csmp", "rc-circuit", "first-order", "intgrl"],
+  "activeFile": "rc_charging.csmp",
+  "isDefaultStarter": true
+}

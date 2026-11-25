@@ -1,0 +1,73 @@
+[
+  {
+    "id": "usgs-dem-01-sloping-valley-grid",
+    "lang": "usgs-dem",
+    "subFormats": ["free-format"],
+    "difficulty": 1,
+    "title": "Gentle Sloping Valley 3x3 Elevation Grid",
+    "description": "Minimal USGS 7.5-minute DEM with Type A quadrangle header, three 3-sample Type B elevation profiles, and Type C RMSE accuracy statistics.",
+    "category": "Topography",
+    "tags": ["usgs-dem", "elevation", "terrain", "utm"],
+    "activeFile": "boulder_valley.dem",
+    "fileNames": ["boulder_valley.dem"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# USGS 7.5-Minute Digital Elevation Model: BOULDER_VALLEY_CO\nTYPE_A \"BOULDER_VALLEY_CO\" LEVEL=2 PATTERN=1 REF=1 ZONE=13 UNITS=2 ZUNITS=2 DX=30 DY=30 DZ=1 MINZ=1600 MAXZ=1650 ACCURACY=1 NROWS=1 NCOLS=3\nTYPE_B 1 1 3 1 470000 4420000 0 1600 1620 : 1600 1610 1620\nTYPE_B 1 2 3 1 470030 4420000 0 1615 1635 : 1615 1625 1635\nTYPE_B 1 3 3 1 470060 4420000 0 1630 1650 : 1630 1640 1650\nTYPE_C 1 2 2 1 15 1 1 1 2 30\n"
+  },
+  {
+    "id": "usgs-dem-02-volcanic-cone-peak",
+    "lang": "usgs-dem",
+    "subFormats": ["free-format"],
+    "difficulty": 2,
+    "title": "Symmetrical Volcanic Cone Peak Terrain",
+    "description": "5x5 USGS DEM modeling a symmetrical volcanic cinder cone rising 260 m above a 1850 m basalt plateau in UTM Zone 10.",
+    "category": "Geomorphology",
+    "tags": ["usgs-dem", "volcano", "cone", "terrain"],
+    "activeFile": "cinder_cone.dem",
+    "fileNames": ["cinder_cone.dem"],
+    "fileCount": 1,
+    "code": "# USGS 7.5-Minute Digital Elevation Model: CINDER_CONE_CA\nTYPE_A \"CINDER_CONE_CA\" LEVEL=2 PATTERN=1 REF=1 ZONE=10 UNITS=2 ZUNITS=2 DX=30 DY=30 DZ=1 MINZ=1857 MAXZ=2110 ACCURACY=1 NROWS=1 NCOLS=5\nTYPE_B 1 1 5 1 642000 4490000 0 1857 1892 : 1857 1877 1892 1877 1857\nTYPE_B 1 2 5 1 642030 4490000 0 1877 2015 : 1877 1955 2015 1955 1877\nTYPE_B 1 3 5 1 642060 4490000 0 1892 2110 : 1892 2015 2110 2015 1892\nTYPE_B 1 4 5 1 642090 4490000 0 1877 2015 : 1877 1955 2015 1955 1877\nTYPE_B 1 5 5 1 642120 4490000 0 1857 1892 : 1857 1877 1892 1877 1857\nTYPE_C 1 2 2 1 15 1 1 1 2 30\n"
+  },
+  {
+    "id": "usgs-dem-03-river-canyon-gorge",
+    "lang": "usgs-dem",
+    "subFormats": ["free-format"],
+    "difficulty": 3,
+    "title": "River Canyon Gorge & Watershed Divide",
+    "description": "6x6 USGS DEM capturing a deeply incised V-shaped river gorge descending along the longitudinal channel axis with steep canyon walls.",
+    "category": "Hydrology & Geomorphology",
+    "tags": ["usgs-dem", "canyon", "watershed", "fluvial"],
+    "activeFile": "royal_gorge.dem",
+    "fileNames": ["royal_gorge.dem"],
+    "fileCount": 1,
+    "code": "# USGS 7.5-Minute Digital Elevation Model: ROYAL_GORGE_CO\nTYPE_A \"ROYAL_GORGE_CO\" LEVEL=2 PATTERN=1 REF=1 ZONE=13 UNITS=2 ZUNITS=2 DX=30 DY=30 DZ=1 MINZ=1766 MAXZ=2136 ACCURACY=1 NROWS=1 NCOLS=6\nTYPE_B 1 1 6 1 471500 4256000 0 2046 2136 : 2046 2064 2082 2100 2118 2136\nTYPE_B 1 2 6 1 471530 4256000 0 1982 2072 : 1982 2000 2018 2036 2054 2072\nTYPE_B 1 3 6 1 471560 4256000 0 1766 1856 : 1766 1784 1802 1820 1838 1856\nTYPE_B 1 4 6 1 471590 4256000 0 1766 1856 : 1766 1784 1802 1820 1838 1856\nTYPE_B 1 5 6 1 471620 4256000 0 1982 2072 : 1982 2000 2018 2036 2054 2072\nTYPE_B 1 6 6 1 471650 4256000 0 2046 2136 : 2046 2064 2082 2100 2118 2136\nTYPE_C 1 2 2 1 15 1 1 1 2 30\n"
+  },
+  {
+    "id": "usgs-dem-04-coastal-peninsula-ridge",
+    "lang": "usgs-dem",
+    "subFormats": ["free-format"],
+    "difficulty": 4,
+    "title": "Coastal Peninsula Sea-Level to Ridge Elevation Model",
+    "description": "High-resolution 10 m spacing 7x7 USGS DEM transitioning from sea-level coastal bluffs up to a 245 m central headlands ridge.",
+    "category": "Coastal Topography",
+    "tags": ["usgs-dem", "coastal", "peninsula", "high-res"],
+    "activeFile": "marin_headlands.dem",
+    "fileNames": ["marin_headlands.dem"],
+    "fileCount": 1,
+    "code": "# USGS 7.5-Minute Digital Elevation Model: MARIN_HEADLANDS_CA\nTYPE_A \"MARIN_HEADLANDS_CA\" LEVEL=2 PATTERN=1 REF=1 ZONE=10 UNITS=2 ZUNITS=2 DX=10 DY=10 DZ=1 MINZ=5 MAXZ=245 ACCURACY=1 NROWS=1 NCOLS=7\nTYPE_B 1 1 7 1 543000 4186000 0 5 27 : 5 12 20 27 20 12 5\nTYPE_B 1 2 7 1 543010 4186000 0 77 140 : 77 98 119 140 119 98 77\nTYPE_B 1 3 7 1 543020 4186000 0 126 217 : 126 157 187 217 187 157 126\nTYPE_B 1 4 7 1 543030 4186000 0 144 245 : 144 178 211 245 211 178 144\nTYPE_B 1 5 7 1 543040 4186000 0 126 217 : 126 157 187 217 187 157 126\nTYPE_B 1 6 7 1 543050 4186000 0 77 140 : 77 98 119 140 119 98 77\nTYPE_B 1 7 7 1 543060 4186000 0 5 27 : 5 12 20 27 20 12 5\nTYPE_C 1 2 2 1 15 1 1 1 2 30\n"
+  },
+  {
+    "id": "usgs-dem-05-stratovolcano-quadrangle",
+    "lang": "usgs-dem",
+    "subFormats": ["free-format"],
+    "difficulty": 5,
+    "title": "Mount Rainier-Style Multi-Profile 7.5-Min Quadrangle DEM",
+    "description": "9x9 alpine stratovolcano USGS 7.5-minute quadrangle DEM spanning 2400 m glacial valleys to a 4390 m glaciated summit with radial ridges and Type C accuracy report.",
+    "category": "Alpine Cartography",
+    "tags": ["usgs-dem", "stratovolcano", "quadrangle", "alpine"],
+    "activeFile": "mount_rainier_west.dem",
+    "fileNames": ["mount_rainier_west.dem"],
+    "fileCount": 1,
+    "code": "# USGS 7.5-Minute Digital Elevation Model: MOUNT_RAINIER_WEST_WA\nTYPE_A \"MOUNT_RAINIER_WEST_WA\" LEVEL=2 PATTERN=1 REF=1 ZONE=10 UNITS=2 ZUNITS=2 DX=30 DY=30 DZ=1 MINZ=2307 MAXZ=4301 ACCURACY=1 NROWS=1 NCOLS=9\nTYPE_B 1 1 9 1 588000 5186000 0 2307 2806 : 2446 2584 2720 2806 2798 2689 2527 2383 2307\nTYPE_B 1 2 9 1 588030 5186000 0 2398 3163 : 2505 2700 2931 3118 3163 3029 2784 2546 2398\nTYPE_B 1 3 9 1 588060 5186000 0 2566 3659 : 2589 2845 3199 3528 3659 3508 3166 2810 2566\nTYPE_B 1 4 9 1 588090 5186000 0 2669 4121 : 2669 2974 3439 3904 4121 3963 3536 3075 2740\nTYPE_B 1 5 9 1 588120 5186000 0 2703 4301 : 2703 3016 3520 4041 4301 4151 3701 3205 2834\nTYPE_B 1 6 9 1 588150 5186000 0 2669 4081 : 2669 2940 3383 3845 4081 3954 3563 3128 2800\nTYPE_B 1 7 9 1 588180 5186000 0 2589 3597 : 2589 2792 3112 3438 3597 3495 3207 2891 2658\nTYPE_B 1 8 9 1 588210 5186000 0 2479 3108 : 2505 2654 2855 3039 3108 3017 2820 2617 2479\nTYPE_B 1 9 9 1 588240 5186000 0 2338 2776 : 2446 2566 2690 2775 2776 2685 2541 2410 2338\nTYPE_C 1 2 2 1 15 1 1 1 3 64\n"
+  }
+]

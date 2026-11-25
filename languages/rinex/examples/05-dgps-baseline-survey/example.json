@@ -1,0 +1,11 @@
+{
+  "id": "rinex-05-dgps-baseline-survey",
+  "lang": "rinex",
+  "subFormats": ["rinex-2.11-obs", "rinex-2.11-nav"],
+  "difficulty": 5,
+  "title": "Differential GPS Base & Rover Short-Baseline Survey",
+  "description": "Multi-receiver differential GNSS survey bundle combining synchronized dual-frequency base station observations, rover observations, and shared GPS broadcast ephemeris.",
+  "category": "Differential GNSS",
+  "tags": ["rinex", "dgps", "rtk", "baseline", "multi-file"],
+  "activeFile": "rover.obs"
+}

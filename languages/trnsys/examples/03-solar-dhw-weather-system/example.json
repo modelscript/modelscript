@@ -1,0 +1,11 @@
+{
+  "id": "trnsys-03-solar-dhw-weather-system",
+  "lang": "trnsys",
+  "subFormats": ["dck", "csv"],
+  "difficulty": 3,
+  "title": "Closed-Loop Solar DHW System with Differential Controller",
+  "description": "Complete closed-loop solar domestic hot water heating system with flat-plate collector (Type 1), hysteresis differential controller (Type 2), circulation pump (Type 3), stratified tank (Type 4), and companion TMY weather profile.",
+  "category": "Building & Solar Thermal",
+  "tags": ["trnsys", "sdhw", "controller", "multi-file"],
+  "activeFile": "sdhw.dck"
+}

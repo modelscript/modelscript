@@ -32,10 +32,18 @@ export interface SimulationResultsProps {
     | undefined;
 }
 
+export interface TooltipPayloadItem {
+  name?: string | number | undefined;
+  dataKey?: string | number | undefined;
+  color?: string | undefined;
+  stroke?: string | undefined;
+  value?: unknown;
+}
+
 export interface CustomInspectionTooltipProps {
   active?: boolean | undefined;
-  payload?: any[] | undefined;
-  label?: any;
+  payload?: TooltipPayloadItem[] | undefined;
+  label?: string | number | undefined;
   xAxisVar: string;
   minMaxMap: Record<string, { min: number; max: number }>;
   isNormalized: boolean;

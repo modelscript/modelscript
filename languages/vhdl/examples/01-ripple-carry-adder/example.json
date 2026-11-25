@@ -1,0 +1,12 @@
+{
+  "id": "vhdl-01-ripple-carry-adder",
+  "lang": "vhdl",
+  "subFormats": ["vhd"],
+  "difficulty": 1,
+  "title": "4-Bit Ripple-Carry Adder",
+  "description": "Synthesizable combinational 4-bit ripple-carry adder in IEEE VHDL-93 using concurrent XOR/AND/OR carry-chain equations and std_logic_vector ports.",
+  "category": "Combinational Logic",
+  "tags": ["vhdl", "adder", "combinational", "rtl"],
+  "activeFile": "adder4.vhd",
+  "isDefaultStarter": true
+}

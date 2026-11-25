@@ -25,7 +25,7 @@ export const stlLanguage = language({
         shortTitle: "STL 3D",
         selector: ["*.stl"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/StlPanel.tsx",
         artifactViewTypes: ["stl", "mesh"],
       },

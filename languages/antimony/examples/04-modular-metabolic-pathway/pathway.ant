@@ -1,0 +1,20 @@
+import "enzymes.ant"
+
+model MetabolicPathway()
+  compartment cell = 1.0;
+  species $Glc_ext in cell = 20.0;
+  species Glc in cell = 5.0, G6P in cell = 0.5, F6P in cell = 0.2, Pyr in cell = 0.1;
+  const k_imp = 0.15, V_hk = 3.0, Km_hk = 2.0;
+  const kf_pgi = 1.2, kr_pgi = 0.8, k_gly = 0.5, k_out = 0.25;
+
+  J_import: $Glc_ext => Glc; k_imp * Glc_ext;
+  J_hexokinase: Glc => G6P; (V_hk * Glc) / (Km_hk + Glc);
+  J_isomerase: G6P -> F6P; kf_pgi * G6P - kr_pgi * F6P;
+  J_downstream: F6P => Pyr; k_gly * F6P;
+  J_export: Pyr => ; k_out * Pyr;
+
+  Glc is "Intracellular Glucose";
+  G6P is "Glucose-6-Phosphate";
+  F6P is "Fructose-6-Phosphate";
+  Pyr is "Pyruvate";
+end

@@ -7,13 +7,47 @@ import { sanitizeHttpUrl } from "../../util/url";
 import Box from "../Box";
 import CadStepViewer from "./CadStepViewer";
 
+export interface AasBomItem {
+  name: string;
+  partNumber?: string | undefined;
+  category?: string | undefined;
+  quantity?: number | undefined;
+  packageDependency?: string | undefined;
+  sourcingUrl?: string | undefined;
+  [key: string]: unknown;
+}
+
+export interface AasMakingInstruction {
+  step?: number | string | undefined;
+  title?: string | undefined;
+  instruction?: string | undefined;
+  tools?: string[] | undefined;
+  [key: string]: unknown;
+}
+
+export interface AasManifest {
+  title?: string | undefined;
+  globalAssetId?: string | undefined;
+  assetKind?: string | undefined;
+  scope?: string | undefined;
+  license?: string | undefined;
+  description?: string | undefined;
+  author?: { name?: string | undefined; email?: string | undefined } | undefined;
+  bom?: AasBomItem[] | undefined;
+  makingInstructions?: AasMakingInstruction[] | undefined;
+  variants?: Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
 export interface AasPackageViewerProps {
   viewConfig: {
     packageName: string;
     version: string;
     assetKind?: string | undefined;
-    manifest?: any;
+    manifest?: AasManifest | undefined;
     cadUrl?: string | undefined;
+    stepUrl?: string | undefined;
+    cad?: unknown;
     variants?: string[] | undefined;
     instances?:
       | {
@@ -21,9 +55,10 @@ export interface AasPackageViewerProps {
           variant?: string | undefined;
           status?: string | undefined;
           complianceStatus?: string | undefined;
-          birthData?: Record<string, any> | undefined;
+          birthData?: Record<string, unknown> | undefined;
         }[]
       | undefined;
+    [key: string]: unknown;
   };
   isFullScreen?: boolean | undefined;
 }
@@ -34,17 +69,15 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
   const [copiedNpm, setCopiedNpm] = useState(false);
 
   const effectiveCadUrl =
-    viewConfig.cadUrl ||
-    (viewConfig as any).stepUrl ||
-    (typeof (viewConfig as any).cad === "string" ? (viewConfig as any).cad : undefined);
+    viewConfig.cadUrl || viewConfig.stepUrl || (typeof viewConfig.cad === "string" ? viewConfig.cad : undefined);
 
   useEffect(() => {
-    (window as any).__ARTIFACT_READY = true;
+    window.__ARTIFACT_READY = true;
   }, []);
 
-  const manifest = viewConfig.manifest || {};
-  const bom = manifest.bom || [];
-  const instructions = manifest.makingInstructions || [];
+  const manifest: AasManifest = viewConfig.manifest || {};
+  const bom: AasBomItem[] = manifest.bom || [];
+  const instructions: AasMakingInstruction[] = manifest.makingInstructions || [];
   const variants = viewConfig.variants || Object.keys(manifest.variants || {});
   const instances = viewConfig.instances || [];
 
@@ -234,7 +267,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
                   </tr>
                 </thead>
                 <tbody>
-                  {bom.map((item: any, idx: number) => (
+                  {bom.map((item: AasBomItem, idx: number) => (
                     <tr key={idx} style={{ borderBottom: "1px solid var(--color-border-muted)" }}>
                       <td style={{ padding: "8px", fontWeight: "bold" }}>{item.name}</td>
                       <td style={{ padding: "8px", fontFamily: "monospace" }}>{item.partNumber || "—"}</td>
@@ -300,7 +333,7 @@ export const AasPackageViewer: React.FC<AasPackageViewerProps> = ({ viewConfig, 
               <Text color="var(--color-fg-muted)">No assembly instructions defined.</Text>
             ) : (
               <Box display="flex" flexDirection="column" gap={3}>
-                {instructions.map((step: any, idx: number) => (
+                {instructions.map((step: AasMakingInstruction, idx: number) => (
                   <Box
                     key={idx}
                     p={3}

@@ -1,0 +1,12 @@
+{
+  "id": "atp-01-rl-energization",
+  "lang": "atp",
+  "subFormats": ["atp"],
+  "difficulty": 1,
+  "title": "138 kV RL Line Energization Transient",
+  "description": "Single-phase 138 kV source energizing a series RL transmission feeder into a resistive-inductive substation load with DC offset transient.",
+  "category": "Power Systems EMT",
+  "tags": ["atp", "emtp", "energization", "rl-transient", "138kv"],
+  "activeFile": "energization.atp",
+  "isDefaultStarter": true
+}

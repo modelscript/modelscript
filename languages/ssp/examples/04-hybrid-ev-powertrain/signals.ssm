@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssm:ParameterMapping xmlns:ssm="http://ssp-standard.org/SSP1/SystemStructureParameterMapping"
+                      version="1.0">
+  <ssm:MappingEntry source="v_nom" target="BatteryPack.V_nom" />
+  <ssm:MappingEntry source="capacity_kwh" target="BatteryPack.E_cap" />
+  <ssm:MappingEntry source="eta_inv" target="TractionInverter.eta" />
+</ssm:ParameterMapping>

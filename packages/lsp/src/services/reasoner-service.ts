@@ -2,7 +2,12 @@
 
 import { Owl2TableauReasoner } from "@modelscript/owl2";
 import { getBfoIofCoreAxioms } from "@modelscript/runtime";
-import { OntologyBuilder, TableauReasoner } from "@modelscript/runtime/wasm_ontology.js";
+import {
+  OntologyBuilder,
+  TableauReasoner,
+  WasmOntologyStore,
+  type OWL2AxiomDelta,
+} from "@modelscript/runtime/wasm_ontology.js";
 import { Connection } from "vscode-languageserver/browser.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
@@ -20,7 +25,7 @@ export class ReasonerService {
     this.reasoner = new TableauReasoner();
     this.ontologyBuilder = new OntologyBuilder(
       this.reasoner,
-      this.workspaceManager?.unifiedWorkspace?.owl2Store ?? (new Map() as any),
+      this.workspaceManager?.unifiedWorkspace?.owl2Store ?? new WasmOntologyStore(),
     );
 
     this.initialize();
@@ -36,8 +41,9 @@ export class ReasonerService {
         store.setAxioms("bfo-core", bfoAxioms);
       }
       this.reasoner.loadOntology(store?.axioms?.length ? store.axioms : bfoAxioms);
-    } catch (e: any) {
-      this.connection.console.warn(`[reasoner] Failed to load BFO baseline axioms: ${e?.message || e}`);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      this.connection.console.warn(`[reasoner] Failed to load BFO baseline axioms: ${message}`);
     }
     this.connection.console.info(`[reasoner] Initialized with ${this.reasoner.getTaxonomy().length} taxonomy nodes.`);
   }
@@ -46,7 +52,7 @@ export class ReasonerService {
    * Called incrementally (e.g. after validation) to ingest new axioms
    * and update the taxonomy natively without parsing full OWL2 strings.
    */
-  public updateAndReason(workspaceVersions: Map<string, number>, directDelta?: any) {
+  public updateAndReason(workspaceVersions: Map<string, number>, directDelta?: OWL2AxiomDelta) {
     if (this.reasoner.status === "idle") {
       this.reasoner.init();
     }
@@ -56,17 +62,14 @@ export class ReasonerService {
     }
 
     // 1. Determine delta: directDelta from setAxioms, or store.update, or store.lastDelta
-    let delta = directDelta;
+    let delta: Readonly<OWL2AxiomDelta> | null | undefined = directDelta;
     if (!delta && store && typeof store.update === "function") {
       delta = store.update(workspaceVersions);
     }
-    if (
-      !delta &&
-      store &&
-      (store as any).lastDelta &&
-      ((store as any).lastDelta.assertions.length > 0 || (store as any).lastDelta.retractions.length > 0)
-    ) {
-      delta = (store as any).lastDelta;
+    const storeLastDelta =
+      store && "lastDelta" in store ? (store as { lastDelta?: Readonly<OWL2AxiomDelta> }).lastDelta : undefined;
+    if (!delta && storeLastDelta && (storeLastDelta.assertions.length > 0 || storeLastDelta.retractions.length > 0)) {
+      delta = storeLastDelta;
     }
 
     if (delta && (delta.assertions.length > 0 || delta.retractions.length > 0)) {

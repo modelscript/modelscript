@@ -149,12 +149,12 @@ const activeExampleSvg = computed<string>(() => {
   return isDark.value ? activeExample.value.svgDark : activeExample.value.svgLight;
 });
 
-function morselHrefFor(ex: IndustryExampleItem | undefined): string {
+function ansatzHrefFor(ex: IndustryExampleItem | undefined): string {
   if (!ex?.permalinkToken) return `${ansatzOrigin.value}/editor`;
   return `${ansatzOrigin.value}/editor#m=${ex.permalinkToken}`;
 }
 
-const heroMorselHref = computed(() => morselHrefFor(industryExamples.value[0]));
+const heroAnsatzHref = computed(() => ansatzHrefFor(industryExamples.value[0]));
 
 const domainBenchStats = computed(() => {
   const entries = (industry.value?.languages ?? [])
@@ -291,7 +291,7 @@ async function copyText(text: string, which: "cli" | "example") {
             <a class="ms-btn ms-btn-lg ms-btn-brand" href="/guide/getting-started">
               Get started <MsIcon name="arrowRight" :size="16" :stroke="2" />
             </a>
-            <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="heroMorselHref" target="_blank" rel="noopener noreferrer">
+            <a class="ms-btn ms-btn-lg ms-btn-ghost" :href="heroAnsatzHref" target="_blank" rel="noopener noreferrer">
               {{ industryExamples.length ? `Open ${industryExamples[0]?.name} in Ansatz` : "Open Ansatz" }}
               <MsIcon name="arrow-up-right" :size="15" :stroke="2" />
             </a>
@@ -387,10 +387,10 @@ async function copyText(text: string, which: "cli" | "example") {
                 </button>
               </div>
               <a
-                :href="morselHrefFor(activeExample)"
+                :href="ansatzHrefFor(activeExample)"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="wb-morsel-btn"
+                class="wb-ansatz-btn"
               >
                 <span>Open in Ansatz</span>
                 <MsIcon name="arrow-up-right" :size="13" />
@@ -1475,7 +1475,7 @@ async function copyText(text: string, which: "cli" | "example") {
   background: var(--vp-c-bg-soft);
 }
 
-.wb-morsel-btn {
+.wb-ansatz-btn {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1490,7 +1490,7 @@ async function copyText(text: string, which: "cli" | "example") {
   transition: background 0.18s ease, border-color 0.18s ease;
 }
 
-.wb-morsel-btn:hover {
+.wb-ansatz-btn:hover {
   background: color-mix(in srgb, var(--accent) 20%, transparent);
   border-color: color-mix(in srgb, var(--accent) 52%, transparent);
 }

@@ -1,0 +1,11 @@
+{
+  "id": "ccsds-04-deep-space-doppler-tdm",
+  "lang": "ccsds",
+  "subFormats": ["tdm"],
+  "difficulty": 4,
+  "title": "Deep-Space Ground Station Doppler Tracking Data (CCSDS TDM)",
+  "description": "CCSDS Tracking Data Message (TDM v2.0) recording NASA Deep Space Network Goldstone DSS-14 X-band two-way coherent Doppler frequency and sequential ranging observables for a deep-space cruise spacecraft.",
+  "category": "Deep-Space Navigation",
+  "tags": ["ccsds", "tdm", "dsn", "doppler", "ranging"],
+  "activeFile": "dsn_doppler.tdm"
+}

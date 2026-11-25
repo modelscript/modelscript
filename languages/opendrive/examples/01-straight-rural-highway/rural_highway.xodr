@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenDRIVE>
+  <header revMajor="1" revMinor="6" name="Rural_TwoLane_Highway" version="1.0" date="2026-11-24" north="100.0" south="-100.0" east="500.0" west="0.0" vendor="Ansatz"/>
+  <road name="Route_101" length="400.00000000" id="1" junction="-1">
+    <planView>
+      <geometry s="0.00000000" x="0.00000000" y="0.00000000" hdg="0.00000000" length="400.00000000">
+        <line/>
+      </geometry>
+    </planView>
+    <elevationProfile>
+      <elevation s="0.00000000" a="10.00000000" b="0.01500000" c="0.00000000" d="0.00000000"/>
+    </elevationProfile>
+    <lanes>
+      <laneSection s="0.00000000">
+        <left>
+          <lane id="2" type="shoulder" level="false">
+            <width sOffset="0.00000000" a="1.50000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+          </lane>
+          <lane id="1" type="driving" level="false">
+            <width sOffset="0.00000000" a="3.50000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+          </lane>
+        </left>
+        <center>
+          <lane id="0" type="none" level="false"/>
+        </center>
+        <right>
+          <lane id="-1" type="driving" level="false">
+            <width sOffset="0.00000000" a="3.50000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+          </lane>
+          <lane id="-2" type="shoulder" level="false">
+            <width sOffset="0.00000000" a="1.50000000" b="0.00000000" c="0.00000000" d="0.00000000"/>
+          </lane>
+        </right>
+      </laneSection>
+    </lanes>
+    <signals>
+      <signal s="50.00000000" t="-5.50000000" id="sig_speed_80" name="SpeedLimit_80" dynamic="no" orientation="+" zOffset="0.0" country="USA" type="R2-1"/>
+    </signals>
+  </road>
+</OpenDRIVE>

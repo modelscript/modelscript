@@ -1,0 +1,12 @@
+{
+  "id": "sinda-01-conduction-rod-steady",
+  "lang": "sinda",
+  "subFormats": ["sinda-g"],
+  "difficulty": 1,
+  "title": "1D Steady-State Conduction Rod with Fixed Boundary Nodes",
+  "description": "Four-node aluminum conduction bar connecting a heated base to a fixed 300 K thermal sink solved for steady-state temperatures with STDSTL.",
+  "category": "Thermal Network Analysis",
+  "tags": ["sinda", "conduction", "steady-state", "thermal-network"],
+  "activeFile": "conduction_rod.sin",
+  "isDefaultStarter": true
+}

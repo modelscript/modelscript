@@ -1,0 +1,1174 @@
+[
+  {
+    "namePath": "sel:SEL_U1_MI",
+    "aliases": [
+      "U1",
+      "IEEE_MI",
+      "C37.112_MI"
+    ],
+    "label": "U1 Moderately Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_U1_MI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_U2_I",
+    "aliases": [
+      "U2",
+      "IEEE_I",
+      "CO8"
+    ],
+    "label": "U2 Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_U2_I</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_U3_VI",
+    "aliases": [
+      "U3",
+      "IEEE_VI",
+      "C37.112_VI"
+    ],
+    "label": "U3 Very Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_U3_VI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_U4_EI",
+    "aliases": [
+      "U4",
+      "IEEE_EI",
+      "C37.112_EI"
+    ],
+    "label": "U4 Extremely Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_U4_EI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_U5_STI",
+    "aliases": [
+      "U5",
+      "IEEE_STI"
+    ],
+    "label": "U5 Short-Time Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_U5_STI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_C1_SI",
+    "aliases": [
+      "C1",
+      "IEC_SI",
+      "IEC_60255_SI"
+    ],
+    "label": "C1 IEC Standard Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_C1_SI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_C2_VI",
+    "aliases": [
+      "C2",
+      "IEC_VI",
+      "IEC_60255_VI"
+    ],
+    "label": "C2 IEC Very Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_C2_VI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_C3_EI",
+    "aliases": [
+      "C3",
+      "IEC_EI",
+      "IEC_60255_EI"
+    ],
+    "label": "C3 IEC Extremely Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_C3_EI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_C4_LTI",
+    "aliases": [
+      "C4",
+      "IEC_LTI",
+      "IEC_60255_LTI"
+    ],
+    "label": "C4 IEC Long-Time Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_C4_LTI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SEL_C5_STI",
+    "aliases": [
+      "C5",
+      "IEC_STI",
+      "IEC_60255_STI"
+    ],
+    "label": "C5 IEC Short-Time Inverse TCC",
+    "category": "Time-Overcurrent Curve",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">TCC</text><path d=\"M54 8 Q56 20 72 22\" fill=\"none\" stroke=\"#60a5fa\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SEL_C5_STI</text></svg>",
+    "ports": [
+      {
+        "name": "iMag",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_50P",
+    "aliases": [
+      "50P",
+      "50P1P",
+      "50P2P"
+    ],
+    "label": "50P Instantaneous Phase OC",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_50P</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_50G",
+    "aliases": [
+      "50G",
+      "50G1P",
+      "50N"
+    ],
+    "label": "50G Instantaneous Ground OC",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_50G</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_51P",
+    "aliases": [
+      "51P",
+      "51P1P"
+    ],
+    "label": "51P Phase Time-Overcurrent",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_51P</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_51G",
+    "aliases": [
+      "51G",
+      "51G1P",
+      "51N"
+    ],
+    "label": "51G Ground Time-Overcurrent",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_51G</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_21P_MHO",
+    "aliases": [
+      "21P",
+      "Z1P",
+      "Z2P",
+      "Z3P",
+      "MHO"
+    ],
+    "label": "21P Phase Mho Distance",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_21P_MHO</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_21G_QUAD",
+    "aliases": [
+      "21G",
+      "Z1G",
+      "Z2G",
+      "QUAD"
+    ],
+    "label": "21G Ground Quadrilateral Distance",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_21G_QUA</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_67P",
+    "aliases": [
+      "67P",
+      "67P1"
+    ],
+    "label": "67P Directional Phase OC",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_67P</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_67Q",
+    "aliases": [
+      "67Q",
+      "32Q",
+      "67Q1"
+    ],
+    "label": "67Q Neg-Seq Directional OC",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_67Q</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_87L",
+    "aliases": [
+      "87L",
+      "87LP"
+    ],
+    "label": "87L Line Current Differential",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_87L</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_87T",
+    "aliases": [
+      "87T",
+      "87R"
+    ],
+    "label": "87T Transformer Differential",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_87T</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_79_RECLOSE",
+    "aliases": [
+      "79",
+      "79OI1",
+      "RECLOSE"
+    ],
+    "label": "79 Automatic Reclosing",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_79_RECL</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_81O_U",
+    "aliases": [
+      "81",
+      "81O",
+      "81U",
+      "81D1P"
+    ],
+    "label": "81O/81U Frequency Element",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_81O_U</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_27_59",
+    "aliases": [
+      "27",
+      "59",
+      "27P",
+      "59P"
+    ],
+    "label": "27/59 Voltage Element",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_27_59</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:EL_50BF",
+    "aliases": [
+      "50BF",
+      "BF",
+      "62BF"
+    ],
+    "label": "50BF Breaker Failure",
+    "category": "Protection Element",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><circle cx=\"64\" cy=\"14\" r=\"6\" fill=\"none\" stroke=\"#fb923c\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">EL_50BF</text></svg>",
+    "ports": [
+      {
+        "name": "ct",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "pt",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "pickup",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 14
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "sel:SV_TIMER",
+    "aliases": [
+      "SV1",
+      "SV1T",
+      "SVnT",
+      "SELOGIC_TIMER"
+    ],
+    "label": "SV SELogic Pickup/Dropout Timer",
+    "category": "SELogic & Timer",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">LOG</text><polyline points=\"54,18 60,18 60,10 68,10 68,18 74,18\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">SV_TIMER</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sel:LT_LATCH",
+    "aliases": [
+      "LT1",
+      "LTn",
+      "SET_RST"
+    ],
+    "label": "LT SELogic Set/Reset Latch",
+    "category": "SELogic & Timer",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">LOG</text><polyline points=\"54,18 60,18 60,10 68,10 68,18 74,18\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">LT_LATCH</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sel:PMV_MATH",
+    "aliases": [
+      "PMV01",
+      "PMVn",
+      "MATH"
+    ],
+    "label": "PMV Protection Math Variable",
+    "category": "SELogic & Timer",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">LOG</text><polyline points=\"54,18 60,18 60,10 68,10 68,18 74,18\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">PMV_MATH</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sel:WORD_BIT_52A",
+    "aliases": [
+      "52A",
+      "IN101",
+      "BRK_52A"
+    ],
+    "label": "52a Breaker Status Word Bit",
+    "category": "SELogic & Timer",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">LOG</text><polyline points=\"54,18 60,18 60,10 68,10 68,18 74,18\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">WORD_BIT_5</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sel:WORD_BIT_TRIP",
+    "aliases": [
+      "TRIP",
+      "TR",
+      "OUT101"
+    ],
+    "label": "TRIP Output Word Bit",
+    "category": "SELogic & Timer",
+    "domain": "electrical",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">LOG</text><polyline points=\"54,18 60,18 60,10 68,10 68,18 74,18\" fill=\"none\" stroke=\"#34d399\" stroke-width=\"1.4\"/><text x=\"42\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">WORD_BIT_T</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "rst",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  }
+]

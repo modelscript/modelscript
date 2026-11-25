@@ -125,7 +125,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
       if (tmpPath) {
         try {
           if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-        } catch {}
+        } catch {
+          // Best-effort cleanup of temporary upload file
+        }
       }
     }
   });
@@ -616,7 +618,9 @@ export function physicsRouter(jobQueue: JobQueue, database: LibraryDatabase): Ro
             if (meta?.resultDir) {
               gcodePath = path.resolve(meta.resultDir, "toolpath.gcode");
             }
-          } catch {}
+          } catch {
+            // Ignore malformed job metadata JSON; fall back to default path
+          }
         }
       }
     }

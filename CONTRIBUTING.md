@@ -56,7 +56,7 @@ The repository unifies compiler engineering with cloud and web platforms. Choose
   - Run `npm run dev:compiler` for incremental TypeScript watching.
   - Test individual models: `npm run test:single -- OpenModelica/flattening/modelica/types/IntegerToEnumeration.mo`.
   - Conformance verification: `npm run test:modelica` or `npm run test:msl`.
-- **Track B: Ansatz Platform & Web Applications** (`apps/web`, `apps/api`, `packages/embed`, `packages/react`)
+- **Track B: Ansatz Network & Web Applications** (`apps/web`, `apps/api`, `packages/embed`, `packages/react`)
   - Run `npm run dev:ansatz` (or `npm run dev`) to boot the API (port 3000) and Web App (port 3001).
   - Local database is automatically provisioned under `data/`.
   - Test platform services: `npm run test:platform`.
@@ -98,7 +98,7 @@ The monorepo is organized into four distinct architectural layers to ensure clea
 | Layer                                | Workspaces & Directories                                                                                                               | Primary Responsibility                                                                                    |
 | :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
 | **Layer 4: Enterprise**              | [`ee/`](./ee/)                                                                                                                         | Commercial enterprise edition, offline Ed25519 licensing, NERC CIP / isolated air-gap, FDA 21 CFR Part 11 |
-| **Layer 3: Ansatz Platform**         | [`apps/web/`](./apps/web/), [`apps/api/`](./apps/api/), [`packages/embed/`](./packages/embed/), [`packages/react/`](./packages/react/) | Flagship web platform (`ansatz.social`), ActivityPub federation, package registry, Slurm HPC, billing     |
+| **Layer 3: Ansatz Network**          | [`apps/web/`](./apps/web/), [`apps/api/`](./apps/api/), [`packages/embed/`](./packages/embed/), [`packages/react/`](./packages/react/) | Flagship web platform (`ansatz.social`), ActivityPub federation, package registry, Slurm HPC, billing     |
 | **Layer 2: Developer Tooling**       | [`apps/cli/`](./apps/cli/), [`apps/ide/`](./apps/ide/), [`apps/desktop/`](./apps/desktop/), [`apps/docs/`](./apps/docs/)               | Unified CLI (`msx`), VS Code Web extension, Tauri desktop app, VitePress documentation portal             |
 | **Layer 1: Core Engine & Languages** | [`languages/*`](./languages/), [`packages/{dsl,runtime,simulate,cad,diagram,exchange,lsp,mcp}`](./packages/)                           | 44 domain languages, WASM GLR parsers, linear DAE arena, numerical solvers, TGG graph rewriting, FMI/SSP  |
 

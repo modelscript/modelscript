@@ -1,0 +1,11 @@
+{
+  "id": "csmp-05-hydraulic-servo",
+  "lang": "csmp",
+  "subFormats": ["csmp"],
+  "difficulty": 5,
+  "title": "Multi-Stage Hydraulic Servomechanism with AFGEN Valve Curve",
+  "description": "Closed-loop electro-hydraulic position servomechanism combining a reusable MACRO spool-valve stage, AFGEN nonlinear orifice flow table, and PROCEDURE saturation clamping.",
+  "category": "Fluid Power & Controls",
+  "tags": ["csmp", "hydraulic", "afgen", "macro", "procedure"],
+  "activeFile": "hydraulic_servo.csmp"
+}

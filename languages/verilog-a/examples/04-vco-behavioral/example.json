@@ -1,0 +1,11 @@
+{
+  "id": "verilog-a-04-vco-behavioral",
+  "lang": "verilog-a",
+  "subFormats": ["va", "vams"],
+  "difficulty": 4,
+  "title": "Voltage-Controlled Oscillator (VCO) Behavioral RF Model",
+  "description": "RF behavioral voltage-controlled oscillator with center frequency, tuning sensitivity Kvco, and circular phase integration using idtmod.",
+  "category": "RF Behavioral Modeling",
+  "tags": ["verilog-a", "vco", "pll", "rf", "multi-file"],
+  "activeFile": "vco.va"
+}

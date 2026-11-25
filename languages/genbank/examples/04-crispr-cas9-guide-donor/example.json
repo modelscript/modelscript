@@ -1,0 +1,11 @@
+{
+  "id": "genbank-04-crispr-cas9-guide-donor",
+  "lang": "genbank",
+  "subFormats": ["genbank"],
+  "difficulty": 4,
+  "title": "CRISPR-Cas9 Guide RNA and HDR Donor Construct",
+  "description": "Genome-editing GenBank construct combining a human U6-driven SpCas9 sgRNA scaffold with flanked 5-prime/3-prime homology arms and corrected beta-globin CDS.",
+  "category": "Genome Engineering",
+  "tags": ["genbank", "crispr", "cas9", "hdr-donor"],
+  "activeFile": "crispr_donor.gb"
+}

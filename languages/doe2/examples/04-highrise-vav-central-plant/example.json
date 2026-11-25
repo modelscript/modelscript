@@ -1,0 +1,11 @@
+{
+  "id": "doe2-04-highrise-vav-central-plant",
+  "lang": "doe2",
+  "subFormats": ["inp"],
+  "difficulty": 4,
+  "title": "High-Rise Commercial VAV Chiller-Boiler Central Plant",
+  "description": "Core-and-perimeter commercial office tower floor modeled with curtain-wall spandrel construction, Variable Air Volume (VAVS) terminal reheat air handler, and chilled-water/hot-water central plant.",
+  "category": "Building Energy Simulation",
+  "tags": ["doe2", "vav", "central-plant", "commercial"],
+  "activeFile": "highrise_vav.inp"
+}

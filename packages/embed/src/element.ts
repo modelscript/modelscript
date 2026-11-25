@@ -44,7 +44,7 @@ export class ModelScriptViewerElement extends BaseElement {
     const anchorId = this.getAttribute("anchor");
     const isMultiFile = this.hasAttribute("multi-file");
     const artifactId = this.getAttribute("artifact-id") || undefined;
-    const morselId = this.getAttribute("morsel-id") || undefined;
+    const ansatzId = this.getAttribute("ansatz-id") || undefined;
     const embedToken = this.getAttribute("embed-token") || undefined;
     const theme = (this.getAttribute("theme") as "dark" | "light") || undefined;
     const origin = this.getAttribute("origin") || undefined;
@@ -64,7 +64,7 @@ export class ModelScriptViewerElement extends BaseElement {
       ...(anchorId ? { anchor: { elementId: anchorId } } : {}),
       ...(zoomMode ? { zoomMode } : {}),
       ...(artifactId ? { artifactId } : {}),
-      ...(morselId ? { morselId } : {}),
+      ...(ansatzId ? { ansatzId } : {}),
       ...(embedToken ? { embedToken } : {}),
       ...(theme ? { theme } : {}),
       ...(origin ? { embedOrigin: origin } : {}),
@@ -99,16 +99,16 @@ export class ModelScriptViewerElement extends BaseElement {
 }
 
 /**
- * Alias Web Component `<modelscript-morsel>` for intranet wiki & documentation embeds.
+ * Alias Web Component `<ansatz-editor>` for intranet wiki & documentation embeds.
  */
-export class ModelScriptMorselElement extends ModelScriptViewerElement {}
+export class AnsatzEditorElement extends ModelScriptViewerElement {}
 
 // Automatically define custom elements if in browser environment
 if (typeof customElements !== "undefined") {
   if (!customElements.get("modelscript-viewer")) {
     customElements.define("modelscript-viewer", ModelScriptViewerElement);
   }
-  if (!customElements.get("modelscript-morsel")) {
-    customElements.define("modelscript-morsel", ModelScriptMorselElement);
+  if (!customElements.get("ansatz-editor")) {
+    customElements.define("ansatz-editor", AnsatzEditorElement);
   }
 }

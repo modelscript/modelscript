@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-11-24T12:00:00" description="Urban Pedestrian Crosswalk Occlusion AEB Test" author="Ansatz"/>
+  <ParameterDeclarations>
+    <ParameterDeclaration name="EgoSpeed" parameterType="double" value="11.11"/>
+    <ParameterDeclaration name="PedWalkSpeed" parameterType="double" value="1.5"/>
+  </ParameterDeclarations>
+  <RoadNetwork>
+    <LogicFile filepath="urban_intersection.xodr"/>
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car">
+        <Performance maxSpeed="50.0" maxAcceleration="3.2" maxDeceleration="9.5"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.5" height="1.45"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="ParkedVan">
+      <Vehicle name="ParkedVan" vehicleCategory="van">
+        <Performance maxSpeed="35.0" maxAcceleration="2.0" maxDeceleration="7.5"/>
+        <BoundingBox><Center x="1.8" y="0.0" z="1.1"/><Dimensions width="2.10" length="5.6" height="2.35"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="CrossingPedestrian">
+      <Pedestrian name="CrossingPedestrian" pedestrianCategory="pedestrian" mass="75.0">
+        <BoundingBox><Center x="0.0" y="0.0" z="0.88"/><Dimensions width="0.50" length="0.50" height="1.75"/></BoundingBox>
+      </Pedestrian>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <Private entityRef="Ego">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-1" s="15.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$EgoSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="ParkedVan">
+          <PrivateAction><TeleportAction><Position><WorldPosition x="72.0" y="-4.8" z="0.0" h="0.0"/></Position></TeleportAction></PrivateAction>
+        </Private>
+        <Private entityRef="CrossingPedestrian">
+          <PrivateAction><TeleportAction><Position><WorldPosition x="80.0" y="-5.2" z="0.0" h="1.5708"/></Position></TeleportAction></PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="PedestrianCrossStory">
+      <Act name="CrosswalkAct">
+        <ManeuverGroup maximumExecutionCount="1" name="PedWalkGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="CrossingPedestrian"/>
+          </Actors>
+          <Maneuver name="StepIntoCrosswalk">
+            <Event name="WalkStartEvent" priority="overwrite" maximumExecutionCount="1">
+              <Action name="WalkAction">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="linear" value="1.5" dynamicsDimension="rate"/>
+                      <SpeedActionTarget><AbsoluteTargetSpeed value="$PedWalkSpeed"/></SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="WalkTrigger" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition><SimulationTimeCondition value="2.5" rule="greaterOrEqual"/></ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+      </Act>
+    </Story>
+  </Storyboard>
+</OpenSCENARIO>

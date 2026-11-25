@@ -1,0 +1,10 @@
+CM Quarter-Wave Vertical Monopole at 146 MHz over Perfect Ground
+CM Lambda = 2.053 m, monopole height = 0.495 m
+CE
+GW 1 15 0.0 0.0 0.0 0.0 0.0 0.495 0.002
+GE 1
+GN 1
+FR 0 5 0 0 144.0 1.0
+EX 0 1 1 0 1.0 0.0
+RP 0 19 1 1000 0.0 0.0 5.0 0.0
+EN

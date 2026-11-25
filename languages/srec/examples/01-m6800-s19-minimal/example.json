@@ -1,0 +1,12 @@
+{
+  "id": "srec-01-m6800-s19-minimal",
+  "lang": "srec",
+  "subFormats": ["s19"],
+  "difficulty": 1,
+  "title": "Motorola 6800 16-Bit Minimal Firmware (S19)",
+  "description": "Clean Motorola S19 firmware image with S0 ASCII header, 16-bit S1 code record at 0x0100, S5 record count, S9 entry point, and exact 1's-complement checksums.",
+  "category": "Embedded Firmware",
+  "tags": ["srec", "s19", "m6800", "checksum", "firmware"],
+  "activeFile": "m6800_boot.srec",
+  "isDefaultStarter": true
+}

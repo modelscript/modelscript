@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model name="ventricular_myocyte_modular" xmlns="http://www.cellml.org/cellml/1.1#" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <import xlink:href="sodium_channel.cellml">
+    <component name="sodium_channel_imp" component_ref="sodium_channel"/>
+  </import>
+  <import xlink:href="potassium_channel.cellml">
+    <component name="potassium_channel_imp" component_ref="potassium_channel"/>
+  </import>
+
+  <units name="millisecond">
+    <unit units="second" prefix="milli"/>
+  </units>
+  <units name="millivolt">
+    <unit units="volt" prefix="milli"/>
+  </units>
+  <units name="microfarad_per_cmsq">
+    <unit units="farad" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="millisiemens_per_cmsq">
+    <unit units="siemens" prefix="milli"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+  <units name="microampere_per_cmsq">
+    <unit units="ampere" prefix="micro"/>
+    <unit units="metre" prefix="centi" exponent="-2"/>
+  </units>
+
+  <component name="environment">
+    <variable name="time" units="millisecond" public_interface="out"/>
+  </component>
+
+  <component name="membrane">
+    <variable name="time" units="millisecond" public_interface="in"/>
+    <variable name="V" units="millivolt" initial_value="-85.0" public_interface="out"/>
+    <variable name="Cm" units="microfarad_per_cmsq" initial_value="1.0"/>
+    <variable name="g_b" units="millisiemens_per_cmsq" initial_value="0.039"/>
+    <variable name="E_b" units="millivolt" initial_value="-60.0"/>
+    <variable name="i_b" units="microampere_per_cmsq"/>
+    <variable name="i_Stim" units="microampere_per_cmsq"/>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <eq/>
+        <ci>i_Stim</ci>
+        <piecewise>
+          <piece>
+            <cn>-40.0</cn>
+            <apply>
+              <and/>
+              <apply><geq/><ci>time</ci><cn>10.0</cn></apply>
+              <apply><leq/><ci>time</ci><cn>11.0</cn></apply>
+            </apply>
+          </piece>
+          <otherwise>
+            <cn>0.0</cn>
+          </otherwise>
+        </piecewise>
+      </apply>
+      <apply>
+        <eq/>
+        <ci>i_b</ci>
+        <apply><times/><ci>g_b</ci><apply><minus/><ci>V</ci><ci>E_b</ci></apply></apply>
+      </apply>
+      <apply>
+        <eq/>
+        <apply><diff/><bvar><ci>time</ci></bvar><ci>V</ci></apply>
+        <apply>
+          <divide/>
+          <apply><minus/><apply><plus/><ci>i_Stim</ci><ci>i_b</ci></apply></apply>
+          <ci>Cm</ci>
+        </apply>
+      </apply>
+    </math>
+  </component>
+
+  <connection>
+    <map_components component_1="environment" component_2="membrane"/>
+    <map_variables variable_1="time" variable_2="time"/>
+  </connection>
+</model>

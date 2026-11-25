@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Model Title="Horizontal Single-Phase Gas Export Flowline" Author="FlowAssuranceTeam">
+  <Integration StartTime="0" EndTime="1800" MinDt="0.005" MaxDt="0.5" />
+
+  <Flowpath Name="GAS_EXPORT_LINE">
+    <Pipe Label="TRUNK_SEG_1" Length="4000" Diameter="0.3048" Elevation="0" Roughness="4.5e-5" Discretization="10" />
+    <Pipe Label="TRUNK_SEG_2" Length="4000" Diameter="0.3048" Elevation="0" Roughness="4.5e-5" Discretization="10" />
+    <Source Name="GAS_WELLHEAD" Position="0" TotalMassRate="32.0" GasMassFraction="0.98" WaterCut="0.01" Temperature="62C" Pressure="115bar" />
+    <HeatTransfer Type="AIR" AmbientTemperature="15C" AmbientHeatTransferCoeff="25">
+      <Layer Material="CARBON_STEEL" Thickness="0.016" Conductivity="45.0" />
+      <Layer Material="FBE_COATING" Thickness="0.004" Conductivity="0.30" />
+    </HeatTransfer>
+  </Flowpath>
+
+  <Node Name="INLET_MANIFOLD" Type="TERMINAL" Flowpath="GAS_EXPORT_LINE" BoundaryPosition="0.0" MassRate="32.0" Temperature="62C" Pressure="115bar" />
+  <Node Name="RECEIVING_STATION" Type="PRESSURE" Flowpath="GAS_EXPORT_LINE" BoundaryPosition="1.0" Pressure="68bar" Temperature="28C" />
+</Model>

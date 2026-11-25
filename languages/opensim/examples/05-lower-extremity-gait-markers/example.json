@@ -1,0 +1,11 @@
+{
+  "id": "opensim-05-lower-extremity-gait-markers",
+  "lang": "opensim",
+  "subFormats": ["osim", "mot", "trc"],
+  "difficulty": 5,
+  "title": "Lower-Extremity 10-DOF 18-Muscle Gait and Marker Tracking",
+  "description": "Full bilateral lower-extremity 10-DOF gait model with pelvis, torso, bilateral femur/tibia/foot segments, major agonist-antagonist muscle groups, anatomical markers, stride kinematics (.mot), and optical marker trajectories (.trc).",
+  "category": "Musculoskeletal Biomechanics",
+  "tags": ["opensim", "gait10dof18musc", "inverse-kinematics", "mocap", "multi-file"],
+  "activeFile": "gait10dof18musc.osim"
+}

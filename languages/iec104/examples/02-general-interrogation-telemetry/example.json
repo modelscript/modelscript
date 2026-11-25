@@ -1,0 +1,11 @@
+{
+  "id": "iec104-02-general-interrogation-telemetry",
+  "lang": "iec104",
+  "subFormats": ["iec104"],
+  "difficulty": 2,
+  "title": "General Interrogation (C_IC_NA_1) Substation Telemetry",
+  "description": "138 kV distribution substation IEC 104 RTU point table responding to master General Interrogation with breaker positions, bus voltages, feeder currents, and energy totals.",
+  "category": "Power Systems SCADA",
+  "tags": ["iec104", "general-interrogation", "substation", "telemetry", "scada"],
+  "activeFile": "interrogation.iec104"
+}

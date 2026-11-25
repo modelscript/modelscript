@@ -1,0 +1,12 @@
+{
+  "id": "jsbsim-03-twin-turboprop-airliner",
+  "lang": "jsbsim",
+  "subFormats": ["xml"],
+  "difficulty": 3,
+  "title": "Twin-Turboprop Regional Airliner Climb",
+  "description": "Twin-engine regional turboprop airliner with symmetric left and right PT6A turboprop powerplants, Hartzell constant-speed propellers, and longitudinal-lateral aerodynamic derivatives.",
+  "category": "Commercial Aviation",
+  "tags": ["jsbsim", "turboprop", "twin-engine", "airliner", "multi-file"],
+  "activeFile": "turboprop.xml",
+  "fileOrder": ["turboprop.xml", "engine/pt6a.xml", "prop/hartzell.xml"]
+}

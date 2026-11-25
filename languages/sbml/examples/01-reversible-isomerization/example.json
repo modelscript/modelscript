@@ -1,0 +1,12 @@
+{
+  "id": "sbml-01-reversible-isomerization",
+  "lang": "sbml",
+  "subFormats": ["sbml-l2v4"],
+  "difficulty": 1,
+  "title": "First-Order Reversible Isomerization",
+  "description": "Minimal well-mixed reversible unimolecular isomerization reaction (A <-> B) with mass-action kinetic law in a single cytosolic compartment.",
+  "category": "Systems Biology",
+  "tags": ["sbml", "mass-action", "isomerization", "kinetics"],
+  "activeFile": "isomerization.sbml",
+  "isDefaultStarter": true
+}

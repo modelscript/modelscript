@@ -108,7 +108,7 @@ test("Twitter Snowflake IDs & Workspace Normalization Parity", async (t) => {
     const truncatedSnowflake = "620763551375560700";
     db.createArtifactView(
       author.id,
-      "morsel",
+      "ansatz",
       "upload",
       JSON.stringify({ code: "model Test end Test;" }),
       "Fuzzy Snowflake Test",

@@ -1,0 +1,12 @@
+{
+  "id": "nmtran-05-joint-pkpd-indirect-response",
+  "lang": "nmtran",
+  "subFormats": ["nmtran"],
+  "difficulty": 5,
+  "title": "Joint PK/PD Indirect-Response Biomarker Model",
+  "description": "Custom $DES nonlinear ODE system (ADVAN6) coupling oral drug absorption and plasma kinetics with an Emax-inhibited indirect-response pharmacodynamic biomarker.",
+  "category": "Pharmacometrics",
+  "tags": ["nmtran", "pkpd", "indirect-response", "advan6", "multi-file"],
+  "activeFile": "pkpd_emax.ctl",
+  "fileOrder": ["pkpd_emax.ctl", "clinical_trial.csv"]
+}

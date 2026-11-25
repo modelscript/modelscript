@@ -1,0 +1,672 @@
+[
+  {
+    "namePath": "sima:SIMO_Body6DOF",
+    "aliases": [
+      "Body6DOF",
+      "SIMO_Vessel",
+      "FloatingBody6DOF"
+    ],
+    "label": "SIMO 6-DOF Floating Body",
+    "category": "Hydrodynamics & Bodies",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#0f2942\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">HYD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BODY6DOF</text></svg>",
+    "ports": [
+      {
+        "name": "env",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "mooring",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "motion6dof",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_MorisonMember",
+    "aliases": [
+      "MorisonMember",
+      "SlenderElement",
+      "MorisonCylinder"
+    ],
+    "label": "SIMO Morison Slender Member",
+    "category": "Hydrodynamics & Bodies",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#0f2942\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">HYD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MORISONMEM</text></svg>",
+    "ports": [
+      {
+        "name": "env",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "mooring",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "motion6dof",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_HydroStatic",
+    "aliases": [
+      "HydroStatic",
+      "HydrostaticStiffness",
+      "BuoyancyRestoring"
+    ],
+    "label": "SIMO Hydrostatic Restoring Matrix",
+    "category": "Hydrodynamics & Bodies",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#0f2942\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">HYD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HYDROSTATI</text></svg>",
+    "ports": [
+      {
+        "name": "env",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "mooring",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "motion6dof",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_WaveDriftQTF",
+    "aliases": [
+      "WaveDriftQTF",
+      "MeanWaveDrift",
+      "NewmanQTF"
+    ],
+    "label": "SIMO Second-Order Wave Drift (QTF)",
+    "category": "Hydrodynamics & Bodies",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#0f2942\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">HYD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WAVEDRIFTQ</text></svg>",
+    "ports": [
+      {
+        "name": "env",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "mooring",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "motion6dof",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_AddedMassDamping",
+    "aliases": [
+      "AddedMassDamping",
+      "RadiationRetardation",
+      "CumminsRadiation"
+    ],
+    "label": "SIMO Added Mass & Radiation Damping",
+    "category": "Hydrodynamics & Bodies",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#0f2942\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#38bdf8\">HYD</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ADDEDMASSD</text></svg>",
+    "ports": [
+      {
+        "name": "env",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "mooring",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "motion6dof",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:RIFLEX_CatenaryLine",
+    "aliases": [
+      "CatenaryLine",
+      "MooringLine",
+      "InelasticCatenary"
+    ],
+    "label": "RIFLEX Catenary Mooring Line",
+    "category": "Mooring & Risers",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1f2937\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">MOR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CATENARYLI</text></svg>",
+    "ports": [
+      {
+        "name": "fairlead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "anchor",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:RIFLEX_BarElement",
+    "aliases": [
+      "BarElement",
+      "TrussElement",
+      "AxialLineElement"
+    ],
+    "label": "RIFLEX Nonlinear Bar Element",
+    "category": "Mooring & Risers",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1f2937\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">MOR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BARELEMENT</text></svg>",
+    "ports": [
+      {
+        "name": "fairlead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "anchor",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:RIFLEX_BeamRiser",
+    "aliases": [
+      "BeamRiser",
+      "FlexibleRiser",
+      "SteelCatenaryRiser"
+    ],
+    "label": "RIFLEX Slender Beam Riser Element",
+    "category": "Mooring & Risers",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1f2937\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">MOR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BEAMRISER</text></svg>",
+    "ports": [
+      {
+        "name": "fairlead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "anchor",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:RIFLEX_FlexJoint",
+    "aliases": [
+      "FlexJoint",
+      "TaperStressJoint",
+      "RiserFlexJoint"
+    ],
+    "label": "RIFLEX Elastomeric Flex Joint",
+    "category": "Mooring & Risers",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1f2937\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">MOR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FLEXJOINT</text></svg>",
+    "ports": [
+      {
+        "name": "fairlead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "anchor",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:RIFLEX_BuoyancyModule",
+    "aliases": [
+      "BuoyancyModule",
+      "LazyWaveBuoyancy",
+      "SyntacticFoam"
+    ],
+    "label": "RIFLEX Distributed Buoyancy Module",
+    "category": "Mooring & Risers",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1f2937\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">MOR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BUOYANCYMO</text></svg>",
+    "ports": [
+      {
+        "name": "fairlead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "anchor",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:RIFLEX_SeabedContact",
+    "aliases": [
+      "SeabedContact",
+      "SeabedSoil",
+      "CoulombSeabed"
+    ],
+    "label": "RIFLEX Elastic-Coulomb Seabed Contact",
+    "category": "Mooring & Risers",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1f2937\" stroke=\"#a78bfa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#a78bfa\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#a78bfa\">MOR</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SEABEDCONT</text></svg>",
+    "ports": [
+      {
+        "name": "fairlead",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "anchor",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_Fender",
+    "aliases": [
+      "Fender",
+      "MarineFender",
+      "PneumaticFender"
+    ],
+    "label": "SIMO Nonlinear Marine Fender",
+    "category": "Marine Equipment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">EQP</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FENDER</text></svg>",
+    "ports": [
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "body",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "force",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_Thruster",
+    "aliases": [
+      "Thruster",
+      "AzimuthThruster",
+      "TunnelThruster"
+    ],
+    "label": "SIMO Azimuth / Tunnel Thruster",
+    "category": "Marine Equipment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">EQP</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">THRUSTER</text></svg>",
+    "ports": [
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "body",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "force",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_Winch",
+    "aliases": [
+      "Winch",
+      "MooringWinch",
+      "ActiveHeaveWinch"
+    ],
+    "label": "SIMO Mooring / Crane Winch",
+    "category": "Marine Equipment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">EQP</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WINCH</text></svg>",
+    "ports": [
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "body",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "force",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_Hawser",
+    "aliases": [
+      "Hawser",
+      "TowLine",
+      "SyntheticHawser"
+    ],
+    "label": "SIMO Synthetic Mooring Hawser",
+    "category": "Marine Equipment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">EQP</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">HAWSER</text></svg>",
+    "ports": [
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "body",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "force",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:SIMO_DPController",
+    "aliases": [
+      "DPController",
+      "DynamicPositioning",
+      "PID_DP"
+    ],
+    "label": "SIMO Dynamic Positioning PID Controller",
+    "category": "Marine Equipment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#1e3a2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">EQP</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DPCONTROLL</text></svg>",
+    "ports": [
+      {
+        "name": "cmd",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "body",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "force",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:ENV_JONSWAPWave",
+    "aliases": [
+      "JONSWAPWave",
+      "JONSWAP",
+      "WaveSpectrumJONSWAP"
+    ],
+    "label": "JONSWAP Irregular Wave Spectrum",
+    "category": "Metocean Environment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#16354d\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">ENV</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">JONSWAPWAV</text></svg>",
+    "ports": [
+      {
+        "name": "freq",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "field",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:ENV_PiersonMoskowitz",
+    "aliases": [
+      "PiersonMoskowitz",
+      "PMWave",
+      "ISSCWave"
+    ],
+    "label": "Pierson-Moskowitz Wave Spectrum",
+    "category": "Metocean Environment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#16354d\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">ENV</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PIERSONMOS</text></svg>",
+    "ports": [
+      {
+        "name": "freq",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "field",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:ENV_NPDWind",
+    "aliases": [
+      "NPDWind",
+      "FroyaWind",
+      "ISO19901Wind"
+    ],
+    "label": "NPD / Frøya Offshore Wind Spectrum",
+    "category": "Metocean Environment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#16354d\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">ENV</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">NPDWIND</text></svg>",
+    "ports": [
+      {
+        "name": "freq",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "field",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "sima:ENV_CurrentProfile",
+    "aliases": [
+      "CurrentProfile",
+      "PowerLawCurrent",
+      "OceanCurrent"
+    ],
+    "label": "Power-Law Ocean Current Profile",
+    "category": "Metocean Environment",
+    "domain": "marine",
+    "width": 96,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 48\" width=\"96\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"44\" rx=\"6\" fill=\"#16354d\" stroke=\"#22d3ee\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"26\" height=\"12\" rx=\"3\" fill=\"#22d3ee\" fill-opacity=\"0.22\"/><text x=\"19\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#22d3ee\">ENV</text><text x=\"48\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CURRENTPRO</text></svg>",
+    "ports": [
+      {
+        "name": "freq",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "field",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 24
+      }
+    ]
+  }
+]

@@ -15,7 +15,7 @@ import {
   type TocItem,
 } from "./legal/LegalLayout";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 const InspectorBox = styled.div`
   background: var(--color-canvas-subtle);

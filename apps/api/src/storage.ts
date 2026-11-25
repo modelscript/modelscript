@@ -183,7 +183,9 @@ export class LibraryStorage {
                 maxBuffer: 5 * 1024 * 1024,
               });
               fs.writeFileSync(path.join(tmpDir, "LICENSE"), lic);
-            } catch {}
+            } catch {
+              // LICENSE file is optional inside the MSL archive
+            }
             if (
               fs.existsSync(path.join(tmpDir, "Complex.mo")) &&
               fs.statSync(path.join(tmpDir, "Complex.mo")).size > 0
@@ -212,7 +214,9 @@ export class LibraryStorage {
                 maxBuffer: 5 * 1024 * 1024,
               });
               fs.writeFileSync(path.join(tmpDir, "LICENSE"), lic);
-            } catch {}
+            } catch {
+              // LICENSE file is optional inside the MSL archive
+            }
             const files = fs.readdirSync(svcSubDir);
             if (files.length > 0) {
               execFileSync("zip", ["-q", "-r", targetZip, "."], { cwd: tmpDir, stdio: "ignore" });
@@ -320,7 +324,9 @@ export class LibraryStorage {
                 maxBuffer: 5 * 1024 * 1024,
               });
               await fsPromises.writeFile(path.join(tmpDir, "LICENSE"), lic);
-            } catch {}
+            } catch {
+              // LICENSE file is optional inside the MSL archive
+            }
             const compStat = await fsPromises.stat(path.join(tmpDir, "Complex.mo")).catch(() => null);
             if (compStat && compStat.size > 0) {
               await execFileAsync("zip", ["-q", "-r", targetZip, "."], { cwd: tmpDir });
@@ -343,7 +349,9 @@ export class LibraryStorage {
                 maxBuffer: 5 * 1024 * 1024,
               });
               await fsPromises.writeFile(path.join(tmpDir, "LICENSE"), lic);
-            } catch {}
+            } catch {
+              // LICENSE file is optional inside the MSL archive
+            }
             const files = await fsPromises.readdir(svcSubDir);
             if (files.length > 0) {
               await execFileAsync("zip", ["-q", "-r", targetZip, "."], { cwd: tmpDir });

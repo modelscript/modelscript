@@ -1,0 +1,84 @@
+[
+  {
+    "id": "topas-01-proton-bragg-peak",
+    "lang": "topas",
+    "subFormats": ["topas"],
+    "difficulty": 1,
+    "title": "150 MeV Proton Bragg Peak in Water Phantom",
+    "description": "Monoenergetic 150 MeV clinical proton beam impinging on a 30x30x40 cm Geant4 G4_WATER phantom with a DoseToWater depth-dose Bragg peak scorer.",
+    "category": "Medical Physics & Monte Carlo",
+    "tags": ["topas", "proton-therapy", "bragg-peak", "geant4"],
+    "activeFile": "bragg_peak.topas",
+    "fileNames": ["bragg_peak.topas"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# TOPAS 150 MeV Proton Therapy Bragg Peak in Water Phantom\ns:Ge/World/Material = \"G4_AIR\"\nd:Ge/World/HLX = 1.0 m\nd:Ge/World/HLY = 1.0 m\nd:Ge/World/HLZ = 1.0 m\n\ns:Ge/WaterPhantom/Type = \"TsBox\"\ns:Ge/WaterPhantom/Parent = \"World\"\ns:Ge/WaterPhantom/Material = \"G4_WATER\"\nd:Ge/WaterPhantom/HLX = 15.0 cm\nd:Ge/WaterPhantom/HLY = 15.0 cm\nd:Ge/WaterPhantom/HLZ = 20.0 cm\nd:Ge/WaterPhantom/TransZ = 200.0 mm\n\ns:So/ProtonBeam/Type = \"Beam\"\ns:So/ProtonBeam/Component = \"BeamPosition\"\ns:So/ProtonBeam/BeamParticle = \"proton\"\nd:So/ProtonBeam/BeamEnergy = 150.0 MeV\nu:So/ProtonBeam/BeamEnergySpread = 0.5\ni:So/ProtonBeam/NumberOfHistoriesInRun = 50000\n\ns:Sc/BraggPeakDose/Quantity = \"DoseToWater\"\ns:Sc/BraggPeakDose/Component = \"WaterPhantom\"\ni:Sc/BraggPeakDose/ZBins = 200\nb:Sc/BraggPeakDose/OutputToConsole = \"True\"\n"
+  },
+  {
+    "id": "topas-02-photon-linac-pdd",
+    "lang": "topas",
+    "subFormats": ["topas"],
+    "difficulty": 2,
+    "title": "6 MV Photon Linac Percentage Depth-Dose Curve",
+    "description": "Clinical 6 MV X-ray linear accelerator beam traversing a tungsten primary collimator and aluminum flattening filter into a water tank with bone heterogeneity insert.",
+    "category": "Medical Physics & Monte Carlo",
+    "tags": ["topas", "linac", "photon", "pdd", "dosimetry"],
+    "activeFile": "linac_pdd.topas",
+    "fileNames": ["linac_pdd.topas"],
+    "fileCount": 1,
+    "code": "# TOPAS 6 MV Photon Linac Depth-Dose Simulation with Cortical Bone Insert\ns:Ge/World/Material = \"G4_AIR\"\nd:Ge/World/HLX = 1.5 m\nd:Ge/World/HLY = 1.5 m\nd:Ge/World/HLZ = 1.5 m\n\ns:Ge/PrimaryCollimator/Type = \"TsCylinder\"\ns:Ge/PrimaryCollimator/Parent = \"World\"\ns:Ge/PrimaryCollimator/Material = \"G4_W\"\nd:Ge/PrimaryCollimator/RMin = 15.0 mm\nd:Ge/PrimaryCollimator/RMax = 65.0 mm\nd:Ge/PrimaryCollimator/HL = 40.0 mm\nd:Ge/PrimaryCollimator/TransZ = -300.0 mm\n\ns:Ge/FlatteningFilter/Type = \"TsCylinder\"\ns:Ge/FlatteningFilter/Parent = \"World\"\ns:Ge/FlatteningFilter/Material = \"G4_Al\"\nd:Ge/FlatteningFilter/RMin = 0.0 mm\nd:Ge/FlatteningFilter/RMax = 35.0 mm\nd:Ge/FlatteningFilter/HL = 6.0 mm\nd:Ge/FlatteningFilter/TransZ = -220.0 mm\n\ns:Ge/WaterTank/Type = \"TsBox\"\ns:Ge/WaterTank/Parent = \"World\"\ns:Ge/WaterTank/Material = \"G4_WATER\"\nd:Ge/WaterTank/HLX = 20.0 cm\nd:Ge/WaterTank/HLY = 20.0 cm\nd:Ge/WaterTank/HLZ = 20.0 cm\nd:Ge/WaterTank/TransZ = 200.0 mm\n\ns:Ge/BoneSlab/Type = \"TsBox\"\ns:Ge/BoneSlab/Parent = \"WaterTank\"\ns:Ge/BoneSlab/Material = \"G4_BONE_CORTICAL_ICRP\"\nd:Ge/BoneSlab/HLX = 10.0 cm\nd:Ge/BoneSlab/HLY = 10.0 cm\nd:Ge/BoneSlab/HLZ = 1.5 cm\nd:Ge/BoneSlab/TransZ = -50.0 mm\n\ns:So/LinacPhotonBeam/Type = \"Beam\"\ns:So/LinacPhotonBeam/Component = \"BeamPosition\"\ns:So/LinacPhotonBeam/BeamParticle = \"gamma\"\nd:So/LinacPhotonBeam/BeamEnergy = 6.0 MeV\nu:So/LinacPhotonBeam/BeamEnergySpread = 15.0\ni:So/LinacPhotonBeam/NumberOfHistoriesInRun = 100000\n\ns:Sc/PddScorer/Quantity = \"DoseToWater\"\ns:Sc/PddScorer/Component = \"WaterTank\"\ni:Sc/PddScorer/ZBins = 160\nb:Sc/PddScorer/OutputToConsole = \"True\"\n"
+  },
+  {
+    "id": "topas-03-sobp-range-modulator",
+    "lang": "topas",
+    "subFormats": ["topas"],
+    "difficulty": 3,
+    "title": "Spread-Out Bragg Peak (SOBP) Range Modulator Assembly",
+    "description": "Modular passive-scattering proton therapy SOBP setup combining a PMMA range modulator wheel, modular beam source file, and water phantom scorer via TOPAS includeFile hierarchy.",
+    "category": "Medical Physics & Monte Carlo",
+    "tags": ["topas", "sobp", "range-modulator", "includefile", "multi-file"],
+    "activeFile": "sobp_main.topas",
+    "fileNames": ["sobp_main.topas", "beam_source.topas", "water_box.topas"],
+    "fileCount": 3,
+    "code": "# TOPAS Spread-Out Bragg Peak (SOBP) Master Parameter File\nincludeFile = beam_source.topas\nincludeFile = water_box.topas\n\ns:Ge/World/Material = \"G4_AIR\"\nd:Ge/World/HLX = 1.5 m\nd:Ge/World/HLY = 1.5 m\nd:Ge/World/HLZ = 1.5 m\n\ns:Ge/RangeModulator/Type = \"TsCylinder\"\ns:Ge/RangeModulator/Parent = \"World\"\ns:Ge/RangeModulator/Material = \"G4_PMMA\"\nd:Ge/RangeModulator/RMin = 0.0 mm\nd:Ge/RangeModulator/RMax = 60.0 mm\nd:Ge/RangeModulator/HL = 12.5 mm\nd:Ge/RangeModulator/TransZ = -350.0 mm\n\ns:Ge/RangeShifter/Type = \"TsBox\"\ns:Ge/RangeShifter/Parent = \"World\"\ns:Ge/RangeShifter/Material = \"G4_LEXAN\"\nd:Ge/RangeShifter/HLX = 80.0 mm\nd:Ge/RangeShifter/HLY = 80.0 mm\nd:Ge/RangeShifter/HLZ = 15.0 mm\nd:Ge/RangeShifter/TransZ = -180.0 mm\n",
+    "files": {
+      "sobp_main.topas": "# TOPAS Spread-Out Bragg Peak (SOBP) Master Parameter File\nincludeFile = beam_source.topas\nincludeFile = water_box.topas\n\ns:Ge/World/Material = \"G4_AIR\"\nd:Ge/World/HLX = 1.5 m\nd:Ge/World/HLY = 1.5 m\nd:Ge/World/HLZ = 1.5 m\n\ns:Ge/RangeModulator/Type = \"TsCylinder\"\ns:Ge/RangeModulator/Parent = \"World\"\ns:Ge/RangeModulator/Material = \"G4_PMMA\"\nd:Ge/RangeModulator/RMin = 0.0 mm\nd:Ge/RangeModulator/RMax = 60.0 mm\nd:Ge/RangeModulator/HL = 12.5 mm\nd:Ge/RangeModulator/TransZ = -350.0 mm\n\ns:Ge/RangeShifter/Type = \"TsBox\"\ns:Ge/RangeShifter/Parent = \"World\"\ns:Ge/RangeShifter/Material = \"G4_LEXAN\"\nd:Ge/RangeShifter/HLX = 80.0 mm\nd:Ge/RangeShifter/HLY = 80.0 mm\nd:Ge/RangeShifter/HLZ = 15.0 mm\nd:Ge/RangeShifter/TransZ = -180.0 mm\n",
+      "beam_source.topas": "# Modular Clinical Proton Beam Source (180 MeV Passive Scattering)\ns:So/SobpProtonBeam/Type = \"Beam\"\ns:So/SobpProtonBeam/Component = \"BeamPosition\"\ns:So/SobpProtonBeam/BeamParticle = \"proton\"\nd:So/SobpProtonBeam/BeamEnergy = 180.0 MeV\nu:So/SobpProtonBeam/BeamEnergySpread = 0.65\ni:So/SobpProtonBeam/NumberOfHistoriesInRun = 75000\n",
+      "water_box.topas": "# Modular Water Phantom and SOBP Depth-Dose Scorer\ns:Ge/WaterBox/Type = \"TsBox\"\ns:Ge/WaterBox/Parent = \"World\"\ns:Ge/WaterBox/Material = \"G4_WATER\"\nd:Ge/WaterBox/HLX = 15.0 cm\nd:Ge/WaterBox/HLY = 15.0 cm\nd:Ge/WaterBox/HLZ = 20.0 cm\nd:Ge/WaterBox/TransZ = 200.0 mm\n\ns:Sc/SobpDoseScorer/Quantity = \"DoseToWater\"\ns:Sc/SobpDoseScorer/Component = \"WaterBox\"\ni:Sc/SobpDoseScorer/ZBins = 200\nb:Sc/SobpDoseScorer/OutputToConsole = \"True\"\n"
+    }
+  },
+  {
+    "id": "topas-04-gate-pet-detector-ring",
+    "lang": "topas",
+    "subFormats": ["mac"],
+    "difficulty": 4,
+    "title": "GATE PET Cylindrical Scintillator Detector Ring",
+    "description": "Geant4/GATE nuclear medicine PET macro defining a cylindrical water emission phantom, positron-annihilation 511 keV gamma source, and attached dose/energy deposition actor.",
+    "category": "Medical Physics & Monte Carlo",
+    "tags": ["topas", "gate", "pet-imaging", "nuclear-medicine", "geant4"],
+    "activeFile": "pet_ring.mac",
+    "fileNames": ["pet_ring.mac"],
+    "fileCount": 1,
+    "code": "# GATE Cylindrical PET Scanner & 511 keV Annihilation Phantom Macro\n/gate/world/daughters/name PetPhantom\n/gate/world/daughters/insert cylinder\n/gate/PetPhantom/setMaterial G4_WATER\n/gate/PetPhantom/geometry/setRmin 0. mm\n/gate/PetPhantom/geometry/setRmax 100. mm\n/gate/PetPhantom/geometry/setHeight 200. mm\n/gate/PetPhantom/placement/setTranslation 0. 0. 0. mm\n\n/gate/world/daughters/name ScintillatorRing\n/gate/world/daughters/insert cylinder\n/gate/ScintillatorRing/setMaterial G4_BONE_COMPACT_ICRU\n/gate/ScintillatorRing/geometry/setRmin 380. mm\n/gate/ScintillatorRing/geometry/setRmax 410. mm\n/gate/ScintillatorRing/geometry/setHeight 180. mm\n/gate/ScintillatorRing/placement/setTranslation 0. 0. 0. mm\n\n/gate/source/addSource F18Source gps\n/gate/source/F18Source/gps/particle gamma\n/gate/source/F18Source/gps/ene/mono 0.511 MeV\n/gate/source/F18Source/gps/ene/sigma 0.005 MeV\n\n/gate/actor/addActor DoseActor PetCrystalHits\n/gate/actor/PetCrystalHits/attachTo ScintillatorRing\n"
+  },
+  {
+    "id": "topas-05-pbs-proton-treatment-head",
+    "lang": "topas",
+    "subFormats": ["topas"],
+    "difficulty": 5,
+    "title": "Pencil-Beam Scanning (PBS) Proton Therapy Treatment Head",
+    "description": "Four-file clinical Pencil-Beam Scanning (PBS) proton therapy Monte Carlo setup combining nozzle ionization chamber geometry, scanning spot list parameters, patient phantom, and 3D dose-to-medium scorer.",
+    "category": "Medical Physics & Monte Carlo",
+    "tags": ["topas", "pbs", "proton-therapy", "treatment-head", "multi-file"],
+    "activeFile": "pbs_plan.topas",
+    "fileNames": ["pbs_plan.topas", "dose_scorer.topas", "nozzle_geom.topas", "spot_list.topas"],
+    "fileCount": 4,
+    "code": "# TOPAS Clinical Pencil-Beam Scanning (PBS) Master Treatment Plan\nincludeFile = nozzle_geom.topas\nincludeFile = spot_list.topas\nincludeFile = dose_scorer.topas\n\ns:Ge/World/Material = \"G4_AIR\"\nd:Ge/World/HLX = 2.0 m\nd:Ge/World/HLY = 2.0 m\nd:Ge/World/HLZ = 2.0 m\n\ns:Ge/VacuumWindow/Type = \"TsCylinder\"\ns:Ge/VacuumWindow/Parent = \"World\"\ns:Ge/VacuumWindow/Material = \"G4_Ti\"\nd:Ge/VacuumWindow/RMin = 0.0 mm\nd:Ge/VacuumWindow/RMax = 50.0 mm\nd:Ge/VacuumWindow/HL = 0.05 mm\nd:Ge/VacuumWindow/TransZ = -600.0 mm\n",
+    "files": {
+      "pbs_plan.topas": "# TOPAS Clinical Pencil-Beam Scanning (PBS) Master Treatment Plan\nincludeFile = nozzle_geom.topas\nincludeFile = spot_list.topas\nincludeFile = dose_scorer.topas\n\ns:Ge/World/Material = \"G4_AIR\"\nd:Ge/World/HLX = 2.0 m\nd:Ge/World/HLY = 2.0 m\nd:Ge/World/HLZ = 2.0 m\n\ns:Ge/VacuumWindow/Type = \"TsCylinder\"\ns:Ge/VacuumWindow/Parent = \"World\"\ns:Ge/VacuumWindow/Material = \"G4_Ti\"\nd:Ge/VacuumWindow/RMin = 0.0 mm\nd:Ge/VacuumWindow/RMax = 50.0 mm\nd:Ge/VacuumWindow/HL = 0.05 mm\nd:Ge/VacuumWindow/TransZ = -600.0 mm\n",
+      "dose_scorer.topas": "# PBS Patient Water-Equivalent Phantom & 3D Dose Scorer\ns:Ge/PatientPhantom/Type = \"TsBox\"\ns:Ge/PatientPhantom/Parent = \"World\"\ns:Ge/PatientPhantom/Material = \"G4_TISSUE_SOFT_ICRP\"\nd:Ge/PatientPhantom/HLX = 15.0 cm\nd:Ge/PatientPhantom/HLY = 15.0 cm\nd:Ge/PatientPhantom/HLZ = 15.0 cm\nd:Ge/PatientPhantom/TransZ = 150.0 mm\n\ns:Sc/PbsDose3D/Quantity = \"DoseToMedium\"\ns:Sc/PbsDose3D/Component = \"PatientPhantom\"\ni:Sc/PbsDose3D/XBins = 60\ni:Sc/PbsDose3D/YBins = 60\ni:Sc/PbsDose3D/ZBins = 60\nb:Sc/PbsDose3D/OutputToConsole = \"True\"\n",
+      "nozzle_geom.topas": "# PBS Treatment Nozzle Geometry: Ionization Chamber & Range Shifter\ns:Ge/MonitorChamber/Type = \"TsBox\"\ns:Ge/MonitorChamber/Parent = \"World\"\ns:Ge/MonitorChamber/Material = \"G4_AIR\"\nd:Ge/MonitorChamber/HLX = 120.0 mm\nd:Ge/MonitorChamber/HLY = 120.0 mm\nd:Ge/MonitorChamber/HLZ = 20.0 mm\nd:Ge/MonitorChamber/TransZ = -420.0 mm\n\ns:Ge/PbsRangeShifter/Type = \"TsBox\"\ns:Ge/PbsRangeShifter/Parent = \"World\"\ns:Ge/PbsRangeShifter/Material = \"G4_PMMA\"\nd:Ge/PbsRangeShifter/HLX = 140.0 mm\nd:Ge/PbsRangeShifter/HLY = 140.0 mm\nd:Ge/PbsRangeShifter/HLZ = 20.0 mm\nd:Ge/PbsRangeShifter/TransZ = -120.0 mm\n",
+      "spot_list.topas": "# PBS Multi-Energy Pencil-Beam Spot Delivery Parameters\ns:So/PbsSpotBeam/Type = \"Beam\"\ns:So/PbsSpotBeam/Component = \"BeamPosition\"\ns:So/PbsSpotBeam/BeamParticle = \"proton\"\nd:So/PbsSpotBeam/BeamEnergy = 165.0 MeV\nu:So/PbsSpotBeam/BeamEnergySpread = 0.45\ni:So/PbsSpotBeam/NumberOfHistoriesInRun = 100000\ndv:So/PbsSpotBeam/EnergyLayers = 4 140.0 150.0 160.0 165.0 MeV\n"
+    }
+  }
+]

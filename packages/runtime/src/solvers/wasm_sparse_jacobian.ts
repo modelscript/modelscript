@@ -32,7 +32,18 @@ export function colorJacobianColumns(ccs: { row_indices: number[]; col_ptr: numb
     return { colors: [], numColors: 0, colorGroups: [] };
   }
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as {
+    memory: WebAssembly.Memory;
+    alloc?: (size: number) => number;
+    free?: (ptr: number) => void;
+    colorJacobianColumnsFlatWasm?: (
+      colPtrBuf: number,
+      rowIdxBuf: number,
+      nCols: number,
+      outColorsBuf: number,
+      forbiddenBuf: number,
+    ) => number;
+  } | null;
   if (
     w &&
     typeof w.colorJacobianColumnsFlatWasm === "function" &&

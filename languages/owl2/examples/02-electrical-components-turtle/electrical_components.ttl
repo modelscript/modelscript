@@ -1,0 +1,36 @@
+@prefix : <http://modelscript.org/ont/elec#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://modelscript.org/ont/elec> rdf:type owl:Ontology .
+
+:CircuitElement rdf:type owl:Class .
+:PassiveElement rdf:type owl:Class ;
+    rdfs:subClassOf :CircuitElement .
+:ActiveElement rdf:type owl:Class ;
+    rdfs:subClassOf :CircuitElement .
+:Resistor rdf:type owl:Class ;
+    rdfs:subClassOf :PassiveElement .
+:Capacitor rdf:type owl:Class ;
+    rdfs:subClassOf :PassiveElement .
+:Inductor rdf:type owl:Class ;
+    rdfs:subClassOf :PassiveElement .
+:Mosfet rdf:type owl:Class ;
+    rdfs:subClassOf :ActiveElement .
+
+:connectedTo rdf:type owl:ObjectProperty ;
+    rdfs:domain :CircuitElement ;
+    rdfs:range :CircuitElement .
+
+:ratedPowerW rdf:type owl:DatatypeProperty ;
+    rdfs:domain :CircuitElement ;
+    rdfs:range xsd:double .
+
+:R1 rdf:type :Resistor ;
+    :ratedPowerW "0.25"^^xsd:double ;
+    :connectedTo :C1 .
+
+:C1 rdf:type :Capacitor ;
+    :ratedPowerW "0.10"^^xsd:double .

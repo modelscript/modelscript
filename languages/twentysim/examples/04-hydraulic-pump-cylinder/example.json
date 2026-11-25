@@ -1,0 +1,11 @@
+{
+  "id": "twentysim-04-hydraulic-pump-cylinder",
+  "lang": "twentysim",
+  "subFormats": ["emx"],
+  "difficulty": 4,
+  "title": "Hydraulic Pump-Accumulator-Cylinder Multi-Domain Bond Graph",
+  "description": "Multi-domain electro-hydraulic power transmission linking a rotary drive through a positive-displacement pump transformer (TF), hydraulic accumulator compliance, orifice resistance, and piston cylinder actuator.",
+  "category": "Fluid Power Bond Graphs",
+  "tags": ["twentysim", "hydraulic", "transformer", "multi-domain"],
+  "activeFile": "hydraulic_circuit.emx"
+}

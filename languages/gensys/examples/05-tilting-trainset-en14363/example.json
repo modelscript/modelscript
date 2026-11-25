@@ -1,0 +1,12 @@
+{
+  "id": "gensys-05-tilting-trainset-en14363",
+  "lang": "gensys",
+  "subFormats": ["tsimf", "runf", "sub"],
+  "difficulty": 5,
+  "title": "Articulated Tilting Trainset EN 14363 Certification",
+  "description": "Two-car articulated tilting trainset with shared Jacobs bogie, active roll-tilt bolster actuators, EN 14363 homologation run script, and companion S1002 wheel and UIC60 rail profile sub-files.",
+  "category": "Rail Homologation",
+  "tags": ["en14363", "tilting-train", "jacobs-bogie", "multi-file"],
+  "activeFile": "tilting_train.tsimf",
+  "fileOrder": ["tilting_train.tsimf", "en14363.runf", "s1002_wheel.sub", "uic60_rail.sub"]
+}

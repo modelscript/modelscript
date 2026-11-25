@@ -1,0 +1,11 @@
+{
+  "id": "esterel-02-stopwatch-preemption",
+  "lang": "esterel",
+  "subFormats": ["strl"],
+  "difficulty": 2,
+  "title": "Stopwatch with Start, Stop, Lap, and Reset Preemption",
+  "description": "Digital chronometer modeled in Esterel using suspend/when for pause-resume control, parallel lap-freeze display handling, and strong abort reset preemption.",
+  "category": "Embedded Reactive Controllers",
+  "tags": ["esterel", "stopwatch", "suspend", "abort"],
+  "activeFile": "stopwatch.strl"
+}

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document version="5.1">
+  <Model name="DcMotorGyrator">
+    <Submodels>
+      <Submodel name="V_arm" type="Se" x="60" y="160">
+        <Parameters>
+          <Parameter name="effort" value="48.0" unit="V"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j1_elec" type="1" x="180" y="160"/>
+      <Submodel name="R_arm" type="R" x="180" y="60">
+        <Parameters>
+          <Parameter name="r" value="0.85" unit="Ohm"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="L_arm" type="I" x="180" y="260">
+        <Parameters>
+          <Parameter name="i" value="0.004" unit="H"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="GY_motor" type="GY" x="320" y="160">
+        <Parameters>
+          <Parameter name="r" value="0.42" unit="N*m/A"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j1_mech" type="1" x="460" y="160"/>
+      <Submodel name="J_rotor" type="I" x="460" y="60">
+        <Parameters>
+          <Parameter name="i" value="0.012" unit="kg*m^2"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="B_load" type="R" x="460" y="260">
+        <Parameters>
+          <Parameter name="r" value="0.035" unit="N*m*s/rad"/>
+        </Parameters>
+      </Submodel>
+    </Submodels>
+    <Connections>
+      <Connection id="b1" type="bond" from="V_arm.p" to="j1_elec.p"/>
+      <Connection id="b2" type="bond" from="j1_elec.p" to="R_arm.p"/>
+      <Connection id="b3" type="bond" from="j1_elec.p" to="L_arm.p"/>
+      <Connection id="b4" type="bond" from="j1_elec.p" to="GY_motor.p1"/>
+      <Connection id="b5" type="bond" from="GY_motor.p2" to="j1_mech.p"/>
+      <Connection id="b6" type="bond" from="j1_mech.p" to="J_rotor.p"/>
+      <Connection id="b7" type="bond" from="j1_mech.p" to="B_load.p"/>
+    </Connections>
+    <Experiment startTime="0" finishTime="2.0" stepSize="0.001" method="RungeKutta4"/>
+  </Model>
+</Document>

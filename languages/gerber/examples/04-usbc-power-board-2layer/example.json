@@ -1,0 +1,11 @@
+{
+  "id": "gerber-04-usbc-power-board-2layer",
+  "lang": "gerber",
+  "subFormats": ["rs-274x", "multi-layer"],
+  "difficulty": 4,
+  "title": "2-Layer USB-C Power Delivery Breakout Board",
+  "description": "Two-layer PCB Gerber set (top copper, bottom ground copper, and board outline) for a 5V/3A USB-C power breakout with VBUS copper pour and CC pull-down resistors.",
+  "category": "PCB Fabrication & CAM",
+  "tags": ["gerber", "usb-c", "2-layer", "multi-file"],
+  "activeFile": "top.gtl"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "mcnp-05-tokamak-blanket-sector",
+  "lang": "mcnp",
+  "subFormats": ["mcnp6", "fusion", "neutronics"],
+  "difficulty": 5,
+  "title": "Tokamak Blanket Tritium-Breeding and Shielding Sector",
+  "description": "14.1 MeV D-T fusion neutronics model of a tungsten first-wall, LiPb tritium-breeding blanket, and stainless-steel vacuum vessel with companion material library.",
+  "category": "Fusion Neutronics",
+  "tags": ["mcnp", "fusion", "tokamak", "tritium-breeding", "multi-file"],
+  "activeFile": "tokamak.mcnp"
+}

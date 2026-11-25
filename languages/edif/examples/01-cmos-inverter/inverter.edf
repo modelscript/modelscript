@@ -1,0 +1,42 @@
+(edif cmos_inverter_netlist
+  (edifVersion 2 0 0)
+  (edifLevel 0)
+  (keywordMap (keywordLevel 0))
+  (status
+    (written
+      (timeStamp 2026 11 24 16 0 0)
+      (author "Ansatz EDA")
+      (program "edif-gen" (version "2.0.0"))
+      (comment "CMOS Inverter Standard Cell Netlist")))
+  (external STDCELLS
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell INVX1
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port A (direction INPUT))
+          (port Y (direction OUTPUT))))))
+  (library WORK
+    (edifLevel 0)
+    (technology (numberDefinition))
+    (cell TOP_INV
+      (cellType GENERIC)
+      (view netlist
+        (viewType NETLIST)
+        (interface
+          (port DIN (direction INPUT))
+          (port DOUT (direction OUTPUT)))
+        (contents
+          (instance U1
+            (viewRef netlist (cellRef INVX1 (libraryRef STDCELLS))))
+          (net N_IN
+            (joined
+              (portRef DIN)
+              (portRef A (instanceRef U1))))
+          (net N_OUT
+            (joined
+              (portRef Y (instanceRef U1))
+              (portRef DOUT)))))))
+  (design TopInverter (cellRef TOP_INV (libraryRef WORK))))

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssm:ParameterMapping xmlns:ssm="http://ssp-standard.org/SSP1/SystemStructureParameterMapping"
+                      version="1.0">
+  <ssm:MappingEntry source="m_sprung" target="SuspensionPlant.m_s" />
+  <ssm:MappingEntry source="k_spring" target="SuspensionPlant.k_s" />
+  <ssm:MappingEntry source="c_damper" target="SuspensionPlant.c_s" />
+</ssm:ParameterMapping>

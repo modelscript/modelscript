@@ -1,0 +1,621 @@
+[
+  {
+    "namePath": "gpss:GENERATE",
+    "aliases": [
+      "GEN"
+    ],
+    "label": "GENERATE Transaction Source",
+    "category": "Transaction Flow",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">XACT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">GENERATE</text></svg>",
+    "ports": [
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:TERMINATE",
+    "aliases": [
+      "TERM"
+    ],
+    "label": "TERMINATE Transaction Sink",
+    "category": "Transaction Flow",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">XACT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.2\" font-weight=\"bold\" fill=\"#f8fafc\">TERMINATE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:SPLIT",
+    "label": "SPLIT Transaction Cloner",
+    "category": "Transaction Flow",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">XACT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SPLIT</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "primary",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "alternate",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:ASSEMBLE",
+    "label": "ASSEMBLE Transaction Synchronizer",
+    "category": "Transaction Flow",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">XACT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ASSEMBLE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:SEIZE",
+    "label": "SEIZE Single-Server Facility",
+    "category": "Facilities & Storages",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SEIZE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:RELEASE",
+    "label": "RELEASE Single-Server Facility",
+    "category": "Facilities & Storages",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RELEASE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:ENTER",
+    "label": "ENTER Multi-Server Storage",
+    "category": "Facilities & Storages",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ENTER</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:LEAVE",
+    "label": "LEAVE Multi-Server Storage",
+    "category": "Facilities & Storages",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">LEAVE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:STORAGE",
+    "label": "STORAGE Capacity Definition",
+    "category": "Facilities & Storages",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">RES</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">STORAGE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:ADVANCE",
+    "aliases": [
+      "ADV"
+    ],
+    "label": "ADVANCE Time Delay",
+    "category": "Queues & Delays",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">QUE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ADVANCE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:QUEUE",
+    "label": "QUEUE Waiting-Line Entry",
+    "category": "Queues & Delays",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">QUE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">QUEUE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:DEPART",
+    "label": "DEPART Waiting-Line Exit",
+    "category": "Queues & Delays",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">QUE</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DEPART</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:TRANSFER",
+    "label": "TRANSFER Routing Block",
+    "category": "Routing & Logic",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TRANSFER</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "primary",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 16
+      },
+      {
+        "name": "alternate",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 36
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:ASSIGN",
+    "label": "ASSIGN Transaction Parameter",
+    "category": "Routing & Logic",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ASSIGN</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:TEST",
+    "label": "TEST Relational Condition",
+    "category": "Routing & Logic",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TEST</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:GATE",
+    "label": "GATE Entity State Condition",
+    "category": "Routing & Logic",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">FLOW</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">GATE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:TABULATE",
+    "label": "TABULATE Histogram Observation",
+    "category": "Statistics & Functions",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2f16\" stroke=\"#facc15\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#facc15\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#facc15\">STAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TABULATE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:TABLE",
+    "label": "TABLE Frequency Distribution",
+    "category": "Statistics & Functions",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2f16\" stroke=\"#facc15\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#facc15\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#facc15\">STAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">TABLE</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:FUNCTION",
+    "aliases": [
+      "FN$"
+    ],
+    "label": "FUNCTION Piecewise Empirical Curve",
+    "category": "Statistics & Functions",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2f16\" stroke=\"#facc15\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#facc15\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#facc15\">STAT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FUNCTION</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "event",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "out",
+        "kind": "event",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:Q$",
+    "aliases": [
+      "Q",
+      "QUEUE_LENGTH"
+    ],
+    "label": "Q$ Current Queue Length SNA",
+    "category": "Standard Numerical Attributes",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SNA</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">Q$</text></svg>",
+    "ports": [
+      {
+        "name": "value",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:F$",
+    "aliases": [
+      "F",
+      "FACILITY_STATUS"
+    ],
+    "label": "F$ Facility Status SNA",
+    "category": "Standard Numerical Attributes",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SNA</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">F$</text></svg>",
+    "ports": [
+      {
+        "name": "value",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:S$",
+    "aliases": [
+      "S",
+      "STORAGE_CONTENTS"
+    ],
+    "label": "S$ Current Storage Contents SNA",
+    "category": "Standard Numerical Attributes",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SNA</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">S$</text></svg>",
+    "ports": [
+      {
+        "name": "value",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:R$",
+    "aliases": [
+      "R",
+      "STORAGE_REMAINING"
+    ],
+    "label": "R$ Remaining Storage Capacity SNA",
+    "category": "Standard Numerical Attributes",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SNA</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">R$</text></svg>",
+    "ports": [
+      {
+        "name": "value",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:FR$",
+    "aliases": [
+      "FR",
+      "FACILITY_UTILIZATION"
+    ],
+    "label": "FR$ Facility Utilization SNA",
+    "category": "Standard Numerical Attributes",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SNA</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FR$</text></svg>",
+    "ports": [
+      {
+        "name": "value",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gpss:SR$",
+    "aliases": [
+      "SR",
+      "STORAGE_UTILIZATION"
+    ],
+    "label": "SR$ Storage Utilization SNA",
+    "category": "Standard Numerical Attributes",
+    "domain": "discrete-event",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SNA</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SR$</text></svg>",
+    "ports": [
+      {
+        "name": "value",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

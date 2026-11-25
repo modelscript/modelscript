@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<oadrPayload xmlns="http://openadr.org/oadr-2.0b/2012/07">
+  <oadrDistributeEvent>
+    <oadrEvent>
+      <eiEvent>
+        <eventDescriptor>
+          <eventID>DR_METRO_PEAK_05_XML</eventID>
+          <eventStatus>active</eventStatus>
+        </eventDescriptor>
+        <eiTarget>
+          <venID>VEN-METRO-AGGREGATOR-01</venID>
+        </eiTarget>
+        <eiEventSignals>
+          <eiEventSignal>
+            <signalType>setpoint</signalType>
+            <intervals>
+              <interval>
+                <dtstart><date-time>2026-08-18T16:00:00Z</date-time></dtstart>
+                <duration><duration>PT3600S</duration></duration>
+                <signalPayload><payloadFloat>500.0</payloadFloat></signalPayload>
+              </interval>
+            </intervals>
+          </eiEventSignal>
+        </eiEventSignals>
+      </eiEvent>
+    </oadrEvent>
+  </oadrDistributeEvent>
+</oadrPayload>

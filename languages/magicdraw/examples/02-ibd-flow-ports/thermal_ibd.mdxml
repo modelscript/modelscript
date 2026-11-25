@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_thermal_ibd" name="ThermalLoopIBD">
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_loop" name="LiquidCoolingLoop">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_coldplate_out" name="coldPlateOutletTempC">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_radiator_in" name="radiatorInletTempC">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_radiator_out" name="radiatorOutletTempC">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="p_pump_in" name="pumpSuctionTempC">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedConnector xmi:type="uml:Connector" xmi:id="conn_hot_leg" name="hotCoolantPipe">
+        <end xmi:id="end_hot_1" role="p_coldplate_out"/>
+        <end xmi:id="end_hot_2" role="p_radiator_in"/>
+      </ownedConnector>
+      <ownedConnector xmi:type="uml:Connector" xmi:id="conn_cold_leg" name="coldCoolantPipe">
+        <end xmi:id="end_cold_1" role="p_radiator_out"/>
+        <end xmi:id="end_cold_2" role="p_pump_in"/>
+      </ownedConnector>
+    </packagedElement>
+  </uml:Model>
+  <sysml:Block xmi:id="st_loop" base_Class="blk_loop"/>
+  <sysml:BindingConnector xmi:id="st_conn_hot" base_Connector="conn_hot_leg"/>
+  <sysml:BindingConnector xmi:id="st_conn_cold" base_Connector="conn_cold_leg"/>
+</xmi:XMI>

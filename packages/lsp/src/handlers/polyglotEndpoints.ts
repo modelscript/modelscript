@@ -36,7 +36,86 @@ import {
 
 const require = createRequire(import.meta.url);
 
-function findNodes(node: any, type: string, results: any[] = []): any[] {
+interface PolyglotCstNodeLike {
+  type: string;
+  text: string;
+  children?: PolyglotCstNodeLike[] | undefined;
+}
+
+interface PolyglotParserLike {
+  parse(text: string): {
+    rootNode: PolyglotCstNodeLike;
+    delete?: () => void;
+  };
+}
+
+interface PolyglotValidationServiceLike {
+  validateTextDocument?: (doc: TextDocument) => Promise<unknown> | unknown;
+}
+
+interface PolyglotDocumentManagerLike {
+  documentTrees?: Map<string, unknown> | undefined;
+}
+
+interface CorrespondenceRecordLike {
+  slot: number;
+  isConflicted?: boolean | undefined;
+  isRemoved?: boolean | undefined;
+  domainNodes?: Record<string, number> | undefined;
+  relation?: number | undefined;
+}
+
+interface CorrespondenceIndexLike {
+  count?: number | undefined;
+  markStaleCascading?: ((slot: number) => number) | undefined;
+  markStale?: ((slot: number) => void) | undefined;
+  propagateAllStale?: (() => number) | undefined;
+  reconcileAll?: ((strategy: number) => number) | undefined;
+  getAllRecords?: (() => Iterable<CorrespondenceRecordLike>) | undefined;
+  resolveConflict?: ((slot: number) => void) | undefined;
+  isConflicted?: ((slot: number) => boolean) | undefined;
+  isRemoved?: ((slot: number) => boolean) | undefined;
+  getSource?: ((slot: number) => number) | undefined;
+  getTarget?: ((slot: number) => number) | undefined;
+  getRule?: ((slot: number) => number) | undefined;
+}
+
+interface PolyglotWorkspaceManagerLike {
+  unifiedWorkspace?:
+    | {
+        unregisterWorkspace?: ((id: string) => void) | undefined;
+        queryEngine?: { getCorrespondenceIndex?: (() => CorrespondenceIndexLike | undefined) | undefined } | undefined;
+        getQueryEngine?:
+          | ((
+              lang: string,
+            ) =>
+              { getCorrespondenceIndex?: (() => CorrespondenceIndexLike | undefined) | undefined } | null | undefined)
+          | undefined;
+        tggCorrespondenceIndexer?:
+          | {
+              hypergraph?: Omit<CorrespondenceIndexLike, "count"> | undefined;
+              slotMap?: Map<number, number> | undefined;
+            }
+          | undefined;
+        index?:
+          | {
+              symbols?: Map<number, { startOffset?: number | undefined; endOffset?: number | undefined }> | undefined;
+            }
+          | undefined;
+      }
+    | null
+    | undefined;
+  hypergraph?: Omit<CorrespondenceIndexLike, "count"> | null | undefined;
+  vfs?: {
+    read?: (uri: string) => Promise<string> | string;
+  } | null;
+}
+
+function findNodes(
+  node: PolyglotCstNodeLike | null | undefined,
+  type: string,
+  results: PolyglotCstNodeLike[] = [],
+): PolyglotCstNodeLike[] {
   if (!node) return results;
   if (node.type === type) results.push(node);
   for (const c of node.children || []) findNodes(c, type, results);
@@ -147,81 +226,85 @@ function extractOwlClassesFallback(text: string): string[] {
   return classes;
 }
 
-let scadParserInstance: any = null;
-function getScadParser(): any {
+let scadParserInstance: PolyglotParserLike | null = null;
+function getScadParser(): PolyglotParserLike | null {
   if (scadParserInstance) return scadParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/scad/parser");
     const wasmPath = require.resolve("@modelscript/scad/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    scadParserInstance = res.parser;
+    scadParserInstance = res.parser as PolyglotParserLike;
     return scadParserInstance;
   } catch {
     return null;
   }
 }
 
-let owlParserInstance: any = null;
-function getOwlParser(): any {
+let owlParserInstance: PolyglotParserLike | null = null;
+function getOwlParser(): PolyglotParserLike | null {
   if (owlParserInstance) return owlParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/owl2/parser");
     const wasmPath = require.resolve("@modelscript/owl2/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    owlParserInstance = res.parser;
+    owlParserInstance = res.parser as PolyglotParserLike;
     return owlParserInstance;
   } catch {
     return null;
   }
 }
 
-let moParserInstance: any = null;
-function getModelicaParser(): any {
+let moParserInstance: PolyglotParserLike | null = null;
+function getModelicaParser(): PolyglotParserLike | null {
   if (moParserInstance) return moParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/modelica/parser");
     const wasmPath = require.resolve("@modelscript/modelica/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    moParserInstance = res.parser;
+    moParserInstance = res.parser as PolyglotParserLike;
     return moParserInstance;
   } catch {
     return null;
   }
 }
 
-let sysmlParserInstance: any = null;
-function getSysmlParser(): any {
+let sysmlParserInstance: PolyglotParserLike | null = null;
+function getSysmlParser(): PolyglotParserLike | null {
   if (sysmlParserInstance) return sysmlParserInstance;
   try {
     const { createWasmParserSync } = require("@modelscript/dsl");
     const { SYNTAX_NAMES } = require("@modelscript/sysml2/parser");
     const wasmPath = require.resolve("@modelscript/sysml2/parser.wasm");
     const res = createWasmParserSync(wasmPath, { syntaxNames: SYNTAX_NAMES });
-    sysmlParserInstance = res.parser;
+    sysmlParserInstance = res.parser as PolyglotParserLike;
     return sysmlParserInstance;
   } catch {
     return null;
   }
 }
 
+export type DynamicLanguageDef = Parameters<typeof compileDslToWasm>[0] & {
+  lsp?: { handlers?: LanguagePlugin["handlers"] | undefined } | undefined;
+};
+
 export interface RegisterLanguageRequest {
   id: string;
   name?: string | undefined;
   extensions?: string[] | undefined;
   wasmBytes?: number[] | Uint8Array | string | undefined;
-  monarch?: any;
-  textmate?: any;
-  languageDef?: any;
+  monarch?: LanguagePlugin["monarch"] | undefined;
+  textmate?: LanguagePlugin["textmate"] | undefined;
+  languageDef?: DynamicLanguageDef | undefined;
 }
 
 export interface ReloadLanguageRequest {
   id: string;
   wasmBytes?: number[] | Uint8Array | string | undefined;
-  monarch?: any;
-  languageDef?: any;
+  monarch?: LanguagePlugin["monarch"] | undefined;
+  languageDef?: DynamicLanguageDef | undefined;
 }
 
 export interface UnregisterLanguageRequest {
@@ -238,9 +321,9 @@ export interface UnregisterLanguageRequest {
 export function registerPolyglotEndpoints(
   connection: Connection,
   documents: TextDocuments<TextDocument>,
-  validationService: any,
-  documentManager: any,
-  workspaceManager?: any,
+  validationService: PolyglotValidationServiceLike | null | undefined,
+  documentManager: PolyglotDocumentManagerLike,
+  workspaceManager?: PolyglotWorkspaceManagerLike | null,
 ) {
   // ── 1. Register Language (Dynamic Compile / Load) ────────────────────────
   connection.onRequest("modelscript/registerLanguage", async (params: RegisterLanguageRequest) => {
@@ -258,8 +341,8 @@ export function registerPolyglotEndpoints(
         connection.console.info(`[polyglot-lsp] Compiling language '${id}' in-memory via AssemblyScript...`);
         const compiled = await compileDslToWasm(params.languageDef, { extensions });
         wasmBytes = compiled.wasmBytes;
-        if (!monarch) monarch = compiled.monarch;
-        if (!textmate) textmate = compiled.textmate;
+        if (!monarch) monarch = compiled.monarch as LanguagePlugin["monarch"];
+        if (!textmate) textmate = compiled.textmate as LanguagePlugin["textmate"];
         if (extensions.length === 0) extensions = compiled.extensions;
       } else if (params.wasmBytes) {
         if (typeof params.wasmBytes === "string") {
@@ -299,7 +382,7 @@ export function registerPolyglotEndpoints(
         monarch,
         textmate,
         wasmBytes,
-        languageDef: params.languageDef,
+        languageDef: params.languageDef as unknown as LanguagePlugin["languageDef"],
         handlers: params.languageDef?.lsp?.handlers,
         disposables: [],
       };
@@ -313,8 +396,9 @@ export function registerPolyglotEndpoints(
           documentSelector,
         });
         disposables.push(regOpen);
-      } catch (e: any) {
-        connection.console.warn(`[polyglot-lsp] dynamic register didOpen warning: ${e.message}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        connection.console.warn(`[polyglot-lsp] dynamic register didOpen warning: ${msg}`);
       }
 
       try {
@@ -323,8 +407,9 @@ export function registerPolyglotEndpoints(
           syncKind: TextDocumentSyncKind.Full,
         });
         disposables.push(regChange);
-      } catch (e: any) {
-        connection.console.warn(`[polyglot-lsp] dynamic register didChange warning: ${e.message}`);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        connection.console.warn(`[polyglot-lsp] dynamic register didChange warning: ${msg}`);
       }
 
       try {
@@ -333,27 +418,37 @@ export function registerPolyglotEndpoints(
           triggerCharacters: [".", ":", " "],
         });
         disposables.push(regComp);
-      } catch {}
+      } catch {
+        // Client may not support dynamic completion registration.
+      }
 
       try {
         const regHover = await connection.client.register(HoverRequest.type, { documentSelector });
         disposables.push(regHover);
-      } catch {}
+      } catch {
+        // Client may not support dynamic hover registration.
+      }
 
       try {
         const regDef = await connection.client.register(DefinitionRequest.type, { documentSelector });
         disposables.push(regDef);
-      } catch {}
+      } catch {
+        // Client may not support dynamic definition registration.
+      }
 
       try {
         const regSym = await connection.client.register(DocumentSymbolRequest.type, { documentSelector });
         disposables.push(regSym);
-      } catch {}
+      } catch {
+        // Client may not support dynamic document symbol registration.
+      }
 
       try {
         const regFold = await connection.client.register(FoldingRangeRequest.type, { documentSelector });
         disposables.push(regFold);
-      } catch {}
+      } catch {
+        // Client may not support dynamic folding range registration.
+      }
 
       plugin.disposables = disposables;
       globalLanguageRegistry.register(plugin);
@@ -386,9 +481,10 @@ export function registerPolyglotEndpoints(
         id: plugin.id,
         extensions: plugin.extensions,
       };
-    } catch (err: any) {
-      connection.console.error(`[polyglot-lsp] Failed to register language: ${err?.message || err}`);
-      return { success: false, error: err?.message || String(err) };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      connection.console.error(`[polyglot-lsp] Failed to register language: ${msg}`);
+      return { success: false, error: msg };
     }
   });
 
@@ -408,7 +504,7 @@ export function registerPolyglotEndpoints(
       if (params.languageDef) {
         const compiled = await compileDslToWasm(params.languageDef, { extensions: existing.extensions });
         wasmBytes = compiled.wasmBytes;
-        if (compiled.monarch) monarch = compiled.monarch;
+        if (compiled.monarch) monarch = compiled.monarch as LanguagePlugin["monarch"];
       } else if (params.wasmBytes) {
         if (Array.isArray(params.wasmBytes)) {
           wasmBytes = new Uint8Array(params.wasmBytes);
@@ -430,14 +526,16 @@ export function registerPolyglotEndpoints(
       existing.monarch = monarch;
       existing.wasmBytes = wasmBytes;
       if (params.languageDef) {
-        existing.languageDef = params.languageDef;
+        existing.languageDef = params.languageDef as unknown as LanguagePlugin["languageDef"];
         existing.handlers = params.languageDef.lsp?.handlers;
       }
 
       // Invalidate tree caches in documentManager for this language's files
-      for (const [uri] of documentManager.documentTrees) {
-        if (existing.extensions.some((ext) => uri.endsWith(ext))) {
-          documentManager.documentTrees.delete(uri);
+      if (documentManager.documentTrees) {
+        for (const [uri] of documentManager.documentTrees) {
+          if (existing.extensions.some((ext) => uri.endsWith(ext))) {
+            documentManager.documentTrees.delete(uri);
+          }
         }
       }
 
@@ -460,9 +558,10 @@ export function registerPolyglotEndpoints(
 
       connection.console.info(`[polyglot-lsp] Language '${id}' hot-reloaded successfully.`);
       return { success: true, id };
-    } catch (err: any) {
-      connection.console.error(`[polyglot-lsp] Failed to reload language: ${err?.message || err}`);
-      return { success: false, error: err?.message || String(err) };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      connection.console.error(`[polyglot-lsp] Failed to reload language: ${msg}`);
+      return { success: false, error: msg };
     }
   });
 
@@ -496,15 +595,16 @@ export function registerPolyglotEndpoints(
       for (const doc of documents.all()) {
         if (extensions.some((ext) => doc.uri.endsWith(ext))) {
           connection.sendDiagnostics({ uri: doc.uri, diagnostics: [] });
-          documentManager.documentTrees.delete(doc.uri);
+          documentManager.documentTrees?.delete(doc.uri);
         }
       }
 
       connection.console.info(`[polyglot-lsp] Language '${id}' unregistered successfully.`);
       return { success: true, id, extensions };
-    } catch (err: any) {
-      connection.console.error(`[polyglot-lsp] Failed to unregister language: ${err?.message || err}`);
-      return { success: false, error: err?.message || String(err) };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      connection.console.error(`[polyglot-lsp] Failed to unregister language: ${msg}`);
+      return { success: false, error: msg };
     }
   });
 
@@ -738,10 +838,12 @@ export function registerPolyglotEndpoints(
               if (fs.existsSync(localPath)) {
                 existingText = fs.readFileSync(localPath, "utf-8");
               }
-            } catch {}
+            } catch {
+              // Target file may not exist on disk or URI may be virtual; fall back to generated source.
+            }
           }
           if (existingText && existingText.trim().length > 0) {
-            let targetParser: any = null;
+            let targetParser: PolyglotParserLike | null = null;
             if (params.targetLang === "sysml2") targetParser = getSysmlParser();
             else if (params.targetLang === "modelica") targetParser = getModelicaParser();
             if (targetParser) {
@@ -749,7 +851,7 @@ export function registerPolyglotEndpoints(
                 existingText,
                 node as Parameters<typeof CstUnparser.syncTargetSource>[1],
                 params.targetLang,
-                targetParser,
+                targetParser as unknown as Parameters<typeof CstUnparser.syncTargetSource>[3],
               );
               if (synced && synced.text) {
                 targetSource = synced.text;
@@ -767,19 +869,20 @@ export function registerPolyglotEndpoints(
           targetLang: params.targetLang,
           correspondenceCount,
         };
-      } catch (err: any) {
-        connection.console.error(`[polyglot-lsp] Project model failed: ${err?.message || err}`);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        connection.console.error(`[polyglot-lsp] Project model failed: ${msg}`);
         return {
           success: false,
           targetLang: params.targetLang,
           correspondenceCount: 0,
-          error: err?.message || String(err),
+          error: msg,
         };
       }
     },
   );
 
-  const resolveCorrespondenceIndex = (uri?: string) => {
+  const resolveCorrespondenceIndex = (uri?: string): CorrespondenceIndexLike | undefined => {
     const uw = workspaceManager?.unifiedWorkspace;
     if (!uw) return undefined;
     const directQe = uw.queryEngine;
@@ -799,7 +902,7 @@ export function registerPolyglotEndpoints(
         if (idx) return idx;
       }
     }
-    return uw.tggCorrespondenceIndexer?.hypergraph ?? workspaceManager?.hypergraph;
+    return uw.tggCorrespondenceIndexer?.hypergraph ?? workspaceManager?.hypergraph ?? undefined;
   };
 
   // ── 6. Propagate Stale Correspondence Links ──────────────────────────────
@@ -831,8 +934,8 @@ export function registerPolyglotEndpoints(
           }
         }
         return { success: true, updatedCount };
-      } catch (err: any) {
-        return { success: false, error: err?.message || String(err) };
+      } catch (err: unknown) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
   );
@@ -924,8 +1027,14 @@ export function registerPolyglotEndpoints(
           targets,
           targetSources: emitted,
         };
-      } catch (err: any) {
-        return { success: false, applied: 0, retracted: 0, targets: [], error: err?.message || String(err) };
+      } catch (err: unknown) {
+        return {
+          success: false,
+          applied: 0,
+          retracted: 0,
+          targets: [],
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
     },
   );
@@ -951,8 +1060,8 @@ export function registerPolyglotEndpoints(
           connection.sendDiagnostics({ uri: params.uri, diagnostics: [] });
         }
         return { success: true, resolvedCount };
-      } catch (err: any) {
-        return { success: false, error: err?.message || String(err) };
+      } catch (err: unknown) {
+        return { success: false, error: err instanceof Error ? err.message : String(err) };
       }
     },
   );
@@ -993,9 +1102,14 @@ export function registerPolyglotEndpoints(
             }
           }
         } else {
-          for (let slot = 0; slot < corr.count; slot++) {
-            if (typeof corr.isConflicted === "function" && corr.isConflicted(slot) && !corr.isRemoved(slot)) {
-              pushConflict(slot, corr.getSource(slot), corr.getTarget(slot), corr.getRule(slot));
+          const totalSlots = corr.count ?? 0;
+          for (let slot = 0; slot < totalSlots; slot++) {
+            if (
+              typeof corr.isConflicted === "function" &&
+              corr.isConflicted(slot) &&
+              !(corr.isRemoved?.(slot) ?? false)
+            ) {
+              pushConflict(slot, corr.getSource?.(slot) ?? 0, corr.getTarget?.(slot) ?? 0, corr.getRule?.(slot) ?? 0);
             }
           }
         }
@@ -1004,8 +1118,8 @@ export function registerPolyglotEndpoints(
         }
       }
       return { success: true, count: conflicts.length, conflicts };
-    } catch (err: any) {
-      return { success: false, error: err?.message || String(err) };
+    } catch (err: unknown) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 }

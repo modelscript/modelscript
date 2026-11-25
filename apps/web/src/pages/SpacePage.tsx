@@ -46,6 +46,7 @@ import Box from "../components/Box";
 import { PostMarkdownContent } from "../components/post/PostMarkdownContent";
 import Spinner from "../components/Spinner";
 import { useToast } from "../components/ToastContext";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 import { SpaceCanvasTab } from "./space/SpaceCanvasTab";
 import { SpaceChangeControlTab } from "./space/SpaceChangeControlTab";
@@ -274,8 +275,8 @@ export const SpacePage: React.FC = () => {
       } else if (data.pages.length > 0) {
         setSelectedDocSlug(data.pages[0]!.slug);
       }
-    } catch (err: any) {
-      setError(err?.response?.data?.error || err?.message || "Failed to load Space");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to load Space"));
     } finally {
       setLoading(false);
     }
@@ -385,8 +386,8 @@ export const SpacePage: React.FC = () => {
             : prev,
         );
       }
-    } catch (err: any) {
-      toast.error(err?.message || "Failed to update follow status");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to update follow status"));
     }
   };
 
@@ -429,8 +430,8 @@ export const SpacePage: React.FC = () => {
         }
         return next;
       });
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to send message");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to send message"));
     } finally {
       setSendingMsg(false);
     }
@@ -472,8 +473,8 @@ export const SpacePage: React.FC = () => {
         setInspectorTarget({ type: "eco", eco: res.eco });
         toast.success(`Promoted chat thread to PLM Change Order ECO-${res.eco.eco_number}`);
       }
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to promote message");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to promote message"));
     }
   };
 
@@ -490,8 +491,8 @@ export const SpacePage: React.FC = () => {
       setNewChannelName("");
       setShowNewChannelInput(false);
       toast.success(`Created channel #${res.channel.slug}`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to create channel");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to create channel"));
     }
   };
 
@@ -509,8 +510,8 @@ export const SpacePage: React.FC = () => {
       setSelectedDocSlug(res.page.slug);
       setIsEditingDoc(false);
       toast.success(`Committed Living Doc '${res.page.path_in_git}' to Space Git Vault`);
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || "Failed to save Living Doc");
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, "Failed to save Living Doc"));
     }
   };
 

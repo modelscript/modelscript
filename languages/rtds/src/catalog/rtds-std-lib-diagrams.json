@@ -1,0 +1,1000 @@
+[
+  {
+    "namePath": "rtds:rtds_3p_source",
+    "aliases": [
+      "source3p",
+      "SRC3",
+      "rtds_sharc_sld_SRC3"
+    ],
+    "label": "Three-Phase AC Voltage Source",
+    "category": "Sources & Machines",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SRC</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">3P_SOURCE</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "abc",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_dc_source",
+    "aliases": [
+      "dcsource",
+      "DC_SRC",
+      "rtds_sharc_sld_DCSRC"
+    ],
+    "label": "DC Voltage Source",
+    "category": "Sources & Machines",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SRC</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DC_SOURCE</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "abc",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_sync_mach",
+    "aliases": [
+      "sync_mach",
+      "SYNCMACH",
+      "rtds_sharc_sld_SM"
+    ],
+    "label": "Synchronous Machine (dq0 EMT)",
+    "category": "Sources & Machines",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SRC</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SYNC_MACH</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "abc",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_ind_mach",
+    "aliases": [
+      "ind_mach",
+      "INDMACH",
+      "rtds_sharc_sld_IM"
+    ],
+    "label": "Induction Machine (Squirrel-Cage / Wound)",
+    "category": "Sources & Machines",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SRC</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">IND_MACH</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "abc",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_pmsg_mach",
+    "aliases": [
+      "pmsg",
+      "PMSG",
+      "rtds_sharc_sld_PMSG"
+    ],
+    "label": "Permanent Magnet Synchronous Generator",
+    "category": "Sources & Machines",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">SRC</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PMSG_MACH</text></svg>",
+    "ports": [
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "abc",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_rlc_branch",
+    "aliases": [
+      "rlc",
+      "RLC",
+      "rtds_sharc_sld_RLC"
+    ],
+    "label": "Dommel Trapezoidal RLC Branch",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RLC_BRANCH</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_bergeron_line",
+    "aliases": [
+      "bergeron",
+      "tline",
+      "rtds_sharc_sld_TLINE"
+    ],
+    "label": "Bergeron Travelling-Wave Line",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BERGERON_L</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_fd_line",
+    "aliases": [
+      "fdline",
+      "FDLINE",
+      "rtds_sharc_sld_FDLINE"
+    ],
+    "label": "Frequency-Dependent Phase-Domain Line",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FD_LINE</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_2w_xfmr",
+    "aliases": [
+      "xfmr2w",
+      "XFMR2W",
+      "rtds_sharc_sld_XFMR2W"
+    ],
+    "label": "Two-Winding Power Transformer",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">2W_XFMR</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_3w_xfmr",
+    "aliases": [
+      "xfmr3w",
+      "XFMR3W",
+      "rtds_sharc_sld_XFMR3W"
+    ],
+    "label": "Three-Winding Power Transformer",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">3W_XFMR</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_surge_arrester",
+    "aliases": [
+      "arrester",
+      "MOV",
+      "rtds_sharc_sld_ARRESTER"
+    ],
+    "label": "ZnO Metal-Oxide Surge Arrester (MOV)",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SURGE_ARRE</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_breaker",
+    "aliases": [
+      "breaker",
+      "BRK",
+      "rtds_sharc_sld_BRK"
+    ],
+    "label": "Three-Phase Circuit Breaker",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BREAKER</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_fault",
+    "aliases": [
+      "fault",
+      "FLT",
+      "rtds_sharc_sld_FAULT"
+    ],
+    "label": "Controlled Shunt Fault Switch",
+    "category": "Passive & Transmission",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">NET</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FAULT</text></svg>",
+    "ports": [
+      {
+        "name": "n1",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "n2",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "ctrl",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_vsc_2lvl",
+    "aliases": [
+      "vsc2lvl",
+      "VSC2L",
+      "rtds_vsc_2l"
+    ],
+    "label": "Two-Level Voltage Source Converter",
+    "category": "Power Electronics / Substep",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">PE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">VSC_2LVL</text></svg>",
+    "ports": [
+      {
+        "name": "dc",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ac",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "gate",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_vsc_3lvl_npc",
+    "aliases": [
+      "vsc3lvl",
+      "NPC3L",
+      "rtds_vsc_3l"
+    ],
+    "label": "Three-Level NPC Converter",
+    "category": "Power Electronics / Substep",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">PE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">VSC_3LVL_N</text></svg>",
+    "ports": [
+      {
+        "name": "dc",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ac",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "gate",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_mmc_substep",
+    "aliases": [
+      "mmc",
+      "MMC",
+      "rtds_mmc"
+    ],
+    "label": "Modular Multilevel Converter (Substep)",
+    "category": "Power Electronics / Substep",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">PE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MMC_SUBSTE</text></svg>",
+    "ports": [
+      {
+        "name": "dc",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ac",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "gate",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_dc_dc_buck_boost",
+    "aliases": [
+      "buck_boost",
+      "DCDC",
+      "rtds_dcdc"
+    ],
+    "label": "Bidirectional DC-DC Buck/Boost Converter",
+    "category": "Power Electronics / Substep",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">PE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DC_DC_BUCK</text></svg>",
+    "ports": [
+      {
+        "name": "dc",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ac",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "gate",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_pv_array",
+    "aliases": [
+      "pv_array",
+      "PV",
+      "rtds_pv"
+    ],
+    "label": "Photovoltaic Array (Single-Diode EMT)",
+    "category": "Power Electronics / Substep",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">PE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PV_ARRAY</text></svg>",
+    "ports": [
+      {
+        "name": "dc",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ac",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "gate",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_bess_pack",
+    "aliases": [
+      "bess",
+      "BESS",
+      "rtds_bess"
+    ],
+    "label": "Battery Energy Storage Pack (Thevenin)",
+    "category": "Power Electronics / Substep",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#2dd4bf\">PE</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">BESS_PACK</text></svg>",
+    "ports": [
+      {
+        "name": "dc",
+        "kind": "electrical",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "ac",
+        "kind": "electrical",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      },
+      {
+        "name": "gate",
+        "kind": "signal",
+        "side": "top",
+        "dx": 44,
+        "dy": 0
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_pi_ctrl",
+    "aliases": [
+      "pi_ctrl",
+      "PI",
+      "rtds_ctrl_PI"
+    ],
+    "label": "PI Controller with Anti-Windup",
+    "category": "Controls & Transforms",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PI_CTRL</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_lead_lag",
+    "aliases": [
+      "lead_lag",
+      "LEADLAG",
+      "rtds_ctrl_LL"
+    ],
+    "label": "First-Order Lead-Lag Compensator",
+    "category": "Controls & Transforms",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">LEAD_LAG</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_pll_srf",
+    "aliases": [
+      "pll",
+      "SRF_PLL",
+      "rtds_ctrl_PLL"
+    ],
+    "label": "Synchronous Reference Frame PLL",
+    "category": "Controls & Transforms",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PLL_SRF</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_abc_dq0",
+    "aliases": [
+      "abc_dq0",
+      "PARK",
+      "rtds_ctrl_ABC2DQ0"
+    ],
+    "label": "Park Transform (abc to dq0)",
+    "category": "Controls & Transforms",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ABC_DQ0</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_dq0_abc",
+    "aliases": [
+      "dq0_abc",
+      "INV_PARK",
+      "rtds_ctrl_DQ02ABC"
+    ],
+    "label": "Inverse Park Transform (dq0 to abc)",
+    "category": "Controls & Transforms",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DQ0_ABC</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_pwm_gen",
+    "aliases": [
+      "pwm",
+      "PWM",
+      "rtds_ctrl_PWM"
+    ],
+    "label": "Triangular Carrier PWM Generator",
+    "category": "Controls & Transforms",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PWM_GEN</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_rms_meter",
+    "aliases": [
+      "rms_meter",
+      "RMS",
+      "rtds_meas_RMS"
+    ],
+    "label": "Sliding-Window True RMS Meter",
+    "category": "Controls & Transforms",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">CTL</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">RMS_METER</text></svg>",
+    "ports": [
+      {
+        "name": "in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_oc_50_51",
+    "aliases": [
+      "oc_50_51",
+      "RELAY_50_51",
+      "rtds_prot_50_51"
+    ],
+    "label": "Instantaneous & Time Overcurrent Relay (50/51)",
+    "category": "Protection",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">OC_50_51</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_dist_21",
+    "aliases": [
+      "dist_21",
+      "RELAY_21",
+      "rtds_prot_21"
+    ],
+    "label": "Mho Distance Protection Relay (21)",
+    "category": "Protection",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIST_21</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_diff_87",
+    "aliases": [
+      "diff_87",
+      "RELAY_87",
+      "rtds_prot_87"
+    ],
+    "label": "Percentage Differential Relay (87)",
+    "category": "Protection",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">DIFF_87</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "rtds:rtds_freq_81",
+    "aliases": [
+      "freq_81",
+      "RELAY_81",
+      "rtds_prot_81"
+    ],
+    "label": "Under/Over Frequency Relay (81U/81O)",
+    "category": "Protection",
+    "domain": "electrical",
+    "width": 88,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 48\" width=\"88\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"44\" rx=\"6\" fill=\"#422006\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fb923c\">PRO</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">FREQ_81</text></svg>",
+    "ports": [
+      {
+        "name": "meas",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "trip",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 24
+      }
+    ]
+  }
+]

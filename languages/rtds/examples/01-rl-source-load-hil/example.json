@@ -1,0 +1,12 @@
+{
+  "id": "rtds-01-rl-source-load-hil",
+  "lang": "rtds",
+  "subFormats": ["dft"],
+  "difficulty": 1,
+  "title": "Single-Phase RL Source-Load Real-Time HIL Benchmark",
+  "description": "Minimal 50-microsecond RTDS RSCAD draft circuit modeling a 138 kV sinusoidal voltage source energizing a series RL feeder and resistive load for real-time HIL verification.",
+  "category": "Real-Time HIL Simulation",
+  "tags": ["rtds", "dft", "hil", "rl-circuit", "50us"],
+  "activeFile": "rl_hil.dft",
+  "isDefaultStarter": true
+}

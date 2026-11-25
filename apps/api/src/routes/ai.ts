@@ -3,24 +3,24 @@
 import type { Request, Response, Router } from "express";
 import { Router as createRouter } from "express";
 import type { LibraryDatabase } from "../database.js";
-import { MorselAiService, type MorselChatRequest } from "../services/ai/morsel-ai.js";
+import { AnsatzAiService, type AnsatzChatRequest } from "../services/ai/ansatz-ai.js";
 import { checkComputeQuota } from "../services/hpc/quota-guard.js";
 
 export function aiRouter(database: LibraryDatabase): Router {
   const router = createRouter();
-  const morselAi = new MorselAiService();
+  const ansatzAi = new AnsatzAiService();
 
   router.get("/ai/providers", async (_req: Request, res: Response) => {
     try {
-      const info = await morselAi.getProvidersInfo();
+      const info = await ansatzAi.getProvidersInfo();
       res.json(info);
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : "Failed to inspect AI providers" });
     }
   });
 
-  router.post("/ai/morsel/chat", async (req: Request, res: Response) => {
-    const body = (req.body ?? {}) as Partial<MorselChatRequest>;
+  router.post("/ai/ansatz/chat", async (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as Partial<AnsatzChatRequest>;
     if (!Array.isArray(body.messages) || body.messages.length === 0) {
       res.status(400).json({ error: "messages array is required" });
       return;
@@ -41,7 +41,7 @@ export function aiRouter(database: LibraryDatabase): Router {
     res.flushHeaders?.();
 
     try {
-      for await (const chunk of morselAi.streamChat(
+      for await (const chunk of ansatzAi.streamChat(
         {
           messages: body.messages,
           tools: body.tools,
@@ -57,7 +57,7 @@ export function aiRouter(database: LibraryDatabase): Router {
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Morsel AI stream failed";
+      const message = err instanceof Error ? err.message : "Ansatz AI stream failed";
       res.write(`data: ${JSON.stringify({ type: "error", message })}\n\n`);
     } finally {
       res.end();

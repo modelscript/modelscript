@@ -175,7 +175,9 @@ export class FederationWorker {
                       extraHeaders["Collection-Synchronization"] =
                         `collectionId="${actorUri}/followers", url="${actorUri}/followers/synchronization", digest="${digestHex}"`;
                     }
-                  } catch {}
+                  } catch {
+                    // Collection-Synchronization header is optional (FEP-8fcf)
+                  }
                 }
               }
             }
@@ -186,7 +188,9 @@ export class FederationWorker {
               this.db.recordDomainDeliverySuccess(item.target_domain);
               try {
                 this.db.incrementRelayStats(item.target_inbox_url, "forwarded");
-              } catch {}
+              } catch {
+                // Relay stats update is non-critical telemetry
+              }
             } catch (err: unknown) {
               const errMsg = err instanceof Error ? err.message : String(err);
               this.db.recordDomainDeliveryFailure(item.target_domain, errMsg);
@@ -275,7 +279,9 @@ export class FederationWorker {
             remote_domain: relay.domain || new URL(relay.inbox_url).hostname,
           });
         }
-      } catch {}
+      } catch {
+        // Relay lookup is best-effort; continue delivering to direct followers
+      }
     }
 
     const allRecipients = [...remoteFollowers, ...additionalInboxes, ...relayRecipients];

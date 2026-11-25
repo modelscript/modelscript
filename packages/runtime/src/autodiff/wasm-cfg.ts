@@ -118,9 +118,11 @@ export interface WasmLocalDecl {
   type: number;
 }
 
+export type WasmImmediate = number | WasmMemArg;
+
 export interface WasmInstruction {
   opcode: number;
-  imm?: any;
+  imm?: WasmImmediate | undefined;
 }
 
 export interface WasmFunction {
@@ -297,7 +299,7 @@ export function decodeWasmModule(bytes: Uint8Array): WasmModule {
         const instructions: WasmInstruction[] = [];
         while (secOffset.pos < bodyEnd) {
           const op = bytes[secOffset.pos++]!;
-          let imm: any = undefined;
+          let imm: WasmImmediate | undefined = undefined;
 
           if (op === OP_BLOCK || op === OP_LOOP || op === OP_IF) {
             imm = bytes[secOffset.pos++]!; // blocktype
@@ -420,11 +422,11 @@ export function encodeWasmModule(module: WasmModule): Uint8Array {
     for (const inst of fn.instructions) {
       bodyBytes.push(inst.opcode);
       if (inst.opcode === OP_BLOCK || inst.opcode === OP_LOOP || inst.opcode === OP_IF) {
-        bodyBytes.push(inst.imm);
+        bodyBytes.push(inst.imm as number);
       } else if (inst.opcode === OP_BR || inst.opcode === OP_BR_IF) {
-        bodyBytes.push(...writeU32Leb128(inst.imm));
+        bodyBytes.push(...writeU32Leb128(inst.imm as number));
       } else if (inst.opcode === OP_CALL) {
-        bodyBytes.push(...writeU32Leb128(inst.imm));
+        bodyBytes.push(...writeU32Leb128(inst.imm as number));
       } else if (
         inst.opcode === OP_LOCAL_GET ||
         inst.opcode === OP_LOCAL_SET ||
@@ -432,21 +434,22 @@ export function encodeWasmModule(module: WasmModule): Uint8Array {
         inst.opcode === OP_GLOBAL_GET ||
         inst.opcode === OP_GLOBAL_SET
       ) {
-        bodyBytes.push(...writeU32Leb128(inst.imm));
+        bodyBytes.push(...writeU32Leb128(inst.imm as number));
       } else if (
         inst.opcode === OP_I32_LOAD ||
         inst.opcode === OP_F64_LOAD ||
         inst.opcode === OP_I32_STORE ||
         inst.opcode === OP_F64_STORE
       ) {
-        const align = inst.imm?.align ?? 3;
-        const memOffset = inst.imm?.offset ?? 0;
+        const memArg = inst.imm as WasmMemArg | undefined;
+        const align = memArg?.align ?? 3;
+        const memOffset = memArg?.offset ?? 0;
         bodyBytes.push(...writeU32Leb128(align));
         bodyBytes.push(...writeU32Leb128(memOffset));
       } else if (inst.opcode === OP_I32_CONST) {
-        bodyBytes.push(...writeI32Leb128(inst.imm));
+        bodyBytes.push(...writeI32Leb128(inst.imm as number));
       } else if (inst.opcode === OP_F64_CONST) {
-        bodyBytes.push(...writeF64(inst.imm));
+        bodyBytes.push(...writeF64(inst.imm as number));
       }
     }
 

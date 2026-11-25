@@ -4,8 +4,32 @@ import { Button, Dialog, Heading } from "@primer/react";
 import React from "react";
 import Box from "../Box";
 
+export interface ReplyToPostLike {
+  username?: string | null | undefined;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  author_username?: string | null | undefined;
+  author_display_name?: string | null | undefined;
+  author?:
+    | {
+        username?: string | null | undefined;
+        display_name?: string | null | undefined;
+        displayName?: string | null | undefined;
+        avatar_url?: string | null | undefined;
+      }
+    | null
+    | undefined;
+  user?:
+    | {
+        username?: string | null | undefined;
+        avatar_url?: string | null | undefined;
+      }
+    | null
+    | undefined;
+}
+
 export interface ComposeRecipientsModalProps {
-  replyToPost: any;
+  replyToPost: ReplyToPostLike | null | undefined;
   allMentionedUsers: string[];
   excludedUsers: Set<string>;
   setExcludedUsers: (users: Set<string>) => void;

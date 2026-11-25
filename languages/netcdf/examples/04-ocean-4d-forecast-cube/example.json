@@ -1,0 +1,11 @@
+{
+  "id": "netcdf-04-ocean-4d-forecast-cube",
+  "lang": "netcdf",
+  "subFormats": ["cdl", "cf-1.8"],
+  "difficulty": 4,
+  "title": "4D Ocean Salinity-Temperature-Depth Forecast Cube",
+  "description": "Four-dimensional (time x depth x lat x lon) ocean circulation forecast cube modeling thermocline potential temperature and practical salinity evolution.",
+  "category": "Oceanography",
+  "tags": ["netcdf", "4d", "thermocline", "salinity", "forecast"],
+  "activeFile": "ocean_4d_cube.cdl"
+}

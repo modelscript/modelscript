@@ -1,0 +1,11 @@
+{
+  "id": "cyme-02-balanced-industrial-feeder",
+  "lang": "cyme",
+  "subFormats": ["sxst"],
+  "difficulty": 2,
+  "title": "3-Phase Balanced Industrial Distribution Feeder",
+  "description": "Four-node 12.47 kV three-phase distribution feeder supplying an industrial manufacturing park through overhead ACSR trunk lines and underground XLPE cable drops.",
+  "category": "Distribution Power Systems",
+  "tags": ["cyme", "sxst", "three-phase", "industrial", "cable"],
+  "activeFile": "industrial_3ph.sxst"
+}

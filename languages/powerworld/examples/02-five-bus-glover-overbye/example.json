@@ -1,0 +1,11 @@
+{
+  "id": "powerworld-02-five-bus-glover-overbye",
+  "lang": "powerworld",
+  "subFormats": ["aux"],
+  "difficulty": 2,
+  "title": "5-Bus Glover-Sarma-Overbye Textbook Power Flow Case",
+  "description": "Classic 5-bus 15 kV/345 kV transmission benchmark with two step-up transformers, three EHV transmission lines, and 800 MW system load.",
+  "category": "Transmission Power Flow",
+  "tags": ["powerworld", "aux", "5-bus", "345kv", "transformer"],
+  "activeFile": "glover5.aux"
+}

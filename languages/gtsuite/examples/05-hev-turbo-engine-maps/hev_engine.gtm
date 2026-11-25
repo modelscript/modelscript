@@ -1,0 +1,37 @@
+MODEL: HEV_Miller_Turbo_Engine
+SPEED: 3000.0
+LAMBDA: 1.0
+
+COMPONENTS:
+  INLET = environment_inlet (P = 101325, T = 298.15)
+  AIR_DUCT = pipe (D = 0.058, L = 0.50, CELLS = 4)
+  COMP = turbo_compressor (PR = 1.85, EFF = 0.78, MASS_FLOW = 0.14)
+  CAC = intercooler (VOL = 0.0048, DP = 0.03, EFF = 0.86)
+  PLENUM_IN = plenum (VOL = 0.0038, P = 182000, T = 310.0)
+  RUN_IN1 = intake_runner (D = 0.042, L = 0.40, CELLS = 4)
+  RUN_IN2 = intake_runner (D = 0.042, L = 0.40, CELLS = 4)
+  CYL1 = cylinder (BORE = 0.080, STROKE = 0.094, ROD = 0.148, CR = 12.2, ANCHOR = 16, DURATION = 40)
+  CYL2 = cylinder (BORE = 0.080, STROKE = 0.094, ROD = 0.148, CR = 12.2, ANCHOR = 16, DURATION = 40)
+  RUN_EX1 = exhaust_runner (D = 0.036, L = 0.60, CELLS = 4)
+  RUN_EX2 = exhaust_runner (D = 0.036, L = 0.60, CELLS = 4)
+  PLENUM_EXH = plenum (VOL = 0.0024, P = 215000, T = 980.0)
+  TURB = turbo_turbine (ER = 1.78, EFF = 0.75)
+  EXH_PIPE = pipe (D = 0.054, L = 0.80, CELLS = 5)
+  OUTLET = environment_outlet (P = 101325, T = 298.15)
+
+CONNECTIONS:
+  INLET.out -> AIR_DUCT.in
+  AIR_DUCT.out -> COMP.in
+  COMP.out -> CAC.in
+  CAC.out -> PLENUM_IN.in
+  PLENUM_IN.port1 -> RUN_IN1.in
+  PLENUM_IN.port2 -> RUN_IN2.in
+  RUN_IN1.out -> CYL1.intake
+  RUN_IN2.out -> CYL2.intake
+  CYL1.exhaust -> RUN_EX1.in
+  CYL2.exhaust -> RUN_EX2.in
+  RUN_EX1.out -> PLENUM_EXH.port1
+  RUN_EX2.out -> PLENUM_EXH.port2
+  PLENUM_EXH.out -> TURB.in
+  TURB.out -> EXH_PIPE.in
+  EXH_PIPE.out -> OUTLET.in

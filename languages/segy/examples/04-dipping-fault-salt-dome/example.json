@@ -1,0 +1,11 @@
+{
+  "id": "segy-04-dipping-fault-salt-dome",
+  "lang": "segy",
+  "subFormats": ["sgy"],
+  "difficulty": 4,
+  "title": "Dipping Fault and Salt Dome Pre-Stack Depth Migrated 2D Line",
+  "description": "SEG-Y Rev 1.0 header for a deepwater Gulf of Mexico 2D Pre-Stack Depth Migrated (PSDM) seismic line imaging a 4500 m/s halite salt diapir flank and normal growth faults.",
+  "category": "Seismic & Subsurface Geophysics",
+  "tags": ["segy", "salt-dome", "psdm", "structural-geology"],
+  "activeFile": "salt_dome_2d.sgy"
+}

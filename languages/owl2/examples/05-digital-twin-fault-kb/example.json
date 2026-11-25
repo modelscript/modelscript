@@ -1,0 +1,11 @@
+{
+  "id": "owl2-05-digital-twin-fault-kb",
+  "lang": "owl2",
+  "subFormats": ["ofn", "ttl", "rq"],
+  "difficulty": 5,
+  "title": "Digital-Twin Fault Reasoning Knowledge Base",
+  "description": "Multi-file OWL 2 EL++ fault-diagnosis knowledge base combining an industrial plant ontology, Turtle sensor telemetry assertions, and a SPARQL fault query.",
+  "category": "Fault Diagnosis & Reasoning",
+  "tags": ["owl2", "digital-twin", "fault-diagnosis", "sparql", "multi-file"],
+  "activeFile": "plant_kb.ofn"
+}

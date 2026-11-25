@@ -1,0 +1,11 @@
+{
+  "id": "sima-02-spar-buoy-decay",
+  "lang": "sima",
+  "subFormats": ["sima"],
+  "difficulty": 2,
+  "title": "Cylindrical Spar Buoy Heave and Pitch Decay",
+  "description": "Deep-draft OC3-Hywind-class cylindrical spar buoy moored by three symmetrical 120-degree catenary chain lines in 200 m water depth for free-decay heave and pitch damping characterization.",
+  "category": "Offshore Marine Engineering",
+  "tags": ["spar-buoy", "free-decay", "hydrodynamics", "mooring"],
+  "activeFile": "spar_buoy.sima"
+}

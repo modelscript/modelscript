@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Document version="5.1">
+  <Model name="RlcPowerBondCircuit">
+    <Submodels>
+      <Submodel name="V_in" type="Se" x="60" y="160">
+        <Parameters>
+          <Parameter name="effort" value="24.0" unit="V"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j1_series" type="1" x="180" y="160"/>
+      <Submodel name="L_choke" type="I" x="180" y="60">
+        <Parameters>
+          <Parameter name="i" value="0.015" unit="H"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="R_wire" type="R" x="180" y="260">
+        <Parameters>
+          <Parameter name="r" value="1.2" unit="Ohm"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="j0_node" type="0" x="320" y="160"/>
+      <Submodel name="C_filter" type="C" x="320" y="60">
+        <Parameters>
+          <Parameter name="c" value="0.00047" unit="F"/>
+        </Parameters>
+      </Submodel>
+      <Submodel name="R_load" type="R" x="450" y="160">
+        <Parameters>
+          <Parameter name="r" value="12.0" unit="Ohm"/>
+        </Parameters>
+      </Submodel>
+    </Submodels>
+    <Connections>
+      <Connection id="b1" type="bond" from="V_in.p" to="j1_series.p"/>
+      <Connection id="b2" type="bond" from="j1_series.p" to="L_choke.p"/>
+      <Connection id="b3" type="bond" from="j1_series.p" to="R_wire.p"/>
+      <Connection id="b4" type="bond" from="j1_series.p" to="j0_node.p"/>
+      <Connection id="b5" type="bond" from="j0_node.p" to="C_filter.p"/>
+      <Connection id="b6" type="bond" from="j0_node.p" to="R_load.p"/>
+    </Connections>
+    <Experiment startTime="0" finishTime="0.2" stepSize="0.0002" method="RungeKutta4"/>
+  </Model>
+</Document>

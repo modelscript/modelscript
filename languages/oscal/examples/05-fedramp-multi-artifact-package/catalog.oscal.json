@@ -1,0 +1,23 @@
+{
+  "catalog": {
+    "uuid": "55555555-5555-4555-8555-555555555501",
+    "metadata": {
+      "title": "FedRAMP Cloud Engineering Control Catalog",
+      "last-modified": "2026-11-01T00:00:00Z",
+      "version": "1.0.0",
+      "oscal-version": "1.1.2"
+    },
+    "groups": [
+      {
+        "id": "cloud-baseline",
+        "title": "Cloud Baseline Controls",
+        "controls": [
+          { "id": "ac-3", "title": "Access Enforcement" },
+          { "id": "au-2", "title": "Event Logging" },
+          { "id": "sc-7", "title": "Boundary Protection" },
+          { "id": "sc-8", "title": "Transmission Confidentiality and Integrity" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "openscenario-01-cruise-follow",
+  "lang": "openscenario",
+  "subFormats": ["xosc", "xodr"],
+  "difficulty": 1,
+  "title": "Constant-Speed Cruise Follow",
+  "description": "ASAM OpenSCENARIO 1.2 car-following baseline with an Ego vehicle cruising behind a steady-speed lead vehicle on a straight two-lane OpenDRIVE highway.",
+  "category": "ADAS & Autonomous Driving",
+  "tags": ["openscenario", "cruise-control", "car-following", "multi-file"],
+  "activeFile": "cruise.xosc",
+  "fileOrder": ["cruise.xosc", "straight_road.xodr"],
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "gpss-03-job-shop-preempt",
+  "lang": "gpss",
+  "subFormats": ["gps"],
+  "difficulty": 3,
+  "title": "Manufacturing Job Shop with Priority Preemption",
+  "description": "CNC machining center serving regular production orders while urgent rush jobs preempt the machine via GPSS PREEMPT and RETURN blocks.",
+  "category": "Manufacturing Systems",
+  "tags": ["gpss", "preempt", "manufacturing", "priority"],
+  "activeFile": "job_shop.gps"
+}

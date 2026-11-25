@@ -1,0 +1,9 @@
+Flow Title=Steady Canal Design Discharge
+Boundary for River Reach & Node=Canal,MainReach,1000
+Boundary Type=Flow Hydrograph
+Hydrograph Data= 2
+0, 45.0  24, 45.0
+
+Boundary for River Reach & Node=Canal,MainReach,0
+Boundary Type=Normal Depth
+Friction Slope=0.0010

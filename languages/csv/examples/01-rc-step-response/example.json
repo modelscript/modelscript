@@ -1,0 +1,12 @@
+{
+  "id": "csv-01-rc-step-response",
+  "lang": "csv",
+  "subFormats": ["csv"],
+  "difficulty": 1,
+  "title": "RC Low-Pass Filter Step-Response Time-Series",
+  "description": "Measured capacitor voltage and resistor current time-series for a 10V step applied to a 10 kOhm / 100 uF RC circuit (tau = 1.0 s).",
+  "category": "Electrical Measurements",
+  "tags": ["csv", "time-series", "rc-circuit", "step-response"],
+  "activeFile": "rc_step.csv",
+  "isDefaultStarter": true
+}

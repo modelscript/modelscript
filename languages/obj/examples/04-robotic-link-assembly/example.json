@@ -1,0 +1,11 @@
+{
+  "id": "obj-04-robotic-link-assembly",
+  "lang": "obj",
+  "subFormats": ["wavefront-obj", "wavefront-mtl"],
+  "difficulty": 4,
+  "title": "Multi-Group Robotic Arm Link & Joint Assembly",
+  "description": "Multi-object Wavefront OBJ robotic manipulator sub-assembly separating an anodized orange structural link and matte-black servo housing with dedicated material groups.",
+  "category": "Robotics Visualization",
+  "tags": ["obj", "mtl", "robotics", "multi-group", "multi-file"],
+  "activeFile": "arm_link.obj"
+}

@@ -1,0 +1,40 @@
+MODEL: SpringMassDamper
+TITLE: "Second-Order Mechanical Spring-Mass-Damper System"
+
+COMPONENTS:
+  UG01 TYPE=GP/UG TITLE="Step Force Source" X=100 Y=200
+    PORTS: OUT=output
+    XP: F_STEP=10.0
+    FORTRAN:
+      OUT = 10.0
+    ENDFORTRAN
+
+  SJ01 TYPE=GP/SJ TITLE="Force Summing Junction" X=250 Y=200
+    XP: SGN1=1.0, SGN2=-1.0, SGN3=-1.0, K1=1.0, K2=1.0, K3=1.0
+
+  GA01 TYPE=GP/GA TITLE="Inverse Mass 1/m" X=400 Y=200
+    XP: K=0.5
+
+  IN01 TYPE=GP/IN TITLE="Velocity Integrator" X=550 Y=200
+    XP: GAIN=1.0, UL=100.0, LL=-100.0
+    S0: S1=0.0
+
+  IN02 TYPE=GP/IN TITLE="Displacement Integrator" X=700 Y=200
+    XP: GAIN=1.0, UL=100.0, LL=-100.0
+    S0: S1=0.0
+
+  GA02 TYPE=GP/GA TITLE="Viscous Damping c" X=550 Y=350
+    XP: K=1.2
+
+  GA03 TYPE=GP/GA TITLE="Spring Stiffness k" X=700 Y=450
+    XP: K=16.0
+
+CONNECTIONS:
+  UG01.OUT -> SJ01.IN1
+  SJ01.OUT -> GA01.IN
+  GA01.OUT -> IN01.IN
+  IN01.OUT -> IN02.IN
+  IN01.OUT -> GA02.IN
+  GA02.OUT -> SJ01.IN2
+  IN02.OUT -> GA03.IN
+  GA03.OUT -> SJ01.IN3

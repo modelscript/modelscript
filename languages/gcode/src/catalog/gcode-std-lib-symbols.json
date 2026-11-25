@@ -1,0 +1,1088 @@
+[
+  {
+    "name": "G00",
+    "kind": "Function",
+    "namePath": "gcode.G00",
+    "exports": [
+      "rapidRateMmPerMin",
+      "distanceMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rapid Positioning",
+      "category": "Motion Control",
+      "domain": "manufacturing",
+      "description": "Non-cutting rapid traverse positioning at maximum machine feedrate.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "G0",
+        "RAPID"
+      ],
+      "parameters": [
+        {
+          "key": "rapidRateMmPerMin",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "mm/min",
+          "description": "Machine rapid traverse rate"
+        },
+        {
+          "key": "distanceMm",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "mm",
+          "description": "Euclidean rapid traverse distance"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "G01",
+    "kind": "Function",
+    "namePath": "gcode.G01",
+    "exports": [
+      "feedrateMmPerMin",
+      "distanceMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Interpolation",
+      "category": "Motion Control",
+      "domain": "manufacturing",
+      "description": "Controlled straight-line cutting move at programmed feedrate F.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "G1",
+        "LINEAR"
+      ],
+      "parameters": [
+        {
+          "key": "feedrateMmPerMin",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "mm/min",
+          "description": "Programmed cutting feedrate"
+        },
+        {
+          "key": "distanceMm",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "mm",
+          "description": "Linear cutting path length"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "G02",
+    "kind": "Function",
+    "namePath": "gcode.G02",
+    "exports": [
+      "feedrateMmPerMin",
+      "radiusMm",
+      "sweepAngleDeg",
+      "helicalDeltaZMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Circular Interpolation CW",
+      "category": "Motion Control",
+      "domain": "manufacturing",
+      "description": "Clockwise circular or helical arc interpolation in active plane (G17/G18/G19).",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "G2",
+        "ARC_CW"
+      ],
+      "parameters": [
+        {
+          "key": "feedrateMmPerMin",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "mm/min",
+          "description": "Arc feedrate"
+        },
+        {
+          "key": "radiusMm",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "mm",
+          "description": "Arc radius"
+        },
+        {
+          "key": "sweepAngleDeg",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Arc angular sweep"
+        },
+        {
+          "key": "helicalDeltaZMm",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Helical axis displacement"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "G03",
+    "kind": "Function",
+    "namePath": "gcode.G03",
+    "exports": [
+      "feedrateMmPerMin",
+      "radiusMm",
+      "sweepAngleDeg",
+      "helicalDeltaZMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Circular Interpolation CCW",
+      "category": "Motion Control",
+      "domain": "manufacturing",
+      "description": "Counter-clockwise circular or helical arc interpolation in active plane (G17/G18/G19).",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "G3",
+        "ARC_CCW"
+      ],
+      "parameters": [
+        {
+          "key": "feedrateMmPerMin",
+          "type": "real",
+          "defaultValue": 400,
+          "unit": "mm/min",
+          "description": "Arc feedrate"
+        },
+        {
+          "key": "radiusMm",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "mm",
+          "description": "Arc radius"
+        },
+        {
+          "key": "sweepAngleDeg",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "deg",
+          "description": "Arc angular sweep"
+        },
+        {
+          "key": "helicalDeltaZMm",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "mm",
+          "description": "Helical axis displacement"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "G04",
+    "kind": "Function",
+    "namePath": "gcode.G04",
+    "exports": [
+      "dwellSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Programmed Dwell",
+      "category": "Motion Control",
+      "domain": "manufacturing",
+      "description": "Pauses axis motion for P seconds while maintaining spindle rotation.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "G4",
+        "DWELL"
+      ],
+      "parameters": [
+        {
+          "key": "dwellSec",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Dwell duration in seconds"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "G80",
+    "kind": "Function",
+    "namePath": "gcode.G80",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Cancel Canned Cycle",
+      "category": "Canned Cycles",
+      "domain": "manufacturing",
+      "description": "Cancels any active modal canned drilling or boring cycle.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "CANCEL_CYCLE"
+      ],
+      "parameters": [],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "G81",
+    "kind": "Function",
+    "namePath": "gcode.G81",
+    "exports": [
+      "rPlaneMm",
+      "zDepthMm",
+      "feedrateMmPerMin",
+      "rapidRateMmPerMin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Simple Drilling Cycle",
+      "category": "Canned Cycles",
+      "domain": "manufacturing",
+      "description": "Rapid to R-plane, feed plunge to final Z depth, and rapid retract.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "DRILL"
+      ],
+      "parameters": [
+        {
+          "key": "rPlaneMm",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "mm",
+          "description": "Retract R-plane Z height"
+        },
+        {
+          "key": "zDepthMm",
+          "type": "real",
+          "defaultValue": -15,
+          "unit": "mm",
+          "description": "Final hole bottom Z coordinate"
+        },
+        {
+          "key": "feedrateMmPerMin",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "mm/min",
+          "description": "Plunge feedrate"
+        },
+        {
+          "key": "rapidRateMmPerMin",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "mm/min",
+          "description": "Rapid retract rate"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "G82",
+    "kind": "Function",
+    "namePath": "gcode.G82",
+    "exports": [
+      "rPlaneMm",
+      "zDepthMm",
+      "feedrateMmPerMin",
+      "dwellSec",
+      "rapidRateMmPerMin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Spot Drilling / Counterbore Cycle",
+      "category": "Canned Cycles",
+      "domain": "manufacturing",
+      "description": "Feed plunge to Z depth, dwell P seconds at bottom for chip cleanup, rapid retract.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "SPOT_DRILL",
+        "COUNTERBORE"
+      ],
+      "parameters": [
+        {
+          "key": "rPlaneMm",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "mm",
+          "description": "Retract R-plane Z height"
+        },
+        {
+          "key": "zDepthMm",
+          "type": "real",
+          "defaultValue": -5,
+          "unit": "mm",
+          "description": "Final spot Z coordinate"
+        },
+        {
+          "key": "feedrateMmPerMin",
+          "type": "real",
+          "defaultValue": 150,
+          "unit": "mm/min",
+          "description": "Plunge feedrate"
+        },
+        {
+          "key": "dwellSec",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Bottom dwell duration"
+        },
+        {
+          "key": "rapidRateMmPerMin",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "mm/min",
+          "description": "Rapid retract rate"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "G83",
+    "kind": "Function",
+    "namePath": "gcode.G83",
+    "exports": [
+      "rPlaneMm",
+      "zDepthMm",
+      "peckDepthMm",
+      "feedrateMmPerMin",
+      "rapidRateMmPerMin",
+      "clearanceMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Deep-Hole Peck Drilling Cycle",
+      "category": "Canned Cycles",
+      "domain": "manufacturing",
+      "description": "Incremental peck drilling by Q depth with full retract to R-plane for chip evacuation.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "PECK_DRILL"
+      ],
+      "parameters": [
+        {
+          "key": "rPlaneMm",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "mm",
+          "description": "Retract R-plane Z height"
+        },
+        {
+          "key": "zDepthMm",
+          "type": "real",
+          "defaultValue": -24,
+          "unit": "mm",
+          "description": "Final hole bottom Z coordinate"
+        },
+        {
+          "key": "peckDepthMm",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "mm",
+          "description": "Peck increment Q"
+        },
+        {
+          "key": "feedrateMmPerMin",
+          "type": "real",
+          "defaultValue": 160,
+          "unit": "mm/min",
+          "description": "Plunge feedrate"
+        },
+        {
+          "key": "rapidRateMmPerMin",
+          "type": "real",
+          "defaultValue": 10000,
+          "unit": "mm/min",
+          "description": "Rapid retract rate"
+        },
+        {
+          "key": "clearanceMm",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "mm",
+          "description": "Peck re-entry clearance"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "M03",
+    "kind": "Function",
+    "namePath": "gcode.M03",
+    "exports": [
+      "spindleRpm",
+      "maxPowerW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Spindle On Clockwise",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Starts spindle clockwise rotation at programmed speed S (RPM).",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "M3",
+        "SPINDLE_CW"
+      ],
+      "parameters": [
+        {
+          "key": "spindleRpm",
+          "type": "real",
+          "defaultValue": 6000,
+          "unit": "rpm",
+          "description": "Commanded spindle speed"
+        },
+        {
+          "key": "maxPowerW",
+          "type": "real",
+          "defaultValue": 7500,
+          "unit": "W",
+          "description": "Spindle motor rated power"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "M04",
+    "kind": "Function",
+    "namePath": "gcode.M04",
+    "exports": [
+      "spindleRpm",
+      "maxPowerW"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Spindle On Counter-Clockwise",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Starts spindle counter-clockwise rotation at programmed speed S (RPM).",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "M4",
+        "SPINDLE_CCW"
+      ],
+      "parameters": [
+        {
+          "key": "spindleRpm",
+          "type": "real",
+          "defaultValue": 6000,
+          "unit": "rpm",
+          "description": "Commanded spindle speed"
+        },
+        {
+          "key": "maxPowerW",
+          "type": "real",
+          "defaultValue": 7500,
+          "unit": "W",
+          "description": "Spindle motor rated power"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "M05",
+    "kind": "Function",
+    "namePath": "gcode.M05",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Spindle Stop",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Stops spindle rotation.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "M5",
+        "SPINDLE_STOP"
+      ],
+      "parameters": [],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "M06",
+    "kind": "Function",
+    "namePath": "gcode.M06",
+    "exports": [
+      "toolChangeTimeSec"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Automatic Tool Change",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Executes automatic tool changer swap to selected tool T.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "M6",
+        "TOOL_CHANGE"
+      ],
+      "parameters": [
+        {
+          "key": "toolChangeTimeSec",
+          "type": "real",
+          "defaultValue": 4.5,
+          "unit": "s",
+          "description": "Chip-to-chip tool change time"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "M08",
+    "kind": "Function",
+    "namePath": "gcode.M08",
+    "exports": [
+      "flowLpm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Flood Coolant On",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Activates flood coolant pump.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "M8",
+        "COOLANT_ON"
+      ],
+      "parameters": [
+        {
+          "key": "flowLpm",
+          "type": "real",
+          "defaultValue": 12,
+          "unit": "L/min",
+          "description": "Flood coolant flow rate"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "M09",
+    "kind": "Function",
+    "namePath": "gcode.M09",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Coolant Off",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Turns off all coolant delivery.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "M9",
+        "COOLANT_OFF"
+      ],
+      "parameters": [],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "M02",
+    "kind": "Function",
+    "namePath": "gcode.M02",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "End of Program",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Terminates CNC program execution.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "M2",
+        "PROGRAM_END"
+      ],
+      "parameters": [],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "M30",
+    "kind": "Function",
+    "namePath": "gcode.M30",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "End of Program & Rewind",
+      "category": "Machine Control",
+      "domain": "manufacturing",
+      "description": "Terminates CNC program, stops spindle/coolant, and rewinds to start.",
+      "provenance": "ISO 6983-1 / EIA RS-274-D",
+      "aliases": [
+        "PROGRAM_END_REWIND"
+      ],
+      "parameters": [],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 27
+    }
+  },
+  {
+    "name": "ENDMILL_CARBIDE_AL",
+    "kind": "Function",
+    "namePath": "gcode.ENDMILL_CARBIDE_AL",
+    "exports": [
+      "diameterMm",
+      "flutes",
+      "surfaceSpeedMpm",
+      "chipLoadMm",
+      "specificCuttingEnergyNmm2",
+      "axialDepthMm",
+      "radialWidthMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carbide Endmill — Aluminum 6061",
+      "category": "Cutting Tool Presets",
+      "domain": "manufacturing",
+      "description": "3-flute uncoated carbide endmill cutting-speed & chip-load preset for 6061-T6 aluminum.",
+      "provenance": "Machinery's Handbook (Public Cutting Data)",
+      "aliases": [
+        "CARBIDE_ENDMILL_AL6061"
+      ],
+      "parameters": [
+        {
+          "key": "diameterMm",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mm",
+          "description": "Tool diameter D"
+        },
+        {
+          "key": "flutes",
+          "type": "integer",
+          "defaultValue": 3,
+          "unit": "count",
+          "description": "Number of cutting flutes z"
+        },
+        {
+          "key": "surfaceSpeedMpm",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "m/min",
+          "description": "Recommended cutting speed Vc"
+        },
+        {
+          "key": "chipLoadMm",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "mm/tooth",
+          "description": "Feed per tooth fz"
+        },
+        {
+          "key": "specificCuttingEnergyNmm2",
+          "type": "real",
+          "defaultValue": 700,
+          "unit": "N/mm^2",
+          "description": "Specific cutting force kc"
+        },
+        {
+          "key": "axialDepthMm",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mm",
+          "description": "Axial depth of cut ap"
+        },
+        {
+          "key": "radialWidthMm",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "mm",
+          "description": "Radial engagement ae"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "ENDMILL_CARBIDE_STEEL",
+    "kind": "Function",
+    "namePath": "gcode.ENDMILL_CARBIDE_STEEL",
+    "exports": [
+      "diameterMm",
+      "flutes",
+      "surfaceSpeedMpm",
+      "chipLoadMm",
+      "specificCuttingEnergyNmm2",
+      "axialDepthMm",
+      "radialWidthMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carbide Endmill — Mild/Alloy Steel",
+      "category": "Cutting Tool Presets",
+      "domain": "manufacturing",
+      "description": "4-flute TiAlN-coated carbide endmill preset for carbon and alloy steel.",
+      "provenance": "Machinery's Handbook (Public Cutting Data)",
+      "aliases": [
+        "CARBIDE_ENDMILL_1018",
+        "CARBIDE_ENDMILL_4140"
+      ],
+      "parameters": [
+        {
+          "key": "diameterMm",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "mm",
+          "description": "Tool diameter D"
+        },
+        {
+          "key": "flutes",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "count",
+          "description": "Number of cutting flutes z"
+        },
+        {
+          "key": "surfaceSpeedMpm",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "m/min",
+          "description": "Recommended cutting speed Vc"
+        },
+        {
+          "key": "chipLoadMm",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "mm/tooth",
+          "description": "Feed per tooth fz"
+        },
+        {
+          "key": "specificCuttingEnergyNmm2",
+          "type": "real",
+          "defaultValue": 2100,
+          "unit": "N/mm^2",
+          "description": "Specific cutting force kc"
+        },
+        {
+          "key": "axialDepthMm",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "mm",
+          "description": "Axial depth of cut ap"
+        },
+        {
+          "key": "radialWidthMm",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "mm",
+          "description": "Radial engagement ae"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "ENDMILL_HSS_AL",
+    "kind": "Function",
+    "namePath": "gcode.ENDMILL_HSS_AL",
+    "exports": [
+      "diameterMm",
+      "flutes",
+      "surfaceSpeedMpm",
+      "chipLoadMm",
+      "specificCuttingEnergyNmm2",
+      "axialDepthMm",
+      "radialWidthMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "HSS Endmill — Aluminum",
+      "category": "Cutting Tool Presets",
+      "domain": "manufacturing",
+      "description": "2-flute HSS endmill cutting preset for aluminum alloys.",
+      "provenance": "Machinery's Handbook (Public Cutting Data)",
+      "aliases": [
+        "HSS_ENDMILL_AL"
+      ],
+      "parameters": [
+        {
+          "key": "diameterMm",
+          "type": "real",
+          "defaultValue": 8,
+          "unit": "mm",
+          "description": "Tool diameter D"
+        },
+        {
+          "key": "flutes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "count",
+          "description": "Number of cutting flutes z"
+        },
+        {
+          "key": "surfaceSpeedMpm",
+          "type": "real",
+          "defaultValue": 90,
+          "unit": "m/min",
+          "description": "Recommended cutting speed Vc"
+        },
+        {
+          "key": "chipLoadMm",
+          "type": "real",
+          "defaultValue": 0.04,
+          "unit": "mm/tooth",
+          "description": "Feed per tooth fz"
+        },
+        {
+          "key": "specificCuttingEnergyNmm2",
+          "type": "real",
+          "defaultValue": 750,
+          "unit": "N/mm^2",
+          "description": "Specific cutting force kc"
+        },
+        {
+          "key": "axialDepthMm",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "mm",
+          "description": "Axial depth of cut ap"
+        },
+        {
+          "key": "radialWidthMm",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "mm",
+          "description": "Radial engagement ae"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "DRILL_CARBIDE_STEEL",
+    "kind": "Function",
+    "namePath": "gcode.DRILL_CARBIDE_STEEL",
+    "exports": [
+      "diameterMm",
+      "flutes",
+      "surfaceSpeedMpm",
+      "feedPerRevMm",
+      "specificCuttingEnergyNmm2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carbide Twist Drill — Steel",
+      "category": "Cutting Tool Presets",
+      "domain": "manufacturing",
+      "description": "2-flute solid carbide drill preset for carbon/alloy steel.",
+      "provenance": "Machinery's Handbook (Public Cutting Data)",
+      "aliases": [
+        "CARBIDE_DRILL_STEEL"
+      ],
+      "parameters": [
+        {
+          "key": "diameterMm",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "mm",
+          "description": "Drill diameter D"
+        },
+        {
+          "key": "flutes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "count",
+          "description": "Number of flutes"
+        },
+        {
+          "key": "surfaceSpeedMpm",
+          "type": "real",
+          "defaultValue": 80,
+          "unit": "m/min",
+          "description": "Recommended cutting speed Vc"
+        },
+        {
+          "key": "feedPerRevMm",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "mm/rev",
+          "description": "Feed per revolution fn"
+        },
+        {
+          "key": "specificCuttingEnergyNmm2",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "N/mm^2",
+          "description": "Specific cutting force kc"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "DRILL_HSS_AL",
+    "kind": "Function",
+    "namePath": "gcode.DRILL_HSS_AL",
+    "exports": [
+      "diameterMm",
+      "flutes",
+      "surfaceSpeedMpm",
+      "feedPerRevMm",
+      "specificCuttingEnergyNmm2"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "HSS Twist Drill — Aluminum",
+      "category": "Cutting Tool Presets",
+      "domain": "manufacturing",
+      "description": "2-flute HSS twist drill preset for aluminum alloys.",
+      "provenance": "Machinery's Handbook (Public Cutting Data)",
+      "aliases": [
+        "HSS_DRILL_AL"
+      ],
+      "parameters": [
+        {
+          "key": "diameterMm",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "mm",
+          "description": "Drill diameter D"
+        },
+        {
+          "key": "flutes",
+          "type": "integer",
+          "defaultValue": 2,
+          "unit": "count",
+          "description": "Number of flutes"
+        },
+        {
+          "key": "surfaceSpeedMpm",
+          "type": "real",
+          "defaultValue": 65,
+          "unit": "m/min",
+          "description": "Recommended cutting speed Vc"
+        },
+        {
+          "key": "feedPerRevMm",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "mm/rev",
+          "description": "Feed per revolution fn"
+        },
+        {
+          "key": "specificCuttingEnergyNmm2",
+          "type": "real",
+          "defaultValue": 750,
+          "unit": "N/mm^2",
+          "description": "Specific cutting force kc"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 44
+    }
+  },
+  {
+    "name": "FACEMILL_CARBIDE_CASTIRON",
+    "kind": "Function",
+    "namePath": "gcode.FACEMILL_CARBIDE_CASTIRON",
+    "exports": [
+      "diameterMm",
+      "flutes",
+      "surfaceSpeedMpm",
+      "chipLoadMm",
+      "specificCuttingEnergyNmm2",
+      "axialDepthMm",
+      "radialWidthMm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Carbide Face Mill — Gray Cast Iron",
+      "category": "Cutting Tool Presets",
+      "domain": "manufacturing",
+      "description": "5-insert indexable carbide face mill preset for gray cast iron.",
+      "provenance": "Machinery's Handbook (Public Cutting Data)",
+      "aliases": [
+        "CARBIDE_FACEMILL_CI"
+      ],
+      "parameters": [
+        {
+          "key": "diameterMm",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "mm",
+          "description": "Face mill diameter D"
+        },
+        {
+          "key": "flutes",
+          "type": "integer",
+          "defaultValue": 5,
+          "unit": "count",
+          "description": "Number of inserts z"
+        },
+        {
+          "key": "surfaceSpeedMpm",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "m/min",
+          "description": "Recommended cutting speed Vc"
+        },
+        {
+          "key": "chipLoadMm",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "mm/tooth",
+          "description": "Feed per tooth fz"
+        },
+        {
+          "key": "specificCuttingEnergyNmm2",
+          "type": "real",
+          "defaultValue": 1250,
+          "unit": "N/mm^2",
+          "description": "Specific cutting force kc"
+        },
+        {
+          "key": "axialDepthMm",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "mm",
+          "description": "Axial depth of cut ap"
+        },
+        {
+          "key": "radialWidthMm",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "mm",
+          "description": "Radial engagement ae"
+        }
+      ],
+      "wasmKernel": "gcodeModelStep",
+      "archetypeId": 45
+    }
+  }
+]

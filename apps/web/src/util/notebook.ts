@@ -363,10 +363,10 @@ function parseNotebookFromContentUncached(
 ): NotebookMetadata {
   if (existingNotebookMeta && Array.isArray(existingNotebookMeta.cells) && existingNotebookMeta.cells.length > 0) {
     const validCells: NotebookCell[] = existingNotebookMeta.cells
-      .map((c: any, idx: number): NotebookCell | null => {
+      .map((c: Partial<NotebookCell> & Record<string, unknown>, idx: number): NotebookCell | null => {
         if (c.type === "markdown") {
           return {
-            id: c.id || createCellId(`md-${idx}`),
+            id: (typeof c.id === "string" && c.id) || createCellId(`md-${idx}`),
             type: "markdown",
             content: typeof c.content === "string" ? c.content : "",
           };
@@ -377,7 +377,7 @@ function parseNotebookFromContentUncached(
           c.artifactId !== undefined &&
           String(c.artifactId).trim() !== ""
         ) {
-          const rawId = c.artifactId;
+          const rawId = c.artifactId as string | number;
           const id =
             typeof rawId === "string" && /^\d+$/.test(rawId) && !Number.isSafeInteger(Number(rawId))
               ? rawId
@@ -385,11 +385,11 @@ function parseNotebookFromContentUncached(
                 ? Number(rawId)
                 : rawId;
           return {
-            id: c.id || createCellId(`art-${idx}`),
+            id: (typeof c.id === "string" && c.id) || createCellId(`art-${idx}`),
             type: "artifact",
             artifactId: id,
-            title: c.title,
-            caption: c.caption,
+            title: typeof c.title === "string" ? c.title : undefined,
+            caption: typeof c.caption === "string" ? c.caption : undefined,
           };
         }
         return null;
@@ -514,10 +514,28 @@ function parseNotebookFromContentUncached(
   };
 }
 
-export function isNotebookPost(post: any): boolean {
+export function isNotebookPost(
+  post:
+    | {
+        content?: string | null | undefined;
+        metadata?:
+          | { notebook?: { isNotebook?: boolean; cells?: unknown[] } | unknown; [key: string]: unknown }
+          | null
+          | undefined;
+      }
+    | null
+    | undefined,
+): boolean {
   if (!post) return false;
-  if (post.metadata?.notebook?.isNotebook) return true;
-  if (Array.isArray(post.metadata?.notebook?.cells) && post.metadata.notebook.cells.length > 1) return true;
+  const nb =
+    post.metadata &&
+    typeof post.metadata === "object" &&
+    post.metadata.notebook &&
+    typeof post.metadata.notebook === "object"
+      ? (post.metadata.notebook as { isNotebook?: boolean; cells?: unknown[] })
+      : undefined;
+  if (nb?.isNotebook) return true;
+  if (Array.isArray(nb?.cells) && nb.cells.length > 1) return true;
   if (hasArtifactDirectives(post.content)) return true;
   if (typeof post.content === "string" && /^#\s+[^\n]+\n+[\s\S]*\n##\s+/m.test(post.content)) return true;
   return false;

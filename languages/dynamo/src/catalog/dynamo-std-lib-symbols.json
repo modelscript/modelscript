@@ -1,0 +1,512 @@
+[
+  {
+    "name": "SMOOTH",
+    "kind": "Function",
+    "namePath": "DYNAMO.SMOOTH",
+    "exports": [
+      "DEL",
+      "INIT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1st-Order Exponential Smooth",
+      "category": "Information & Material Delays",
+      "domain": "system-dynamics",
+      "description": "First-order exponential information smoothing: dS/dt = (IN - S) / DEL, initialized at S(0) = IN(0).",
+      "provenance": "Pugh (1963) DYNAMO User's Manual / Forrester Industrial Dynamics",
+      "aliases": [
+        "SMTH1"
+      ],
+      "parameters": [
+        {
+          "key": "DEL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Smoothing time constant (delay)"
+        },
+        {
+          "key": "INIT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Optional initial smoothed value"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_smooth",
+      "archetypeId": 1,
+      "signature": "SMOOTH(IN, DEL)"
+    }
+  },
+  {
+    "name": "DLINF1",
+    "kind": "Function",
+    "namePath": "DYNAMO.DLINF1",
+    "exports": [
+      "DEL",
+      "INIT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1st-Order Information Delay",
+      "category": "Information & Material Delays",
+      "domain": "system-dynamics",
+      "description": "First-order exponential information delay equivalent to SMOOTH(IN, DEL): dY/dt = (IN - Y) / DEL.",
+      "provenance": "Pugh (1976) DYNAMO User's Manual, 5th Ed.",
+      "aliases": [
+        "SMOOTH1"
+      ],
+      "parameters": [
+        {
+          "key": "DEL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Information delay time constant"
+        },
+        {
+          "key": "INIT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial output value"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_dlinf1",
+      "archetypeId": 2,
+      "signature": "DLINF1(IN, DEL)"
+    }
+  },
+  {
+    "name": "DLINF3",
+    "kind": "Function",
+    "namePath": "DYNAMO.DLINF3",
+    "exports": [
+      "DEL",
+      "INIT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3rd-Order Information Delay",
+      "category": "Information & Material Delays",
+      "domain": "system-dynamics",
+      "description": "Third-order exponential information delay constructed as three cascaded first-order stages each with delay DEL/3.",
+      "provenance": "Pugh (1976) DYNAMO User's Manual, 5th Ed.",
+      "aliases": [
+        "SMTH3"
+      ],
+      "parameters": [
+        {
+          "key": "DEL",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "time",
+          "description": "Total third-order information delay"
+        },
+        {
+          "key": "INIT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial output value"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_dlinf3",
+      "archetypeId": 3,
+      "signature": "DLINF3(IN, DEL)"
+    }
+  },
+  {
+    "name": "DELAY1",
+    "kind": "Function",
+    "namePath": "DYNAMO.DELAY1",
+    "exports": [
+      "DEL",
+      "INIT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1st-Order Material Delay",
+      "category": "Information & Material Delays",
+      "domain": "system-dynamics",
+      "description": "First-order exponential material delay conserving flow: dL/dt = IN - OUT, OUT = L / DEL.",
+      "provenance": "Forrester (1961) Industrial Dynamics / Pugh DYNAMO User's Manual",
+      "aliases": [
+        "DEL1"
+      ],
+      "parameters": [
+        {
+          "key": "DEL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Material delay time constant"
+        },
+        {
+          "key": "INIT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1/time",
+          "description": "Initial inflow rate"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_delay1",
+      "archetypeId": 4,
+      "signature": "DELAY1(IN, DEL)"
+    }
+  },
+  {
+    "name": "DELAY3",
+    "kind": "Function",
+    "namePath": "DYNAMO.DELAY3",
+    "exports": [
+      "DEL",
+      "INIT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "3rd-Order Material Delay",
+      "category": "Information & Material Delays",
+      "domain": "system-dynamics",
+      "description": "Third-order Erlang material delay conserving total stock across three cascaded compartments of time constant DEL/3.",
+      "provenance": "Forrester (1961) Industrial Dynamics / Pugh DYNAMO User's Manual",
+      "aliases": [
+        "DEL3"
+      ],
+      "parameters": [
+        {
+          "key": "DEL",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "time",
+          "description": "Total third-order material delay"
+        },
+        {
+          "key": "INIT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1/time",
+          "description": "Initial inflow rate"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_delay3",
+      "archetypeId": 5,
+      "signature": "DELAY3(IN, DEL)"
+    }
+  },
+  {
+    "name": "TABLE",
+    "kind": "Function",
+    "namePath": "DYNAMO.TABLE",
+    "exports": [
+      "XLOW",
+      "XHIGH",
+      "XINCR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Table Lookup (Extrapolating)",
+      "category": "Table Lookup",
+      "domain": "system-dynamics",
+      "description": "Piecewise linear interpolation over uniformly spaced table TAB from XLOW to XHIGH in steps of XINCR, linearly extrapolating outside bounds.",
+      "provenance": "Pugh (1963) DYNAMO User's Manual",
+      "aliases": [
+        "TAB"
+      ],
+      "parameters": [
+        {
+          "key": "XLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Minimum independent variable value"
+        },
+        {
+          "key": "XHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Maximum independent variable value"
+        },
+        {
+          "key": "XINCR",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1",
+          "description": "Table grid spacing"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_table",
+      "archetypeId": 10,
+      "signature": "TABLE(TAB, X, XLOW, XHIGH, XINCR)"
+    }
+  },
+  {
+    "name": "TABHL",
+    "kind": "Function",
+    "namePath": "DYNAMO.TABHL",
+    "exports": [
+      "XLOW",
+      "XHIGH",
+      "XINCR"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Table Lookup (Clamped)",
+      "category": "Table Lookup",
+      "domain": "system-dynamics",
+      "description": "Piecewise linear interpolation over uniformly spaced table TAB from XLOW to XHIGH in steps of XINCR, clamping to endpoints outside [XLOW, XHIGH].",
+      "provenance": "Pugh (1963) DYNAMO User's Manual",
+      "aliases": [
+        "TABLEHL"
+      ],
+      "parameters": [
+        {
+          "key": "XLOW",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Minimum independent variable value"
+        },
+        {
+          "key": "XHIGH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Maximum independent variable value"
+        },
+        {
+          "key": "XINCR",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1",
+          "description": "Table grid spacing"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_tabhl",
+      "archetypeId": 11,
+      "signature": "TABHL(TAB, X, XLOW, XHIGH, XINCR)"
+    }
+  },
+  {
+    "name": "CLIP",
+    "kind": "Function",
+    "namePath": "DYNAMO.CLIP",
+    "exports": [
+      "P",
+      "Q",
+      "R",
+      "S"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Conditional Threshold Switch",
+      "category": "Logical & Switching",
+      "domain": "system-dynamics",
+      "description": "Returns P if R >= S, otherwise returns Q.",
+      "provenance": "Pugh (1963) DYNAMO User's Manual",
+      "aliases": [
+        "FIFGE"
+      ],
+      "parameters": [
+        {
+          "key": "P",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Value returned when R >= S"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Value returned when R < S"
+        },
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Test value"
+        },
+        {
+          "key": "S",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Threshold value"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_clip",
+      "archetypeId": 20,
+      "signature": "CLIP(P, Q, R, S)"
+    }
+  },
+  {
+    "name": "SWITCH",
+    "kind": "Function",
+    "namePath": "DYNAMO.SWITCH",
+    "exports": [
+      "P",
+      "Q",
+      "R"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zero-Equality Switch",
+      "category": "Logical & Switching",
+      "domain": "system-dynamics",
+      "description": "Returns P if R == 0, otherwise returns Q.",
+      "provenance": "Pugh (1963) DYNAMO User's Manual",
+      "aliases": [
+        "FIFZE"
+      ],
+      "parameters": [
+        {
+          "key": "P",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Value returned when R == 0"
+        },
+        {
+          "key": "Q",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Value returned when R != 0"
+        },
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Selector value"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_switch",
+      "archetypeId": 21,
+      "signature": "SWITCH(P, Q, R)"
+    }
+  },
+  {
+    "name": "STEP",
+    "kind": "Function",
+    "namePath": "DYNAMO.STEP",
+    "exports": [
+      "HEIGHT",
+      "STIME"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Step Test Input",
+      "category": "Test Inputs",
+      "domain": "system-dynamics",
+      "description": "Returns HEIGHT when TIME >= STIME, and 0 otherwise.",
+      "provenance": "Forrester (1961) Industrial Dynamics / Pugh DYNAMO User's Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "HEIGHT",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Step amplitude"
+        },
+        {
+          "key": "STIME",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "time",
+          "description": "Step activation time"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_step",
+      "archetypeId": 30,
+      "signature": "STEP(HEIGHT, STIME)"
+    }
+  },
+  {
+    "name": "PULSE",
+    "kind": "Function",
+    "namePath": "DYNAMO.PULSE",
+    "exports": [
+      "HEIGHT",
+      "FIRST",
+      "INTERVAL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Periodic Pulse Train",
+      "category": "Test Inputs",
+      "domain": "system-dynamics",
+      "description": "Generates a pulse of amplitude HEIGHT starting at TIME = FIRST and repeating every INTERVAL (single DT width).",
+      "provenance": "Forrester (1961) Industrial Dynamics / Pugh DYNAMO User's Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "HEIGHT",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Pulse amplitude"
+        },
+        {
+          "key": "FIRST",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "time",
+          "description": "Time of first pulse"
+        },
+        {
+          "key": "INTERVAL",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "time",
+          "description": "Repeat interval (0 or <=0 for single pulse)"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_pulse",
+      "archetypeId": 31,
+      "signature": "PULSE(HEIGHT, FIRST, INTERVAL)"
+    }
+  },
+  {
+    "name": "RAMP",
+    "kind": "Function",
+    "namePath": "DYNAMO.RAMP",
+    "exports": [
+      "SLOPE",
+      "RTIME"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Ramp Test Input",
+      "category": "Test Inputs",
+      "domain": "system-dynamics",
+      "description": "Returns SLOPE * (TIME - RTIME) when TIME >= RTIME, and 0 otherwise.",
+      "provenance": "Forrester (1961) Industrial Dynamics / Pugh DYNAMO User's Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "SLOPE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/time",
+          "description": "Ramp slope"
+        },
+        {
+          "key": "RTIME",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "time",
+          "description": "Ramp start time"
+        }
+      ],
+      "wasmKernel": "dynamo_eval_ramp",
+      "archetypeId": 32,
+      "signature": "RAMP(SLOPE, RTIME)"
+    }
+  }
+]

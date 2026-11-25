@@ -1,0 +1,11 @@
+{
+  "id": "hec2-05-multi-profile-floodway",
+  "lang": "hec2",
+  "subFormats": ["hc2"],
+  "difficulty": 5,
+  "title": "Multi-Profile 10, 50, and 100-Year Floodway Study",
+  "description": "FEMA-style multi-profile HEC-2 flood insurance study evaluating 10-year, 50-year, and 100-year return-period discharges using QT flow tables, J2 profile control cards, and compound river geometry.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec2", "floodway", "multi-profile", "100-year"],
+  "activeFile": "floodway_multi.hc2"
+}

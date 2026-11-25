@@ -196,8 +196,8 @@ describe("Platform Engineering & Notifications Hub", () => {
     assert.strictEqual(sim.metadata?.profile, "hpc-cpu-4x");
 
     // Route navigation url targets
-    const playgroundUrl = `/playground?model=${encodeURIComponent(sim.metadata?.name)}`;
-    assert.strictEqual(playgroundUrl, "/playground?model=Modelica.Electrical.Analog.Examples.ChuaCircuit");
+    const ansatzEditorUrl = `/editor?model=${encodeURIComponent(sim.metadata?.name)}`;
+    assert.strictEqual(ansatzEditorUrl, "/editor?model=Modelica.Electrical.Analog.Examples.ChuaCircuit");
   });
 
   it("counts multiple likes on the same post as 1 unread notification when grouped", async () => {

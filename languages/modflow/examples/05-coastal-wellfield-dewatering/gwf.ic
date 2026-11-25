@@ -1,0 +1,5 @@
+# Initial Head Distribution
+BEGIN GRIDDATA
+  STRT
+    CONSTANT 18.0
+END GRIDDATA

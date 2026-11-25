@@ -3,7 +3,7 @@
 /**
  * Shared Polyglot Digital Thread & Semantic Theory Coordinator Orchestration.
  *
- * Used by the VitePress Web Showcase, Morsel CLI (`msx verify --coordinator`),
+ * Used by the VitePress Web Showcase, ModelScript CLI (`msx verify --coordinator`),
  * and VS Code LSP multi-file workspace coordinator so all three surfaces share
  * identical N-file artifact discovery, Nelson-Oppen theory propagation, and
  * `DigitalThreadHypergraph` status computation.
@@ -200,7 +200,7 @@ export interface RunCoordinatorLoopResult {
 
 /**
  * Shared Nelson-Oppen theory assertion & `DigitalThreadHypergraph` status loop.
- * Used identically across Web Showcase, Morsel CLI, and VS Code LSP.
+ * Used identically across Web Showcase, ModelScript CLI, and VS Code LSP.
  */
 export function runDigitalThreadAssertionLoop<TDiag extends CoordinatorDiagnosticLike>(
   params: RunCoordinatorLoopParams<TDiag>,

@@ -1,0 +1,11 @@
+# GENSYS Model: Single Wheelset Kalker Creepage Stability
+# Standard 1435 mm track gauge, S1002 tread profile, 0.46 m wheel radius
+set m_ws = 1500.0
+set r_nom = 0.46
+
+body axle_frame 1200.0 650.0 950.0 1100.0 0.0 0.0 0.50
+wheelset ws1 m_ws 1.435 r_nom 0.05 "S1002_profile.wheel"
+
+# Primary longitudinal, lateral, and vertical suspension to reference frame
+spring prim_susp ws1 axle_frame 9000000 4000000 1200000 15000 12000 20000
+spring frame_gnd axle_frame ground 100000 500000 800000 5000 10000 15000

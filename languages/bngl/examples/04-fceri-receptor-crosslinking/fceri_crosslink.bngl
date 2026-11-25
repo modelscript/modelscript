@@ -1,0 +1,60 @@
+begin model
+begin parameters
+  Lig0 200
+  RecA0 150
+  RecB0 150
+  Lyn0 80
+  Syk0 120
+  kp1 0.002
+  km1 0.05
+  kp2 0.01
+  km2 0.05
+  kpL 0.004
+  kmL 0.1
+  k_phos_b 0.6
+  k_phos_g 0.5
+  kpS 0.003
+  kmS 0.08
+  k_dephos 0.05
+end parameters
+
+begin compartments
+  PM 2 1.0
+end compartments
+
+begin molecule types
+  Lig(l1,l2)
+  RecA(a,b~U~P)
+  RecB(a,g~U~P)
+  Lyn(u)
+  Syk(tsh2)
+end molecule types
+
+begin seed species
+  Lig(l1,l2) Lig0
+  RecA(a,b~U) RecA0
+  RecB(a,g~U) RecB0
+  Lyn(u) Lyn0
+  Syk(tsh2) Syk0
+end seed species
+
+begin observables
+  Molecules CrosslinkedRec Lig(l1!1,l2!2).RecA(a!1).RecB(a!2)
+  Molecules PhosphoBeta RecA(b~P)
+  Molecules PhosphoGamma RecB(g~P)
+  Molecules BoundSyk RecB(g~P!1).Syk(tsh2!1)
+end observables
+
+begin reaction rules
+  LigCapture: Lig(l1,l2) + RecA(a) <-> Lig(l1!1,l2).RecA(a!1) kp1, km1
+  CrossLink: Lig(l1!1,l2).RecA(a!1) + RecB(a) <-> Lig(l1!1,l2!2).RecA(a!1).RecB(a!2) kp2, km2
+  LynBind: RecA(b~U) + Lyn(u) <-> RecA(b~U!1).Lyn(u!1) kpL, kmL
+  PhosBeta: Lig(l1!1,l2!2).RecA(a!1,b~U!3).Lyn(u!3).RecB(a!2,g~U) -> Lig(l1!1,l2!2).RecA(a!1,b~P!3).Lyn(u!3).RecB(a!2,g~U) k_phos_b
+  PhosGamma: Lig(l1!1,l2!2).RecA(a!1,b~P).RecB(a!2,g~U) -> Lig(l1!1,l2!2).RecA(a!1,b~P).RecB(a!2,g~P) k_phos_g
+  SykRecruit: RecB(g~P) + Syk(tsh2) <-> RecB(g~P!1).Syk(tsh2!1) kpS, kmS
+  DephosGamma: RecB(g~P) -> RecB(g~U) k_dephos
+end reaction rules
+end model
+
+generate_network({overwrite=>1,max_iter=>8})
+simulate({method=>"ode",t_end=>50,n_steps=>250})

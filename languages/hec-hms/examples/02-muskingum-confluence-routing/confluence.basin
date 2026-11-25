@@ -1,0 +1,56 @@
+Basin: Muskingum Confluence Basin
+  Last Modified Date: 15 May 2026
+  Unit System: Metric
+End:
+
+Subbasin: North Fork Headwaters
+  Area: 96.4
+  Downstream: Upper Reach
+  Loss: SCS
+  Transform: SCS
+End:
+
+Subbasin-Loss: North Fork Headwaters
+  Curve Number: 72.0
+  Initial Abstraction: 19.5
+  Impervious: 4.0
+End:
+
+Subbasin-Transform: North Fork Headwaters
+  Lag: 110.0
+End:
+
+Reach: Upper Reach
+  Downstream: Main Confluence
+  Route: Muskingum
+End:
+
+Reach-Route: Upper Reach
+  Muskingum K: 2.2
+  Muskingum X: 0.22
+  Subreaches: 3
+End:
+
+Subbasin: South Creek Tributary
+  Area: 58.2
+  Downstream: Main Confluence
+  Loss: SCS
+  Transform: SCS
+End:
+
+Subbasin-Loss: South Creek Tributary
+  Curve Number: 78.5
+  Initial Abstraction: 14.0
+  Impervious: 10.0
+End:
+
+Subbasin-Transform: South Creek Tributary
+  Lag: 85.0
+End:
+
+Junction: Main Confluence
+  Downstream: Watershed Outlet
+End:
+
+Sink: Watershed Outlet
+End:

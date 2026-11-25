@@ -1,0 +1,11 @@
+{
+  "id": "openadr-03-xml-distribute-event",
+  "lang": "openadr",
+  "subFormats": ["oadr.xml"],
+  "difficulty": 3,
+  "title": "OpenADR 2.0b XML Chiller Plant Dispatch (oadrDistributeEvent)",
+  "description": "Standards-compliant OpenADR 2.0b XML oadrDistributeEvent payload dispatching a 3-interval HVAC chiller curtailment signal to a campus VEN.",
+  "category": "OpenADR 2.0b XML",
+  "tags": ["openadr", "xml", "oadr20b", "chiller-plant"],
+  "activeFile": "chiller_dispatch.oadr.xml"
+}

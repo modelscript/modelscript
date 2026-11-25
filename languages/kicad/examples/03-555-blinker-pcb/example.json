@@ -1,0 +1,11 @@
+{
+  "id": "kicad-03-555-blinker-pcb",
+  "lang": "kicad",
+  "subFormats": ["kicad_pcb", "kicad_sch", "kicad_pro"],
+  "difficulty": 3,
+  "title": "555 Timer Astable Blinker Schematic & 2-Layer PCB",
+  "description": "Complete multi-file KiCad 8 project pairing an astable 555 oscillator schematic (.kicad_sch), synchronized 2-layer PCB layout (.kicad_pcb), and project rules (.kicad_pro).",
+  "category": "ECAD & PCB Layout",
+  "tags": ["kicad", "555-timer", "schematic", "pcb", "multi-file"],
+  "activeFile": "blinker.kicad_pcb"
+}

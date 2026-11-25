@@ -1,0 +1,11 @@
+{
+  "id": "jedec-05-cpu-memory-map-glue-logic",
+  "lang": "jedec",
+  "subFormats": ["jesd3"],
+  "difficulty": 5,
+  "title": "Microprocessor Bus Memory-Map & Chip-Select Glue Logic GAL22V10",
+  "description": "Complete GAL22V10 bus-interface glue logic fuse map decoding ROM, RAM, UART, GPIO chip selects plus DTACK/BERR handshake signals, user electronic signature, and 6 bus test vectors.",
+  "category": "Computer Architecture",
+  "tags": ["jedec", "gal22v10", "glue-logic", "address-decoder", "bus"],
+  "activeFile": "cpu_glue_logic.jed"
+}

@@ -1,0 +1,41 @@
+{
+  "title": "9-Bus 230 kV Transmission Distance Protection Study",
+  "baseMva": 100.0,
+  "frequencyHz": 60.0,
+  "busses": [
+    { "id": "1", "name": "GEN_1_16KV", "baseKv": 16.5 },
+    { "id": "2", "name": "GEN_2_18KV", "baseKv": 18.0 },
+    { "id": "3", "name": "GEN_3_13KV", "baseKv": 13.8 },
+    { "id": "4", "name": "SUB_4_230KV", "baseKv": 230.0 },
+    { "id": "5", "name": "SUB_5_230KV", "baseKv": 230.0 },
+    { "id": "6", "name": "SUB_6_230KV", "baseKv": 230.0 },
+    { "id": "7", "name": "SUB_7_230KV", "baseKv": 230.0 },
+    { "id": "8", "name": "SUB_8_230KV", "baseKv": 230.0 },
+    { "id": "9", "name": "SUB_9_230KV", "baseKv": 230.0 }
+  ],
+  "branches": [
+    { "id": "T1-4", "bus1": "1", "bus2": "4", "z1": { "r": 0.001, "x": 0.0576 }, "z0": { "r": 0.001, "x": 0.0576 }, "ratingMva": 250.0 },
+    { "id": "T2-7", "bus1": "2", "bus2": "7", "z1": { "r": 0.001, "x": 0.0625 }, "z0": { "r": 0.001, "x": 0.0625 }, "ratingMva": 200.0 },
+    { "id": "T3-9", "bus1": "3", "bus2": "9", "z1": { "r": 0.001, "x": 0.0586 }, "z0": { "r": 0.001, "x": 0.0586 }, "ratingMva": 150.0 },
+    { "id": "LN4-5", "bus1": "4", "bus2": "5", "z1": { "r": 0.010, "x": 0.085 }, "z0": { "r": 0.030, "x": 0.255 }, "ratingMva": 300.0 },
+    { "id": "LN4-6", "bus1": "4", "bus2": "6", "z1": { "r": 0.017, "x": 0.092 }, "z0": { "r": 0.051, "x": 0.276 }, "ratingMva": 300.0 },
+    { "id": "LN5-7", "bus1": "5", "bus2": "7", "z1": { "r": 0.032, "x": 0.161 }, "z0": { "r": 0.096, "x": 0.483 }, "ratingMva": 300.0 },
+    { "id": "LN6-9", "bus1": "6", "bus2": "9", "z1": { "r": 0.039, "x": 0.170 }, "z0": { "r": 0.117, "x": 0.510 }, "ratingMva": 300.0 },
+    { "id": "LN7-8", "bus1": "7", "bus2": "8", "z1": { "r": 0.0085, "x": 0.072 }, "z0": { "r": 0.0255, "x": 0.216 }, "ratingMva": 300.0 },
+    { "id": "LN8-9", "bus1": "8", "bus2": "9", "z1": { "r": 0.0119, "x": 0.1008 }, "z0": { "r": 0.0357, "x": 0.3024 }, "ratingMva": 300.0 }
+  ],
+  "mutuals": [],
+  "generators": [
+    { "id": "G1", "busId": "1", "mvaRating": 247.5, "z1Subtransient": { "r": 0.002, "x": 0.0608 }, "z0": { "r": 0.001, "x": 0.030 } },
+    { "id": "G2", "busId": "2", "mvaRating": 192.0, "z1Subtransient": { "r": 0.002, "x": 0.1198 }, "z0": { "r": 0.001, "x": 0.055 } },
+    { "id": "G3", "busId": "3", "mvaRating": 128.0, "z1Subtransient": { "r": 0.002, "x": 0.1813 }, "z0": { "r": 0.001, "x": 0.075 } }
+  ],
+  "overcurrentRelays": [
+    { "id": "OC_4_5", "name": "BACKUP_51_4_5", "branchId": "LN4-5", "busId": "4", "pickupA": 900.0, "ctRatio": 240.0, "timeDial": 3.5, "curve": "IEEE_Very_Inverse", "instantaneousPickupA": 5400.0 }
+  ],
+  "distanceRelays": [
+    { "id": "D21_4_5", "name": "SEL_421_BUS4_TO_5", "branchId": "LN4-5", "busId": "4", "zone1ReachOhms": 36.2, "zone2ReachOhms": 54.0, "zone2DelaySec": 0.35, "zone3ReachOhms": 92.0, "zone3DelaySec": 1.0 },
+    { "id": "D21_5_7", "name": "SEL_421_BUS5_TO_7", "branchId": "LN5-7", "busId": "5", "zone1ReachOhms": 68.5, "zone2ReachOhms": 102.0, "zone2DelaySec": 0.35, "zone3ReachOhms": 145.0, "zone3DelaySec": 1.0 },
+    { "id": "D21_7_8", "name": "SEL_421_BUS7_TO_8", "branchId": "LN7-8", "busId": "7", "zone1ReachOhms": 30.8, "zone2ReachOhms": 48.0, "zone2DelaySec": 0.35, "zone3ReachOhms": 84.0, "zone3DelaySec": 1.0 }
+  ]
+}

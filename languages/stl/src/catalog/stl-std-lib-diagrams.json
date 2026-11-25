@@ -1,0 +1,150 @@
+[
+  {
+    "namePath": "STL.UNIT_CUBE",
+    "aliases": [
+      "cube",
+      "box",
+      "hexahedron"
+    ],
+    "label": "Unit Cube",
+    "category": "Polyhedra",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">POLY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">UNIT_CUBE</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "frame_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STL.REGULAR_TETRAHEDRON",
+    "aliases": [
+      "tetrahedron",
+      "tet",
+      "simplex"
+    ],
+    "label": "Tetrahedron",
+    "category": "Polyhedra",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">POLY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">REGULAR_TE</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "frame_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STL.OCTAHEDRON",
+    "aliases": [
+      "regular_octahedron",
+      "oct"
+    ],
+    "label": "Regular Octahedron",
+    "category": "Polyhedra",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">POLY</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">OCTAHEDRON</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "frame_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STL.CYLINDER",
+    "aliases": [
+      "cyl",
+      "prism"
+    ],
+    "label": "Cylinder",
+    "category": "Revolved Solids",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">REV</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">CYLINDER</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "frame_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "STL.SPHERE_ICOSAHEDRON",
+    "aliases": [
+      "icosphere",
+      "sphere",
+      "icosahedron"
+    ],
+    "label": "Icosphere",
+    "category": "Geodesic Meshes",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">GEO</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">SPHERE_ICO</text></svg>",
+    "ports": [
+      {
+        "name": "mesh_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      },
+      {
+        "name": "frame_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      }
+    ]
+  }
+]

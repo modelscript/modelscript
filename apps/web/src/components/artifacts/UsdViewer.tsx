@@ -8,8 +8,17 @@ import styled from "styled-components";
 import Box from "../Box";
 import Spinner from "../Spinner";
 
+export interface UsdViewConfig {
+  url?: string | undefined;
+  modelUrl?: string | undefined;
+  src?: string | undefined;
+  low_poly_url?: string | undefined;
+  title?: string | undefined;
+  [key: string]: unknown;
+}
+
 interface UsdViewerProps {
-  viewConfig: any;
+  viewConfig?: UsdViewConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 
@@ -90,11 +99,11 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
 
     const handleLoad = () => {
       setScriptLoaded(true);
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     };
     const handleError = () => {
       setLoadError(true);
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     };
 
     if (!script) {
@@ -114,7 +123,7 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
       if (!window.customElements || !window.customElements.get("model-viewer")) {
         setLoadError(true);
       }
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }, 6000);
 
     return () => {
@@ -126,7 +135,7 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
 
   useEffect(() => {
     if (scriptLoaded || loadError || !modelUrl) {
-      (window as any).__ARTIFACT_READY = true;
+      window.__ARTIFACT_READY = true;
     }
   }, [scriptLoaded, loadError, modelUrl]);
 
@@ -225,7 +234,7 @@ const UsdViewer: React.FC<UsdViewerProps> = ({ viewConfig, isFullScreen }) => {
             ar-modes="webxr scene-viewer quick-look"
             shadow-intensity="1"
             onLoad={() => {
-              (window as any).__ARTIFACT_READY = true;
+              window.__ARTIFACT_READY = true;
             }}
             style={{ width: "100%", height: "100%", backgroundColor: "var(--color-canvas-default)" }}
           ></model-viewer>

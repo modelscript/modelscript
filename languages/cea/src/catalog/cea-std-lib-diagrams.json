@@ -1,0 +1,498 @@
+[
+  {
+    "namePath": "CEA.Species.H2",
+    "aliases": [
+      "H2(L)",
+      "LH2",
+      "GH2",
+      "HYDROGEN"
+    ],
+    "label": "H2 (Fuel)",
+    "category": "Fuel",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">FUEL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">H2</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.O2",
+    "aliases": [
+      "O2(L)",
+      "LOX",
+      "GOX",
+      "OXYGEN"
+    ],
+    "label": "O2 (Oxidizer)",
+    "category": "Oxidizer",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">OXID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">O2</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.H2O",
+    "aliases": [
+      "H2O(G)",
+      "WATER",
+      "STEAM"
+    ],
+    "label": "H2O (Combustion Product)",
+    "category": "Combustion Product",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">PROD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">H2O</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.OH",
+    "aliases": [
+      "HYDROXYL"
+    ],
+    "label": "OH (Radical)",
+    "category": "Radical",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d4a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RAD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">OH</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.H",
+    "aliases": [
+      "ATOMIC_H"
+    ],
+    "label": "H (Radical)",
+    "category": "Radical",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d4a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RAD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">H</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.O",
+    "aliases": [
+      "ATOMIC_O"
+    ],
+    "label": "O (Radical)",
+    "category": "Radical",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b1d4a\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">RAD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">O</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.CH4",
+    "aliases": [
+      "CH4(L)",
+      "LCH4",
+      "METHANE"
+    ],
+    "label": "CH4 (Fuel)",
+    "category": "Fuel",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">FUEL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">CH4</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.CO",
+    "aliases": [
+      "CARBON_MONOXIDE"
+    ],
+    "label": "CO (Combustion Product)",
+    "category": "Combustion Product",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">PROD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">CO</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.CO2",
+    "aliases": [
+      "CARBON_DIOXIDE"
+    ],
+    "label": "CO2 (Combustion Product)",
+    "category": "Combustion Product",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">PROD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">CO2</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.N2",
+    "aliases": [
+      "NITROGEN"
+    ],
+    "label": "N2 (Combustion Product)",
+    "category": "Combustion Product",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">PROD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">N2</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.NO",
+    "aliases": [
+      "NITRIC_OXIDE"
+    ],
+    "label": "NO (Combustion Product)",
+    "category": "Combustion Product",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#2dd4bf\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#2dd4bf\">PROD</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">NO</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.RP-1",
+    "aliases": [
+      "RP1",
+      "KEROSENE",
+      "JET-A"
+    ],
+    "label": "RP-1 (Fuel)",
+    "category": "Fuel",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">FUEL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">RP-1</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.N2O4",
+    "aliases": [
+      "N2O4(L)",
+      "NTO",
+      "DINITROGEN_TETROXIDE"
+    ],
+    "label": "N2O4 (Oxidizer)",
+    "category": "Oxidizer",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">OXID</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">N2O4</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.MMH",
+    "aliases": [
+      "MMH(L)",
+      "CH6N2",
+      "MONOMETHYLHYDRAZINE"
+    ],
+    "label": "MMH (Fuel)",
+    "category": "Fuel",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">FUEL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">MMH</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.UDMH",
+    "aliases": [
+      "UDMH(L)",
+      "C2H8N2",
+      "UNSYMMETRICAL_DIMETHYLHYDRAZINE"
+    ],
+    "label": "UDMH (Fuel)",
+    "category": "Fuel",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f97316\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f97316\">FUEL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">UDMH</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.He",
+    "aliases": [
+      "HE",
+      "HELIUM"
+    ],
+    "label": "He (Inert)",
+    "category": "Inert",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">INRT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">He</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "CEA.Species.Ar",
+    "aliases": [
+      "AR",
+      "ARGON"
+    ],
+    "label": "Ar (Inert)",
+    "category": "Inert",
+    "domain": "thermochemistry",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">INRT</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10.5\" font-weight=\"bold\" fill=\"#f8fafc\">Ar</text></svg>",
+    "ports": [
+      {
+        "name": "molar_in",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "thermo_out",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "id": "aspen-05-ngl-cryogenic-fractionation",
+  "lang": "aspen",
+  "subFormats": ["in", "csv"],
+  "difficulty": 5,
+  "title": "Natural Gas Liquids Cryogenic Fractionation Train",
+  "description": "Multi-column cryogenic NGL recovery train featuring inlet chilling, cold separator, demethanizer and deethanizer RADFRAC columns, and companion feed gas assay CSV.",
+  "category": "Chemical Process Simulation",
+  "tags": ["aspen", "ngl", "cryogenic", "multi-file", "radfrac"],
+  "activeFile": "ngl_plant.in"
+}

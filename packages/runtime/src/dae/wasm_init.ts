@@ -219,8 +219,8 @@ function resolveConstSubscriptName(exprId: number, arena: DAEBuilder): string | 
 }
 
 function isEqInitialFlag(dae: DAEBuilder, eqIdx: number): boolean {
-  if (typeof (dae as any).isEqInitial === "function") {
-    return Boolean((dae as any).isEqInitial(eqIdx));
+  if (typeof dae.isEqInitial === "function") {
+    return Boolean(dae.isEqInitial(eqIdx));
   }
   return (dae.getEqFlags(eqIdx) & 1) !== 0;
 }
@@ -568,8 +568,8 @@ function expandForEquationArena(dae: DAEBuilder, eqIdx: number): { lhs: number; 
     if (++iterCount > maxIter) break;
     const kExpr = dae.addIntLiteral(Math.round(idxVal));
     for (const bEq of bodyEqs) {
-      const rawLhs = "lhs" in bEq ? bEq.lhs : (bEq as any).lhsExprId;
-      const rawRhs = "rhs" in bEq ? bEq.rhs : (bEq as any).rhsExprId;
+      const rawLhs = "lhs" in bEq ? bEq.lhs : (bEq as { lhsExprId: number }).lhsExprId;
+      const rawRhs = "rhs" in bEq ? bEq.rhs : (bEq as { rhsExprId: number }).rhsExprId;
       const substLhs = canonicalizeScalarizedSubscripts(dae, substituteArenaExpr(dae, rawLhs, meta.indexNameId, kExpr));
       const substRhs = canonicalizeScalarizedSubscripts(dae, substituteArenaExpr(dae, rawRhs, meta.indexNameId, kExpr));
       expanded.push({ lhs: substLhs, rhs: substRhs });
@@ -2273,7 +2273,7 @@ function getAttrValue(
   attrName: string,
   valuesByStringId: Float64Array,
 ): number | undefined {
-  const rawNumeric = (arena as any).rawVarAttrs?.get(varIdx)?.get(attrName);
+  const rawNumeric = arena.rawVarAttrs.get(varIdx)?.get(attrName);
   if (typeof rawNumeric === "number" && Number.isFinite(rawNumeric)) {
     return rawNumeric;
   }

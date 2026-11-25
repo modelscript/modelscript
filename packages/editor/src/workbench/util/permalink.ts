@@ -3,7 +3,7 @@
 import pako from "pako";
 import parseDataUrl from "parse-data-url";
 
-export interface CompressedMorselPayload {
+export interface CompressedAnsatzPayload {
   v?: number | undefined;
   lang?: string | undefined;
   dialect?: string | undefined;
@@ -43,15 +43,15 @@ export interface CompressedMorselPayload {
 }
 
 /**
- * Resolves a server-side short-link morsel ID (?morsel=<id>) from /api/v1/morsels/:id.
+ * Resolves a server-side short-link ansatz ID (?ansatz=<id>) from /api/v1/ansatz-snippets/:id.
  */
-export async function resolveMorselShortlink(
-  morselId: string,
+export async function resolveAnsatzShortlink(
+  ansatzId: string,
   options?: { fallbackDialect?: string | null; fallbackTitle?: string | null; fallbackView?: string | null },
-): Promise<CompressedMorselPayload | null> {
-  if (!morselId) return null;
+): Promise<CompressedAnsatzPayload | null> {
+  if (!ansatzId) return null;
   try {
-    const res = await fetch(`/api/v1/morsels/${encodeURIComponent(morselId)}`);
+    const res = await fetch(`/api/v1/ansatz-snippets/${encodeURIComponent(ansatzId)}`);
     if (!res.ok) return null;
     const data = await res.json();
     const filesMap =
@@ -81,10 +81,10 @@ export async function resolveMorselShortlink(
 }
 
 /**
- * Compresses a Morsel payload into a URL-safe Base64 string.
+ * Compresses a Ansatz payload into a URL-safe Base64 string.
  */
-export function compressMorselPayload(payload: CompressedMorselPayload): string {
-  const normalized: CompressedMorselPayload = {
+export function compressAnsatzPayload(payload: CompressedAnsatzPayload): string {
+  const normalized: CompressedAnsatzPayload = {
     v: payload.v ?? 1,
     ...payload,
     lang: payload.lang ?? payload.dialect ?? "modelica",
@@ -99,13 +99,13 @@ export function compressMorselPayload(payload: CompressedMorselPayload): string 
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export const encodeMorselPermalink = compressMorselPayload;
+export const encodeAnsatzPermalink = compressAnsatzPayload;
 
 /**
- * Decompresses a URL-safe Base64 string into a Morsel payload.
+ * Decompresses a URL-safe Base64 string into a Ansatz payload.
  * Also handles backward compatibility with raw #modelica= and #data: URLs.
  */
-export function decompressMorselPayload(rawHash: string): CompressedMorselPayload | null {
+export function decompressAnsatzPayload(rawHash: string): CompressedAnsatzPayload | null {
   if (!rawHash) return null;
   const cleaned = rawHash.startsWith("#") ? rawHash.slice(1) : rawHash;
 
@@ -146,11 +146,11 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
             ...(activeFile ? { activeFile } : {}),
             lang: parsed.lang ?? resolvedDialect,
             dialect: resolvedDialect,
-          } as CompressedMorselPayload;
+          } as CompressedAnsatzPayload;
         }
       }
     } catch (err) {
-      console.warn("Failed to decompress Morsel payload:", err);
+      console.warn("Failed to decompress Ansatz payload:", err);
     }
   }
 
@@ -207,10 +207,10 @@ export function decompressMorselPayload(rawHash: string): CompressedMorselPayloa
 }
 
 /**
- * Wraps a compressed `/embed/morsel` (or playground/sketch) URL inside a self-contained
+ * Wraps a compressed `/embed/ansatz` (or ansatz/sketch) URL inside a self-contained
  * full-viewport HTML page with an interactive `<iframe>`.
  */
-export function buildMorselEmbedHtmlPage(options: { embedSrc: string; title?: string | undefined }): string {
+export function buildAnsatzEmbedHtmlPage(options: { embedSrc: string; title?: string | undefined }): string {
   const safeTitle = (options.title || "ModelScript Model").replace(/[<>&"]/g, "");
   const safeSrc = options.embedSrc.replace(/"/g, "&quot;");
   return `<!DOCTYPE html>

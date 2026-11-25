@@ -26,7 +26,7 @@ export interface EngineeringDataGridProps<T> {
 
 /**
  * EngineeringDataGrid — Reusable, high-performance table component for requirements,
- * elements, and engineering metadata tables across ModelScript IDE panels.
+ * elements, and engineering metadata tables across Ansatz Studio panels.
  */
 export function EngineeringDataGrid<T extends object>({
   columns,

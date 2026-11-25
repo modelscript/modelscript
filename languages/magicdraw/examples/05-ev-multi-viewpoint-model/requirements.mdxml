@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_ev_reqs" name="EVSafetyRequirements">
+    <packagedElement xmi:type="uml:Class" xmi:id="ev_bms_ctrl" name="BMSIsolationMonitor"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="ev_tc_iso" name="HV_IsolationResistanceTest"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="ev_req_iso" name="HVIsolationRequirement"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="ev_abs_sat" client="ev_bms_ctrl" supplier="ev_req_iso"/>
+    <packagedElement xmi:type="uml:Abstraction" xmi:id="ev_abs_ver" client="ev_tc_iso" supplier="ev_req_iso"/>
+  </uml:Model>
+  <sysml:Block xmi:id="st_ev_bms" base_Class="ev_bms_ctrl"/>
+  <sysml:Requirement xmi:id="st_ev_req_iso" base_Class="ev_req_iso" id="EV-HV-001" text="HV DC bus isolation resistance shall exceed 500 Ohm/V per FMVSS 305."/>
+  <sysml:Satisfy xmi:id="st_ev_sat" base_Abstraction="ev_abs_sat"/>
+  <sysml:Verify xmi:id="st_ev_ver" base_Abstraction="ev_abs_ver"/>
+</xmi:XMI>

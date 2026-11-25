@@ -35,7 +35,7 @@ interface SolutionViewCardProps {
     tauri_windows_url?: string | undefined;
     tauri_linux_url?: string | undefined;
     tauri_darwin_url?: string | undefined;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   isFullScreen?: boolean | undefined;
 }

@@ -1,0 +1,11 @@
+{
+  "id": "verilog-a-03-mosfet-level1",
+  "lang": "verilog-a",
+  "subFormats": ["va", "vams"],
+  "difficulty": 3,
+  "title": "Level-1 Shichman-Hodges NMOS Transistor",
+  "description": "4-terminal Shichman-Hodges Level-1 NMOS compact model covering cutoff, linear triode, and saturation regions with channel-length modulation.",
+  "category": "MOSFET Compact Models",
+  "tags": ["verilog-a", "mosfet", "shichman-hodges", "analog", "multi-file"],
+  "activeFile": "mosfet_l1.va"
+}

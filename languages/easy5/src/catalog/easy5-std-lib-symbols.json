@@ -1,0 +1,2587 @@
+[
+  {
+    "name": "IN",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/IN",
+    "exports": [
+      "GAIN",
+      "S0",
+      "UL",
+      "LL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Integrator",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Continuous-time integrator with gain, initial state S0, and saturation bounds [LL, UL]: dx/dt = GAIN * u.",
+      "provenance": "Ogata, Modern Control Engineering, 5th ed., Ch. 2 (Linear Continuous Integrator)",
+      "aliases": [
+        "GP/IN",
+        "gp:in",
+        "integrator"
+      ],
+      "parameters": [
+        {
+          "key": "GAIN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/s",
+          "description": "Integration gain"
+        },
+        {
+          "key": "S0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        },
+        {
+          "key": "UL",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "",
+          "description": "Upper state limit"
+        },
+        {
+          "key": "LL",
+          "type": "real",
+          "defaultValue": -1000000000,
+          "unit": "",
+          "description": "Lower state limit"
+        }
+      ],
+      "wasmKernel": "IN",
+      "library": "gp",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "LA",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/LA",
+    "exports": [
+      "GAIN",
+      "TAU",
+      "S0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "First-Order Lag",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "First-order low-pass lag filter: H(s) = GAIN / (1 + TAU * s).",
+      "provenance": "Franklin, Powell & Emami-Naeini, Feedback Control of Dynamic Systems, 8th ed., Ch. 3",
+      "aliases": [
+        "GP/LA",
+        "gp:la",
+        "lag"
+      ],
+      "parameters": [
+        {
+          "key": "GAIN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Steady-state DC gain"
+        },
+        {
+          "key": "TAU",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Lag time constant"
+        },
+        {
+          "key": "S0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        }
+      ],
+      "wasmKernel": "LA",
+      "library": "gp",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "LL",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/LL",
+    "exports": [
+      "GAIN",
+      "TAU1",
+      "TAU2",
+      "S0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Lead-Lag Compensator",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "First-order lead-lag compensator: H(s) = GAIN * (1 + TAU1 * s) / (1 + TAU2 * s).",
+      "provenance": "Ogata, Modern Control Engineering, 5th ed., Ch. 6 (Lead-Lag Compensation)",
+      "aliases": [
+        "GP/LL",
+        "gp:ll",
+        "leadlag"
+      ],
+      "parameters": [
+        {
+          "key": "GAIN",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "DC gain"
+        },
+        {
+          "key": "TAU1",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Lead time constant"
+        },
+        {
+          "key": "TAU2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "s",
+          "description": "Lag time constant"
+        },
+        {
+          "key": "S0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial state"
+        }
+      ],
+      "wasmKernel": "LL",
+      "library": "gp",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "GN",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/GN",
+    "exports": [
+      "K",
+      "BIAS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Scalar Gain",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Multiplies input signal by scalar gain K with optional bias B: y = K * u + B.",
+      "provenance": "Ogata, Modern Control Engineering, 5th ed., Ch. 2 (Proportional Block)",
+      "aliases": [
+        "GP/GN",
+        "GA",
+        "GP/GA",
+        "gain"
+      ],
+      "parameters": [
+        {
+          "key": "K",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Proportional gain"
+        },
+        {
+          "key": "BIAS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Additive output bias"
+        }
+      ],
+      "wasmKernel": "GN",
+      "library": "gp",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "SJ",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/SJ",
+    "exports": [
+      "K1",
+      "K2",
+      "K3",
+      "K4"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Summing Junction",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Weighted algebraic summation of up to 4 inputs: y = sum(K_i * u_i).",
+      "provenance": "Franklin, Powell & Emami-Naeini, Feedback Control of Dynamic Systems, Ch. 3",
+      "aliases": [
+        "GP/SJ",
+        "summer",
+        "sum"
+      ],
+      "parameters": [
+        {
+          "key": "K1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Weight for input 1"
+        },
+        {
+          "key": "K2",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Weight for input 2"
+        },
+        {
+          "key": "K3",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Weight for input 3"
+        },
+        {
+          "key": "K4",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Weight for input 4"
+        }
+      ],
+      "wasmKernel": "SJ",
+      "library": "gp",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "MU",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/MU",
+    "exports": [
+      "K"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multiplier",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Computes scaled product of two input signals: y = K * u0 * u1.",
+      "provenance": "Standard Signal-Flow Algebra (IEC 61131-3 / Block Diagram Calculus)",
+      "aliases": [
+        "GP/MU",
+        "multiply",
+        "product"
+      ],
+      "parameters": [
+        {
+          "key": "K",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Scale factor"
+        }
+      ],
+      "wasmKernel": "MU",
+      "library": "gp",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "DI",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/DI",
+    "exports": [
+      "K",
+      "EPS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Divider",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Protected quotient of two signals: y = K * u0 / u1 with denominator floor EPS.",
+      "provenance": "Standard Signal-Flow Algebra (Protected Division)",
+      "aliases": [
+        "GP/DI",
+        "divide"
+      ],
+      "parameters": [
+        {
+          "key": "K",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Scale factor"
+        },
+        {
+          "key": "EPS",
+          "type": "real",
+          "defaultValue": 1e-9,
+          "unit": "",
+          "description": "Minimum denominator magnitude"
+        }
+      ],
+      "wasmKernel": "DI",
+      "library": "gp",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "TF",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/TF",
+    "exports": [
+      "K",
+      "WN",
+      "ZETA",
+      "X0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Second-Order Transfer Function",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Standard second-order rational transfer function: H(s) = K * wn^2 / (s^2 + 2*zeta*wn*s + wn^2).",
+      "provenance": "Ogata, Modern Control Engineering, 5th ed., Ch. 5 (Second-Order Systems)",
+      "aliases": [
+        "GP/TF",
+        "transfer_function"
+      ],
+      "parameters": [
+        {
+          "key": "K",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "DC gain"
+        },
+        {
+          "key": "WN",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "rad/s",
+          "description": "Natural frequency"
+        },
+        {
+          "key": "ZETA",
+          "type": "real",
+          "defaultValue": 0.707,
+          "unit": "",
+          "description": "Damping ratio"
+        },
+        {
+          "key": "X0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial output state"
+        }
+      ],
+      "wasmKernel": "TF",
+      "library": "gp",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "PI",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/PI",
+    "exports": [
+      "KP",
+      "KI",
+      "KD",
+      "TF",
+      "UL",
+      "LL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PID Controller",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Proportional-Integral-Derivative controller with filtered derivative and anti-windup limits.",
+      "provenance": "Åström & Hägglund, Advanced PID Control, ISA, 2006, Ch. 3",
+      "aliases": [
+        "GP/PI",
+        "pid"
+      ],
+      "parameters": [
+        {
+          "key": "KP",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Proportional gain"
+        },
+        {
+          "key": "KI",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1/s",
+          "description": "Integral gain"
+        },
+        {
+          "key": "KD",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Derivative gain"
+        },
+        {
+          "key": "TF",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Derivative filter time constant"
+        },
+        {
+          "key": "UL",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "",
+          "description": "Upper output limit"
+        },
+        {
+          "key": "LL",
+          "type": "real",
+          "defaultValue": -1000000,
+          "unit": "",
+          "description": "Lower output limit"
+        }
+      ],
+      "wasmKernel": "PI",
+      "library": "gp",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "SW",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/SW",
+    "exports": [
+      "THRESHOLD"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Signal Switch",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Routes u0 when control signal u2 >= THRESHOLD, otherwise routes u1.",
+      "provenance": "Standard Hybrid Signal Routing (IEEE / IEC Control Block Algebra)",
+      "aliases": [
+        "GP/SW",
+        "switch"
+      ],
+      "parameters": [
+        {
+          "key": "THRESHOLD",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Switching threshold"
+        }
+      ],
+      "wasmKernel": "SW",
+      "library": "gp",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "LI",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/LI",
+    "exports": [
+      "UL",
+      "LL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hard Limiter",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Clamps input signal within [LL, UL]: y = clamp(u0, LL, UL).",
+      "provenance": "Slotine & Li, Applied Nonlinear Control, Prentice-Hall, 1991, Ch. 1",
+      "aliases": [
+        "GP/LI",
+        "LM",
+        "GP/LM",
+        "limiter",
+        "saturation"
+      ],
+      "parameters": [
+        {
+          "key": "UL",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Upper saturation limit"
+        },
+        {
+          "key": "LL",
+          "type": "real",
+          "defaultValue": -1,
+          "unit": "",
+          "description": "Lower saturation limit"
+        }
+      ],
+      "wasmKernel": "LI",
+      "library": "gp",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "DZ",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/DZ",
+    "exports": [
+      "DBP",
+      "DBN",
+      "SLOPE"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Deadband",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Suppresses output to zero inside [DBN, DBP] with linear unity slope outside.",
+      "provenance": "Slotine & Li, Applied Nonlinear Control, Prentice-Hall, 1991, Ch. 1",
+      "aliases": [
+        "GP/DZ",
+        "deadband",
+        "deadzone"
+      ],
+      "parameters": [
+        {
+          "key": "DBP",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "",
+          "description": "Positive deadband threshold"
+        },
+        {
+          "key": "DBN",
+          "type": "real",
+          "defaultValue": -0.1,
+          "unit": "",
+          "description": "Negative deadband threshold"
+        },
+        {
+          "key": "SLOPE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Slope outside deadband"
+        }
+      ],
+      "wasmKernel": "DZ",
+      "library": "gp",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "TB",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/TB",
+    "exports": [
+      "X0",
+      "X1",
+      "Y0",
+      "Y1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "1D Table Lookup",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Piecewise-linear 1D interpolation lookup table over breakpoint pairs (X0..X3, Y0..Y3).",
+      "provenance": "Press et al., Numerical Recipes, 3rd ed., Ch. 3 (Piecewise Linear Interpolation)",
+      "aliases": [
+        "GP/TB",
+        "FN",
+        "GP/FN",
+        "table"
+      ],
+      "parameters": [
+        {
+          "key": "X0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Breakpoint 0 abscissa"
+        },
+        {
+          "key": "X1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Breakpoint 1 abscissa"
+        },
+        {
+          "key": "Y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Breakpoint 0 ordinate"
+        },
+        {
+          "key": "Y1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Breakpoint 1 ordinate"
+        }
+      ],
+      "wasmKernel": "TB",
+      "library": "gp",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "AF",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/AF",
+    "exports": [
+      "C0",
+      "C1",
+      "C2",
+      "C3"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Analytic Function",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Evaluates polynomial/power analytic expression: y = C0 + C1*u + C2*u^2 + C3*u^3.",
+      "provenance": "Abramowitz & Stegun, Handbook of Mathematical Functions, NBS, 1964",
+      "aliases": [
+        "GP/AF",
+        "analytic"
+      ],
+      "parameters": [
+        {
+          "key": "C0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Constant term"
+        },
+        {
+          "key": "C1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Linear coefficient"
+        },
+        {
+          "key": "C2",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Quadratic coefficient"
+        },
+        {
+          "key": "C3",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Cubic coefficient"
+        }
+      ],
+      "wasmKernel": "AF",
+      "library": "gp",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "FG",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/FG",
+    "exports": [
+      "T0",
+      "SLOPE",
+      "BIAS",
+      "MAX_VAL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Function Generator (Ramp/Pulse)",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Generates time-varying ramp signal starting at T0 with slope SLOPE clamped to MAX_VAL.",
+      "provenance": "Ogata, Modern Control Engineering, 5th ed., Ch. 5 (Standard Test Signals)",
+      "aliases": [
+        "GP/FG",
+        "ramp"
+      ],
+      "parameters": [
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Ramp start time"
+        },
+        {
+          "key": "SLOPE",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1/s",
+          "description": "Ramp slope"
+        },
+        {
+          "key": "BIAS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial offset"
+        },
+        {
+          "key": "MAX_VAL",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "",
+          "description": "Upper clamp"
+        }
+      ],
+      "wasmKernel": "FG",
+      "library": "gp",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "ST",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/ST",
+    "exports": [
+      "T_STEP",
+      "V0",
+      "V1"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Step Source",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Heaviside step source transitioning from V0 to V1 at t = T_STEP.",
+      "provenance": "Ogata, Modern Control Engineering, 5th ed., Ch. 5 (Unit Step Excitation)",
+      "aliases": [
+        "GP/ST",
+        "step"
+      ],
+      "parameters": [
+        {
+          "key": "T_STEP",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "s",
+          "description": "Step time"
+        },
+        {
+          "key": "V0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Initial value"
+        },
+        {
+          "key": "V1",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Final value"
+        }
+      ],
+      "wasmKernel": "ST",
+      "library": "gp",
+      "archetypeId": 16
+    }
+  },
+  {
+    "name": "SI",
+    "kind": "easy5_component",
+    "namePath": "easy5:gp/SI",
+    "exports": [
+      "AMP",
+      "OMEGA",
+      "PHASE",
+      "BIAS"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Sinusoidal Source",
+      "category": "General Purpose",
+      "domain": "control",
+      "description": "Harmonic excitation generator: y(t) = BIAS + AMP * sin(OMEGA * t + PHASE).",
+      "provenance": "Ogata, Modern Control Engineering, 5th ed., Ch. 7 (Frequency Response Excitation)",
+      "aliases": [
+        "GP/SI",
+        "sine"
+      ],
+      "parameters": [
+        {
+          "key": "AMP",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "",
+          "description": "Amplitude"
+        },
+        {
+          "key": "OMEGA",
+          "type": "real",
+          "defaultValue": 6.283185307,
+          "unit": "rad/s",
+          "description": "Angular frequency"
+        },
+        {
+          "key": "PHASE",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Phase offset"
+        },
+        {
+          "key": "BIAS",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "DC bias"
+        }
+      ],
+      "wasmKernel": "SI",
+      "library": "gp",
+      "archetypeId": 17
+    }
+  },
+  {
+    "name": "OR",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/OR",
+    "exports": [
+      "CD",
+      "AREA",
+      "RHO",
+      "DP_LIN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydraulic Orifice",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Sharp-edged turbulent orifice: Q = Cd * A * sign(dP) * sqrt(2 * |dP| / rho).",
+      "provenance": "Merritt, Hydraulic Control Systems, Wiley, 1967, Eq. (3-5) (Turbulent Orifice Flow)",
+      "aliases": [
+        "HC/OR",
+        "hc:or",
+        "hydraulic_orifice"
+      ],
+      "parameters": [
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.61,
+          "unit": "",
+          "description": "Discharge coefficient"
+        },
+        {
+          "key": "AREA",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "m^2",
+          "description": "Orifice flow area"
+        },
+        {
+          "key": "RHO",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m^3",
+          "description": "Hydraulic fluid density"
+        },
+        {
+          "key": "DP_LIN",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "Pa",
+          "description": "Laminar-turbulent regularization threshold"
+        }
+      ],
+      "wasmKernel": "OR",
+      "library": "hc",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "PI_HC",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/PI_HC",
+    "exports": [
+      "LENGTH",
+      "DIAM",
+      "RHO",
+      "RF"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydraulic Pipe (Lumped Inertance & Resistance)",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Lumped fluid inertance and Darcy-Weisbach friction line: L_f * dQ/dt = (P_in - P_out) - R_f * Q.",
+      "provenance": "Merritt, Hydraulic Control Systems, Wiley, 1967, Ch. 5 (Transmission Line Dynamics)",
+      "aliases": [
+        "HC/PI",
+        "HC/PI_HC",
+        "hydraulic_pipe"
+      ],
+      "parameters": [
+        {
+          "key": "LENGTH",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Pipe length"
+        },
+        {
+          "key": "DIAM",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "m",
+          "description": "Internal pipe diameter"
+        },
+        {
+          "key": "RHO",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m^3",
+          "description": "Fluid density"
+        },
+        {
+          "key": "RF",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "Pa*s/m^3",
+          "description": "Linearized hydraulic resistance"
+        }
+      ],
+      "wasmKernel": "PI_HC",
+      "library": "hc",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "AC",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/AC",
+    "exports": [
+      "V0",
+      "BETA",
+      "P0",
+      "GAMMA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gas-Charged Hydraulic Accumulator",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Polytropic gas-charged hydraulic accumulator: dP/dt = (beta / V0) * (Q_in - Q_out).",
+      "provenance": "Merritt, Hydraulic Control Systems, Wiley, 1967, Ch. 2 (Fluid Compressibility & Accumulators)",
+      "aliases": [
+        "HC/AC",
+        "accumulator"
+      ],
+      "parameters": [
+        {
+          "key": "V0",
+          "type": "real",
+          "defaultValue": 0.005,
+          "unit": "m^3",
+          "description": "Nominal fluid/gas volume"
+        },
+        {
+          "key": "BETA",
+          "type": "real",
+          "defaultValue": 1400000000,
+          "unit": "Pa",
+          "description": "Effective bulk modulus"
+        },
+        {
+          "key": "P0",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "Pa",
+          "description": "Initial precharge pressure"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "",
+          "description": "Polytropic gas exponent"
+        }
+      ],
+      "wasmKernel": "AC",
+      "library": "hc",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "PM",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/PM",
+    "exports": [
+      "DISP",
+      "CLEAK",
+      "ETA_M"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Positive-Displacement Hydraulic Pump",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Fixed-displacement pump with volumetric leakage slip: Q = D * omega - C_leak * dP.",
+      "provenance": "Merritt, Hydraulic Control Systems, Wiley, 1967, Ch. 4 (Pump Flow Continuity)",
+      "aliases": [
+        "HC/PM",
+        "pump"
+      ],
+      "parameters": [
+        {
+          "key": "DISP",
+          "type": "real",
+          "defaultValue": 0.000005,
+          "unit": "m^3/rad",
+          "description": "Volumetric displacement per radian"
+        },
+        {
+          "key": "CLEAK",
+          "type": "real",
+          "defaultValue": 1e-12,
+          "unit": "m^3/(s*Pa)",
+          "description": "Internal leakage conductance"
+        },
+        {
+          "key": "ETA_M",
+          "type": "real",
+          "defaultValue": 0.92,
+          "unit": "",
+          "description": "Mechanical efficiency"
+        }
+      ],
+      "wasmKernel": "PM",
+      "library": "hc",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "VA",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/VA",
+    "exports": [
+      "CD",
+      "AREA_MAX",
+      "RHO",
+      "TAU_V"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Proportional Control Valve",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Variable-area proportional spool valve governed by turbulent orifice flow scaled by opening x in [0, 1].",
+      "provenance": "Merritt, Hydraulic Control Systems, Wiley, 1967, Ch. 4 (Spool Valve Flow Equation)",
+      "aliases": [
+        "HC/VA",
+        "control_valve"
+      ],
+      "parameters": [
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.62,
+          "unit": "",
+          "description": "Discharge coefficient"
+        },
+        {
+          "key": "AREA_MAX",
+          "type": "real",
+          "defaultValue": 0.0002,
+          "unit": "m^2",
+          "description": "Maximum orifice area at full stroke"
+        },
+        {
+          "key": "RHO",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m^3",
+          "description": "Fluid density"
+        },
+        {
+          "key": "TAU_V",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "s",
+          "description": "Spool actuation lag time constant"
+        }
+      ],
+      "wasmKernel": "VA",
+      "library": "hc",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "CV",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/CV",
+    "exports": [
+      "CD",
+      "AREA",
+      "RHO",
+      "P_CRACK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hydraulic Check Valve",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Unidirectional spring-loaded check valve opening above cracking pressure P_CRACK.",
+      "provenance": "Watton, Fluid Power Systems, Prentice-Hall, 1989, Ch. 3 (Check Valve Dynamics)",
+      "aliases": [
+        "HC/CV",
+        "check_valve"
+      ],
+      "parameters": [
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "",
+          "description": "Discharge coefficient"
+        },
+        {
+          "key": "AREA",
+          "type": "real",
+          "defaultValue": 0.00015,
+          "unit": "m^2",
+          "description": "Fully open flow area"
+        },
+        {
+          "key": "RHO",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m^3",
+          "description": "Fluid density"
+        },
+        {
+          "key": "P_CRACK",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "Pa",
+          "description": "Cracking pressure differential"
+        }
+      ],
+      "wasmKernel": "CV",
+      "library": "hc",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "RV",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/RV",
+    "exports": [
+      "P_SET",
+      "P_FULL",
+      "CD",
+      "AREA_MAX",
+      "RHO"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pressure Relief Valve",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Direct-acting pressure relief valve discharging excess flow when P_in - P_out > P_SET.",
+      "provenance": "Merritt, Hydraulic Control Systems, Wiley, 1967, Ch. 9 (Relief Valve Stability)",
+      "aliases": [
+        "HC/RV",
+        "relief_valve"
+      ],
+      "parameters": [
+        {
+          "key": "P_SET",
+          "type": "real",
+          "defaultValue": 20000000,
+          "unit": "Pa",
+          "description": "Relief cracking pressure"
+        },
+        {
+          "key": "P_FULL",
+          "type": "real",
+          "defaultValue": 22000000,
+          "unit": "Pa",
+          "description": "Full-open pressure"
+        },
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "",
+          "description": "Discharge coefficient"
+        },
+        {
+          "key": "AREA_MAX",
+          "type": "real",
+          "defaultValue": 0.0002,
+          "unit": "m^2",
+          "description": "Maximum relief area"
+        },
+        {
+          "key": "RHO",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m^3",
+          "description": "Fluid density"
+        }
+      ],
+      "wasmKernel": "RV",
+      "library": "hc",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "CP",
+    "kind": "easy5_component",
+    "namePath": "easy5:hc/CP",
+    "exports": [
+      "VOL",
+      "BETA",
+      "P0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Compressible Hydraulic Cavity",
+      "category": "Thermal Hydraulic",
+      "domain": "hydraulic",
+      "description": "Lumped hydraulic control volume integrating pressure via continuity: dP/dt = (BETA / VOL) * (Q_in - Q_out).",
+      "provenance": "Merritt, Hydraulic Control Systems, Wiley, 1967, Eq. (2-14) (Continuity in Control Volume)",
+      "aliases": [
+        "HC/CP",
+        "hydraulic_cavity",
+        "chamber_hc"
+      ],
+      "parameters": [
+        {
+          "key": "VOL",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "m^3",
+          "description": "Control volume"
+        },
+        {
+          "key": "BETA",
+          "type": "real",
+          "defaultValue": 1400000000,
+          "unit": "Pa",
+          "description": "Fluid bulk modulus"
+        },
+        {
+          "key": "P0",
+          "type": "real",
+          "defaultValue": 1000000,
+          "unit": "Pa",
+          "description": "Initial pressure"
+        }
+      ],
+      "wasmKernel": "CP",
+      "library": "hc",
+      "archetypeId": 27
+    }
+  },
+  {
+    "name": "VO",
+    "kind": "easy5_component",
+    "namePath": "easy5:gd/VO",
+    "exports": [
+      "VOL",
+      "R_GAS",
+      "GAMMA",
+      "P0",
+      "T0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Compressible Gas Volume",
+      "category": "Gas Dynamics",
+      "domain": "pneumatic",
+      "description": "Ideal-gas control volume integrating pressure and temperature from net mass flow: dP/dt = (gamma*R*T/V) * (mDot_in - mDot_out).",
+      "provenance": "Shapiro, The Dynamics and Thermodynamics of Compressible Fluid Flow, Vol. 1, Wiley, 1953",
+      "aliases": [
+        "GD/VO",
+        "gas_volume"
+      ],
+      "parameters": [
+        {
+          "key": "VOL",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m^3",
+          "description": "Volume"
+        },
+        {
+          "key": "R_GAS",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "",
+          "description": "Specific heat ratio"
+        },
+        {
+          "key": "P0",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Initial pressure"
+        },
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 293.15,
+          "unit": "K",
+          "description": "Initial gas temperature"
+        }
+      ],
+      "wasmKernel": "VO",
+      "library": "gd",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "OR_GD",
+    "kind": "easy5_component",
+    "namePath": "easy5:gd/OR_GD",
+    "exports": [
+      "CD",
+      "AREA",
+      "GAMMA",
+      "R_GAS",
+      "T_UP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Compressible Gas Orifice",
+      "category": "Gas Dynamics",
+      "domain": "pneumatic",
+      "description": "Isentropic compressible orifice flow with automatic choked/subsonic regime switching.",
+      "provenance": "Shapiro, Compressible Fluid Flow, Vol. 1, Ch. 4 (Isentropic Orifice Mass Flow)",
+      "aliases": [
+        "GD/OR",
+        "GD/OR_GD",
+        "gas_orifice"
+      ],
+      "parameters": [
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "",
+          "description": "Discharge coefficient"
+        },
+        {
+          "key": "AREA",
+          "type": "real",
+          "defaultValue": 0.0001,
+          "unit": "m^2",
+          "description": "Throat area"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "",
+          "description": "Specific heat ratio"
+        },
+        {
+          "key": "R_GAS",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "T_UP",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Default upstream stagnation temperature"
+        }
+      ],
+      "wasmKernel": "OR_GD",
+      "library": "gd",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "VA_GD",
+    "kind": "easy5_component",
+    "namePath": "easy5:gd/VA_GD",
+    "exports": [
+      "CD",
+      "AREA_MAX",
+      "GAMMA",
+      "R_GAS",
+      "T_UP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Compressible Gas Control Valve",
+      "category": "Gas Dynamics",
+      "domain": "pneumatic",
+      "description": "Modulated pneumatic/gas valve combining compressible choked/subsonic flow with normalized command opening.",
+      "provenance": "ISO 6358 / Shapiro, Compressible Fluid Flow, Vol. 1, Ch. 4",
+      "aliases": [
+        "GD/VA",
+        "GD/VA_GD",
+        "gas_valve"
+      ],
+      "parameters": [
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.82,
+          "unit": "",
+          "description": "Discharge coefficient"
+        },
+        {
+          "key": "AREA_MAX",
+          "type": "real",
+          "defaultValue": 0.0002,
+          "unit": "m^2",
+          "description": "Maximum valve throat area"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "",
+          "description": "Specific heat ratio"
+        },
+        {
+          "key": "R_GAS",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "T_UP",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Default upstream temperature"
+        }
+      ],
+      "wasmKernel": "VA_GD",
+      "library": "gd",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "CH",
+    "kind": "easy5_component",
+    "namePath": "easy5:gd/CH",
+    "exports": [
+      "VOL",
+      "R_GAS",
+      "GAMMA",
+      "P0",
+      "T0",
+      "TAU_TH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Thermal-Pneumatic Chamber",
+      "category": "Gas Dynamics",
+      "domain": "pneumatic",
+      "description": "Variable-energy ideal gas chamber with convective wall heat transfer and pressure integration.",
+      "provenance": "Anderson, Modern Compressible Flow, 3rd ed., McGraw-Hill, 2003, Ch. 2",
+      "aliases": [
+        "GD/CH",
+        "gas_chamber"
+      ],
+      "parameters": [
+        {
+          "key": "VOL",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "m^3",
+          "description": "Chamber volume"
+        },
+        {
+          "key": "R_GAS",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "",
+          "description": "Specific heat ratio"
+        },
+        {
+          "key": "P0",
+          "type": "real",
+          "defaultValue": 200000,
+          "unit": "Pa",
+          "description": "Initial pressure"
+        },
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Initial temperature"
+        },
+        {
+          "key": "TAU_TH",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "s",
+          "description": "Wall thermal relaxation time constant"
+        }
+      ],
+      "wasmKernel": "CH",
+      "library": "gd",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "NO",
+    "kind": "easy5_component",
+    "namePath": "easy5:gd/NO",
+    "exports": [
+      "CD",
+      "A_THROAT",
+      "GAMMA",
+      "R_GAS",
+      "T_UP"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Converging-Diverging Nozzle",
+      "category": "Gas Dynamics",
+      "domain": "pneumatic",
+      "description": "Isentropic converging-diverging nozzle computing choked/subsonic mass flow and exit Mach estimate.",
+      "provenance": "Anderson, Modern Compressible Flow, 3rd ed., Ch. 5 (Quasi-One-Dimensional Nozzle Flow)",
+      "aliases": [
+        "GD/NO",
+        "nozzle"
+      ],
+      "parameters": [
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.96,
+          "unit": "",
+          "description": "Nozzle discharge coefficient"
+        },
+        {
+          "key": "A_THROAT",
+          "type": "real",
+          "defaultValue": 0.0005,
+          "unit": "m^2",
+          "description": "Throat area"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1.4,
+          "unit": "",
+          "description": "Specific heat ratio"
+        },
+        {
+          "key": "R_GAS",
+          "type": "real",
+          "defaultValue": 287.05,
+          "unit": "J/(kg*K)",
+          "description": "Specific gas constant"
+        },
+        {
+          "key": "T_UP",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "K",
+          "description": "Default stagnation temperature"
+        }
+      ],
+      "wasmKernel": "NO",
+      "library": "gd",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "HE",
+    "kind": "easy5_component",
+    "namePath": "easy5:gd/HE",
+    "exports": [
+      "EPSILON",
+      "TAU",
+      "T0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gas Heat Exchanger",
+      "category": "Gas Dynamics",
+      "domain": "thermal",
+      "description": "Lumped effectiveness-NTU first-order thermal heat exchanger: tau * dT_out/dt = T_eq - T_out.",
+      "provenance": "Incropera & DeWitt, Fundamentals of Heat and Mass Transfer, 7th ed., Ch. 11 (Effectiveness-NTU)",
+      "aliases": [
+        "GD/HE",
+        "heat_exchanger"
+      ],
+      "parameters": [
+        {
+          "key": "EPSILON",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "",
+          "description": "Thermal effectiveness"
+        },
+        {
+          "key": "TAU",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "s",
+          "description": "Thermal inertia time constant"
+        },
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 300,
+          "unit": "K",
+          "description": "Initial outlet temperature"
+        }
+      ],
+      "wasmKernel": "HE",
+      "library": "gd",
+      "archetypeId": 35
+    }
+  },
+  {
+    "name": "RS",
+    "kind": "easy5_component",
+    "namePath": "easy5:ec/RS",
+    "exports": [
+      "R"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Resistor",
+      "category": "Electric Systems",
+      "domain": "electrical",
+      "description": "Ohm's law resistive branch: I = (V_pos - V_neg) / R, P = I^2 * R.",
+      "provenance": "Alexander & Sadiku, Fundamentals of Electric Circuits, 6th ed., Ch. 2",
+      "aliases": [
+        "EC/RS",
+        "resistor"
+      ],
+      "parameters": [
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "Ohm",
+          "description": "Resistance"
+        }
+      ],
+      "wasmKernel": "RS",
+      "library": "ec",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "CA",
+    "kind": "easy5_component",
+    "namePath": "easy5:ec/CA",
+    "exports": [
+      "C",
+      "V0",
+      "R_LEAK"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Capacitor",
+      "category": "Electric Systems",
+      "domain": "electrical",
+      "description": "Dynamic capacitor voltage integration: C * dV/dt = I_in - V / R_leak.",
+      "provenance": "Alexander & Sadiku, Fundamentals of Electric Circuits, 6th ed., Ch. 6",
+      "aliases": [
+        "EC/CA",
+        "capacitor"
+      ],
+      "parameters": [
+        {
+          "key": "C",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "F",
+          "description": "Capacitance"
+        },
+        {
+          "key": "V0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Initial capacitor voltage"
+        },
+        {
+          "key": "R_LEAK",
+          "type": "real",
+          "defaultValue": 1000000000,
+          "unit": "Ohm",
+          "description": "Parallel leakage resistance"
+        }
+      ],
+      "wasmKernel": "CA",
+      "library": "ec",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "IN_EC",
+    "kind": "easy5_component",
+    "namePath": "easy5:ec/IN_EC",
+    "exports": [
+      "L",
+      "R",
+      "I0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Linear Inductor",
+      "category": "Electric Systems",
+      "domain": "electrical",
+      "description": "Dynamic inductor current integration with winding resistance: L * dI/dt = V_in - R * I.",
+      "provenance": "Alexander & Sadiku, Fundamentals of Electric Circuits, 6th ed., Ch. 6",
+      "aliases": [
+        "EC/IN",
+        "EC/IN_EC",
+        "inductor"
+      ],
+      "parameters": [
+        {
+          "key": "L",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "H",
+          "description": "Inductance"
+        },
+        {
+          "key": "R",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "Ohm",
+          "description": "Series winding resistance"
+        },
+        {
+          "key": "I0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "A",
+          "description": "Initial inductor current"
+        }
+      ],
+      "wasmKernel": "IN_EC",
+      "library": "ec",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "VS",
+    "kind": "easy5_component",
+    "namePath": "easy5:ec/VS",
+    "exports": [
+      "V_NOM",
+      "R_S",
+      "AMP_AC",
+      "OMEGA"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Controlled Voltage Source",
+      "category": "Electric Systems",
+      "domain": "electrical",
+      "description": "DC/AC controlled voltage source with internal series impedance R_s.",
+      "provenance": "Alexander & Sadiku, Fundamentals of Electric Circuits, 6th ed., Ch. 4",
+      "aliases": [
+        "EC/VS",
+        "voltage_source"
+      ],
+      "parameters": [
+        {
+          "key": "V_NOM",
+          "type": "real",
+          "defaultValue": 28,
+          "unit": "V",
+          "description": "Nominal source voltage"
+        },
+        {
+          "key": "R_S",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "Ohm",
+          "description": "Internal source resistance"
+        },
+        {
+          "key": "AMP_AC",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "V",
+          "description": "Optional AC ripple amplitude"
+        },
+        {
+          "key": "OMEGA",
+          "type": "real",
+          "defaultValue": 376.991118,
+          "unit": "rad/s",
+          "description": "AC angular frequency"
+        }
+      ],
+      "wasmKernel": "VS",
+      "library": "ec",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "DC_M",
+    "kind": "easy5_component",
+    "namePath": "easy5:ec/DC_M",
+    "exports": [
+      "R_A",
+      "L_A",
+      "K_T",
+      "K_E",
+      "J",
+      "B"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Permanent-Magnet DC Motor",
+      "category": "Electric Systems",
+      "domain": "electrical",
+      "description": "Coupled armature-rotor DC machine: L*di/dt = V - R*i - Ke*w; J*dw/dt = Kt*i - B*w - T_load.",
+      "provenance": "Krause, Wasynczuk & Sudhoff, Analysis of Electric Machinery and Drive Systems, 3rd ed., Ch. 2",
+      "aliases": [
+        "EC/DC_M",
+        "dc_motor"
+      ],
+      "parameters": [
+        {
+          "key": "R_A",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "Ohm",
+          "description": "Armature resistance"
+        },
+        {
+          "key": "L_A",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "H",
+          "description": "Armature inductance"
+        },
+        {
+          "key": "K_T",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "N*m/A",
+          "description": "Torque constant"
+        },
+        {
+          "key": "K_E",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "V*s/rad",
+          "description": "Back-EMF constant"
+        },
+        {
+          "key": "J",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "kg*m^2",
+          "description": "Rotor inertia"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.001,
+          "unit": "N*m*s/rad",
+          "description": "Viscous friction"
+        }
+      ],
+      "wasmKernel": "DC_M",
+      "library": "ec",
+      "archetypeId": 44
+    }
+  },
+  {
+    "name": "IN_M",
+    "kind": "easy5_component",
+    "namePath": "easy5:ec/IN_M",
+    "exports": [
+      "OMEGA_SYNC",
+      "T_MAX",
+      "S_MAX",
+      "J",
+      "B"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Three-Phase Induction Motor",
+      "category": "Electric Systems",
+      "domain": "electrical",
+      "description": "Equivalent-circuit slip-torque induction machine with mechanical rotor inertia dynamics.",
+      "provenance": "Krause, Wasynczuk & Sudhoff, Analysis of Electric Machinery and Drive Systems, 3rd ed., Ch. 6",
+      "aliases": [
+        "EC/IN_M",
+        "induction_motor"
+      ],
+      "parameters": [
+        {
+          "key": "OMEGA_SYNC",
+          "type": "real",
+          "defaultValue": 188.495559,
+          "unit": "rad/s",
+          "description": "Synchronous angular speed"
+        },
+        {
+          "key": "T_MAX",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "N*m",
+          "description": "Breakdown torque at rated voltage"
+        },
+        {
+          "key": "S_MAX",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "",
+          "description": "Slip at breakdown torque"
+        },
+        {
+          "key": "J",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "kg*m^2",
+          "description": "Rotor inertia"
+        },
+        {
+          "key": "B",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "N*m*s/rad",
+          "description": "Viscous damping"
+        }
+      ],
+      "wasmKernel": "IN_M",
+      "library": "ec",
+      "archetypeId": 45
+    }
+  },
+  {
+    "name": "IV",
+    "kind": "easy5_component",
+    "namePath": "easy5:ec/IV",
+    "exports": [
+      "ETA",
+      "TAU",
+      "V_MAX"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Power Electronic Inverter",
+      "category": "Electric Systems",
+      "domain": "electrical",
+      "description": "Averaged PWM inverter bridge with first-order switching filter and efficiency loss.",
+      "provenance": "Mohan, Undeland & Robbins, Power Electronics, 3rd ed., Wiley, 2003, Ch. 8",
+      "aliases": [
+        "EC/IV",
+        "inverter"
+      ],
+      "parameters": [
+        {
+          "key": "ETA",
+          "type": "real",
+          "defaultValue": 0.96,
+          "unit": "",
+          "description": "Conversion efficiency"
+        },
+        {
+          "key": "TAU",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "s",
+          "description": "Output filter time constant"
+        },
+        {
+          "key": "V_MAX",
+          "type": "real",
+          "defaultValue": 600,
+          "unit": "V",
+          "description": "Maximum AC output voltage"
+        }
+      ],
+      "wasmKernel": "IV",
+      "library": "ec",
+      "archetypeId": 46
+    }
+  },
+  {
+    "name": "AT",
+    "kind": "easy5_component",
+    "namePath": "easy5:ae/AT",
+    "exports": [
+      "T0",
+      "P0",
+      "LAPSE",
+      "DELTA_T"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "US Standard Atmosphere (ISA 1976)",
+      "category": "Aerospace",
+      "domain": "aerospace",
+      "description": "Computes ISA 1976 / ISO 2533 air density (rho), static pressure (P), temperature (T), and speed of sound (a) from geometric altitude h (m).",
+      "provenance": "U.S. Standard Atmosphere, 1976 (NOAA/NASA/USAF) & ISO 2533:1975",
+      "aliases": [
+        "AE/AT",
+        "ae:at",
+        "atmosphere",
+        "isa"
+      ],
+      "parameters": [
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 288.15,
+          "unit": "K",
+          "description": "Sea-level standard temperature"
+        },
+        {
+          "key": "P0",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Sea-level standard pressure"
+        },
+        {
+          "key": "LAPSE",
+          "type": "real",
+          "defaultValue": 0.0065,
+          "unit": "K/m",
+          "description": "Tropospheric temperature lapse rate"
+        },
+        {
+          "key": "DELTA_T",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "K",
+          "description": "Non-standard ISA temperature offset"
+        }
+      ],
+      "wasmKernel": "AT",
+      "library": "ae",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "RB",
+    "kind": "easy5_component",
+    "namePath": "easy5:ae/RB",
+    "exports": [
+      "MASS",
+      "IYY",
+      "V0",
+      "X0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Rigid Body Translational/Rotational Dynamics",
+      "category": "Aerospace",
+      "domain": "aerospace",
+      "description": "Newton-Euler rigid body point-mass & pitch-axis dynamics: m*dv/dt = F - c*v, I*dq/dt = M.",
+      "provenance": "Stevens & Lewis, Aircraft Control and Simulation, 3rd ed., Wiley, 2015, Ch. 1",
+      "aliases": [
+        "AE/RB",
+        "rigid_body"
+      ],
+      "parameters": [
+        {
+          "key": "MASS",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "kg",
+          "description": "Vehicle mass"
+        },
+        {
+          "key": "IYY",
+          "type": "real",
+          "defaultValue": 2500,
+          "unit": "kg*m^2",
+          "description": "Pitch moment of inertia"
+        },
+        {
+          "key": "V0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m/s",
+          "description": "Initial velocity"
+        },
+        {
+          "key": "X0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "m",
+          "description": "Initial position"
+        }
+      ],
+      "wasmKernel": "RB",
+      "library": "ae",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "AR",
+    "kind": "easy5_component",
+    "namePath": "easy5:ae/AR",
+    "exports": [
+      "S_REF",
+      "CL0",
+      "CL_ALPHA",
+      "CD0",
+      "K_IND"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Aerodynamic Forces & Moments",
+      "category": "Aerospace",
+      "domain": "aerospace",
+      "description": "Computes dynamic pressure q = 0.5*rho*V^2, lift L = q*S*(CL0 + CLa*alpha), and parabolic drag D = q*S*(CD0 + K*CL^2).",
+      "provenance": "Stevens & Lewis, Aircraft Control and Simulation, 3rd ed., Ch. 2 (Aerodynamic Coefficients)",
+      "aliases": [
+        "AE/AR",
+        "aerodynamics"
+      ],
+      "parameters": [
+        {
+          "key": "S_REF",
+          "type": "real",
+          "defaultValue": 16.2,
+          "unit": "m^2",
+          "description": "Reference wing area"
+        },
+        {
+          "key": "CL0",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "",
+          "description": "Zero-alpha lift coefficient"
+        },
+        {
+          "key": "CL_ALPHA",
+          "type": "real",
+          "defaultValue": 5.2,
+          "unit": "1/rad",
+          "description": "Lift curve slope"
+        },
+        {
+          "key": "CD0",
+          "type": "real",
+          "defaultValue": 0.025,
+          "unit": "",
+          "description": "Zero-lift drag coefficient"
+        },
+        {
+          "key": "K_IND",
+          "type": "real",
+          "defaultValue": 0.045,
+          "unit": "",
+          "description": "Induced drag factor"
+        }
+      ],
+      "wasmKernel": "AR",
+      "library": "ae",
+      "archetypeId": 52
+    }
+  },
+  {
+    "name": "EN",
+    "kind": "easy5_component",
+    "namePath": "easy5:ae/EN",
+    "exports": [
+      "T_MAX",
+      "TAU_E",
+      "SFC",
+      "T_INIT"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Turbine / Propulsion Engine",
+      "category": "Aerospace",
+      "domain": "aerospace",
+      "description": "First-order spool thrust lag with altitude density lapse: tau * dT/dt = T_max*(rho/rho0)*throttle - T.",
+      "provenance": "Mattingly, Elements of Propulsion: Gas Turbines and Rockets, AIAA, 2006, Ch. 4",
+      "aliases": [
+        "AE/EN",
+        "engine",
+        "propulsion"
+      ],
+      "parameters": [
+        {
+          "key": "T_MAX",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "N",
+          "description": "Sea-level static maximum thrust"
+        },
+        {
+          "key": "TAU_E",
+          "type": "real",
+          "defaultValue": 0.8,
+          "unit": "s",
+          "description": "Spool acceleration time constant"
+        },
+        {
+          "key": "SFC",
+          "type": "real",
+          "defaultValue": 0.00002,
+          "unit": "kg/(N*s)",
+          "description": "Thrust specific fuel consumption"
+        },
+        {
+          "key": "T_INIT",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "N",
+          "description": "Initial thrust"
+        }
+      ],
+      "wasmKernel": "EN",
+      "library": "ae",
+      "archetypeId": 53
+    }
+  },
+  {
+    "name": "AC_AE",
+    "kind": "easy5_component",
+    "namePath": "easy5:ae/AC_AE",
+    "exports": [
+      "TAU",
+      "RATE_LIM",
+      "POS_MAX",
+      "POS_MIN"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Flight Control Surface Actuator",
+      "category": "Aerospace",
+      "domain": "aerospace",
+      "description": "Rate- and position-limited first-order electro-hydraulic flight control servo actuator.",
+      "provenance": "Stevens & Lewis, Aircraft Control and Simulation, 3rd ed., Ch. 4 (Actuator Models)",
+      "aliases": [
+        "AE/AC",
+        "AE/AC_AE",
+        "flight_actuator"
+      ],
+      "parameters": [
+        {
+          "key": "TAU",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "s",
+          "description": "Actuator servo time constant"
+        },
+        {
+          "key": "RATE_LIM",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "rad/s",
+          "description": "Maximum deflection rate limit"
+        },
+        {
+          "key": "POS_MAX",
+          "type": "real",
+          "defaultValue": 0.45,
+          "unit": "rad",
+          "description": "Maximum positive deflection"
+        },
+        {
+          "key": "POS_MIN",
+          "type": "real",
+          "defaultValue": -0.45,
+          "unit": "rad",
+          "description": "Maximum negative deflection"
+        }
+      ],
+      "wasmKernel": "AC_AE",
+      "library": "ae",
+      "archetypeId": 54
+    }
+  },
+  {
+    "name": "EV",
+    "kind": "easy5_component",
+    "namePath": "easy5:vc/EV",
+    "exports": [
+      "UA",
+      "TAU",
+      "T_SAT",
+      "H_FG"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Two-Phase Evaporator",
+      "category": "Multiphase",
+      "domain": "thermal",
+      "description": "Lumped vapor-compression evaporator enthalpy & temperature dynamics with convective heat load.",
+      "provenance": "ASHRAE Handbook — Refrigeration, Ch. 2 (Vapor-Compression Cycle Evaporator)",
+      "aliases": [
+        "VC/EV",
+        "evaporator"
+      ],
+      "parameters": [
+        {
+          "key": "UA",
+          "type": "real",
+          "defaultValue": 450,
+          "unit": "W/K",
+          "description": "Overall heat transfer conductance"
+        },
+        {
+          "key": "TAU",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "s",
+          "description": "Thermal capacitance time constant"
+        },
+        {
+          "key": "T_SAT",
+          "type": "real",
+          "defaultValue": 275,
+          "unit": "K",
+          "description": "Nominal saturation temperature"
+        },
+        {
+          "key": "H_FG",
+          "type": "real",
+          "defaultValue": 200000,
+          "unit": "J/kg",
+          "description": "Latent heat of vaporization"
+        }
+      ],
+      "wasmKernel": "EV",
+      "library": "vc",
+      "archetypeId": 60
+    }
+  },
+  {
+    "name": "CO",
+    "kind": "easy5_component",
+    "namePath": "easy5:vc/CO",
+    "exports": [
+      "UA",
+      "TAU",
+      "T_AMB",
+      "T0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Two-Phase Condenser",
+      "category": "Multiphase",
+      "domain": "thermal",
+      "description": "Lumped vapor-compression condenser rejecting heat to ambient sink via first-order thermal dynamics.",
+      "provenance": "ASHRAE Handbook — Refrigeration, Ch. 2 (Vapor-Compression Cycle Condenser)",
+      "aliases": [
+        "VC/CO",
+        "condenser"
+      ],
+      "parameters": [
+        {
+          "key": "UA",
+          "type": "real",
+          "defaultValue": 550,
+          "unit": "W/K",
+          "description": "Overall heat transfer conductance"
+        },
+        {
+          "key": "TAU",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "s",
+          "description": "Thermal capacitance time constant"
+        },
+        {
+          "key": "T_AMB",
+          "type": "real",
+          "defaultValue": 308.15,
+          "unit": "K",
+          "description": "Ambient sink temperature"
+        },
+        {
+          "key": "T0",
+          "type": "real",
+          "defaultValue": 318.15,
+          "unit": "K",
+          "description": "Initial condenser temperature"
+        }
+      ],
+      "wasmKernel": "CO",
+      "library": "vc",
+      "archetypeId": 61
+    }
+  },
+  {
+    "name": "TX",
+    "kind": "easy5_component",
+    "namePath": "easy5:vc/TX",
+    "exports": [
+      "CD",
+      "AREA_MAX",
+      "RHO_L",
+      "SH_SET",
+      "K_SH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Thermostatic Expansion Valve (TXV)",
+      "category": "Multiphase",
+      "domain": "thermal",
+      "description": "Superheat-modulated expansion valve metering two-phase refrigerant mass flow across pressure drop.",
+      "provenance": "ASHRAE Handbook — Refrigeration, Ch. 11 (Thermostatic Expansion Valve Flow)",
+      "aliases": [
+        "VC/TX",
+        "txv",
+        "expansion_valve"
+      ],
+      "parameters": [
+        {
+          "key": "CD",
+          "type": "real",
+          "defaultValue": 0.65,
+          "unit": "",
+          "description": "Valve discharge coefficient"
+        },
+        {
+          "key": "AREA_MAX",
+          "type": "real",
+          "defaultValue": 0.00002,
+          "unit": "m^2",
+          "description": "Maximum throat area"
+        },
+        {
+          "key": "RHO_L",
+          "type": "real",
+          "defaultValue": 1150,
+          "unit": "kg/m^3",
+          "description": "Liquid refrigerant density"
+        },
+        {
+          "key": "SH_SET",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "K",
+          "description": "Superheat setpoint"
+        },
+        {
+          "key": "K_SH",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/K",
+          "description": "Superheat proportional gain"
+        }
+      ],
+      "wasmKernel": "TX",
+      "library": "vc",
+      "archetypeId": 62
+    }
+  },
+  {
+    "name": "CP_VC",
+    "kind": "easy5_component",
+    "namePath": "easy5:vc/CP_VC",
+    "exports": [
+      "DISP",
+      "ETA_VOL",
+      "ETA_IS",
+      "GAMMA",
+      "CP_V"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Vapor-Cycle Compressor",
+      "category": "Multiphase",
+      "domain": "thermal",
+      "description": "Polytropic vapor-cycle compressor computing refrigerant mass flow, discharge temperature, and shaft power.",
+      "provenance": "ASHRAE Handbook — Fundamentals, Ch. 2 (Isentropic/Polytropic Compression)",
+      "aliases": [
+        "VC/CP",
+        "VC/CP_VC",
+        "compressor"
+      ],
+      "parameters": [
+        {
+          "key": "DISP",
+          "type": "real",
+          "defaultValue": 0.00003,
+          "unit": "m^3/rev",
+          "description": "Swept displacement volume"
+        },
+        {
+          "key": "ETA_VOL",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "",
+          "description": "Volumetric efficiency"
+        },
+        {
+          "key": "ETA_IS",
+          "type": "real",
+          "defaultValue": 0.78,
+          "unit": "",
+          "description": "Isentropic efficiency"
+        },
+        {
+          "key": "GAMMA",
+          "type": "real",
+          "defaultValue": 1.18,
+          "unit": "",
+          "description": "Refrigerant vapor specific heat ratio"
+        },
+        {
+          "key": "CP_V",
+          "type": "real",
+          "defaultValue": 900,
+          "unit": "J/(kg*K)",
+          "description": "Vapor specific heat"
+        }
+      ],
+      "wasmKernel": "CP_VC",
+      "library": "vc",
+      "archetypeId": 63
+    }
+  }
+]

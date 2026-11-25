@@ -1,0 +1,22 @@
+import { QuadParams, AltitudeGains } from "./types.msx";
+import { verticalAcceleration } from "./propulsion.msx";
+import { computeRotorRpmCommand } from "./controller.msx";
+
+function runAltitudeHoldMission(p: QuadParams, g: AltitudeGains, targetZ: f64, dt: f64, steps: i32): f64 {
+  let z: f64 = 0.0;
+  let vz: f64 = 0.0;
+  let step: i32 = 0;
+
+  while (step < steps) {
+    let rpmCmd: f64 = computeRotorRpmCommand(p, g, targetZ, z, vz);
+    let az: f64 = verticalAcceleration(p, rpmCmd, vz);
+    vz = vz + az * dt;
+    z = z + vz * dt;
+    if (z < 0.0) {
+      z = 0.0;
+      vz = 0.0;
+    }
+    step = step + 1;
+  }
+  return z;
+}

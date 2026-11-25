@@ -1,0 +1,12 @@
+{
+  "id": "genbank-01-synthetic-gfp-fasta",
+  "lang": "genbank",
+  "subFormats": ["fasta"],
+  "difficulty": 1,
+  "title": "Synthetic Fluorescent Reporter Genes in FASTA",
+  "description": "Multi-record FASTA nucleotide file containing validated in-frame synthetic GFP and RFP coding sequences with clean start and stop codons.",
+  "category": "Bioinformatics & Genomics",
+  "tags": ["genbank", "fasta", "gfp", "dna-sequence"],
+  "activeFile": "gfp_frag.fasta",
+  "isDefaultStarter": true
+}

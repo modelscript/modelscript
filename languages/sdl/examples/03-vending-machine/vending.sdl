@@ -1,0 +1,61 @@
+/* SDL-88 Automated Vending Machine Coin & Dispense Controller */
+SYSTEM VendingMachine;
+  SIGNAL Coin(Integer), SelectItem(Integer), Cancel, Dispense(Integer), Refund(Integer), VendDone;
+
+  BLOCK ControllerBlock;
+    PROCESS Dispenser(1, 1);
+      DCL credit Integer := 0;
+      DCL coinVal Integer := 0;
+      DCL itemCode Integer := 0;
+      DCL price Integer := 100;
+      TIMER T_Vend;
+
+      START;
+        TASK credit := 0;
+        NEXTSTATE Idle;
+
+      STATE Idle;
+        INPUT Coin(coinVal);
+          TASK credit := credit + coinVal;
+          NEXTSTATE Accepting;
+      ENDSTATE Idle;
+
+      STATE Accepting;
+        INPUT Coin(coinVal);
+          TASK credit := credit + coinVal;
+          NEXTSTATE Accepting;
+        INPUT SelectItem(itemCode);
+          DECISION credit >= price;
+            (TRUE):
+              TASK credit := credit - price;
+              OUTPUT Dispense(itemCode) TO ENV;
+              SET(NOW + 5.0, T_Vend);
+              NEXTSTATE Dispensing;
+            ELSE:
+              NEXTSTATE Accepting;
+          ENDDECISION;
+        INPUT Cancel;
+          OUTPUT Refund(credit) TO ENV;
+          TASK credit := 0;
+          NEXTSTATE Idle;
+      ENDSTATE Accepting;
+
+      STATE Dispensing;
+        INPUT VendDone;
+          RESET(T_Vend);
+          DECISION credit > 0;
+            (TRUE):
+              OUTPUT Refund(credit) TO ENV;
+              TASK credit := 0;
+              NEXTSTATE Idle;
+            ELSE:
+              NEXTSTATE Idle;
+          ENDDECISION;
+        INPUT T_Vend;
+          OUTPUT Refund(credit) TO ENV;
+          TASK credit := 0;
+          NEXTSTATE Idle;
+      ENDSTATE Dispensing;
+    ENDPROCESS Dispenser;
+  ENDBLOCK ControllerBlock;
+ENDSYSTEM VendingMachine;

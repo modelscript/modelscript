@@ -1,0 +1,11 @@
+{
+  "id": "epanet-02-looped-municipal-grid",
+  "lang": "epanet",
+  "subFormats": ["inp"],
+  "difficulty": 2,
+  "title": "Looped 6-Node Municipal Pipe Grid",
+  "description": "Gravity-fed two-loop municipal water distribution grid with six demand junctions, pressure-reducing valve, and Hazen-Williams headloss formulation.",
+  "category": "Water Distribution Hydraulics",
+  "tags": ["epanet", "looped-network", "hazen-williams", "prv"],
+  "activeFile": "municipal_grid.inp"
+}

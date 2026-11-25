@@ -250,7 +250,9 @@ export class CaeContractOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.contractId === id),
+              l.args.some(
+                (a) => typeof a === "object" && a !== null && (a as { contractId?: unknown }).contractId === id,
+              ),
             ),
             explanation: `CAE Contract Violation: Contract '${id}' on '${spec.metricName}' failed. Actual simulated value ${spec.actualValue}${unitStr} violates requirement ${spec.operator} ${spec.threshold}${unitStr} by ${delta.toFixed(4)}${unitStr}.`,
             culpritEntities: culprits,
@@ -276,7 +278,9 @@ export class CaeContractOracle implements TheoryOracle {
             isSat: false,
             conflict: {
               literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-                l.args.some((a) => a?.contractId === id),
+                l.args.some(
+                  (a) => typeof a === "object" && a !== null && (a as { contractId?: unknown }).contractId === id,
+                ),
               ),
               explanation: `CAE Contract Cross-Theory Bound Violation: Contract '${id}' on '${spec.metricName}' has actual simulated value ${spec.actualValue}, violating external cooperating theory bounds [${lo}, ${hi}].`,
               culpritEntities: culprits,

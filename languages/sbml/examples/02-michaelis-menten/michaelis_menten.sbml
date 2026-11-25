@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="MichaelisMentenKinetics" name="Michaelis-Menten Enzymatic Kinetics">
+    <listOfCompartments>
+      <compartment id="cytosol" name="Cytosol" size="1.0" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="S" name="Substrate" compartment="cytosol" initialConcentration="12.0" constant="false"/>
+      <species id="E" name="Free Enzyme" compartment="cytosol" initialConcentration="1.5" constant="false"/>
+      <species id="ES" name="Enzyme-Substrate Complex" compartment="cytosol" initialConcentration="0.0" constant="false"/>
+      <species id="P" name="Product" compartment="cytosol" initialConcentration="0.0" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="k_on" name="Association Rate Constant" value="0.6" constant="true"/>
+      <parameter id="k_off" name="Dissociation Rate Constant" value="0.15" constant="true"/>
+      <parameter id="k_cat" name="Catalytic Turnover Rate" value="0.45" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_bind" name="Substrate Binding" reversible="true">
+        <listOfReactants>
+          <speciesReference species="S" stoichiometry="1"/>
+          <speciesReference species="E" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="ES" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <formula>cytosol * (k_on * S * E - k_off * ES)</formula>
+        </kineticLaw>
+      </reaction>
+      <reaction id="R_cat" name="Catalytic Conversion" reversible="false">
+        <listOfReactants>
+          <speciesReference species="ES" stoichiometry="1"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference species="P" stoichiometry="1"/>
+          <speciesReference species="E" stoichiometry="1"/>
+        </listOfProducts>
+        <kineticLaw>
+          <formula>cytosol * k_cat * ES</formula>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

@@ -1,0 +1,11 @@
+{
+  "id": "sel-02-sel421-distance-protection",
+  "lang": "sel",
+  "subFormats": ["txt"],
+  "difficulty": 2,
+  "title": "SEL-421 Transmission Line Distance Protection (Zones 1–3)",
+  "description": "SEL-421 230 kV transmission line protection settings with stepped Zone 1/2/3 mho distance reaches, phase/ground backup overcurrent, and SELogic zone-timer trip supervision.",
+  "category": "Power System Protection",
+  "tags": ["sel", "sel-421", "distance-protection", "230kv", "selogic"],
+  "activeFile": "sel421_line.txt"
+}

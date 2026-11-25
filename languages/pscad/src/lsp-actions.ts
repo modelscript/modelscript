@@ -59,8 +59,13 @@ function textAction<T>(
 }
 
 export interface PscadActionDeps {
-  buildDiagram?: (project: any, definitionName?: string) => Promise<unknown> | any;
-  getEmtSolverRunner?: () => Promise<((circuit: any, options: any) => any) | undefined>;
+  buildDiagram?: (
+    project: ReturnType<typeof import("./index.js").parsePscx>,
+    definitionName?: string,
+  ) => Promise<unknown> | unknown;
+  getEmtSolverRunner?: () => Promise<
+    Parameters<typeof import("./index.js").runPscadSimulationPipeline>[0]["solverRunner"]
+  >;
 }
 
 export function createPscadActionHandlers(

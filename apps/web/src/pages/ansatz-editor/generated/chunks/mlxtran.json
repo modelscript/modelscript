@@ -1,0 +1,93 @@
+[
+  {
+    "id": "mlxtran-01-iv-bolus-1cmt",
+    "lang": "mlxtran",
+    "subFormats": ["mlxtran"],
+    "difficulty": 1,
+    "title": "Single-Dose One-Compartment IV Bolus PK",
+    "description": "Foundational Monolix longitudinal one-compartment intravenous bolus pharmacokinetic model with linear clearance and companion plasma concentration dataset.",
+    "category": "Pharmacometrics",
+    "tags": ["mlxtran", "monolix", "pk", "iv-bolus", "multi-file"],
+    "activeFile": "pk1.mlxtran",
+    "fileNames": ["pk1.mlxtran", "pk1_data.csv"],
+    "fileCount": 2,
+    "isDefaultStarter": true,
+    "code": "; Single-dose one-compartment IV bolus model\n[LONGITUDINAL]\ninput = {Cl, V}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V)\niv(cmt = 1)\n\nEQUATION:\nddt_Ac = -(Cl / V) * Ac\nCc = Ac / V\n\nOUTPUT:\noutput = {Cc}\n",
+    "files": {
+      "pk1.mlxtran": "; Single-dose one-compartment IV bolus model\n[LONGITUDINAL]\ninput = {Cl, V}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V)\niv(cmt = 1)\n\nEQUATION:\nddt_Ac = -(Cl / V) * Ac\nCc = Ac / V\n\nOUTPUT:\noutput = {Cc}\n",
+      "pk1_data.csv": "ID,TIME,AMOUNT,Y\n1,0.0,100,0.0\n1,0.5,0,4.6\n1,2.0,0,3.8\n1,6.0,0,2.2\n1,12.0,0,1.0\n2,0.0,100,0.0\n2,0.5,0,5.0\n2,2.0,0,4.1\n2,6.0,0,2.4\n2,12.0,0,1.1\n"
+    }
+  },
+  {
+    "id": "mlxtran-02-oral-absorption-tlag",
+    "lang": "mlxtran",
+    "subFormats": ["mlxtran"],
+    "difficulty": 2,
+    "title": "Oral First-Order Absorption with Lag Time",
+    "description": "One-compartment oral absorption PK model incorporating a gastrointestinal lag time (Tlag), depot compartment absorption rate ka, and linear elimination.",
+    "category": "Pharmacometrics",
+    "tags": ["mlxtran", "oral-pk", "tlag", "absorption", "multi-file"],
+    "activeFile": "oral_tlag.mlxtran",
+    "fileNames": ["oral_tlag.mlxtran", "oral_data.csv"],
+    "fileCount": 2,
+    "code": "; One-compartment oral absorption with lag time\n[LONGITUDINAL]\ninput = {Tlag, ka, Cl, V}\n\nPK:\ndepot(target = Ad, Tlag = Tlag)\ncompartment(cmt = 1, amount = Ac, volume = V)\n\nEQUATION:\nddt_Ad = -ka * Ad\nddt_Ac = ka * Ad - (Cl / V) * Ac\nCc = Ac / V\n\nOUTPUT:\noutput = {Cc}\n",
+    "files": {
+      "oral_tlag.mlxtran": "; One-compartment oral absorption with lag time\n[LONGITUDINAL]\ninput = {Tlag, ka, Cl, V}\n\nPK:\ndepot(target = Ad, Tlag = Tlag)\ncompartment(cmt = 1, amount = Ac, volume = V)\n\nEQUATION:\nddt_Ad = -ka * Ad\nddt_Ac = ka * Ad - (Cl / V) * Ac\nCc = Ac / V\n\nOUTPUT:\noutput = {Cc}\n",
+      "oral_data.csv": "ID,TIME,AMOUNT,Y\n1,0.0,250,0.0\n1,0.5,0,0.2\n1,1.0,0,3.9\n1,2.0,0,6.8\n1,4.0,0,6.1\n1,8.0,0,3.8\n1,12.0,0,2.1\n2,0.0,250,0.0\n2,1.0,0,4.2\n2,2.0,0,7.1\n2,8.0,0,4.0\n"
+    }
+  },
+  {
+    "id": "mlxtran-03-michaelis-menten-2cmt",
+    "lang": "mlxtran",
+    "subFormats": ["mlxtran"],
+    "difficulty": 3,
+    "title": "Two-Compartment Nonlinear Michaelis-Menten Elimination",
+    "description": "Two-compartment pharmacokinetic ODE system with saturable Michaelis-Menten metabolic clearance (Vm, Km) and reversible peripheral tissue distribution.",
+    "category": "Pharmacometrics",
+    "tags": ["mlxtran", "michaelis-menten", "nonlinear-pk", "two-compartment", "multi-file"],
+    "activeFile": "mm_pk.mlxtran",
+    "fileNames": ["mm_pk.mlxtran", "mm_data.csv"],
+    "fileCount": 2,
+    "code": "; Two-compartment nonlinear Michaelis-Menten elimination model\n[LONGITUDINAL]\ninput = {Vm, Km, V1, Q, V2}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V1)\ncompartment(cmt = 2, amount = Ap, volume = V2)\niv(cmt = 1)\n\nEQUATION:\nCc = Ac / V1\nddt_Ac = -(Vm * Cc) / (Km + Cc) - (Q / V1) * Ac + (Q / V2) * Ap\nddt_Ap = (Q / V1) * Ac - (Q / V2) * Ap\n\nOUTPUT:\noutput = {Cc}\n",
+    "files": {
+      "mm_pk.mlxtran": "; Two-compartment nonlinear Michaelis-Menten elimination model\n[LONGITUDINAL]\ninput = {Vm, Km, V1, Q, V2}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V1)\ncompartment(cmt = 2, amount = Ap, volume = V2)\niv(cmt = 1)\n\nEQUATION:\nCc = Ac / V1\nddt_Ac = -(Vm * Cc) / (Km + Cc) - (Q / V1) * Ac + (Q / V2) * Ap\nddt_Ap = (Q / V1) * Ac - (Q / V2) * Ap\n\nOUTPUT:\noutput = {Cc}\n",
+      "mm_data.csv": "ID,TIME,AMOUNT,Y\n1,0.0,400,0.0\n1,0.5,0,18.9\n1,2.0,0,14.2\n1,6.0,0,9.1\n1,12.0,0,4.6\n1,24.0,0,0.9\n2,0.0,800,0.0\n2,0.5,0,38.4\n2,2.0,0,31.0\n2,6.0,0,22.5\n2,24.0,0,6.4\n"
+    }
+  },
+  {
+    "id": "mlxtran-04-tmdd-monoclonal-antibody",
+    "lang": "mlxtran",
+    "subFormats": ["mlxtran"],
+    "difficulty": 4,
+    "title": "Target-Mediated Drug Disposition (TMDD) mAb Model",
+    "description": "Mechanistic monoclonal antibody TMDD ODE model capturing free drug, free receptor turnover (ksyn, kdeg), high-affinity complex binding, and internalization.",
+    "category": "Biologics & Biopharma",
+    "tags": ["mlxtran", "tmdd", "monoclonal-antibody", "biologics", "multi-file"],
+    "activeFile": "tmdd.mlxtran",
+    "fileNames": ["tmdd.mlxtran", "mab_data.csv"],
+    "fileCount": 2,
+    "code": "; Target-Mediated Drug Disposition (TMDD) monoclonal antibody model\n[LONGITUDINAL]\ninput = {kel, kpt, ktp, kon, koff, ksyn, kdeg, kint, V}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V)\niv(cmt = 1)\n\nEQUATION:\nC = Ac / V\nddt_Ac = -kel * Ac - kpt * Ac + ktp * At - kon * C * R * V + koff * RC * V\nddt_At = kpt * Ac - ktp * At\nddt_R  = ksyn - kdeg * R - kon * C * R + koff * RC\nddt_RC = kon * C * R - (koff + kint) * RC\n\nOUTPUT:\noutput = {C}\n",
+    "files": {
+      "tmdd.mlxtran": "; Target-Mediated Drug Disposition (TMDD) monoclonal antibody model\n[LONGITUDINAL]\ninput = {kel, kpt, ktp, kon, koff, ksyn, kdeg, kint, V}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V)\niv(cmt = 1)\n\nEQUATION:\nC = Ac / V\nddt_Ac = -kel * Ac - kpt * Ac + ktp * At - kon * C * R * V + koff * RC * V\nddt_At = kpt * Ac - ktp * At\nddt_R  = ksyn - kdeg * R - kon * C * R + koff * RC\nddt_RC = kon * C * R - (koff + kint) * RC\n\nOUTPUT:\noutput = {C}\n",
+      "mab_data.csv": "ID,TIME,AMOUNT,Y\n1,0.0,150,0.0\n1,1.0,0,42.5\n1,24.0,0,28.1\n1,72.0,0,16.4\n1,168.0,0,6.2\n1,336.0,0,0.8\n2,0.0,300,0.0\n2,1.0,0,86.0\n2,72.0,0,41.2\n2,168.0,0,22.8\n2,336.0,0,7.5\n"
+    }
+  },
+  {
+    "id": "mlxtran-05-tumor-growth-inhibition-pkpd",
+    "lang": "mlxtran",
+    "subFormats": ["mlxtran"],
+    "difficulty": 5,
+    "title": "Tumor Growth Inhibition (TGI) Oncology PK/PD",
+    "description": "Simeoni-style oncology PK/PD model linking drug plasma exposure to proliferating tumor cells and transit-compartment apoptotic cell death.",
+    "category": "Oncology Pharmacometrics",
+    "tags": ["mlxtran", "oncology", "tgi", "pkpd", "multi-file"],
+    "activeFile": "tgi_pkpd.mlxtran",
+    "fileNames": ["tgi_pkpd.mlxtran", "oncology_cohort.csv"],
+    "fileCount": 2,
+    "code": "; Simeoni Tumor Growth Inhibition (TGI) Oncology PK/PD Model\n[LONGITUDINAL]\ninput = {Cl, V, kg, kkill, ktr, Kmax}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V)\niv(cmt = 1)\n\nEQUATION:\nCc = Ac / V\nWtot = X1 + X2 + X3\nddt_Ac = -(Cl / V) * Ac\nddt_X1 = kg * X1 * (1.0 - Wtot / Kmax) - kkill * Cc * X1\nddt_X2 = kkill * Cc * X1 - ktr * X2\nddt_X3 = ktr * X2 - ktr * X3\n\nOUTPUT:\noutput = {Cc, Wtot}\n",
+    "files": {
+      "tgi_pkpd.mlxtran": "; Simeoni Tumor Growth Inhibition (TGI) Oncology PK/PD Model\n[LONGITUDINAL]\ninput = {Cl, V, kg, kkill, ktr, Kmax}\n\nPK:\ncompartment(cmt = 1, amount = Ac, volume = V)\niv(cmt = 1)\n\nEQUATION:\nCc = Ac / V\nWtot = X1 + X2 + X3\nddt_Ac = -(Cl / V) * Ac\nddt_X1 = kg * X1 * (1.0 - Wtot / Kmax) - kkill * Cc * X1\nddt_X2 = kkill * Cc * X1 - ktr * X2\nddt_X3 = ktr * X2 - ktr * X3\n\nOUTPUT:\noutput = {Cc, Wtot}\n",
+      "oncology_cohort.csv": "ID,TIME,AMOUNT,CC,WTOT\n1,0,100,0.0,120.0\n1,3,0,8.2,132.0\n1,7,0,2.4,118.0\n1,14,0,0.3,94.0\n1,21,0,0.05,82.0\n2,0,100,0.0,145.0\n2,7,0,2.8,136.0\n2,14,0,0.4,108.0\n2,21,0,0.06,95.0\n"
+    }
+  }
+]

@@ -1,0 +1,332 @@
+[
+  {
+    "namePath": "ENDF6.MT.MT1",
+    "aliases": [
+      "MT=1",
+      "MF3_MT1",
+      "total"
+    ],
+    "label": "MT=1 (Total)",
+    "category": "Reaction",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#60a5fa\" stroke-width=\"2\"/><text x=\"44\" y=\"22\" text-anchor=\"middle\" fill=\"#60a5fa\" font-family=\"monospace\" font-size=\"12\" font-weight=\"700\">MT=1</text><text x=\"44\" y=\"39\" text-anchor=\"middle\" fill=\"#e2e8f0\" font-family=\"sans-serif\" font-size=\"9\">Total</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.MT.MT2",
+    "aliases": [
+      "MT=2",
+      "MF3_MT2",
+      "elastic"
+    ],
+    "label": "MT=2 (Elastic)",
+    "category": "Reaction",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#34d399\" stroke-width=\"2\"/><text x=\"44\" y=\"22\" text-anchor=\"middle\" fill=\"#34d399\" font-family=\"monospace\" font-size=\"12\" font-weight=\"700\">MT=2</text><text x=\"44\" y=\"39\" text-anchor=\"middle\" fill=\"#e2e8f0\" font-family=\"sans-serif\" font-size=\"9\">Elastic</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.MT.MT18",
+    "aliases": [
+      "MT=18",
+      "MF3_MT18",
+      "fission"
+    ],
+    "label": "MT=18 (Fission)",
+    "category": "Reaction",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f43f5e\" stroke-width=\"2\"/><text x=\"44\" y=\"22\" text-anchor=\"middle\" fill=\"#f43f5e\" font-family=\"monospace\" font-size=\"12\" font-weight=\"700\">MT=18</text><text x=\"44\" y=\"39\" text-anchor=\"middle\" fill=\"#e2e8f0\" font-family=\"sans-serif\" font-size=\"9\">Fission</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.MT.MT102",
+    "aliases": [
+      "MT=102",
+      "MF3_MT102",
+      "radiative capture"
+    ],
+    "label": "MT=102 (Radiative Capture)",
+    "category": "Reaction",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#fbbf24\" stroke-width=\"2\"/><text x=\"44\" y=\"22\" text-anchor=\"middle\" fill=\"#fbbf24\" font-family=\"monospace\" font-size=\"12\" font-weight=\"700\">MT=102</text><text x=\"44\" y=\"39\" text-anchor=\"middle\" fill=\"#e2e8f0\" font-family=\"sans-serif\" font-size=\"9\">Radiative Capture</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.MT.MT451",
+    "aliases": [
+      "MT=451",
+      "MF1_MT451",
+      "descriptive data"
+    ],
+    "label": "MT=451 (Descriptive Data)",
+    "category": "Reaction",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#94a3b8\" stroke-width=\"2\"/><text x=\"44\" y=\"22\" text-anchor=\"middle\" fill=\"#94a3b8\" font-family=\"monospace\" font-size=\"12\" font-weight=\"700\">MT=451</text><text x=\"44\" y=\"39\" text-anchor=\"middle\" fill=\"#e2e8f0\" font-family=\"sans-serif\" font-size=\"9\">Descriptive Data</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.MT.MT457",
+    "aliases": [
+      "MT=457",
+      "MF8_MT457",
+      "radioactive decay"
+    ],
+    "label": "MT=457 (Radioactive Decay)",
+    "category": "Reaction",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#fb923c\" stroke-width=\"2\"/><text x=\"44\" y=\"22\" text-anchor=\"middle\" fill=\"#fb923c\" font-family=\"monospace\" font-size=\"12\" font-weight=\"700\">MT=457</text><text x=\"44\" y=\"39\" text-anchor=\"middle\" fill=\"#e2e8f0\" font-family=\"sans-serif\" font-size=\"9\">Radioactive Decay</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.Nuclides.H_1",
+    "aliases": [
+      "hydrogen-1",
+      "MAT125",
+      "ZA1001"
+    ],
+    "label": "H-1 (MAT=125)",
+    "category": "Nuclide",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#34d399\" stroke-width=\"2\"/><text x=\"44\" y=\"24\" text-anchor=\"middle\" fill=\"#f8fafc\" font-family=\"monospace\" font-size=\"13\" font-weight=\"700\">H-1</text><text x=\"44\" y=\"40\" text-anchor=\"middle\" fill=\"#34d399\" font-family=\"monospace\" font-size=\"9\">MAT 125</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.Nuclides.B_10",
+    "aliases": [
+      "boron-10",
+      "MAT525",
+      "ZA5010"
+    ],
+    "label": "B-10 (MAT=525)",
+    "category": "Nuclide",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#fbbf24\" stroke-width=\"2\"/><text x=\"44\" y=\"24\" text-anchor=\"middle\" fill=\"#f8fafc\" font-family=\"monospace\" font-size=\"13\" font-weight=\"700\">B-10</text><text x=\"44\" y=\"40\" text-anchor=\"middle\" fill=\"#fbbf24\" font-family=\"monospace\" font-size=\"9\">MAT 525</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.Nuclides.U_235",
+    "aliases": [
+      "uranium-235",
+      "MAT9228",
+      "ZA92235"
+    ],
+    "label": "U-235 (MAT=9228)",
+    "category": "Nuclide",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f43f5e\" stroke-width=\"2\"/><text x=\"44\" y=\"24\" text-anchor=\"middle\" fill=\"#f8fafc\" font-family=\"monospace\" font-size=\"13\" font-weight=\"700\">U-235</text><text x=\"44\" y=\"40\" text-anchor=\"middle\" fill=\"#f43f5e\" font-family=\"monospace\" font-size=\"9\">MAT 9228</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.Nuclides.U_238",
+    "aliases": [
+      "uranium-238",
+      "MAT9237",
+      "ZA92238"
+    ],
+    "label": "U-238 (MAT=9237)",
+    "category": "Nuclide",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#34d399\" stroke-width=\"2\"/><text x=\"44\" y=\"24\" text-anchor=\"middle\" fill=\"#f8fafc\" font-family=\"monospace\" font-size=\"13\" font-weight=\"700\">U-238</text><text x=\"44\" y=\"40\" text-anchor=\"middle\" fill=\"#34d399\" font-family=\"monospace\" font-size=\"9\">MAT 9237</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ENDF6.Nuclides.Pu_239",
+    "aliases": [
+      "plutonium-239",
+      "MAT9437",
+      "ZA94239"
+    ],
+    "label": "Pu-239 (MAT=9437)",
+    "category": "Nuclide",
+    "domain": "nuclear",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#0f172a\" stroke=\"#f43f5e\" stroke-width=\"2\"/><text x=\"44\" y=\"24\" text-anchor=\"middle\" fill=\"#f8fafc\" font-family=\"monospace\" font-size=\"13\" font-weight=\"700\">Pu-239</text><text x=\"44\" y=\"40\" text-anchor=\"middle\" fill=\"#f43f5e\" font-family=\"monospace\" font-size=\"9\">MAT 9437</text></svg>",
+    "ports": [
+      {
+        "name": "E_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "sigma_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

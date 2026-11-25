@@ -1,0 +1,11 @@
+{
+  "id": "dxf-02-architectural-floor-plan",
+  "lang": "dxf",
+  "subFormats": ["dxf-ascii", "architectural"],
+  "difficulty": 2,
+  "title": "Architectural Floor Plan Room with Layers",
+  "description": "Multi-layer architectural DXF floor plan defining exterior walls, partition walls, door swing arc, and window glazing on separate CAD layers.",
+  "category": "Architectural CAD",
+  "tags": ["dxf", "architecture", "floor-plan", "layers"],
+  "activeFile": "floor_plan.dxf"
+}

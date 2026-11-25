@@ -1,12 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { DAEBuilder, SymbolId } from "@modelscript/runtime";
+import type { DAEBuilder, QueryDB, SymbolId } from "@modelscript/runtime";
+import type { FlattenerHostLike } from "../types.js";
+import type { WasmBailInfo } from "./wasm-bail-reasons.js";
+import type { ModelicaModificationEnv } from "./wasm-bridge.js";
+
+export type { FlattenerHostLike };
 
 export interface SourceSpan {
   startOffset: number;
   endOffset: number;
   startPosition?: unknown;
   endPosition?: unknown;
+}
+
+export interface OuterNonConstantAccessEntry {
+  compName: string;
+  varName: string;
+  target: string;
+  p: string;
 }
 
 export interface FlatteningState {
@@ -20,8 +32,8 @@ export interface FlatteningState {
   stateOutputVars?: Set<string> | undefined;
   isInsidePrevious?: boolean | undefined;
   isInsideClock?: boolean | undefined;
-  currentCompClauseRange?: SourceSpan | any;
-  outerNonConstantAccess?: any[] | undefined;
+  currentCompClauseRange?: SourceSpan | undefined;
+  outerNonConstantAccess?: OuterNonConstantAccessEntry[] | undefined;
   currentPrefix?: string | undefined;
   tmpVarMap?: Map<string, string> | undefined;
   tmpVarCounter?: number | undefined;
@@ -39,31 +51,20 @@ export interface FlatteningState {
   deducedOutputShapes: Map<string, number[]>;
   ignoredEqIndices?: Set<number> | undefined;
   wasmFlattener?: number | undefined;
-  emptyWasmEnv?: any;
+  emptyWasmEnv?: ModelicaModificationEnv | undefined;
   wasmErrorCode?: number | undefined;
-  wasmBail?: any;
-  db?: any;
-  flattener?: any;
+  wasmBail?: WasmBailInfo | undefined;
+  db?: QueryDB | undefined;
+  flattener?: FlattenerHostLike | undefined;
   currentClassId?: SymbolId | undefined;
   currentRootClassId?: SymbolId | undefined;
   modelName?: string | undefined;
   isRealNameCache: Map<number | string, boolean>;
   varPrefixSet?: Set<string> | undefined;
   varPrefixCount?: number | undefined;
-  overconstrainedConnections?: any;
+  overconstrainedConnections?: unknown;
   overconstrainedEquationIds?: Set<number> | undefined;
   pendingFinalParamNames?: Set<string> | undefined;
-}
-
-interface FlattenerHostLike {
-  innerOuterComponents?: Set<string>;
-  activeLoopVars?: Set<string>;
-  currentPrefix?: string;
-  db?: unknown;
-  currentClassId?: SymbolId;
-  currentRootClassId?: SymbolId;
-  pushLoopVar?: (name: string) => void;
-  popLoopVar?: (name: string) => void;
 }
 
 const flatteningStateStore = new WeakMap<DAEBuilder, FlatteningState>();
@@ -83,7 +84,7 @@ export function getFlatteningState(dae: DAEBuilder, flattener?: FlattenerHostLik
   let currentPrefixStore: string | undefined;
   let stmtRangesStore: Map<number, SourceSpan> | undefined;
   let deducedOutputShapesStore: Map<string, number[]> | undefined;
-  let dbStore: unknown;
+  let dbStore: QueryDB | undefined;
   let currentClassIdStore: SymbolId | undefined;
   let currentRootClassIdStore: SymbolId | undefined;
   let isRealNameCacheStore: Map<number | string, boolean> | undefined;
@@ -159,10 +160,10 @@ export function getFlatteningState(dae: DAEBuilder, flattener?: FlattenerHostLik
     emptyWasmEnv: undefined,
     wasmErrorCode: undefined,
     wasmBail: undefined,
-    get db(): unknown {
+    get db(): QueryDB | undefined {
       return dbStore ?? getF()?.db;
     },
-    set db(val: unknown) {
+    set db(val: QueryDB | undefined) {
       dbStore = val;
     },
     get flattener(): FlattenerHostLike | undefined {

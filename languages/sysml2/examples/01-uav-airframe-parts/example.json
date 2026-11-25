@@ -1,0 +1,12 @@
+{
+  "id": "sysml2-01-uav-airframe-parts",
+  "lang": "sysml2",
+  "subFormats": ["sysml"],
+  "difficulty": 1,
+  "title": "UAV Airframe Structural Decomposition",
+  "description": "SysML v2 structural part definitions for a fixed-wing unmanned aerial vehicle airframe including fuselage, wing assembly, tailplane, and mass attributes.",
+  "category": "Systems Architecture",
+  "tags": ["sysml2", "uav", "airframe", "parts", "structure"],
+  "activeFile": "Airframe.sysml",
+  "isDefaultStarter": true
+}

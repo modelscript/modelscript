@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<febio_spec version="4.0">
+  <Module type="solid"/>
+  <Control>
+    <analysis>STATIC</analysis>
+    <time_steps>20</time_steps>
+    <step_size>0.05</step_size>
+  </Control>
+  <Material>
+    <material id="1" name="ArterialMedia" type="Mooney-Rivlin">
+      <c1>0.045</c1>
+      <c2>0.015</c2>
+      <k>10.0</k>
+      <density>1.06</density>
+    </material>
+  </Material>
+  <Mesh>
+    <Nodes name="ArteryNodes">
+      <node id="1">0.0, 0.0, 0.0</node>
+      <node id="2">5.0, 0.0, 0.0</node>
+      <node id="3">5.0, 5.0, 0.0</node>
+      <node id="4">0.0, 5.0, 0.0</node>
+      <node id="5">0.0, 0.0, 1.2</node>
+      <node id="6">5.0, 0.0, 1.2</node>
+      <node id="7">5.0, 5.0, 1.2</node>
+      <node id="8">0.0, 5.0, 1.2</node>
+    </Nodes>
+    <Elements type="hex8" name="ArteryWall">
+      <elem id="1">1, 2, 3, 4, 5, 6, 7, 8</elem>
+    </Elements>
+    <NodeSet name="ClampedEnds">
+      <node id="1"/>
+      <node id="4"/>
+      <node id="5"/>
+      <node id="8"/>
+    </NodeSet>
+    <Surface name="LumenSurface">
+      <quad4 id="1">1, 2, 3, 4</quad4>
+    </Surface>
+  </Mesh>
+  <MeshDomains>
+    <SolidDomain name="ArteryWall" mat="1"/>
+  </MeshDomains>
+  <Boundary>
+    <bc name="FixArteryEnd" type="zero displacement" node_set="ClampedEnds">
+      <x_dof>1</x_dof>
+      <y_dof>1</y_dof>
+      <z_dof>1</z_dof>
+    </bc>
+  </Boundary>
+  <Loads>
+    <surface_load name="SystolicPressure" type="pressure" surface="LumenSurface">
+      <pressure>0.016</pressure>
+    </surface_load>
+  </Loads>
+</febio_spec>

@@ -1,0 +1,12 @@
+{
+  "id": "simscript-01-single-server-queue",
+  "lang": "simscript",
+  "subFormats": ["sim"],
+  "difficulty": 1,
+  "title": "Single-Server Queueing Process",
+  "description": "Minimal SIMSCRIPT II.5 discrete-event queueing model with an inline PREAMBLE, FIFO waiting set, single-unit server resource, and exponential interarrivals.",
+  "category": "Queueing Systems",
+  "tags": ["simscript", "queue", "fifo", "resource"],
+  "activeFile": "queue.sim",
+  "isDefaultStarter": true
+}

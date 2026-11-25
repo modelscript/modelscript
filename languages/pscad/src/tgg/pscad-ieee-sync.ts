@@ -274,7 +274,11 @@ export function synchronizeIeee2800ToPscad(
         threadId: "project:header",
       },
     );
-    const resolvedName = String(headerBack?.sourceNode["properties"]?.["name"] ?? targetName);
+    const getSourceProp = (node: Record<string, unknown> | undefined, key: string): unknown => {
+      const props = node?.["properties"];
+      return props && typeof props === "object" ? (props as Record<string, unknown>)[key] : undefined;
+    };
+    const resolvedName = String(getSourceProp(headerBack?.sourceNode, "name") ?? targetName);
     if (resolvedName !== origName && projectEl) {
       splices.push(xml.setAttributeSplice(projectEl, "name", resolvedName, originalPscadXml));
       changes.push({
@@ -288,6 +292,11 @@ export function synchronizeIeee2800ToPscad(
       });
     }
   }
+
+  const getSourceNodeProp = (node: Record<string, unknown> | undefined, key: string): unknown => {
+    const props = node?.["properties"];
+    return props && typeof props === "object" ? (props as Record<string, unknown>)[key] : undefined;
+  };
 
   // Locate IBR <Component> in PSCAD XML
   const compEls = findXmlElements(xmlDoc.root, "Component");
@@ -338,7 +347,7 @@ export function synchronizeIeee2800ToPscad(
       },
     );
     const resolvedLvrtMode = String(
-      lvrtBack?.sourceNode["properties"]?.["LVRT_mode"] ?? (wantsTrip ? "Legacy_Trip" : "IEEE2800_Standard"),
+      getSourceNodeProp(lvrtBack?.sourceNode, "LVRT_mode") ?? (wantsTrip ? "Legacy_Trip" : "IEEE2800_Standard"),
     );
 
     if (resolvedLvrtMode !== origLvrtMode) {
@@ -377,7 +386,7 @@ export function synchronizeIeee2800ToPscad(
           threadId: "clause:5.4.1",
         },
       );
-      const rawKp = Number(kpBack?.sourceNode["properties"]?.["Kp_v"] ?? 45.0 / targetStepMs);
+      const rawKp = Number(getSourceNodeProp(kpBack?.sourceNode, "Kp_v") ?? 45.0 / targetStepMs);
       const resolvedKp = Math.round(rawKp * 100) / 100;
       if (Math.abs(resolvedKp - origKpV) > 1e-3) {
         upsertParamSplice(ibrCompEl, "Kp_v", String(resolvedKp));
@@ -414,7 +423,7 @@ export function synchronizeIeee2800ToPscad(
           threadId: "clause:7.2.2.3.5",
         },
       );
-      const rawKi = Number(kiBack?.sourceNode["properties"]?.["Ki_v"] ?? (targetRecovPct - 90.0) * 4.0);
+      const rawKi = Number(getSourceNodeProp(kiBack?.sourceNode, "Ki_v") ?? (targetRecovPct - 90.0) * 4.0);
       const resolvedKi = Math.round(rawKi * 100) / 100;
       if (Math.abs(resolvedKi - origKiV) > 1e-3) {
         upsertParamSplice(ibrCompEl, "Ki_v", String(resolvedKi));

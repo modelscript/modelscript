@@ -1,0 +1,12 @@
+{
+  "id": "smiles-01-organic-solvents",
+  "lang": "smiles",
+  "subFormats": ["smiles"],
+  "difficulty": 1,
+  "title": "Common Organic Solvents Library",
+  "description": "Foundational polar protic, polar aprotic, and aromatic industrial solvents encoded in canonical SMILES for molecular weight and LogP estimation.",
+  "category": "Cheminformatics",
+  "tags": ["smiles", "solvents", "organic-chemistry", "properties"],
+  "activeFile": "solvents.smi",
+  "isDefaultStarter": true
+}

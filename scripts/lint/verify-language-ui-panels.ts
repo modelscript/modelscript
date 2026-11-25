@@ -4,7 +4,7 @@
  * Verifies every language declaring `ui.panels` or `ui.simulationCards` in `languages/*`:
  *   1. Discovers all UI entries via `discoverWorkspaceLanguages()`.
  *   2. Transforms every panel & simulation card through Vite's module graph using the
- *      exact same source aliases as the lightweight playground (`scripts/tools/language-playground.ts`),
+ *      exact same source aliases as the lightweight ansatz (`scripts/tools/language-ansatz.ts`),
  *      verifying zero unresolved imports or TSX compilation errors.
  */
 
@@ -64,7 +64,7 @@ async function main(): Promise<void> {
   );
 
   const server = await createServer({
-    root: path.join(REPO_ROOT, "scripts", "playground"),
+    root: path.join(REPO_ROOT, "scripts", "ansatz"),
     configFile: false,
     clearScreen: false,
     logLevel: "error",

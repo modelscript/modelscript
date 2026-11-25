@@ -19,7 +19,7 @@ interface RepositoryViewCardProps {
     cloneUrl?: string | undefined;
     repoUrl?: string | undefined;
     url?: string | undefined;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   isFullScreen?: boolean | undefined;
 }

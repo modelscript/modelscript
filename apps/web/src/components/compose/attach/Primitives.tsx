@@ -9,7 +9,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import styledImport from "styled-components";
 import type { AttachArtifactSummary, AttachChip, AttachIssue, AttachProvenance } from "./types";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 // ── Summary chips ─────────────────────────────────────────────
 

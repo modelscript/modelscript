@@ -74,12 +74,12 @@ Segment0_LabelValue:=1
     assert.strictEqual(xmlDoc.title, "CorticalAtlas");
   });
 
-  it("parses Morsel defaultCode (.nii.json) and NRRD headers via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
+  it("parses Ansatz defaultCode (.nii.json) and NRRD headers via native WASM GLR with hasError === false and surfaces syntax errors", async () => {
     const { getNiftiWasmParser } = await import("../src/parser/wasm-loader.js");
     const { validateNifti } = await import("../src/lsp.js");
     const parser = getNiftiWasmParser();
 
-    const morselDefaultCode = `{
+    const ansatzDefaultCode = `{
   "nifti_version": 1,
   "magic": "n+1",
   "descrip": "MNI152 T1w 1mm Isotropic Structural Brain Volume",
@@ -93,7 +93,7 @@ Segment0_LabelValue:=1
   "srow_z": [0.0, 0.0, 1.0, -72.0]
 }
 `;
-    const jsonTree = parser.parse(morselDefaultCode);
+    const jsonTree = parser.parse(ansatzDefaultCode);
     assert.ok(jsonTree?.rootNode);
     assert.strictEqual(jsonTree.rootNode.hasError, false);
 

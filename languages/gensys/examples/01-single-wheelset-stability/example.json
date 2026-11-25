@@ -1,0 +1,12 @@
+{
+  "id": "gensys-01-single-wheelset-stability",
+  "lang": "gensys",
+  "subFormats": ["tsimf"],
+  "difficulty": 1,
+  "title": "Single Wheelset Kalker Creepage Stability",
+  "description": "Single standard-gauge railway wheelset with S1002 tread profile and primary yaw/lateral suspension stiffnesses to evaluate Klingel kinematic oscillation and Kalker creepage stability.",
+  "category": "Rail Vehicle Dynamics",
+  "tags": ["wheelset", "kalker", "hunting", "rail"],
+  "activeFile": "wheelset.tsimf",
+  "isDefaultStarter": true
+}

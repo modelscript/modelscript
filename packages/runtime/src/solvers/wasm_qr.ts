@@ -33,6 +33,16 @@
 import { Interval } from "../analysis/wasm_interval.js";
 import { getDefaultWasmExports } from "../dae/wasm_loader.js";
 
+interface QrWasmExports {
+  memory: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
+  householderQrWasm?: (aPtr: number, qPtr: number, rPtr: number, workVPtr: number, n: number) => void;
+  matVecMulWasm?: (qPtr: number, vPtr: number, outPtr: number, n: number) => void;
+  matTransposeVecMulWasm?: (qPtr: number, vPtr: number, outPtr: number, n: number) => void;
+  encloseRotatedBoxWasm?: (cPtr: number, qPtr: number, hwPtr: number, loPtr: number, hiPtr: number, n: number) => void;
+}
+
 export interface QRResult {
   /** Orthogonal matrix Q (n x n, row-major arrays) */
   Q: Float64Array[];
@@ -54,7 +64,7 @@ export function householderQR(A: Float64Array[], n: number): QRResult {
     return { Q: [], R: [], n: 0 };
   }
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as QrWasmExports | null;
   if (w && typeof w.householderQrWasm === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
     const matBytes = n * n * 8;
     const vecBytes = n * 8;
@@ -137,7 +147,7 @@ export function multiplyMatrixVector(Q: Float64Array[], v: Float64Array | number
   const n = Q.length;
   if (n === 0) return new Float64Array(0);
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as QrWasmExports | null;
   if (w && typeof w.matVecMulWasm === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
     const qPtr = w.alloc(n * n * 8);
     const vPtr = w.alloc(n * 8);
@@ -174,7 +184,7 @@ export function multiplyTransposeMatrixVector(Q: Float64Array[], v: Float64Array
   const n = Q.length;
   if (n === 0) return new Float64Array(0);
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as QrWasmExports | null;
   if (
     w &&
     typeof w.matTransposeVecMulWasm === "function" &&
@@ -226,7 +236,7 @@ export function encloseRotatedBox(
   const n = Q.length;
   if (n === 0) return [];
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as QrWasmExports | null;
   if (
     w &&
     typeof w.encloseRotatedBoxWasm === "function" &&

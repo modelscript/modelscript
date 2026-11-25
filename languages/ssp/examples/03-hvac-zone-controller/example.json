@@ -1,0 +1,11 @@
+{
+  "id": "ssp-03-hvac-zone-controller",
+  "lang": "ssp",
+  "subFormats": ["ssd", "ssv"],
+  "difficulty": 3,
+  "title": "Closed-Loop HVAC Thermal Zone & Controller",
+  "description": "Building thermal zone co-simulation connecting a room thermal envelope FMU and a PI thermostat controller FMU in a closed feedback loop.",
+  "category": "Building Controls",
+  "tags": ["ssp", "hvac", "feedback-loop", "thermal", "multi-file"],
+  "activeFile": "SystemStructure.ssd"
+}

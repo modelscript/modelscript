@@ -1,0 +1,12 @@
+{
+  "id": "opendrive-01-straight-rural-highway",
+  "lang": "opendrive",
+  "subFormats": ["xodr"],
+  "difficulty": 1,
+  "title": "Straight Two-Lane Rural Highway Segment",
+  "description": "ASAM OpenDRIVE 1.6 two-lane bidirectional rural highway with standard 3.5 m driving lanes, paved shoulders, mild 1.5% vertical grade, and posted speed limit signage.",
+  "category": "Road Network Geometry",
+  "tags": ["opendrive", "highway", "lanes", "straight-road"],
+  "activeFile": "rural_highway.xodr",
+  "isDefaultStarter": true
+}

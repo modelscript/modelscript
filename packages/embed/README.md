@@ -19,7 +19,7 @@ ModelScript Embed Client SDK (`@modelscript/embed`) — zero-boilerplate `<model
 - **Bidirectional Host ↔ Embed RPC (`@modelscript/embed/protocol`, `src/protocol.ts`)**:
   - **Host → Embed Commands (`HostToEmbedMessage`)**: `setCode(code)`, `setView(view)`, `setAnchor(anchor)`, `setZoomMode(zoomMode)`, `setTheme(theme)`, `triggerSimulate({ stopTime, stepSize })`, and `REQUEST_EXPORT_SVG`.
   - **Embed → Host Events (`EmbedToHostMessage`)**: Subscribe via `embed.on(type, handler)` to `EMBED_READY`, `CODE_CHANGED`, `ANCHOR_CLICKED`, `SIMULATION_STATUS`, `SIMULATION_RESULTS`, `EXPORTED_SVG`, and `OPEN_TARGET_REQUESTED`.
-- **Smart Launch Routing (`getLaunchInfo`)**: Routes single-file snippets to `/playground#m=<token>` and multi-file packages directly into the full VS Code Web workbench (`/vscode/workbench/#memfs:artifact-<id>`).
+- **Smart Launch Routing (`getLaunchInfo`)**: Routes single-file snippets to `/editor#m=<token>` and multi-file packages directly into the full VS Code Web workbench (`/vscode/workbench/#memfs:artifact-<id>`).
 
 ### 3. Compressed Permalink Codec (`@modelscript/embed/codec`, `src/codec.ts`)
 

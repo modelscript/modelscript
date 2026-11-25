@@ -1,0 +1,12 @@
+{
+  "id": "sedml-03-repeated-task-parameter-scan",
+  "lang": "sedml",
+  "subFormats": ["sedml-l1v4", "sbml"],
+  "difficulty": 3,
+  "title": "RepeatedTask Parameter Scan over Oscillator Rate Constant",
+  "description": "SED-ML repeatedTask protocol performing a uniform linear parameter sweep across predation rate beta in a companion Lotka-Volterra SBML oscillator.",
+  "category": "Simulation Experiments",
+  "tags": ["sedml", "parameter-scan", "repeated-task", "oscillator", "multi-file"],
+  "activeFile": "scan.sedml",
+  "fileOrder": ["scan.sedml", "oscillator.sbml"]
+}

@@ -1,0 +1,45 @@
+{
+  "relayType": "SEL-351",
+  "relayId": "SUB_EAST_MAIN_351",
+  "terminalId": "FEEDER_1_MAIN_BREAKER_52",
+  "activeGroup": 1,
+  "frequencyHz": 60.0,
+  "phaseRotation": "ABC",
+  "ratios": {
+    "ctRatioPhase": 160,
+    "ctRatioGround": 160,
+    "ptRatioPhase": 1200,
+    "ptRatioNeutral": 1200
+  },
+  "groups": {
+    "1": {
+      "groupId": 1,
+      "phaseOvercurrent": {
+        "inst50P1P": 14.0,
+        "inst50P2P": 28.0,
+        "time51P1P": 4.5,
+        "curve51P1C": "U3",
+        "timeDial51P1TD": 2.0
+      },
+      "groundOvercurrent": {
+        "inst50G1P": 3.5,
+        "time51G1P": 1.2,
+        "curve51G1C": "U3",
+        "timeDial51G1TD": 1.5
+      },
+      "voltage": {
+        "underVoltage27P": 55.0,
+        "overVoltage59P": 132.0
+      },
+      "equations": {
+        "SV01": "50P1P OR 50G1P",
+        "SV02": "51P1T OR 51G1T",
+        "TRIP": "SV01 OR SV02",
+        "CLOSE": "!TRIP AND !27P AND IN101",
+        "OUT101": "TRIP",
+        "OUT102": "SV01 AND IN102"
+      }
+    }
+  },
+  "globalEquations": {}
+}

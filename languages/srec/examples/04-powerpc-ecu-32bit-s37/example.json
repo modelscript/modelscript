@@ -1,0 +1,11 @@
+{
+  "id": "srec-04-powerpc-ecu-32bit-s37",
+  "lang": "srec",
+  "subFormats": ["s37"],
+  "difficulty": 4,
+  "title": "PowerPC Automotive ECU 32-Bit High-Boot Firmware (S37)",
+  "description": "32-bit Motorola S37 firmware targeting an automotive MPC55xx PowerPC ECU boot vector at high unsigned flash address 0xFFF00100 with S7 execution start.",
+  "category": "Automotive ECU Firmware",
+  "tags": ["srec", "s37", "powerpc", "ecu", "32-bit"],
+  "activeFile": "ppc_ecu.srec"
+}

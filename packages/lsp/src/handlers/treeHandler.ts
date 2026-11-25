@@ -85,10 +85,14 @@ export function registerTreeHandlers(context: LspContext) {
         params.parentId?.startsWith("Modelica") ||
         !params.parentId
       ) {
-        await loadPrebakedMslIcons(iconCache, (globalThis as any).serverDistBase ?? params.uri);
+        await loadPrebakedMslIcons(iconCache, (globalThis as { serverDistBase?: string }).serverDistBase ?? params.uri);
       }
 
-      const nodes = await getTreeChildrenFast(unifiedIndex, params.parentId, uw);
+      const nodes = await getTreeChildrenFast(
+        unifiedIndex,
+        params.parentId,
+        uw as unknown as Parameters<typeof getTreeChildrenFast>[2],
+      );
       for (const node of nodes) {
         if (!node.iconSvg && node.compositeName) {
           const lookupName = node.compositeName.startsWith("__LIB__:")
@@ -116,20 +120,35 @@ export function registerTreeHandlers(context: LspContext) {
     (params: { parentId?: string | undefined }): ProjectTreeNodeInfo[] => {
       const nodes: ProjectTreeNodeInfo[] = [];
 
-      const getIndex = (ws: any) =>
+      interface TreeSymbolEntryLike {
+        id: number | string;
+        parentId: number | string | null;
+        name: string;
+        kind: string;
+        resourceId?: string | undefined;
+        metadata?: Record<string, unknown> | undefined;
+      }
+
+      interface WorkspaceIndexLike {
+        symbols?: Map<number | string, TreeSymbolEntryLike> | undefined;
+        byName?: Map<string, number[]> | undefined;
+        childrenOf?: Map<number | null, number[]> | undefined;
+      }
+
+      const getIndex = (ws: { getIndex?: () => WorkspaceIndexLike } | null | undefined): WorkspaceIndexLike =>
         typeof ws?.getIndex === "function"
           ? ws.getIndex()
           : { symbols: new Map(), byName: new Map(), childrenOf: new Map() };
 
-      const unified = getIndex(context.workspaceManager?.unifiedWorkspace);
+      const unified = getIndex(context.workspaceManager?.unifiedWorkspace as { getIndex?: () => WorkspaceIndexLike });
 
-      const allSymbols = new Map<string, any>();
+      const allSymbols = new Map<string, TreeSymbolEntryLike>();
       if (unified?.symbols) {
         for (const [id, entry] of unified.symbols) allSymbols.set(id.toString(), entry);
       }
 
       // Group top-level elements by resourceId
-      const files = new Map<string, any[]>();
+      const files = new Map<string, TreeSymbolEntryLike[]>();
       for (const entry of allSymbols.values()) {
         if (entry.resourceId) {
           if (!files.has(entry.resourceId)) files.set(entry.resourceId, []);
@@ -137,14 +156,14 @@ export function registerTreeHandlers(context: LspContext) {
         }
       }
 
-      function getCompositeName(entry: any): string {
+      function getCompositeName(entry: TreeSymbolEntryLike): string {
         if (entry.parentId === null) return entry.name;
         const parent = allSymbols.get(entry.parentId.toString());
         if (!parent) return entry.name;
         return getCompositeName(parent) + "." + entry.name;
       }
 
-      function hasClassChildren(entry: any) {
+      function hasClassChildren(entry: TreeSymbolEntryLike) {
         for (const child of allSymbols.values()) {
           if (child.parentId === entry.id && (child.kind === "Class" || child.kind === "Def")) {
             return true;
@@ -190,7 +209,10 @@ export function registerTreeHandlers(context: LspContext) {
                 name: entry.name,
                 uri: params.parentId,
                 compositeName: getCompositeName(entry),
-                classKind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
+                classKind:
+                  (entry.metadata?.["classKind"] as string | undefined) ??
+                  (entry.metadata?.["defKind"] as string | undefined) ??
+                  "class",
                 hasChildren: hasClassChildren(entry),
                 isFile: false,
               });
@@ -201,7 +223,7 @@ export function registerTreeHandlers(context: LspContext) {
           const compositeName = params.parentId.substring(sepIdx + 2);
           const entries = files.get(docUri) ?? [];
 
-          let parentEntry: any = null;
+          let parentEntry: TreeSymbolEntryLike | null = null;
           for (const entry of entries) {
             if (getCompositeName(entry) === compositeName) {
               parentEntry = entry;
@@ -217,7 +239,10 @@ export function registerTreeHandlers(context: LspContext) {
                   name: entry.name,
                   uri: docUri,
                   compositeName: getCompositeName(entry),
-                  classKind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
+                  classKind:
+                    (entry.metadata?.["classKind"] as string | undefined) ??
+                    (entry.metadata?.["defKind"] as string | undefined) ??
+                    "class",
                   hasChildren: hasClassChildren(entry),
                   isFile: false,
                 });
@@ -246,7 +271,7 @@ export function registerTreeHandlers(context: LspContext) {
       Boolean(uri) && (uri!.startsWith("sysml2:") || /\.(sysml|sysml2|kerml|owl|ttl|rdf|reqif|step|stp)$/i.test(uri!));
 
     if (!isNonModelicaUri && (cleanName.startsWith("Modelica.") || cleanName === "Modelica" || iconCache.size === 0)) {
-      await loadPrebakedMslIcons(iconCache, (globalThis as any).serverDistBase ?? uri);
+      await loadPrebakedMslIcons(iconCache, (globalThis as { serverDistBase?: string }).serverDistBase ?? uri);
       const afterMsl = getCachedClassIcon(cleanName) ?? getCachedClassIcon(className);
       if (afterMsl !== undefined) {
         return afterMsl || null;
@@ -304,7 +329,12 @@ export function registerTreeHandlers(context: LspContext) {
       return null;
     }
 
-    const getIconSvg = (globalThis as any).getClassIconSvg ?? (globalThis as any).modelicaDiagramOps?.getClassIconSvg;
+    type GetClassIconSvgFn = (cls: unknown, size: number, flag: boolean) => string | null | undefined;
+    const globalIcons = globalThis as {
+      getClassIconSvg?: GetClassIconSvgFn;
+      modelicaDiagramOps?: { getClassIconSvg?: GetClassIconSvgFn };
+    };
+    const getIconSvg = globalIcons.getClassIconSvg ?? globalIcons.modelicaDiagramOps?.getClassIconSvg;
     if (!getIconSvg) {
       iconCache.set(className, null);
       iconCache.set(cleanName, null);
@@ -376,7 +406,8 @@ export function registerTreeHandlers(context: LspContext) {
 
       const unified = context.workspaceManager.unifiedWorkspace.getIndex();
 
-      const allSymbols = new Map<string, any>();
+      type UnifiedSymbolEntry = NonNullable<typeof unified>["symbols"] extends Map<unknown, infer V> ? V : never;
+      const allSymbols = new Map<string, UnifiedSymbolEntry>();
       if (unified?.symbols) {
         for (const [id, entry] of unified.symbols) allSymbols.set(id.toString(), entry);
       }
@@ -387,8 +418,11 @@ export function registerTreeHandlers(context: LspContext) {
             seen.add(entry.name);
             classes.push({
               name: entry.name,
-              kind: (entry.metadata?.classKind as string) ?? (entry.metadata?.defKind as string) ?? "class",
-              uri: entry.resourceId,
+              kind:
+                (entry.metadata?.["classKind"] as string | undefined) ??
+                (entry.metadata?.["defKind"] as string | undefined) ??
+                "class",
+              uri: entry.resourceId ?? "",
             });
           }
         }

@@ -120,7 +120,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
       if (tmpPath) {
         try {
           if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-        } catch {}
+        } catch {
+          // Best-effort cleanup of temporary CAE upload file
+        }
       }
     }
   });
@@ -225,7 +227,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         try {
           fs.mkdirSync(resultDir, { recursive: true });
           fs.writeFileSync(path.join(resultDir, "job_spec.json"), JSON.stringify(jobSpec, null, 2), "utf8");
-        } catch {}
+        } catch {
+          // Best-effort persistence of job_spec.json snapshot
+        }
 
         // Enqueue job execution
         jobQueue.enqueue(`cae-${dbJobId}`, async () => {
@@ -486,7 +490,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
         if (fs.existsSync(specFile)) {
           try {
             jobSpec = JSON.parse(fs.readFileSync(specFile, "utf8")) as Partial<CaeJobSpec>;
-          } catch {}
+          } catch {
+            // Ignore unreadable or malformed job_spec.json
+          }
         }
       }
 
@@ -683,7 +689,9 @@ export function caeRouter(jobQueue: JobQueue, database: LibraryDatabase): Router
               }
             });
           }
-        } catch {}
+        } catch {
+          // Best-effort re-attachment of live log streamer on job restart
+        }
       }
     }
 

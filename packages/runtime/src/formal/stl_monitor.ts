@@ -104,7 +104,9 @@ export class StlMonitor {
    * Fast in-WASM zero-copy evaluation of Always[a, b] directly in WebAssembly linear memory.
    */
   public static evaluateAlwaysWasm(
-    wasmExports: Record<string, any>,
+    wasmExports: {
+      stl_eval_always?: (timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void;
+    },
     timePtr: number,
     valPtr: number,
     n: number,
@@ -112,8 +114,8 @@ export class StlMonitor {
     b: number,
     outPtr: number,
   ): void {
-    if (typeof wasmExports["stl_eval_always"] === "function") {
-      wasmExports["stl_eval_always"](timePtr, valPtr, n, a, b, outPtr);
+    if (typeof wasmExports.stl_eval_always === "function") {
+      wasmExports.stl_eval_always(timePtr, valPtr, n, a, b, outPtr);
     }
   }
 
@@ -121,7 +123,9 @@ export class StlMonitor {
    * Fast in-WASM zero-copy evaluation of Eventually[a, b] directly in WebAssembly linear memory.
    */
   public static evaluateEventuallyWasm(
-    wasmExports: Record<string, any>,
+    wasmExports: {
+      stl_eval_eventually?: (timePtr: number, valPtr: number, n: number, a: number, b: number, outPtr: number) => void;
+    },
     timePtr: number,
     valPtr: number,
     n: number,
@@ -129,8 +133,8 @@ export class StlMonitor {
     b: number,
     outPtr: number,
   ): void {
-    if (typeof wasmExports["stl_eval_eventually"] === "function") {
-      wasmExports["stl_eval_eventually"](timePtr, valPtr, n, a, b, outPtr);
+    if (typeof wasmExports.stl_eval_eventually === "function") {
+      wasmExports.stl_eval_eventually(timePtr, valPtr, n, a, b, outPtr);
     }
   }
 
@@ -138,7 +142,17 @@ export class StlMonitor {
    * Fast in-WASM zero-copy evaluation of Until[a, b] directly in WebAssembly linear memory.
    */
   public static evaluateUntilWasm(
-    wasmExports: Record<string, any>,
+    wasmExports: {
+      stl_eval_until?: (
+        timePtr: number,
+        lPtr: number,
+        rPtr: number,
+        n: number,
+        a: number,
+        b: number,
+        outPtr: number,
+      ) => void;
+    },
     timePtr: number,
     lPtr: number,
     rPtr: number,
@@ -147,8 +161,8 @@ export class StlMonitor {
     b: number,
     outPtr: number,
   ): void {
-    if (typeof wasmExports["stl_eval_until"] === "function") {
-      wasmExports["stl_eval_until"](timePtr, lPtr, rPtr, n, a, b, outPtr);
+    if (typeof wasmExports.stl_eval_until === "function") {
+      wasmExports.stl_eval_until(timePtr, lPtr, rPtr, n, a, b, outPtr);
     }
   }
 

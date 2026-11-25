@@ -14,11 +14,11 @@
 - **Polyglot Package Registry (`LibraryListPage`, `LibraryVersionPage`, `PackageDetailPage`)**: Browse, search, publish (`PublishPackageModal`), and inspect versioned ModelScript, Modelica, SysML v2, STEP, and domain libraries with dependency trees, SPDX license metadata, and one-click AASX / OKH export.
 - **Hierarchical Class & Symbol Navigation (`ClassDetailPage`, `ClassTree`)**: Navigate nested package hierarchies, inspect instantiated components and equations, and view rendered component icons and diagrams with perceptual dark-mode SVG color adaptation (`InvertedSvg`).
 
-### 2. Interactive Polyglot Ansatz, Studio, IDE & Workspaces (`src/pages/playground/`, `src/pages/ide/`, `src/pages/workspace/`, `packages/editor/src/workbench/`)
+### 2. Interactive Polyglot Ansatz, Studio, IDE & Workspaces (`src/pages/ansatz-editor/`, `src/pages/ide/`, `src/pages/workspace/`, `packages/editor/src/workbench/`)
 
-- **Browser-Native Polyglot Editor — Ansatz (`PlaygroundPage`)**: Dual-pane Monaco code editor and visual canvas powered by shared workbench components in `packages/editor/src/workbench/`, supporting in-browser WebAssembly parsing, DAE flattening, ODE/DAE numerical simulation, Vega/Recharts trajectory plotting, AntV X6 schematic editing, and Three.js / WebXR 3D CAD visualization.
+- **Browser-Native Polyglot Editor — Ansatz (`AnsatzEditorPage`)**: Dual-pane Monaco code editor and visual canvas powered by shared workbench components in `packages/editor/src/workbench/`, supporting in-browser WebAssembly parsing, DAE flattening, ODE/DAE numerical simulation, Vega/Recharts trajectory plotting, AntV X6 schematic editing, and Three.js / WebXR 3D CAD visualization.
 - **Embedded VS Code Web & Multi-File Workspaces (`IdeWorkspacePage`, `WorkspacePage`)**: Integrated VS Code Web engineering workbench (`/ide`) and multi-file polyglot workspace management with Git repository browsing (`RepositoryListPage`).
-- **Embeddable Artifact Viewer (`EmbedPlaygroundPage`, `RenderArtifactPage`)**: Powers `<modelscript-morsel>` and `<modelscript-viewer>` (`@modelscript/embed`) with `#m=...` DEFLATE permalink hydration, deep-linked element anchor highlighting, and `postMessage` RPC control.
+- **Embeddable Artifact Viewer (`EmbedAnsatzEditorPage`, `RenderArtifactPage`)**: Powers `<ansatz-editor>` and `<modelscript-viewer>` (`@modelscript/embed`) with `#m=...` DEFLATE permalink hydration, deep-linked element anchor highlighting, and `postMessage` RPC control.
 
 ### 3. Federated Engineering Social Hub, Spaces & Scholarly Citations (`src/pages/HomeFeedPage.tsx`, `src/pages/space/`, `src/pages/references/`, `src/components/post/`)
 

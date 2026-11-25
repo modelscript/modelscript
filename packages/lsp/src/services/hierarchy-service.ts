@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /* eslint-disable @typescript-eslint/no-useless-constructor */
-import type { ClassHierarchyNode, ComponentTreeNode, TreeNodeInfo } from "@modelscript/runtime";
+import type {
+  ClassHierarchyNode,
+  ComponentTreeNode,
+  SymbolEntry,
+  SymbolIndex,
+  TreeNodeInfo,
+} from "@modelscript/runtime";
 import { Connection } from "vscode-languageserver";
 import {
   buildClassHierarchy,
@@ -15,25 +21,43 @@ import {
 import { DocumentManager } from "./document-manager.js";
 import { WorkspaceManager } from "./workspace-manager.js";
 
+export type HierarchySymbolEntry = Pick<SymbolEntry, "id" | "name" | "parentId"> & Partial<SymbolEntry>;
+
+export interface HierarchySymbolIndexLike {
+  symbols: Map<number, HierarchySymbolEntry>;
+  childrenOf: Map<number | null, number[]>;
+}
+
+export interface HierarchyClassInstanceLike {
+  name?: string | undefined;
+  compositeName?: string | undefined;
+  classKind?: string | undefined;
+  kind?: string | undefined;
+  description?: string | null | undefined;
+  extendsClassInstances?: Array<{ classInstance?: HierarchyClassInstanceLike | null | undefined }> | undefined;
+  components?: Array<Record<string, unknown>> | undefined;
+  elements?: Array<Record<string, unknown>> | undefined;
+}
+
 export class HierarchyService {
   constructor(_connection: Connection, _documentManager: DocumentManager, _workspaceManager: WorkspaceManager) {}
 
-  classKindFromEntry(entry: any): string {
+  classKindFromEntry(entry: HierarchySymbolEntry): string {
     return classKindFromEntry(entry);
   }
 
-  isTreeVisible(entry: any): boolean {
+  isTreeVisible(entry: HierarchySymbolEntry): boolean {
     return isTreeVisible(entry);
   }
 
-  getCompositeName(entry: any, index: any): string {
+  getCompositeName(entry: HierarchySymbolEntry, index: SymbolIndex | HierarchySymbolIndexLike): string {
     if (entry.parentId === null) return entry.name;
     const parent = index.symbols.get(entry.parentId);
     if (!parent) return entry.name;
     return getCompositeName(parent, index) + "." + entry.name;
   }
 
-  getTreeChildrenFast(index: any, parentId?: string): TreeNodeInfo[] {
+  getTreeChildrenFast(index: SymbolIndex | HierarchySymbolIndexLike, parentId?: string): TreeNodeInfo[] {
     const nodes: TreeNodeInfo[] = [];
 
     if (!parentId) {
@@ -94,7 +118,7 @@ export class HierarchyService {
     return nodes;
   }
 
-  hasClassChildren(index: any, symbolId: number): boolean {
+  hasClassChildren(index: SymbolIndex | HierarchySymbolIndexLike, symbolId: number): boolean {
     const childIds = index.childrenOf.get(symbolId);
     if (!childIds) return false;
     for (const id of childIds) {
@@ -104,11 +128,14 @@ export class HierarchyService {
     return false;
   }
 
-  buildClassHierarchy(classInstance: any, visited = new Set<string>()): ClassHierarchyNode {
+  buildClassHierarchy(
+    classInstance: HierarchyClassInstanceLike | null | undefined,
+    visited = new Set<string>(),
+  ): ClassHierarchyNode {
     return buildClassHierarchy(classInstance, visited);
   }
 
-  buildComponentTree(classInstance: any, depth = 0): ComponentTreeNode {
+  buildComponentTree(classInstance: HierarchyClassInstanceLike | null | undefined, depth = 0): ComponentTreeNode {
     return buildComponentTree(classInstance, depth);
   }
 }

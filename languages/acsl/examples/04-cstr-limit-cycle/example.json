@@ -1,0 +1,11 @@
+{
+  "id": "acsl-04-cstr-limit-cycle",
+  "lang": "acsl",
+  "subFormats": ["csl"],
+  "difficulty": 4,
+  "title": "Chemical CSTR Exothermic Limit Cycle",
+  "description": "Coupled mass and energy balances for a non-isothermal continuous stirred-tank reactor (CSTR) with Arrhenius reaction kinetics and jacket cooling.",
+  "category": "Chemical Engineering",
+  "tags": ["acsl", "cstr", "nonlinear", "arrhenius", "limit-cycle"],
+  "activeFile": "cstr_reactor.csl"
+}

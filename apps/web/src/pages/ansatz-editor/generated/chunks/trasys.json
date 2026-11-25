@@ -1,0 +1,77 @@
+[
+  {
+    "id": "trasys-01-parallel-plates-view-factor",
+    "lang": "trasys",
+    "subFormats": ["trasys"],
+    "difficulty": 1,
+    "title": "Two Parallel Radiating Plates View Factor (F12)",
+    "description": "Classical analytical benchmark of two facing 1 m x 1 m parallel square plates separated by 1 m for Monte Carlo form-factor (FFCAL) and RADK verification.",
+    "category": "Spacecraft Radiation Analysis",
+    "tags": ["trasys", "view-factor", "ffcal", "radiation"],
+    "activeFile": "parallel_plates.tra",
+    "fileNames": ["parallel_plates.tra"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "C Two Parallel 1m x 1m Radiating Plates Benchmark (F12 ~ 0.1998)\nHEADER OPTIONS DATA\n  TITLE = Two Parallel Radiating Plates View Factor\n  MODEL = PARALLEL_PLATES\n  UNITS = SI\n  RAYS = 5000\n\nHEADER SURFACE DATA\n  S PLATE1 RECTANGLE W=1.0 H=1.0 NODE=101 PROP=BLACK_PAINT ACTIVE=TOP SHADE=YES\n    TX=0.0 TY=0.0 TZ=0.0\n  S PLATE2 RECTANGLE W=1.0 H=1.0 NODE=102 PROP=BLACK_PAINT ACTIVE=BOTTOM SHADE=YES\n    TX=0.0 TY=0.0 TZ=1.0\n\nHEADER OPERATIONS DATA\n  FFCAL\n  CALL RKCAL(EPS=0.001)\n\nEND OF DATA\n"
+  },
+  {
+    "id": "trasys-02-concentric-cylinders-enclosure",
+    "lang": "trasys",
+    "subFormats": ["trasys"],
+    "difficulty": 2,
+    "title": "Concentric Cylinders Annular Radiation Enclosure",
+    "description": "Concentric cylindrical cryogenic radiation shield enclosing a warm inner tube with top and bottom circular endcap disks for RADK exchange factors.",
+    "category": "Spacecraft Radiation Analysis",
+    "tags": ["trasys", "cylinders", "enclosure", "radk"],
+    "activeFile": "concentric_cylinders.tra",
+    "fileNames": ["concentric_cylinders.tra"],
+    "fileCount": 1,
+    "code": "C Concentric Cylinders Annular Radiation Enclosure\nHEADER OPTIONS DATA\n  TITLE = Concentric Cylinders Annular Enclosure\n  MODEL = ANNULAR_SHIELD\n  UNITS = SI\n  RAYS = 6000\n\nHEADER SURFACE DATA\n  S INNER CYLINDER R=0.30 L=2.0 NODE=101 PROP=BLACK_PAINT ACTIVE=TOP SHADE=YES\n  S OUTER CYLINDER R=0.60 L=2.0 NODE=102 PROP=SILVER_TEFLON ACTIVE=BOTTOM SHADE=YES\n  S CAP_BOT DISK R=0.60 NODE=103 PROP=GOLD_KAPTON ACTIVE=TOP SHADE=YES TZ=0.0\n  S CAP_TOP DISK R=0.60 NODE=104 PROP=GOLD_KAPTON ACTIVE=BOTTOM SHADE=YES TZ=2.0\n\nHEADER OPERATIONS DATA\n  FFCAL\n  CALL RKCAL(EPS=0.001)\n\nEND OF DATA\n"
+  },
+  {
+    "id": "trasys-03-cubesat-external-space",
+    "lang": "trasys",
+    "subFormats": ["trasys", "orbit"],
+    "difficulty": 3,
+    "title": "CubeSat 6-Surface External Space View Factors",
+    "description": "Six-surface 3U CubeSat external thermal radiation model in a 420 km ISS-inclination low-Earth orbit computing solar, albedo, and planetary IR heating.",
+    "category": "Spacecraft Radiation Analysis",
+    "tags": ["trasys", "cubesat", "leo", "orbital-heating"],
+    "activeFile": "cubesat_6face.tra",
+    "fileNames": ["cubesat_6face.tra"],
+    "fileCount": 1,
+    "code": "C 3U CubeSat 6-Surface External LEO Heating Model\nHEADER OPTIONS DATA\n  TITLE = 3U CubeSat External Orbital Heating\n  MODEL = CUBESAT_3U\n  UNITS = SI\n  RAYS = 5000\n\nHEADER SURFACE DATA\n  S FACE_PX RECTANGLE W=0.10 H=0.30 NODE=101 PROP=0.88, 0.84 ACTIVE=TOP SHADE=YES TX=0.05 ROTY=90\n  S FACE_NX RECTANGLE W=0.10 H=0.30 NODE=102 PROP=0.88, 0.84 ACTIVE=TOP SHADE=YES TX=-0.05 ROTY=-90\n  S FACE_PY RECTANGLE W=0.10 H=0.30 NODE=103 PROP=SILVER_TEFLON ACTIVE=TOP SHADE=YES TY=0.05 ROTX=-90\n  S FACE_NY RECTANGLE W=0.10 H=0.30 NODE=104 PROP=SILVER_TEFLON ACTIVE=TOP SHADE=YES TY=-0.05 ROTX=90\n  S FACE_PZ RECTANGLE W=0.10 H=0.10 NODE=105 PROP=WHITE_PAINT_Z93 ACTIVE=TOP SHADE=YES TZ=0.15\n  S FACE_NZ RECTANGLE W=0.10 H=0.10 NODE=106 PROP=GOLD_KAPTON ACTIVE=BOTTOM SHADE=YES TZ=-0.15\n\nHEADER ORBIT DATA\n  PLANET = EARTH\n  ALTITUDE = 420.0\n  BETA = 30.0\n  SOLAR = 1361.0\n  ALBEDO = 0.30\n  PLANETIR = 237.0\n\nHEADER OPERATIONS DATA\n  FFCAL\n  CALL RKCAL(EPS=0.001)\n  QCAL\n\nEND OF DATA\n"
+  },
+  {
+    "id": "trasys-04-parabolic-dish-solar-heating",
+    "lang": "trasys",
+    "subFormats": ["trasys", "orbit"],
+    "difficulty": 4,
+    "title": "Parabolic Dish Antenna Solar and Albedo Heating",
+    "description": "High-gain parabolic communications reflector with conical feed horn, cylindrical boom, and spacecraft bus deck evaluated for orbital solar-albedo heat loads.",
+    "category": "Spacecraft Radiation Analysis",
+    "tags": ["trasys", "paraboloid", "antenna", "qcal"],
+    "activeFile": "parabolic_dish.tra",
+    "fileNames": ["parabolic_dish.tra"],
+    "fileCount": 1,
+    "code": "C Parabolic High-Gain Dish Antenna Orbital Solar/Albedo Heating\nHEADER OPTIONS DATA\n  TITLE = Parabolic Dish Antenna Solar Heating\n  MODEL = HGA_ANTENNA\n  UNITS = SI\n  RAYS = 8000\n\nHEADER SURFACE DATA\n  S DISH1 PARABOLOID R=1.5 F=0.75 NODE=201 PROP=WHITE_PAINT_Z93 ACTIVE=BOTH SHADE=YES\n  S FEED1 CONE R1=0.12 R2=0.04 L=0.25 NODE=202 PROP=GOLD_KAPTON ACTIVE=TOP SHADE=YES TZ=0.75\n  S BOOM1 CYLINDER R=0.03 L=0.80 NODE=203 PROP=0.35, 0.80 ACTIVE=TOP SHADE=YES TX=0.40\n  S DECK1 DISK R=1.10 NODE=204 PROP=SILVER_TEFLON ACTIVE=TOP SHADE=YES TZ=-0.60\n\nHEADER ORBIT DATA\n  PLANET = EARTH\n  ALTITUDE = 780.0\n  BETA = 45.0\n  SOLAR = 1361.0\n  ALBEDO = 0.28\n  PLANETIR = 235.0\n\nHEADER OPERATIONS DATA\n  FFCAL\n  CALL RKCAL(EPS=0.001)\n  QCAL\n\nEND OF DATA\n"
+  },
+  {
+    "id": "trasys-05-geo-satellite-coupled",
+    "lang": "trasys",
+    "subFormats": ["trasys", "sinda-coupled"],
+    "difficulty": 5,
+    "title": "GEO Satellite Thermal-Radiation Coupled Suite",
+    "description": "Geosynchronous communications satellite TRASYS radiation geometry (bus, north/south radiators, solar wings, HGA dish) paired with its companion SINDA thermal network.",
+    "category": "Spacecraft Thermal-Radiation",
+    "tags": ["trasys", "geo-satellite", "coupled-thermal", "multi-file"],
+    "activeFile": "sat_rad.tra",
+    "fileNames": ["sat_rad.tra", "sat_thermal.sin"],
+    "fileCount": 2,
+    "code": "C Geosynchronous Communications Satellite Radiation Geometry (Paired with sat_thermal.sin)\nHEADER OPTIONS DATA\n  TITLE = GEO Communications Satellite Radiation Model\n  MODEL = GEO_COMSAT\n  UNITS = SI\n  RAYS = 10000\n\nHEADER SURFACE DATA\n  S BUS_CYL CYLINDER R=1.2 L=2.4 NODE=101 PROP=GOLD_KAPTON ACTIVE=TOP SHADE=YES\n  S RAD_N RECTANGLE W=2.2 H=1.8 NODE=102 PROP=SILVER_TEFLON ACTIVE=TOP SHADE=YES TY=1.25 ROTX=-90\n  S RAD_S RECTANGLE W=2.2 H=1.8 NODE=103 PROP=SILVER_TEFLON ACTIVE=TOP SHADE=YES TY=-1.25 ROTX=90\n  S WING_E RECTANGLE W=6.0 H=2.0 NODE=104 PROP=0.86, 0.82 ACTIVE=BOTH SHADE=YES TX=4.5\n  S WING_W RECTANGLE W=6.0 H=2.0 NODE=105 PROP=0.86, 0.82 ACTIVE=BOTH SHADE=YES TX=-4.5\n  S HGA_DISH PARABOLOID R=1.4 F=0.7 NODE=106 PROP=WHITE_PAINT_Z93 ACTIVE=TOP SHADE=YES TZ=1.6\n\nHEADER ORBIT DATA\n  PLANET = EARTH\n  ALTITUDE = 35786.0\n  BETA = 0.0\n  SOLAR = 1361.0\n  ALBEDO = 0.30\n  PLANETIR = 237.0\n\nHEADER OPERATIONS DATA\n  FFCAL\n  CALL RKCAL(EPS=0.0005)\n  QCAL\n\nEND OF DATA\n",
+    "files": {
+      "sat_rad.tra": "C Geosynchronous Communications Satellite Radiation Geometry (Paired with sat_thermal.sin)\nHEADER OPTIONS DATA\n  TITLE = GEO Communications Satellite Radiation Model\n  MODEL = GEO_COMSAT\n  UNITS = SI\n  RAYS = 10000\n\nHEADER SURFACE DATA\n  S BUS_CYL CYLINDER R=1.2 L=2.4 NODE=101 PROP=GOLD_KAPTON ACTIVE=TOP SHADE=YES\n  S RAD_N RECTANGLE W=2.2 H=1.8 NODE=102 PROP=SILVER_TEFLON ACTIVE=TOP SHADE=YES TY=1.25 ROTX=-90\n  S RAD_S RECTANGLE W=2.2 H=1.8 NODE=103 PROP=SILVER_TEFLON ACTIVE=TOP SHADE=YES TY=-1.25 ROTX=90\n  S WING_E RECTANGLE W=6.0 H=2.0 NODE=104 PROP=0.86, 0.82 ACTIVE=BOTH SHADE=YES TX=4.5\n  S WING_W RECTANGLE W=6.0 H=2.0 NODE=105 PROP=0.86, 0.82 ACTIVE=BOTH SHADE=YES TX=-4.5\n  S HGA_DISH PARABOLOID R=1.4 F=0.7 NODE=106 PROP=WHITE_PAINT_Z93 ACTIVE=TOP SHADE=YES TZ=1.6\n\nHEADER ORBIT DATA\n  PLANET = EARTH\n  ALTITUDE = 35786.0\n  BETA = 0.0\n  SOLAR = 1361.0\n  ALBEDO = 0.30\n  PLANETIR = 237.0\n\nHEADER OPERATIONS DATA\n  FFCAL\n  CALL RKCAL(EPS=0.0005)\n  QCAL\n\nEND OF DATA\n",
+      "sat_thermal.sin": "C Companion SINDA Thermal Network for GEO_COMSAT (Node IDs match sat_rad.tra)\nHEADER OPTIONS DATA\n  TITLE = \"GEO Comsat Coupled Thermal Network\"\n  ABSZRO = 0.0\n  SIGMA = 5.670374419D-8\nHEADER NODE DATA, GEO\n  101, 298.0, 12000.0 $ Central satellite bus\n  102, 290.0, 2800.0  $ North OSR radiator\n  103, 290.0, 2800.0  $ South OSR radiator\n  104, 320.0, 1400.0  $ East solar wing\n  105, 320.0, 1400.0  $ West solar wing\n  106, 275.0, 650.0   $ High-gain antenna dish\n  -999, 3.0, 0.0      $ Deep space sink\nHEADER CONDUCTOR DATA, GEO\n  10, 101, 102, 45.0\n  11, 101, 103, 45.0\n  12, 101, 104, 1.5\n  13, 101, 105, 1.5\n  14, 101, 106, 2.2\n  -20, 102, 999, 3.17\n  -21, 103, 999, 3.17\n  -22, 104, 999, 9.84\n  -23, 105, 999, 9.84\n  -24, 106, 999, 5.60\nHEADER SOURCE DATA, GEO\n  101, 1800.0\n  104, 850.0\n  105, 850.0\nHEADER CONSTANTS DATA\n  TIMEO = 0.0, TIMEND = 3600.0, DTIMEI = 10.0\nHEADER EXECUTION\n  CALL STDSTL\nEND OF DATA\n"
+    }
+  }
+]

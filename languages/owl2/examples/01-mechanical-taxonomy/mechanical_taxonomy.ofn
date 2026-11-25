@@ -1,0 +1,28 @@
+Prefix(: = <http://modelscript.org/ont/mech#>)
+Prefix(owl: = <http://www.w3.org/2002/07/owl#>)
+Prefix(xsd: = <http://www.w3.org/2001/XMLSchema#>)
+
+Ontology(<http://modelscript.org/ont/mech>
+  Declaration(Class(:MechanicalPart))
+  Declaration(Class(:RotatingElement))
+  Declaration(Class(:Shaft))
+  Declaration(Class(:Gear))
+  Declaration(Class(:Bearing))
+  Declaration(Class(:BallBearing))
+  Declaration(Class(:RollerBearing))
+  Declaration(NamedIndividual(:mainDriveShaft))
+  Declaration(NamedIndividual(:pinionGear01))
+
+  SubClassOf(:RotatingElement :MechanicalPart)
+  SubClassOf(:Shaft :RotatingElement)
+  SubClassOf(:Gear :RotatingElement)
+  SubClassOf(:Bearing :MechanicalPart)
+  SubClassOf(:BallBearing :Bearing)
+  SubClassOf(:RollerBearing :Bearing)
+
+  DisjointClasses(:Shaft :Gear :Bearing)
+  DisjointClasses(:BallBearing :RollerBearing)
+
+  ClassAssertion(:Shaft :mainDriveShaft)
+  ClassAssertion(:Gear :pinionGear01)
+)

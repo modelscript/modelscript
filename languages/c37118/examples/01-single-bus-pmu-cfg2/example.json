@@ -1,0 +1,12 @@
+{
+  "id": "c37118-01-single-bus-pmu-cfg2",
+  "lang": "c37118",
+  "subFormats": ["c37118"],
+  "difficulty": 1,
+  "title": "Single-Bus 60 Hz PMU Configuration Frame (CFG-2)",
+  "description": "Minimal IEEE C37.118.2 synchrophasor PMU configuration at 30 frames/s reporting positive-sequence 138 kV bus voltage, feeder current, active power, and breaker status.",
+  "category": "Wide-Area Grid Monitoring",
+  "tags": ["c37118", "pmu", "synchrophasor", "cfg-2", "60hz"],
+  "activeFile": "pmu_cfg2.c37118",
+  "isDefaultStarter": true
+}

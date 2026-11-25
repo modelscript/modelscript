@@ -1,0 +1,11 @@
+{
+  "id": "fits-05-space-telescope-mosaic-catalog",
+  "lang": "fits",
+  "subFormats": ["fits"],
+  "difficulty": 5,
+  "title": "Space Telescope Astrometric Mosaic and Source Catalog BINTABLE",
+  "description": "JWST/HST-style Multi-Extension FITS bundle pairing a drizzled 4096x4096 deep-field NIRCam IMAGE extension (full rotated TAN WCS) with a 6-column BINTABLE photometric source catalog.",
+  "category": "Astronomy & Scientific Imaging",
+  "tags": ["fits", "jwst", "bintable", "astrometry"],
+  "activeFile": "jwst_mosaic_cat.fits"
+}

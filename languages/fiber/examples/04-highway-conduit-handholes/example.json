@@ -1,0 +1,11 @@
+{
+  "id": "fiber-04-highway-conduit-handholes",
+  "lang": "fiber",
+  "subFormats": ["geojson"],
+  "difficulty": 4,
+  "title": "Highway Corridor Duct Bank with Handholes & Splice Vaults",
+  "description": "288-strand highway backbone conduit segmented across intermediate handholes and splice vaults with TIA-598-D strand assignments.",
+  "category": "Long-Haul Conduit",
+  "tags": ["fiber", "conduit", "handhole", "288-strand"],
+  "activeFile": "highway_conduit.geojson"
+}

@@ -37,11 +37,11 @@
     "src-gen/**"
   ],
   "scripts": {
+    "ansatz": "npx tsx ../../scripts/tools/language-ansatz.ts .",
     "build": "node ../../scripts/build/build-language-parser.js && tsc -b",
     "build:parser": "node ../../scripts/build/build-language-parser.js --force",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint src/ --ext .ts --no-warn-ignored",
-    "playground": "npx tsx ../../scripts/tools/language-playground.ts .",
     "test": "node ../../scripts/ci/test-runner.js"
   },
   "dependencies": {
@@ -53,7 +53,7 @@
     "typescript": "^5.9.3"
   },
   "modelscript": {
-    "tier": "alpha",
+    "tier": "beta",
     "category": "language"
   }
 }

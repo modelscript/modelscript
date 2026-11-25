@@ -1,0 +1,69 @@
+! Solar Wind Proton Plasma Moments (Density, Bulk Velocity, Thermal Speed)
+#header
+  CDF NAME: dscovr_fc_l2_swe_20260620.cdf
+  DATA ENCODING: NETWORK
+  MAJORITY: ROW_MAJOR
+  FORMAT: SINGLE
+  VERSION: 3.8.0
+
+#GLOBALattributes
+  "Project" 0: CDF_CHAR { "DSCOVR>Deep Space Climate Observatory" }
+  "Source_name" 0: CDF_CHAR { "DSCOVR_FC>Faraday Cup" }
+  "Discipline" 0: CDF_CHAR { "Space Physics>Interplanetary Studies" }
+  "Data_type" 0: CDF_CHAR { "L2>Level 2 Plasma Moments" }
+  "Descriptor" 0: CDF_CHAR { "SWE>Solar Wind Experiment" }
+
+#VARIABLEattributes
+  "DEPEND_0"
+  "UNITS"
+  "VALIDMIN"
+  "VALIDMAX"
+  "FILLVAL"
+  "VAR_TYPE"
+
+#variables
+  "EPOCH" CDF_EPOCH 1 0:[] T
+    "VAR_TYPE" CDF_CHAR { "support_data" }
+    "UNITS" CDF_CHAR { "ms" }
+    [0] = "2026-06-20T00:00:00.000Z"
+    [1] = "2026-06-20T00:01:00.000Z"
+    [2] = "2026-06-20T00:02:00.000Z"
+    [3] = "2026-06-20T00:03:00.000Z"
+  .
+  "PROTON_DENSITY" CDF_REAL4 1 0:[] T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "cm^-3" }
+    "VALIDMIN" CDF_REAL4 { 0.01 }
+    "VALIDMAX" CDF_REAL4 { 200.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = 6.45
+    [1] = 6.82
+    [2] = 7.15
+    [3] = 6.90
+  .
+  "PROTON_VELOCITY_GSE" CDF_REAL4 1 1:[3] T T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "km/s" }
+    "VALIDMIN" CDF_REAL4 { -2000.0, -500.0, -500.0 }
+    "VALIDMAX" CDF_REAL4 { 2000.0, 500.0, 500.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = { -428.5, 14.2, -8.6 }
+    [1] = { -435.1, 12.8, -7.1 }
+    [2] = { -441.0, 15.6, -9.4 }
+    [3] = { -438.2, 13.9, -8.0 }
+  .
+  "PROTON_THERMAL_SPEED" CDF_REAL4 1 0:[] T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "km/s" }
+    "VALIDMIN" CDF_REAL4 { 1.0 }
+    "VALIDMAX" CDF_REAL4 { 500.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = 34.2
+    [1] = 35.8
+    [2] = 37.1
+    [3] = 36.4
+  .
+#end

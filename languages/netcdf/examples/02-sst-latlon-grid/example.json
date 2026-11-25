@@ -1,0 +1,11 @@
+{
+  "id": "netcdf-02-sst-latlon-grid",
+  "lang": "netcdf",
+  "subFormats": ["cdl", "cf-1.8"],
+  "difficulty": 2,
+  "title": "2D Sea-Surface Temperature CF-1.8 Grid",
+  "description": "Regular 4x5 latitude-longitude Gulf Stream sea-surface temperature and land-sea mask grid following CF-1.8 metadata conventions.",
+  "category": "Oceanography",
+  "tags": ["netcdf", "sst", "grid", "oceanography", "cf-1.8"],
+  "activeFile": "gulf_stream_sst.cdl"
+}

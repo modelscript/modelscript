@@ -1,0 +1,23 @@
+{
+  "id": "gtfs-05-multimodal-metro-tram-ferry",
+  "lang": "gtfs",
+  "subFormats": ["gtfs", "txt"],
+  "difficulty": 5,
+  "title": "Multi-Modal Metro, Tram, and Ferry Network with Fare Rules",
+  "description": "Integrated coastal metropolitan transit network combining heavy metro rail, waterfront light-rail tram, and electric passenger ferry routes with intermodal transfers, shapes, and fare attributes.",
+  "category": "Multi-Modal Transit Networks",
+  "tags": ["gtfs", "multimodal", "metro", "ferry", "fares", "multi-file"],
+  "activeFile": "feed.gtfs",
+  "fileOrder": [
+    "feed.gtfs",
+    "agency.txt",
+    "stops.txt",
+    "routes.txt",
+    "trips.txt",
+    "stop_times.txt",
+    "calendar.txt",
+    "transfers.txt",
+    "shapes.txt",
+    "fare_attributes.txt"
+  ]
+}

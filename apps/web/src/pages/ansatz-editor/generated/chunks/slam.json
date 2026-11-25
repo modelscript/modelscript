@@ -1,0 +1,73 @@
+[
+  {
+    "id": "slam-01-inspection-station",
+    "lang": "slam",
+    "subFormats": ["slam"],
+    "difficulty": 1,
+    "title": "Single-Server Inspection Station Network",
+    "description": "Basic Pritsker SLAM II single-server quality-control inspection station with exponential arrivals, FIFO queue, service activity, and system-time collection.",
+    "category": "Queueing Systems",
+    "tags": ["slam", "queue", "inspection", "network"],
+    "activeFile": "inspection.slam",
+    "fileNames": ["inspection.slam"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "; SLAM II Single-Server Quality Inspection Station\nGEN, PRITSKER, INSPECTION_STATION, 1/1/1979, 1;\nLIMITS, 1, 2, 100;\nINITIALIZE, 0.0, 480.0;\nNETWORK;\n  CREATE, EXPON(6.0), 0.0, 1;\n  QINSP QUEUE(1), 0, 50;\n        ACTIVITY/1, UNFRM(3.5, 5.5);\n        COLCT, INT(1), TIME_IN_INSPECTION;\n        TERMINATE;\nENDNETWORK;\nFIN;\n"
+  },
+  {
+    "id": "slam-02-serial-assembly-line",
+    "lang": "slam",
+    "subFormats": ["slam"],
+    "difficulty": 2,
+    "title": "Two-Stage Serial Assembly Line with Finite Buffer",
+    "description": "Two-workstation serial electronics assembly line with finite inter-stage buffer capacity, stochastic cycle times, and end-to-end throughput telemetry.",
+    "category": "Manufacturing Systems",
+    "tags": ["slam", "assembly", "buffer", "serial-line"],
+    "activeFile": "assembly_line.slam",
+    "fileNames": ["assembly_line.slam"],
+    "fileCount": 1,
+    "code": "; SLAM II Two-Stage Serial Assembly Line with Finite Inter-Stage Buffer\nGEN, ANALYST, SERIAL_ASSEMBLY, 1/1/1979, 1;\nLIMITS, 2, 2, 150;\nINITIALIZE, 0.0, 480.0;\nNETWORK;\n  CREATE, EXPON(4.0), 0.0, 1;\n  STG1  QUEUE(1), 0, 40;\n        ACTIVITY/1, RNORM(3.2, 0.4), 1.0, STG2;\n  STG2  QUEUE(2), 0, 10;\n        ACTIVITY/2, RNORM(3.5, 0.5), 1.0, EXIT1;\n  EXIT1 COLCT, INT(1), TOTAL_FLOW_TIME;\n        TERMINATE;\nENDNETWORK;\nFIN;\n"
+  },
+  {
+    "id": "slam-03-cnc-machining-cell",
+    "lang": "slam",
+    "subFormats": ["slam"],
+    "difficulty": 3,
+    "title": "Multi-Resource CNC Machining Cell with Operator Sharing",
+    "description": "Flexible machining cell where raw castings require both a shared human operator for setup/loading and a multi-unit CNC mill bank via SLAM II RESOURCE, AWAIT, and FREE nodes.",
+    "category": "Manufacturing Systems",
+    "tags": ["slam", "cnc", "resource", "await", "free"],
+    "activeFile": "cnc_cell.slam",
+    "fileNames": ["cnc_cell.slam"],
+    "fileCount": 1,
+    "code": "; SLAM II Multi-Resource CNC Machining Cell with Shared Setup Operator\nGEN, PRITSKER, CNC_MACHINING_CELL, 1/1/1979, 1;\nLIMITS, 3, 3, 200;\nINITIALIZE, 0.0, 600.0;\nNETWORK;\n  RESOURCE/CNC(3), 1;\n  RESOURCE/OPERATOR(1), 2;\n  CREATE, EXPON(5.0), 0.0, 1;\n  WCNC  AWAIT(1), CNC/1;\n  WOP1  AWAIT(2), OPERATOR/1;\n        ACTIVITY/1, UNFRM(1.5, 2.5), 1.0, RELOP;\n  RELOP FREE, OPERATOR/1;\n        ACTIVITY/2, RNORM(11.0, 1.5), 1.0, RELCNC;\n  RELCNC FREE, CNC/1;\n        COLCT, INT(1), PART_CYCLE_TIME;\n        TERMINATE;\nENDNETWORK;\nFIN;\n"
+  },
+  {
+    "id": "slam-04-tanker-unloading",
+    "lang": "slam",
+    "subFormats": ["slam"],
+    "difficulty": 4,
+    "title": "Combined Discrete-Continuous Tanker Unloading Terminal",
+    "description": "Pritsker combined discrete-continuous crude oil terminal coupling tanker berthing resources, continuous ODE storage-tank balances (DD/SS), and DETECT threshold state events.",
+    "category": "Combined Discrete-Continuous",
+    "tags": ["slam", "combined", "continuous", "detect", "tanker"],
+    "activeFile": "tanker_terminal.slam",
+    "fileNames": ["tanker_terminal.slam"],
+    "fileCount": 1,
+    "code": "; Pritsker Combined Discrete-Continuous Tanker Unloading Terminal\nGEN, PRITSKER, TANKER_TERMINAL, 1/1/1979, 1;\nLIMITS, 4, 3, 150;\nCONTINUOUS, 2, 1, 0.01, 0.1, 0.1;\nINTLC, SS(1)=100.0, SS(2)=500.0, XX(1)=0.0, XX(2)=1.0;\nINITIALIZE, 0.0, 30.0;\n\n; Continuous crude-oil unloading and refinery consumption ODEs\nDD(1) = 300.0 * XX(1) - 150.0 * XX(2);\nDD(2) = 150.0 * XX(2) - 120.0;\nSS(3) = SS(1) + SS(2);\n\nNETWORK;\n  RESOURCE/BERTH(1), 1;\n  GATE/PORT, OPEN, 2;\n  CREATE, EXPON(4.0), 0.0, 1, 20, 1;\n  ARR   AWAIT(1), BERTH/1, , 1;\n        ASSIGN, XX(1)=1.0, 1;\n        ACTIVITY/1, 1.5, 1.0, DONE;\n  DONE  FREE, BERTH/1, 1;\n        CLOSE, PORT, 1;\n        OPEN, PORT, 1;\n        COLCT, INT(1), TANKER_TURNAROUND, 1;\n        TERMINATE, 20;\n  DET1  DETECT, SS(1), XP, 350.0, 0.01, 1;\n        ASSIGN, XX(1)=0.0, 1;\n        TERMINATE;\nENDNETWORK;\nFIN;\n"
+  },
+  {
+    "id": "slam-05-paint-bake-inspect",
+    "lang": "slam",
+    "subFormats": ["slam"],
+    "difficulty": 5,
+    "title": "Automated Paint-Bake-Inspect Automotive Line with Rework Loops",
+    "description": "Multi-stage automotive body-in-white coating line combining robotic paint booths, continuous curing oven thermal dynamics, quality gates, and probabilistic rework branching.",
+    "category": "Automotive Manufacturing",
+    "tags": ["slam", "automotive", "rework", "combined", "multi-stage"],
+    "activeFile": "automotive_paint.slam",
+    "fileNames": ["automotive_paint.slam"],
+    "fileCount": 1,
+    "code": "; SLAM II Automated Automotive Paint-Bake-Inspect Line with Rework & Oven Thermal Model\nGEN, PRITSKER, AUTOMOTIVE_PAINT_LINE, 1/1/1979, 1;\nLIMITS, 5, 4, 250;\nCONTINUOUS, 1, 0, 0.05, 0.5, 0.5;\nINTLC, SS(1)=160.0, XX(1)=1.0;\nINITIALIZE, 0.0, 480.0;\n\n; Curing oven temperature control dynamics (C)\nDD(1) = 0.08 * (180.0 * XX(1) - SS(1));\n\nNETWORK;\n  RESOURCE/BOOTH(2), 1;\n  RESOURCE/OVEN(4), 2;\n  RESOURCE/INSPECTOR(2), 3;\n  GATE/CONVEYOR, OPEN, 4;\n\n  CREATE, EXPON(3.0), 0.0, 1;\n  PAINT AWAIT(1), BOOTH/1;\n        ACTIVITY/1, UNFRM(4.0, 5.5), 1.0, RBOOTH;\n  RBOOTH FREE, BOOTH/1;\n  BAKE  AWAIT(2), OVEN/1;\n        ACTIVITY/2, RNORM(10.0, 0.8), 1.0, ROVEN;\n  ROVEN FREE, OVEN/1;\n  INSP  AWAIT(3), INSPECTOR/1;\n        ACTIVITY/3, UNFRM(2.0, 3.0), 1.0, RINSP;\n  RINSP FREE, INSPECTOR/1;\n        ACTIVITY/4, 0.5, 0.12, PAINT;\n        ACTIVITY/5, 0.5, 0.88, SHIP;\n  SHIP  COLCT, INT(1), BODY_LEAD_TIME;\n        TERMINATE;\n\n  OVHI  DETECT, SS(1), XP, 178.0, 0.1;\n        ASSIGN, XX(1)=0.95;\n        TERMINATE;\nENDNETWORK;\nFIN;\n"
+  }
+]

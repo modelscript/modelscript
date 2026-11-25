@@ -732,6 +732,42 @@ export function createRotundaEnvironmentHdri(
           g = lerp(0.82, 0.63, down);
           b = lerp(0.78, 0.58, down);
         }
+      } else if (environment === "atrium") {
+        // Clean-future white atrium: glass daylight oculus, tall glazing bands between fins, cyan LED cove
+        if (ny >= 0) {
+          const elev = clamp01(ny);
+          r = lerp(0.9, 0.82, elev);
+          g = lerp(0.92, 0.85, elev);
+          b = lerp(0.95, 0.89, elev);
+          // Bright overhead oculus disc (soft-edged)
+          if (ny > 0.86) {
+            const soft = clamp01((ny - 0.86) / 0.06);
+            r = lerp(r, 1.0, soft);
+            g = lerp(g, 1.0, soft);
+            b = lerp(b, 1.0, soft);
+          }
+          // Tall perimeter glazing bands separated by vertical fins
+          if (ny > 0.06 && ny < 0.5) {
+            const fin = Math.abs(Math.sin(theta * 24)) > 0.22;
+            if (fin) {
+              r = lerp(r, 0.97, 0.8);
+              g = lerp(g, 0.99, 0.8);
+              b = lerp(b, 1.0, 0.8);
+            }
+          }
+          // Thin cyan LED cove line just above the skirting
+          if (ny > 0.035 && ny < 0.05) {
+            r = lerp(r, 0.22, 0.7);
+            g = lerp(g, 0.74, 0.7);
+            b = lerp(b, 0.97, 0.7);
+          }
+        } else {
+          // Polished white epoxy floor bounce
+          const down = clamp01(-ny * 2.4);
+          r = lerp(0.88, 0.8, down);
+          g = lerp(0.9, 0.82, down);
+          b = lerp(0.93, 0.85, down);
+        }
       } else if (environment === "dark-lab") {
         // Automotive / KeyShot dark photography studio with crisp linear overhead softboxes + cyan/indigo rim
         r = 0.04;
@@ -783,13 +819,18 @@ export function createRotundaEnvironmentHdri(
 
   let pmremRT: THREE.WebGLRenderTarget | null = null;
   if (renderer && typeof THREE.PMREMGenerator === "function") {
+    const xrMgr = (renderer as { xr?: { enabled: boolean } }).xr;
+    const prevXrEnabled = xrMgr ? xrMgr.enabled : false;
     try {
+      if (xrMgr) xrMgr.enabled = false;
       const pmrem = new THREE.PMREMGenerator(renderer);
       pmrem.compileEquirectangularShader();
       pmremRT = pmrem.fromEquirectangular(skyTexture);
       pmrem.dispose();
     } catch {
       pmremRT = null;
+    } finally {
+      if (xrMgr) xrMgr.enabled = prevXrEnabled;
     }
   }
 

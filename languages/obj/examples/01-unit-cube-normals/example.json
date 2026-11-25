@@ -1,0 +1,12 @@
+{
+  "id": "obj-01-unit-cube-normals",
+  "lang": "obj",
+  "subFormats": ["wavefront-obj"],
+  "difficulty": 1,
+  "title": "Unit Calibration Cube with Vertex Normals",
+  "description": "Clean Wavefront OBJ unit cube mesh defining 8 vertices, 6 cardinal face normals, and 6 quad faces with explicit vertex/normal indices.",
+  "category": "3D Mesh Geometry",
+  "tags": ["obj", "wavefront", "cube", "normals"],
+  "activeFile": "cube.obj",
+  "isDefaultStarter": true
+}

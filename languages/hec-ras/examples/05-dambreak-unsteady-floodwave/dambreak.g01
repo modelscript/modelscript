@@ -1,0 +1,48 @@
+Geom Title=Canyon Dam and Downstream Floodplain Valley
+Program Version=6.3.1
+River Reach=CanyonRiver,BelowDam
+Reach XY=4
+0, 3000
+0, 2000
+0, 1000
+0, 0
+
+Type RM CEM CS= 1 ,3000    ,        ,
+DESCRIPTION=Reservoir Headwater Section Above Dam
+Station Elevation Data= 5
+0, 175.0  40, 155.0  80, 140.0  120, 155.0  160, 175.0
+Cross Section Reach Lengths and Manning Values=
+1000, 1000, 1000, 3, 0.055, 0.032, 0.055, 0, 0
+Bank Sta=40,120
+Exp/Contr=0.1,0.3
+
+Type RM CEM CS= 2 ,2500    ,        ,
+Inline Structure
+Weir Data= 168.0, 95, 1.55
+
+Type RM CEM CS= 1 ,2000    ,        ,
+DESCRIPTION=Canyon Gorge Below Spillway
+Station Elevation Data= 5
+0, 162.0  35, 146.0  80, 134.0  125, 146.0  160, 162.0
+Cross Section Reach Lengths and Manning Values=
+1000, 1000, 1000, 3, 0.060, 0.035, 0.060, 0, 0
+Bank Sta=35,125
+Exp/Contr=0.1,0.3
+
+Type RM CEM CS= 1 ,1000    ,        ,
+DESCRIPTION=Mid-Valley Town Crossing
+Station Elevation Data= 5
+0, 154.0  40, 140.0  90, 128.0  140, 140.0  180, 154.0
+Cross Section Reach Lengths and Manning Values=
+1000, 1000, 1000, 3, 0.065, 0.035, 0.065, 0, 0
+Bank Sta=40,140
+Exp/Contr=0.1,0.3
+
+Type RM CEM CS= 1 ,0       ,        ,
+DESCRIPTION=Lower Valley Outfall Gauge
+Station Elevation Data= 5
+0, 146.0  45, 134.0  100, 122.0  155, 134.0  200, 146.0
+Cross Section Reach Lengths and Manning Values=
+0, 0, 0, 3, 0.065, 0.035, 0.065, 0, 0
+Bank Sta=45,155
+Exp/Contr=0.1,0.3

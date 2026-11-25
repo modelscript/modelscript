@@ -1,0 +1,12 @@
+{
+  "id": "opendss-01-two-bus-radial-feeder",
+  "lang": "opendss",
+  "subFormats": ["dss"],
+  "difficulty": 1,
+  "title": "2-Bus Radial Distribution Feeder Power Flow",
+  "description": "Minimal 12.47 kV three-phase radial distribution feeder with a voltage source, overhead line segment, and balanced constant-power load.",
+  "category": "Distribution Power Flow",
+  "tags": ["opendss", "radial-feeder", "power-flow", "12.47kv"],
+  "activeFile": "radial_2bus.dss",
+  "isDefaultStarter": true
+}

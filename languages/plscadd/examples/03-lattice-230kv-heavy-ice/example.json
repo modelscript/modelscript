@@ -1,0 +1,11 @@
+{
+  "id": "plscadd-03-lattice-230kv-heavy-ice",
+  "lang": "plscadd",
+  "subFormats": ["pol"],
+  "difficulty": 3,
+  "title": "230 kV Lattice Suspension Tower under NESC Heavy Ice",
+  "description": "230 kV galvanized steel lattice suspension line with 795 kcmil Drake ACSR conductor evaluated for increased unit ice weight and clearance over a highway crossing.",
+  "category": "Transmission Line Structural",
+  "tags": ["plscadd", "lattice-tower", "230kv", "nesc-heavy", "ice-load"],
+  "activeFile": "lattice_230kv.pol"
+}

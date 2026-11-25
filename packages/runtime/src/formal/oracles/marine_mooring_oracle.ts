@@ -191,7 +191,9 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.lineId === spec.lineId),
+              l.args.some(
+                (a) => typeof a === "object" && a !== null && (a as { lineId?: unknown }).lineId === spec.lineId,
+              ),
             ),
             explanation: `DNV-OS-E301 Mooring Compliance Failure: Line '${spec.lineName || id}' intact safety factor ${spec.safetyFactorIntact.toFixed(2)} is below required minimum ${reqSf} (Tension = ${(spec.tensionIntact / 1e3).toFixed(1)} kN, MBL = ${(spec.mbl / 1e3).toFixed(1)} kN).`,
             culpritEntities: [id, spec.lineName || `Line#${id}`],
@@ -210,7 +212,9 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.lineId === spec.lineId),
+              l.args.some(
+                (a) => typeof a === "object" && a !== null && (a as { lineId?: unknown }).lineId === spec.lineId,
+              ),
             ),
             explanation: `DNV-OS-E301 Damaged Line Failure: Line '${spec.lineName || id}' single-line-broken safety factor ${sfDmgStr} is below required ${reqSfDamaged}.`,
             culpritEntities: [id, spec.lineName || `Line#${id}`],
@@ -225,7 +229,9 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.lineId === spec.lineId),
+              l.args.some(
+                (a) => typeof a === "object" && a !== null && (a as { lineId?: unknown }).lineId === spec.lineId,
+              ),
             ),
             explanation: `DNV Mooring Anchor Uplift Failure: Line '${spec.lineName || id}' exhibits vertical anchor uplift angle of ${upliftStr} deg (must be 0.0 deg for drag-embedment anchors).`,
             culpritEntities: [id, spec.lineName || `Line#${id}`],
@@ -245,7 +251,9 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
               isSat: false,
               conflict: {
                 literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-                  l.args.some((a) => a?.lineId === spec.lineId),
+                  l.args.some(
+                    (a) => typeof a === "object" && a !== null && (a as { lineId?: unknown }).lineId === spec.lineId,
+                  ),
                 ),
                 explanation: `Nelson-Oppen Mooring Requirement Conflict: Line '${spec.lineName || id}' safety factor ${spec.safetyFactorIntact.toFixed(2)} breaches requirement bound >= ${lo}.`,
                 culpritEntities: [id, sv],
@@ -266,7 +274,9 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
               isSat: false,
               conflict: {
                 literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-                  l.args.some((a) => a?.lineId === spec.lineId),
+                  l.args.some(
+                    (a) => typeof a === "object" && a !== null && (a as { lineId?: unknown }).lineId === spec.lineId,
+                  ),
                 ),
                 explanation: `Nelson-Oppen Mooring Tension Conflict: Line '${spec.lineName || id}' tension ${spec.tensionIntact.toFixed(0)} N exceeds allowable bound <= ${hi} N.`,
                 culpritEntities: [id, tv],
@@ -285,7 +295,10 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.floaterId === spec.floaterId),
+              l.args.some(
+                (a) =>
+                  typeof a === "object" && a !== null && (a as { floaterId?: unknown }).floaterId === spec.floaterId,
+              ),
             ),
             explanation: `Marine Hydrodynamics Envelope Violation: Floater '${id}' offset ${spec.actualOffsetMeters.toFixed(2)} m exceeds allowable excursion limit ${spec.maxAllowableOffsetMeters.toFixed(2)} m.`,
             culpritEntities: [id, `Floater#${id}`],
@@ -309,7 +322,9 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
       if (spec.safetyFactorIntact < minSf) minSf = spec.safetyFactorIntact;
       if (spec.tensionIntact > maxTension) maxTension = spec.tensionIntact;
       const lineJusts = Array.from(this.assertedLiterals.values())
-        .filter((l) => l.args.some((a) => a?.lineId === spec.lineId))
+        .filter((l) =>
+          l.args.some((a) => typeof a === "object" && a !== null && (a as { lineId?: unknown }).lineId === spec.lineId),
+        )
         .map((l) => l.id);
 
       const sfVar = `mooring.safety_factor.${id}`;
@@ -362,7 +377,11 @@ export class MarineMooringTheoryOracle implements TheoryOracle {
 
     for (const [id, spec] of this.floaters.entries()) {
       const floaterJusts = Array.from(this.assertedLiterals.values())
-        .filter((l) => l.args.some((a) => a?.floaterId === spec.floaterId))
+        .filter((l) =>
+          l.args.some(
+            (a) => typeof a === "object" && a !== null && (a as { floaterId?: unknown }).floaterId === spec.floaterId,
+          ),
+        )
         .map((l) => l.id);
       const offsetVar = `floater.offset.${id}`;
       eqs.push({

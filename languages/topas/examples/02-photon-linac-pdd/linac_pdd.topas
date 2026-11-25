@@ -1,0 +1,49 @@
+# TOPAS 6 MV Photon Linac Depth-Dose Simulation with Cortical Bone Insert
+s:Ge/World/Material = "G4_AIR"
+d:Ge/World/HLX = 1.5 m
+d:Ge/World/HLY = 1.5 m
+d:Ge/World/HLZ = 1.5 m
+
+s:Ge/PrimaryCollimator/Type = "TsCylinder"
+s:Ge/PrimaryCollimator/Parent = "World"
+s:Ge/PrimaryCollimator/Material = "G4_W"
+d:Ge/PrimaryCollimator/RMin = 15.0 mm
+d:Ge/PrimaryCollimator/RMax = 65.0 mm
+d:Ge/PrimaryCollimator/HL = 40.0 mm
+d:Ge/PrimaryCollimator/TransZ = -300.0 mm
+
+s:Ge/FlatteningFilter/Type = "TsCylinder"
+s:Ge/FlatteningFilter/Parent = "World"
+s:Ge/FlatteningFilter/Material = "G4_Al"
+d:Ge/FlatteningFilter/RMin = 0.0 mm
+d:Ge/FlatteningFilter/RMax = 35.0 mm
+d:Ge/FlatteningFilter/HL = 6.0 mm
+d:Ge/FlatteningFilter/TransZ = -220.0 mm
+
+s:Ge/WaterTank/Type = "TsBox"
+s:Ge/WaterTank/Parent = "World"
+s:Ge/WaterTank/Material = "G4_WATER"
+d:Ge/WaterTank/HLX = 20.0 cm
+d:Ge/WaterTank/HLY = 20.0 cm
+d:Ge/WaterTank/HLZ = 20.0 cm
+d:Ge/WaterTank/TransZ = 200.0 mm
+
+s:Ge/BoneSlab/Type = "TsBox"
+s:Ge/BoneSlab/Parent = "WaterTank"
+s:Ge/BoneSlab/Material = "G4_BONE_CORTICAL_ICRP"
+d:Ge/BoneSlab/HLX = 10.0 cm
+d:Ge/BoneSlab/HLY = 10.0 cm
+d:Ge/BoneSlab/HLZ = 1.5 cm
+d:Ge/BoneSlab/TransZ = -50.0 mm
+
+s:So/LinacPhotonBeam/Type = "Beam"
+s:So/LinacPhotonBeam/Component = "BeamPosition"
+s:So/LinacPhotonBeam/BeamParticle = "gamma"
+d:So/LinacPhotonBeam/BeamEnergy = 6.0 MeV
+u:So/LinacPhotonBeam/BeamEnergySpread = 15.0
+i:So/LinacPhotonBeam/NumberOfHistoriesInRun = 100000
+
+s:Sc/PddScorer/Quantity = "DoseToWater"
+s:Sc/PddScorer/Component = "WaterTank"
+i:Sc/PddScorer/ZBins = 160
+b:Sc/PddScorer/OutputToConsole = "True"

@@ -99,7 +99,9 @@ export function extractSignatureCandidateBuffers(sigStr: string): Buffer[] {
     if (b64.length === 64) {
       candidates.push(b64);
     }
-  } catch {}
+  } catch {
+    // Not a valid base64 signature candidate
+  }
 
   // 2. Raw 64-byte Hex (128 chars)
   if (/^[0-9a-fA-F]{128}$/.test(trimmed)) {
@@ -108,7 +110,9 @@ export function extractSignatureCandidateBuffers(sigStr: string): Buffer[] {
       if (hex.length === 64) {
         candidates.push(hex);
       }
-    } catch {}
+    } catch {
+      // Not a valid hex signature candidate
+    }
   }
 
   // 3. W3C Base58btc multibase ("z...")
@@ -118,7 +122,9 @@ export function extractSignatureCandidateBuffers(sigStr: string): Buffer[] {
       if (mb.length === 64) {
         candidates.push(mb);
       }
-    } catch {}
+    } catch {
+      // Not a valid Base58btc multibase signature candidate
+    }
   }
 
   return candidates;

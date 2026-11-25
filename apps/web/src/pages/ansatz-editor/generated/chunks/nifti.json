@@ -1,0 +1,77 @@
+[
+  {
+    "id": "nifti-01-brain-phantom-ras",
+    "lang": "nifti",
+    "subFormats": ["nii.json"],
+    "difficulty": 1,
+    "title": "3D Brain Phantom Volume Header in RAS Space",
+    "description": "Isotropic 1 mm MNI152-aligned 3D structural brain phantom NIfTI-1 JSON header with consistent right-handed RAS qform and sform affine transforms.",
+    "category": "Medical Imaging & Volumetric Formats",
+    "tags": ["nifti", "brain-mri", "ras-coordinates", "sform"],
+    "activeFile": "brain_phantom.nii.json",
+    "fileNames": ["brain_phantom.nii.json"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "{\n  \"nifti_version\": 1,\n  \"sizeof_hdr\": 348,\n  \"magic\": \"n+1\",\n  \"descrip\": \"MNI152 T1w 1mm Isotropic Structural Brain Phantom (RAS+)\",\n  \"dim\": [3, 182, 218, 182, 1, 1, 1, 1],\n  \"pixdim\": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],\n  \"datatype\": \"INT16\",\n  \"scl_slope\": 1.0,\n  \"scl_inter\": 0.0,\n  \"qform_code\": 4,\n  \"sform_code\": 4,\n  \"quatern_b\": 0.0,\n  \"quatern_c\": 0.0,\n  \"quatern_d\": 0.0,\n  \"qoffset_x\": -90.0,\n  \"qoffset_y\": -126.0,\n  \"qoffset_z\": -72.0,\n  \"srow_x\": [1.0, 0.0, 0.0, -90.0],\n  \"srow_y\": [0.0, 1.0, 0.0, -126.0],\n  \"srow_z\": [0.0, 0.0, 1.0, -72.0]\n}\n"
+  },
+  {
+    "id": "nifti-02-thoracic-ct-nrrd",
+    "lang": "nifti",
+    "subFormats": ["nrrd"],
+    "difficulty": 2,
+    "title": "NRRD Thoracic CT Volume Header with Lung Segment",
+    "description": "NRRD0004 clinical thoracic CT volumetric header specifying right-anterior-superior space directions, Hounsfield int16 voxel encoding, and 3D Slicer lung parenchyma segment metadata.",
+    "category": "Medical Imaging & Volumetric Formats",
+    "tags": ["nifti", "nrrd", "thoracic-ct", "slicer"],
+    "activeFile": "thorax_ct.nrrd",
+    "fileNames": ["thorax_ct.nrrd"],
+    "fileCount": 1,
+    "code": "NRRD0004\n# Clinical Thoracic CT Volume Header (0.75 x 0.75 x 1.5 mm)\ntype: int16\ndimension: 3\nspace: right-anterior-superior\nsizes: 2 2 2\nspace directions: (0.75,0,0) (0,0.75,0) (0,0,1.5)\nkinds: domain domain domain\nendian: little\nencoding: ascii\nspace origin: (-192.0, -192.0, -320.0)\nSegment0_ID:=Segment_Lung_Right\nSegment0_Name:=RightLungParenchyma\nSegment0_LabelValue:=1\nSegment0_Color:=0.25 0.75 0.45\n\n1 1 0 1\n1 0 1 1\n"
+  },
+  {
+    "id": "nifti-03-t1-mri-oblique-sform",
+    "lang": "nifti",
+    "subFormats": ["nii.json"],
+    "difficulty": 3,
+    "title": "T1-Weighted MRI with Oblique Affine Sform Matrix",
+    "description": "High-resolution 3T MPRAGE T1-weighted brain MRI header with a 15-degree AC-PC sagittal pitch oblique rotation encoded consistently in both qform quaternion and sform 4x4 affine matrix.",
+    "category": "Medical Imaging & Volumetric Formats",
+    "tags": ["nifti", "t1-mri", "oblique-affine", "quaternion"],
+    "activeFile": "t1_oblique.nii.json",
+    "fileNames": ["t1_oblique.nii.json"],
+    "fileCount": 1,
+    "code": "{\n  \"nifti_version\": 1,\n  \"sizeof_hdr\": 348,\n  \"magic\": \"n+1\",\n  \"descrip\": \"3T MPRAGE T1w Brain MRI (15 deg AC-PC Oblique Pitch, RAS+)\",\n  \"dim\": [3, 256, 256, 176, 1, 1, 1, 1],\n  \"pixdim\": [1.0, 0.9, 0.9, 1.0, 2.3, 0.0, 0.0, 0.0],\n  \"datatype\": \"FLOAT32\",\n  \"scl_slope\": 1.0,\n  \"scl_inter\": 0.0,\n  \"qform_code\": 1,\n  \"sform_code\": 1,\n  \"quatern_b\": 0.130526,\n  \"quatern_c\": 0.0,\n  \"quatern_d\": 0.0,\n  \"qoffset_x\": -115.2,\n  \"qoffset_y\": -118.4,\n  \"qoffset_z\": -84.0,\n  \"srow_x\": [0.9, 0.0, 0.0, -115.2],\n  \"srow_y\": [0.0, 0.869333, -0.258819, -118.4],\n  \"srow_z\": [0.0, 0.232937, 0.965926, -84.0]\n}\n"
+  },
+  {
+    "id": "nifti-04-fmri-bold-4d",
+    "lang": "nifti",
+    "subFormats": ["nii.json"],
+    "difficulty": 4,
+    "title": "4D fMRI BOLD Time-Series Acquisition Header",
+    "description": "Four-dimensional EPI resting-state fMRI BOLD acquisition header (64x64x36 spatial matrix, 240 timepoints, TR = 2.0 s) with matched right-handed RAS scanner coordinates.",
+    "category": "Medical Imaging & Volumetric Formats",
+    "tags": ["nifti", "fmri", "4d-timeseries", "bold-epi"],
+    "activeFile": "fmri_bold_4d.nii.json",
+    "fileNames": ["fmri_bold_4d.nii.json"],
+    "fileCount": 1,
+    "code": "{\n  \"nifti_version\": 1,\n  \"sizeof_hdr\": 348,\n  \"magic\": \"n+1\",\n  \"descrip\": \"3T Gradient-Echo EPI Resting-State fMRI BOLD (TR=2.0s, 240 vols)\",\n  \"dim\": [4, 64, 64, 36, 240, 1, 1, 1],\n  \"pixdim\": [1.0, 3.0, 3.0, 3.5, 2.0, 0.0, 0.0, 0.0],\n  \"datatype\": \"FLOAT32\",\n  \"scl_slope\": 1.0,\n  \"scl_inter\": 0.0,\n  \"qform_code\": 1,\n  \"sform_code\": 2,\n  \"quatern_b\": 0.0,\n  \"quatern_c\": 0.0,\n  \"quatern_d\": 0.0,\n  \"qoffset_x\": -96.0,\n  \"qoffset_y\": -96.0,\n  \"qoffset_z\": -63.0,\n  \"srow_x\": [3.0, 0.0, 0.0, -96.0],\n  \"srow_y\": [0.0, 3.0, 0.0, -96.0],\n  \"srow_z\": [0.0, 0.0, 3.5, -63.0]\n}\n"
+  },
+  {
+    "id": "nifti-05-mri-tumor-mask-pair",
+    "lang": "nifti",
+    "subFormats": ["nii.json"],
+    "difficulty": 5,
+    "title": "Multi-Modal Brain MRI and Glioblastoma Segmentation Mask Pair",
+    "description": "Co-registered T1c post-contrast brain MRI volume and companion multi-label glioblastoma tumor segmentation mask sharing an identical right-handed RAS sform coordinate grid.",
+    "category": "Medical Imaging & Volumetric Formats",
+    "tags": ["nifti", "segmentation", "neuro-oncology", "registration", "multi-file"],
+    "activeFile": "t1_brain.nii.json",
+    "fileNames": ["t1_brain.nii.json", "tumor_mask.nii.json"],
+    "fileCount": 2,
+    "code": "{\n  \"nifti_version\": 1,\n  \"sizeof_hdr\": 348,\n  \"magic\": \"n+1\",\n  \"descrip\": \"BraTS T1c Post-Contrast Glioblastoma Reference Volume (RAS+)\",\n  \"dim\": [3, 2, 2, 2, 1, 1, 1, 1],\n  \"pixdim\": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],\n  \"datatype\": \"FLOAT32\",\n  \"scl_slope\": 1.0,\n  \"scl_inter\": 0.0,\n  \"qform_code\": 2,\n  \"sform_code\": 2,\n  \"quatern_b\": 0.0,\n  \"quatern_c\": 0.0,\n  \"quatern_d\": 0.0,\n  \"qoffset_x\": -120.0,\n  \"qoffset_y\": -120.0,\n  \"qoffset_z\": -78.0,\n  \"srow_x\": [1.0, 0.0, 0.0, -120.0],\n  \"srow_y\": [0.0, 1.0, 0.0, -120.0],\n  \"srow_z\": [0.0, 0.0, 1.0, -78.0],\n  \"voxels\": [420.0, 485.0, 510.0, 390.0, 460.0, 740.0, 815.0, 440.0]\n}\n",
+    "files": {
+      "t1_brain.nii.json": "{\n  \"nifti_version\": 1,\n  \"sizeof_hdr\": 348,\n  \"magic\": \"n+1\",\n  \"descrip\": \"BraTS T1c Post-Contrast Glioblastoma Reference Volume (RAS+)\",\n  \"dim\": [3, 2, 2, 2, 1, 1, 1, 1],\n  \"pixdim\": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],\n  \"datatype\": \"FLOAT32\",\n  \"scl_slope\": 1.0,\n  \"scl_inter\": 0.0,\n  \"qform_code\": 2,\n  \"sform_code\": 2,\n  \"quatern_b\": 0.0,\n  \"quatern_c\": 0.0,\n  \"quatern_d\": 0.0,\n  \"qoffset_x\": -120.0,\n  \"qoffset_y\": -120.0,\n  \"qoffset_z\": -78.0,\n  \"srow_x\": [1.0, 0.0, 0.0, -120.0],\n  \"srow_y\": [0.0, 1.0, 0.0, -120.0],\n  \"srow_z\": [0.0, 0.0, 1.0, -78.0],\n  \"voxels\": [420.0, 485.0, 510.0, 390.0, 460.0, 740.0, 815.0, 440.0]\n}\n",
+      "tumor_mask.nii.json": "{\n  \"nifti_version\": 1,\n  \"sizeof_hdr\": 348,\n  \"magic\": \"n+1\",\n  \"descrip\": \"Co-Registered Glioblastoma Multi-Class Tumor Labelmap (1=Core, 2=Edema, 4=Enhancing)\",\n  \"dim\": [3, 2, 2, 2, 1, 1, 1, 1],\n  \"pixdim\": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],\n  \"datatype\": \"UINT8\",\n  \"scl_slope\": 1.0,\n  \"scl_inter\": 0.0,\n  \"qform_code\": 2,\n  \"sform_code\": 2,\n  \"quatern_b\": 0.0,\n  \"quatern_c\": 0.0,\n  \"quatern_d\": 0.0,\n  \"qoffset_x\": -120.0,\n  \"qoffset_y\": -120.0,\n  \"qoffset_z\": -78.0,\n  \"srow_x\": [1.0, 0.0, 0.0, -120.0],\n  \"srow_y\": [0.0, 1.0, 0.0, -120.0],\n  \"srow_z\": [0.0, 0.0, 1.0, -78.0],\n  \"voxels\": [0, 2, 2, 0, 2, 4, 1, 0]\n}\n"
+    }
+  }
+]

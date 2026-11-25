@@ -1,0 +1,11 @@
+{
+  "id": "spice-03-common-emitter-bjt-amp",
+  "lang": "spice",
+  "subFormats": ["sp", "lib"],
+  "difficulty": 3,
+  "title": "Common-Emitter BJT Small-Signal Amplifier",
+  "description": "Voltage-divider biased 2N2222 NPN common-emitter audio amplifier with emitter degeneration and companion BJT model library.",
+  "category": "Analog Amplifiers",
+  "tags": ["spice", "bjt", "amplifier", "library", "multi-file"],
+  "activeFile": "ce_amp.sp"
+}

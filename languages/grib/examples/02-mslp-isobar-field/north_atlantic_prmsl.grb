@@ -1,0 +1,36 @@
+# North Atlantic Extratropical Low Mean Sea-Level Pressure (Pa)
+GRIB edition=1
+  IS {
+    edition = 1
+  }
+  PDS {
+    tableVersion = 2
+    center = 7
+    parameter = PRMSL
+    levelType = MSL
+    level = 0
+    date = "2026-11-04T00:00"
+    decimalScale = 0
+  }
+  GDS {
+    gridType = 0
+    ni = 4
+    nj = 3
+    la1 = 55.0
+    lo1 = -40.0
+    la2 = 45.0
+    lo2 = -25.0
+    di = 5.0
+    dj = 5.0
+  }
+  BDS {
+    bitsPerValue = 16
+    binaryScale = 0
+    referenceValue = 99000.0
+    values = [
+      100800.0, 100250.0, 100400.0, 101100.0,
+      100100.0,  99200.0,  99550.0, 100650.0,
+      101200.0, 100450.0, 100700.0, 101500.0
+    ]
+  }
+7777

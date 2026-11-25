@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wml2:Collection xmlns:wml2="http://www.opengis.net/waterml/2.0"
+                 xmlns:gml="http://www.opengis.net/gml/3.2"
+                 xmlns:om="http://www.opengis.net/om/2.0"
+                 xmlns:xlink="http://www.w3.org/1999/xlink"
+                 gml:id="COLLECTION_FLOOD_NETWORK_2026">
+  <gml:description>Multi-Station Flood Warning Telemetry Network (Upper, Mid, and Lower Gages)</gml:description>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_UPPER_STAGE">
+      <om:observedProperty xlink:title="Gage Height"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_UPPER">
+          <gml:identifier>03011020</gml:identifier>
+          <gml:name>UPPER BASIN HEADWATER GAGE</gml:name>
+          <wml2:shape><gml:Point gml:id="P_UPPER"><gml:pos>42.156 -78.715 415.0</gml:pos></gml:Point></wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_UPPER_STAGE">
+          <wml2:defaultPointMetadata><wml2:DefaultTVPMeasurementMetadata><wml2:uom code="m"/><wml2:interpolationType xlink:title="Instantaneous"/></wml2:DefaultTVPMeasurementMetadata></wml2:defaultPointMetadata>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T00:00:00Z</wml2:time><wml2:value>1.80</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T06:00:00Z</wml2:time><wml2:value>3.45</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T12:00:00Z</wml2:time><wml2:value>4.10</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T18:00:00Z</wml2:time><wml2:value>2.95</wml2:value></wml2:MeasurementTVP></wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+  <wml2:observationMember>
+    <om:OM_Observation gml:id="OBS_LOWER_DISCHARGE">
+      <om:observedProperty xlink:title="Discharge"/>
+      <om:featureOfInterest>
+        <wml2:MonitoringPoint gml:id="MP_LOWER">
+          <gml:identifier>03016000</gml:identifier>
+          <gml:name>LOWER VALLEY FLOOD FORECAST GAGE</gml:name>
+          <wml2:shape><gml:Point gml:id="P_LOWER"><gml:pos>41.842 -79.145 342.0</gml:pos></gml:Point></wml2:shape>
+        </wml2:MonitoringPoint>
+      </om:featureOfInterest>
+      <om:result>
+        <wml2:MeasurementTimeseries gml:id="TS_LOWER_Q">
+          <wml2:defaultPointMetadata><wml2:DefaultTVPMeasurementMetadata><wml2:uom code="m3/s"/><wml2:interpolationType xlink:title="Instantaneous"/></wml2:DefaultTVPMeasurementMetadata></wml2:defaultPointMetadata>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T00:00:00Z</wml2:time><wml2:value>115.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T06:00:00Z</wml2:time><wml2:value>285.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T12:00:00Z</wml2:time><wml2:value>540.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+          <wml2:point><wml2:MeasurementTVP><wml2:time>2026-03-20T18:00:00Z</wml2:time><wml2:value>615.0</wml2:value></wml2:MeasurementTVP></wml2:point>
+        </wml2:MeasurementTimeseries>
+      </om:result>
+    </om:OM_Observation>
+  </wml2:observationMember>
+</wml2:Collection>

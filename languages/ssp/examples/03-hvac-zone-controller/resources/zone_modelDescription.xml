@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="ThermalZone" guid="{33333333-3333-3333-3333-333333333302}">
+  <CoSimulation modelIdentifier="ThermalZone" />
+  <ModelVariables>
+    <ScalarVariable name="Q_hvac" valueReference="0" causality="input"><Real start="0.0" /></ScalarVariable>
+    <ScalarVariable name="T_zone" valueReference="1" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

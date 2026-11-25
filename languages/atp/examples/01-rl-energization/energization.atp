@@ -1,0 +1,21 @@
+BEGIN NEW DATA CASE
+C 138 kV Single-Phase RL Transmission Line Energization Transient
+C Time step: 20 us, Simulation duration: 80 ms (4.8 cycles at 60 Hz)
+  2.0E-5  0.08
+/BRANCH
+C Source impedance and 138 kV overhead line
+SRC138  LINE_A  1.2500  18.5000  0.0000
+LINE_A  LOAD_B  3.8000  42.0000  0.0000
+LOAD_B  GND     85.0000 35.0000  0.0000
+BLANK RECORD
+/SWITCH
+C Circuit breaker closing at voltage zero-crossing (t = 4.167 ms) for max DC offset
+SRC138  LINE_A  0.004167    1.000000
+BLANK RECORD
+/SOURCE
+C 138 kVrms L-L => 112.68 kV peak L-G at 60 Hz
+14 SRC138  112676.00   60.00    0.00
+BLANK RECORD
+/OUTPUT
+SRC138 LINE_A LOAD_B
+BLANK RECORD

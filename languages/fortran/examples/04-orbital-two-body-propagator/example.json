@@ -1,0 +1,12 @@
+{
+  "id": "fortran-04-orbital-two-body-propagator",
+  "lang": "fortran",
+  "subFormats": ["fortran90"],
+  "difficulty": 4,
+  "title": "Modular Orbital Two-Body Keplerian Propagator",
+  "description": "Multi-module Fortran 90 astrodynamics propagator integrating a Low-Earth-Orbit satellite state vector via shared physical constants and an RK4 integrator module.",
+  "category": "Astrodynamics",
+  "tags": ["fortran", "orbital-mechanics", "rk4", "modules", "multi-file"],
+  "activeFile": "main.f90",
+  "fileOrder": ["main.f90", "constants_mod.f90", "rk4_mod.f90"]
+}

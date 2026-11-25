@@ -1,0 +1,8 @@
+model PancreasSecretion()
+  compartment islet = 1.0;
+  species G_islet in islet = 95.0, Ins_pool in islet = 50.0, Ins_rel in islet = 10.0;
+  const k_synth = 0.8, k_rel = 0.05, Km_sec = 120.0;
+
+  J_ins_synth: => Ins_pool; k_synth;
+  J_ins_release: Ins_pool => Ins_rel; k_rel * Ins_pool * G_islet / (Km_sec + G_islet);
+end

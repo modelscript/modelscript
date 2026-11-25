@@ -1,0 +1,33 @@
+C Companion SINDA Thermal Network for GEO_COMSAT (Node IDs match sat_rad.tra)
+HEADER OPTIONS DATA
+  TITLE = "GEO Comsat Coupled Thermal Network"
+  ABSZRO = 0.0
+  SIGMA = 5.670374419D-8
+HEADER NODE DATA, GEO
+  101, 298.0, 12000.0 $ Central satellite bus
+  102, 290.0, 2800.0  $ North OSR radiator
+  103, 290.0, 2800.0  $ South OSR radiator
+  104, 320.0, 1400.0  $ East solar wing
+  105, 320.0, 1400.0  $ West solar wing
+  106, 275.0, 650.0   $ High-gain antenna dish
+  -999, 3.0, 0.0      $ Deep space sink
+HEADER CONDUCTOR DATA, GEO
+  10, 101, 102, 45.0
+  11, 101, 103, 45.0
+  12, 101, 104, 1.5
+  13, 101, 105, 1.5
+  14, 101, 106, 2.2
+  -20, 102, 999, 3.17
+  -21, 103, 999, 3.17
+  -22, 104, 999, 9.84
+  -23, 105, 999, 9.84
+  -24, 106, 999, 5.60
+HEADER SOURCE DATA, GEO
+  101, 1800.0
+  104, 850.0
+  105, 850.0
+HEADER CONSTANTS DATA
+  TIMEO = 0.0, TIMEND = 3600.0, DTIMEI = 10.0
+HEADER EXECUTION
+  CALL STDSTL
+END OF DATA

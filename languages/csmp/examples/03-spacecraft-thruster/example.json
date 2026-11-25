@@ -1,0 +1,11 @@
+{
+  "id": "csmp-03-spacecraft-thruster",
+  "lang": "csmp",
+  "subFormats": ["csmp"],
+  "difficulty": 3,
+  "title": "Relay-Controlled Spacecraft Attitude Thruster",
+  "description": "Single-axis rigid spacecraft attitude control using cold-gas reaction thrusters with dead-space and hysteresis switching nonlinearities.",
+  "category": "Aerospace Control",
+  "tags": ["csmp", "spacecraft", "deadsp", "hyst", "attitude"],
+  "activeFile": "spacecraft_thruster.csmp"
+}

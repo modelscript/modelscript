@@ -6,11 +6,11 @@
  * IMPORTANT: These definitions are strictly runtime-pure metadata (string paths
  * and serializable options). Language `language.ts` files MUST NOT import React,
  * DOM libraries, or `vscode` directly — host bundlers (`extension-generator.ts`
- * for VS Code and the Vite virtual-module plugin for Morsel/Ansatz) resolve
+ * for Ansatz Studio / VS Code and the Vite virtual-module plugin for Ansatz Editor) resolve
  * these entry paths at build time.
  */
 
-export type LanguageUiTarget = "vscode" | "morsel" | "artifact";
+export type LanguageUiTarget = "vscode" | "ansatz" | "artifact";
 
 export type LanguagePanelMode = "workbench" | "inspector" | "artifact";
 
@@ -28,15 +28,15 @@ export interface LanguagePanelDeclaration {
   id: string;
   /** VS Code Custom Editor / Webview viewType (defaults to `modelscript.${langId}.${id}`). */
   viewType?: string | undefined;
-  /** Human-readable title shown in VS Code Open With, Morsel tabs, and Artifact headers. */
+  /** Human-readable title shown in VS Code Open With, Ansatz Editor tabs, and Artifact headers. */
   title: string;
-  /** Optional concise tab label for Morsel / Artifact view switchers. */
+  /** Optional concise tab label for Ansatz Editor / Artifact view switchers. */
   shortTitle?: string | undefined;
   /** Glob filename selectors (e.g. ["*.opi", "*.key", "*.tpl"]); defaults to language fileExtensions. */
   selector?: string[] | undefined;
   /** VS Code custom editor priority (default: "option"). */
   priority?: "default" | "option" | undefined;
-  /** Host surfaces where this panel should be registered (default: ["vscode", "morsel", "artifact"]). */
+  /** Host surfaces where this panel should be registered (default: ["vscode", "ansatz", "artifact"]). */
   targets?: LanguageUiTarget[] | undefined;
   /** Default density/interactivity mode (hosts override based on context). */
   defaultMode?: LanguagePanelMode | undefined;
@@ -52,7 +52,7 @@ export interface LanguagePanelDeclaration {
   /** Export name to mount from `entry` (default: "default"). */
   exportName?: string | undefined;
   /**
-   * Optional Ansatz artifact viewType aliases for backward compatibility with
+   * Optional Ansatz Network artifact viewType aliases for backward compatibility with
    * existing database records (e.g. ["olga", "olga-flow"]).
    */
   artifactViewTypes?: string[] | undefined;
@@ -120,15 +120,15 @@ export interface LanguageToolbarButtonDeclaration {
   /** Optional tooltip/description override (defaults to `label`). */
   tooltip?: string | undefined;
   /**
-   * Canonical icon token mapped to Octicons in Morsel/Ansatz and Codicons in VS Code
+   * Canonical icon token mapped to Octicons in Ansatz Editor and Codicons in Ansatz Studio (VS Code)
    * (e.g. "flowchart", "pulse", "stack", "shield-check", "play", or "$(pulse)").
    */
   icon?: string | undefined;
-  /** Optional inline 16x16 SVG inner markup for custom toolbar glyphs in Morsel/Ansatz. */
+  /** Optional inline 16x16 SVG inner markup for custom toolbar glyphs in Ansatz Editor. */
   iconSvg?: string | undefined;
   /** Which workbench views display this button (default: ["*"]). */
   views?: LanguageToolbarView[] | undefined;
-  /** Host surfaces where this button should appear (default: ["morsel", "vscode"]). */
+  /** Host surfaces where this button should appear (default: ["ansatz", "vscode"]). */
   targets?: LanguageUiTarget[] | undefined;
   /**
    * "primary" renders inline in the topbar (hosts cap inline buttons, e.g. max 2,
@@ -142,18 +142,18 @@ export interface LanguageToolbarButtonDeclaration {
   kind?: LanguageToolbarButtonKind | undefined;
   /** Optional declared `LanguageAction.id` to execute when clicked. */
   actionId?: string | undefined;
-  /** Optional typed workbench/panel command string (e.g. "morsel:autoLayout", "morsel:flatten"). */
+  /** Optional typed workbench/panel command string (e.g. "ansatz:autoLayout", "ansatz:flatten"). */
   command?: string | undefined;
   /** Optional display keyboard shortcut hint (e.g. "Shift+L"). */
   shortcut?: string | undefined;
-  /** Optional feature flag key gating visibility in Morsel/Ansatz. */
+  /** Optional feature flag key gating visibility in Ansatz Editor. */
   featureFlag?: string | undefined;
 }
 
 export interface LanguageUiConfig {
   /** Cross-host visual editors, inspector panes, and artifact viewers. */
   panels?: LanguagePanelDeclaration[] | undefined;
-  /** Diagram stencil snippets contributed to Morsel and the 2D diagram editor. */
+  /** Diagram stencil snippets contributed to Ansatz Editor and the 2D diagram editor. */
   stencils?: LanguageStencilDeclaration[] | undefined;
   /** Domain-specific simulation result compliance/summary cards. */
   simulationCards?: LanguageSimulationCardDeclaration[] | undefined;

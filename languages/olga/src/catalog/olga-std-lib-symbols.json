@@ -1,0 +1,1232 @@
+[
+  {
+    "name": "VALVE",
+    "kind": "olga_model",
+    "namePath": "olga:VALVE",
+    "exports": [
+      "diameter",
+      "cd",
+      "rho_mix",
+      "opening_min",
+      "opening_max"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pipeline Control Valve",
+      "category": "Flow Control",
+      "domain": "fluid",
+      "description": "Hydrodynamic control valve modeling pressure drop and mass flow via discharge coefficient and stroke opening.",
+      "provenance": "ISA-75.01.01 / IEC 60534-2-1 Flow Equations for Sizing Control Valves",
+      "aliases": [
+        "valve",
+        "CONTROL_VALVE",
+        "CHECKVALVE"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "m",
+          "description": "Valve throat diameter"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 0.84,
+          "unit": "-",
+          "description": "Discharge coefficient Cd"
+        },
+        {
+          "key": "rho_mix",
+          "type": "real",
+          "defaultValue": 650,
+          "unit": "kg/m3",
+          "description": "Reference mixture density"
+        },
+        {
+          "key": "opening_min",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "-",
+          "description": "Minimum stem opening fraction"
+        },
+        {
+          "key": "opening_max",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Maximum stem opening fraction"
+        }
+      ],
+      "wasmKernel": "VALVE",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "CHOKE",
+    "kind": "olga_model",
+    "namePath": "olga:CHOKE",
+    "exports": [
+      "diameter",
+      "cd",
+      "rho_mix",
+      "k_poly",
+      "glr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multiphase Production Choke",
+      "category": "Flow Control",
+      "domain": "fluid",
+      "description": "Critical and subcritical multiphase production choke using the Perkins hydrodynamic model.",
+      "provenance": "Perkins, T.K. (1993), 'Critical and Subcritical Flow of Multiphase Mixtures Through Chokes', SPE Drilling & Completion 8(4), 271-276",
+      "aliases": [
+        "choke",
+        "HYDROVALVE",
+        "PERKINS_CHOKE"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m",
+          "description": "Choke bean / throat diameter"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 0.826,
+          "unit": "-",
+          "description": "Perkins discharge coefficient Cd"
+        },
+        {
+          "key": "rho_mix",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "kg/m3",
+          "description": "Upstream mixture density"
+        },
+        {
+          "key": "k_poly",
+          "type": "real",
+          "defaultValue": 1.25,
+          "unit": "-",
+          "description": "Polytropic gas expansion exponent"
+        },
+        {
+          "key": "glr",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "-",
+          "description": "Gas mass fraction at choke inlet"
+        }
+      ],
+      "wasmKernel": "CHOKE",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "PUMP",
+    "kind": "olga_model",
+    "namePath": "olga:PUMP",
+    "exports": [
+      "rated_head",
+      "rated_flow",
+      "efficiency",
+      "rho_liq",
+      "gvf_limit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multiphase Booster Pump",
+      "category": "Rotating Machinery",
+      "domain": "fluid",
+      "description": "Centrifugal / multiphase booster pump with gas-void-fraction head degradation and efficiency curve.",
+      "provenance": "Turpin, J.L., Lea, J.F., & Bearden, J.L. (1986), 'Gas-Liquid Flow Through Centrifugal Pumps — Correlation of Data', 3rd Int. Pump Symposium",
+      "aliases": [
+        "pump",
+        "ESP",
+        "CENTRIFUGAL_PUMP"
+      ],
+      "parameters": [
+        {
+          "key": "rated_head",
+          "type": "real",
+          "defaultValue": 250,
+          "unit": "m",
+          "description": "Rated liquid head at nominal speed"
+        },
+        {
+          "key": "rated_flow",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "m3/s",
+          "description": "Rated volumetric flow rate"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.75,
+          "unit": "-",
+          "description": "Hydraulic pump efficiency"
+        },
+        {
+          "key": "rho_liq",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "kg/m3",
+          "description": "Liquid phase density"
+        },
+        {
+          "key": "gvf_limit",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "-",
+          "description": "Gas void fraction limit for head degradation"
+        }
+      ],
+      "wasmKernel": "PUMP",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "COMPRESSOR",
+    "kind": "olga_model",
+    "namePath": "olga:COMPRESSOR",
+    "exports": [
+      "pressure_ratio",
+      "poly_eff",
+      "k_gas",
+      "surge_margin"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Polytropic Gas Compressor",
+      "category": "Rotating Machinery",
+      "domain": "fluid",
+      "description": "Polytropic centrifugal gas compressor computing discharge pressure boost and temperature rise.",
+      "provenance": "GPSA Engineering Data Book (14th Ed.), Section 13: Compressors and Expanders — Polytropic Compression",
+      "aliases": [
+        "compressor",
+        "GAS_COMPRESSOR"
+      ],
+      "parameters": [
+        {
+          "key": "pressure_ratio",
+          "type": "real",
+          "defaultValue": 2.2,
+          "unit": "-",
+          "description": "Nominal discharge-to-suction pressure ratio"
+        },
+        {
+          "key": "poly_eff",
+          "type": "real",
+          "defaultValue": 0.78,
+          "unit": "-",
+          "description": "Polytropic compression efficiency"
+        },
+        {
+          "key": "k_gas",
+          "type": "real",
+          "defaultValue": 1.28,
+          "unit": "-",
+          "description": "Isentropic gas heat capacity ratio Cp/Cv"
+        },
+        {
+          "key": "surge_margin",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "-",
+          "description": "Minimum anti-surge flow margin"
+        }
+      ],
+      "wasmKernel": "COMPRESSOR",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "SEPARATOR",
+    "kind": "olga_model",
+    "namePath": "olga:SEPARATOR",
+    "exports": [
+      "volume",
+      "sep_eff",
+      "liq_level_init",
+      "dp_vessel"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multiphase Gravity Separator",
+      "category": "Process Equipment",
+      "domain": "fluid",
+      "description": "Gravity gas-liquid separator / slug catcher computing phase split and liquid holdup retention.",
+      "provenance": "Arnold, K. & Stewart, M. (2008), Surface Production Operations Vol. 1: Design of Oil-Handling Systems and Facilities",
+      "aliases": [
+        "separator",
+        "FLASH_SEPARATOR",
+        "SLUG_CATCHER"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "m3",
+          "description": "Separator vessel internal volume"
+        },
+        {
+          "key": "sep_eff",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "-",
+          "description": "Gas-liquid separation efficiency"
+        },
+        {
+          "key": "liq_level_init",
+          "type": "real",
+          "defaultValue": 0.45,
+          "unit": "-",
+          "description": "Initial liquid level fraction"
+        },
+        {
+          "key": "dp_vessel",
+          "type": "real",
+          "defaultValue": 5000,
+          "unit": "Pa",
+          "description": "Internal vessel pressure drop"
+        }
+      ],
+      "wasmKernel": "SEPARATOR",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "HEATEXCHANGER",
+    "kind": "olga_model",
+    "namePath": "olga:HEATEXCHANGER",
+    "exports": [
+      "u_coeff",
+      "area",
+      "cp_mix",
+      "dp_hx"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pipeline Heat Exchanger",
+      "category": "Process Equipment",
+      "domain": "fluid",
+      "description": "Thermal heat exchanger transferring heat Q = U*A*(T - T_amb) between process fluid and secondary medium.",
+      "provenance": "Incropera, F.P. & DeWitt, D.P. (2007), Fundamentals of Heat and Mass Transfer, Ch. 11: Heat Exchangers",
+      "aliases": [
+        "heatexchanger",
+        "HEAT_EXCHANGER",
+        "COOLER",
+        "HEATER"
+      ],
+      "parameters": [
+        {
+          "key": "u_coeff",
+          "type": "real",
+          "defaultValue": 450,
+          "unit": "W/(m2*K)",
+          "description": "Overall heat transfer coefficient U"
+        },
+        {
+          "key": "area",
+          "type": "real",
+          "defaultValue": 120,
+          "unit": "m2",
+          "description": "Effective heat transfer surface area A"
+        },
+        {
+          "key": "cp_mix",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "J/(kg*K)",
+          "description": "Mixture specific heat capacity"
+        },
+        {
+          "key": "dp_hx",
+          "type": "real",
+          "defaultValue": 15000,
+          "unit": "Pa",
+          "description": "Shell/tube side pressure drop"
+        }
+      ],
+      "wasmKernel": "HEATEXCHANGER",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "WELL",
+    "kind": "olga_model",
+    "namePath": "olga:WELL",
+    "exports": [
+      "p_res",
+      "p_bubble",
+      "pi",
+      "gas_frac"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Production Wellbore IPR",
+      "category": "Boundary & Well",
+      "domain": "fluid",
+      "description": "Reservoir Inflow Performance Relationship (Linear PI / Vogel quadratic inflow) coupling reservoir to flowline.",
+      "provenance": "Vogel, J.V. (1968), 'Inflow Performance Relationships for Solution-Gas Drive Wells', JPT 20(1), 83-92",
+      "aliases": [
+        "well",
+        "IPR",
+        "VOGEL_WELL"
+      ],
+      "parameters": [
+        {
+          "key": "p_res",
+          "type": "real",
+          "defaultValue": 25000000,
+          "unit": "Pa",
+          "description": "Static reservoir pressure"
+        },
+        {
+          "key": "p_bubble",
+          "type": "real",
+          "defaultValue": 18000000,
+          "unit": "Pa",
+          "description": "Bubble point pressure"
+        },
+        {
+          "key": "pi",
+          "type": "real",
+          "defaultValue": 0.0000025,
+          "unit": "kg/(s*Pa)",
+          "description": "Productivity index above bubble point"
+        },
+        {
+          "key": "gas_frac",
+          "type": "real",
+          "defaultValue": 0.12,
+          "unit": "-",
+          "description": "Produced gas mass fraction"
+        }
+      ],
+      "wasmKernel": "WELL",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "SOURCE",
+    "kind": "olga_model",
+    "namePath": "olga:SOURCE",
+    "exports": [
+      "mass_rate",
+      "gas_frac",
+      "t_source"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Multiphase Mass Source",
+      "category": "Boundary & Well",
+      "domain": "fluid",
+      "description": "Specified multiphase mass flow rate, gas fraction, and temperature boundary source.",
+      "provenance": "Bendiksen, K.H. et al. (1991), 'The Dynamic Two-Fluid Model OLGA: Theory and Application', SPE Production Engineering 6(2), 171-180",
+      "aliases": [
+        "source",
+        "MASS_SOURCE",
+        "INLET_SOURCE"
+      ],
+      "parameters": [
+        {
+          "key": "mass_rate",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "kg/s",
+          "description": "Nominal total mass flow rate"
+        },
+        {
+          "key": "gas_frac",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "-",
+          "description": "Inlet gas mass fraction"
+        },
+        {
+          "key": "t_source",
+          "type": "real",
+          "defaultValue": 343.15,
+          "unit": "K",
+          "description": "Source fluid temperature"
+        }
+      ],
+      "wasmKernel": "SOURCE",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "LEAK",
+    "kind": "olga_model",
+    "namePath": "olga:LEAK",
+    "exports": [
+      "hole_diameter",
+      "cd",
+      "rho_mix"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pipeline Leak / Rupture",
+      "category": "Integrity & Control",
+      "domain": "fluid",
+      "description": "Pipeline wall breach orifice discharge model for blowdown and leak-detection transient scenarios.",
+      "provenance": "API RP 520 / ISO 4126 Orifice Discharge Equations for Two-Phase Release",
+      "aliases": [
+        "leak",
+        "RUPTURE",
+        "ORIFICE_LEAK"
+      ],
+      "parameters": [
+        {
+          "key": "hole_diameter",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "m",
+          "description": "Equivalent circular leak orifice diameter"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 0.62,
+          "unit": "-",
+          "description": "Sharp-edged orifice discharge coefficient"
+        },
+        {
+          "key": "rho_mix",
+          "type": "real",
+          "defaultValue": 700,
+          "unit": "kg/m3",
+          "description": "Fluid density at leak plane"
+        }
+      ],
+      "wasmKernel": "LEAK",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "PIG",
+    "kind": "olga_model",
+    "namePath": "olga:PIG",
+    "exports": [
+      "pipe_diameter",
+      "bypass_frac",
+      "dp_friction"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pipeline Inspection / Cleaning Pig",
+      "category": "Integrity & Control",
+      "domain": "fluid",
+      "description": "Kinematic and dynamic pig tracking model accounting for bypass leakage and wall friction.",
+      "provenance": "Kohda, K., Suzukawa, Y., & Furukawa, H. (1988), 'Analysis of Transient Gas-Liquid Two-Phase Flow in Pipelines — Pigging', ASME JERT",
+      "aliases": [
+        "pig",
+        "PIG_TRACKER",
+        "SPHERE_PIG"
+      ],
+      "parameters": [
+        {
+          "key": "pipe_diameter",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "m",
+          "description": "Host pipeline inner diameter"
+        },
+        {
+          "key": "bypass_frac",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "-",
+          "description": "Fluid bypass fraction past pig cups"
+        },
+        {
+          "key": "dp_friction",
+          "type": "real",
+          "defaultValue": 25000,
+          "unit": "Pa",
+          "description": "Pig-to-wall mechanical friction pressure drop"
+        }
+      ],
+      "wasmKernel": "PIG",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "PID_CONTROLLER",
+    "kind": "olga_model",
+    "namePath": "olga:PID_CONTROLLER",
+    "exports": [
+      "kp",
+      "ti",
+      "td",
+      "setpoint",
+      "u_min",
+      "u_max"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PID Process / Anti-Slug Controller",
+      "category": "Integrity & Control",
+      "domain": "fluid",
+      "description": "Proportional-Integral-Derivative feedback controller with anti-windup clamping for choke/pressure regulation.",
+      "provenance": "Åström, K.J. & Hägglund, T. (2006), Advanced PID Control, ISA; Storkaas & Skogestad (2007) Anti-Slug Control",
+      "aliases": [
+        "pid_controller",
+        "CONTROLLER",
+        "ANTI_SLUG_PID"
+      ],
+      "parameters": [
+        {
+          "key": "kp",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "-",
+          "description": "Proportional gain Kp"
+        },
+        {
+          "key": "ti",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "s",
+          "description": "Integral reset time Ti"
+        },
+        {
+          "key": "td",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "s",
+          "description": "Derivative time Td"
+        },
+        {
+          "key": "setpoint",
+          "type": "real",
+          "defaultValue": 5000000,
+          "unit": "Pa",
+          "description": "Controller target setpoint"
+        },
+        {
+          "key": "u_min",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "-",
+          "description": "Minimum controller output"
+        },
+        {
+          "key": "u_max",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "-",
+          "description": "Maximum controller output"
+        }
+      ],
+      "wasmKernel": "PID_CONTROLLER",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "ESD_VALVE",
+    "kind": "olga_model",
+    "namePath": "olga:ESD_VALVE",
+    "exports": [
+      "diameter",
+      "cd",
+      "close_time",
+      "rho_mix"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Emergency Shutdown (ESD) Valve",
+      "category": "Integrity & Control",
+      "domain": "fluid",
+      "description": "Safety-instrumented emergency shutdown valve with deterministic linear closure ramp on trip signal.",
+      "provenance": "IEC 61511 / API Spec 6D Emergency Shutdown Valve Closure Dynamics",
+      "aliases": [
+        "esd_valve",
+        "ESDV",
+        "SHUTDOWN_VALVE"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "m",
+          "description": "Valve bore diameter"
+        },
+        {
+          "key": "cd",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "-",
+          "description": "Discharge coefficient Cd"
+        },
+        {
+          "key": "close_time",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "s",
+          "description": "Full-stroke emergency closure time"
+        },
+        {
+          "key": "rho_mix",
+          "type": "real",
+          "defaultValue": 650,
+          "unit": "kg/m3",
+          "description": "Reference mixture density"
+        }
+      ],
+      "wasmKernel": "ESD_VALVE",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "FLOW_DRIFT_FLUX",
+    "kind": "olga_model",
+    "namePath": "olga:FLOW_DRIFT_FLUX",
+    "exports": [
+      "c0",
+      "v_gj",
+      "diameter",
+      "inclination",
+      "rho_gas",
+      "rho_liq",
+      "roughness"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Zuber-Findlay Drift-Flux Kernel",
+      "category": "Multiphase Flow",
+      "domain": "fluid",
+      "description": "Zuber-Findlay drift-flux void fraction α = j_g / (C0 * j_m + v_gj) and two-phase mixture momentum gradient.",
+      "provenance": "Zuber, N. & Findlay, J.A. (1965), 'Average Volumetric Concentration in Two-Phase Flow Systems', ASME J. Heat Transfer 87(4), 453-468",
+      "aliases": [
+        "flow_drift_flux",
+        "DRIFT_FLUX",
+        "ZUBER_FINDLAY"
+      ],
+      "parameters": [
+        {
+          "key": "c0",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "-",
+          "description": "Distribution profile parameter C0"
+        },
+        {
+          "key": "v_gj",
+          "type": "real",
+          "defaultValue": 0.35,
+          "unit": "m/s",
+          "description": "Weighted mean gas drift velocity v_gj"
+        },
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "m",
+          "description": "Pipe inner diameter"
+        },
+        {
+          "key": "inclination",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Pipe inclination angle from horizontal"
+        },
+        {
+          "key": "rho_gas",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "kg/m3",
+          "description": "Gas phase density"
+        },
+        {
+          "key": "rho_liq",
+          "type": "real",
+          "defaultValue": 820,
+          "unit": "kg/m3",
+          "description": "Liquid phase density"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000045,
+          "unit": "m",
+          "description": "Pipe wall absolute roughness"
+        }
+      ],
+      "wasmKernel": "FLOW_DRIFT_FLUX",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "FLOW_BEGGS_BRILL",
+    "kind": "olga_model",
+    "namePath": "olga:FLOW_BEGGS_BRILL",
+    "exports": [
+      "diameter",
+      "inclination",
+      "rho_gas",
+      "rho_liq",
+      "mu_gas",
+      "mu_liq",
+      "roughness"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Beggs-Brill Two-Phase Flow Kernel",
+      "category": "Multiphase Flow",
+      "domain": "fluid",
+      "description": "Empirical inclined two-phase liquid holdup and frictional/hydrostatic pressure gradient correlation.",
+      "provenance": "Beggs, H.D. & Brill, J.P. (1973), 'A Study of Two-Phase Flow in Inclined Pipes', JPT 25(5), 607-617 (SPE-4007-PA)",
+      "aliases": [
+        "flow_beggs_brill",
+        "BEGGS_BRILL"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "m",
+          "description": "Pipe inner diameter"
+        },
+        {
+          "key": "inclination",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Pipe inclination angle (+uphill, -downhill)"
+        },
+        {
+          "key": "rho_gas",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "kg/m3",
+          "description": "Gas phase density"
+        },
+        {
+          "key": "rho_liq",
+          "type": "real",
+          "defaultValue": 820,
+          "unit": "kg/m3",
+          "description": "Liquid phase density"
+        },
+        {
+          "key": "mu_gas",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "Pa*s",
+          "description": "Gas dynamic viscosity"
+        },
+        {
+          "key": "mu_liq",
+          "type": "real",
+          "defaultValue": 0.0012,
+          "unit": "Pa*s",
+          "description": "Liquid dynamic viscosity"
+        },
+        {
+          "key": "roughness",
+          "type": "real",
+          "defaultValue": 0.000045,
+          "unit": "m",
+          "description": "Pipe absolute roughness"
+        }
+      ],
+      "wasmKernel": "FLOW_BEGGS_BRILL",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "FLOW_TAITEL_DUKLER",
+    "kind": "olga_model",
+    "namePath": "olga:FLOW_TAITEL_DUKLER",
+    "exports": [
+      "diameter",
+      "inclination",
+      "rho_gas",
+      "rho_liq",
+      "mu_gas",
+      "mu_liq"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Taitel-Dukler Mechanistic Flow Kernel",
+      "category": "Multiphase Flow",
+      "domain": "fluid",
+      "description": "Mechanistic horizontal/near-horizontal flow regime transition (stratified, intermittent, annular) and holdup kernel.",
+      "provenance": "Taitel, Y. & Dukler, A.E. (1976), 'A Model for Predicting Flow Regime Transitions in Horizontal and Near Horizontal Gas-Liquid Flow', AIChE J. 22(1), 47-55",
+      "aliases": [
+        "flow_taitel_dukler",
+        "TAITEL_DUKLER"
+      ],
+      "parameters": [
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "m",
+          "description": "Pipe inner diameter"
+        },
+        {
+          "key": "inclination",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "rad",
+          "description": "Pipe inclination angle"
+        },
+        {
+          "key": "rho_gas",
+          "type": "real",
+          "defaultValue": 45,
+          "unit": "kg/m3",
+          "description": "Gas phase density"
+        },
+        {
+          "key": "rho_liq",
+          "type": "real",
+          "defaultValue": 820,
+          "unit": "kg/m3",
+          "description": "Liquid phase density"
+        },
+        {
+          "key": "mu_gas",
+          "type": "real",
+          "defaultValue": 0.000015,
+          "unit": "Pa*s",
+          "description": "Gas dynamic viscosity"
+        },
+        {
+          "key": "mu_liq",
+          "type": "real",
+          "defaultValue": 0.0012,
+          "unit": "Pa*s",
+          "description": "Liquid dynamic viscosity"
+        }
+      ],
+      "wasmKernel": "FLOW_TAITEL_DUKLER",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "PVT_BLACK_OIL",
+    "kind": "olga_model",
+    "namePath": "olga:PVT_BLACK_OIL",
+    "exports": [
+      "api_gravity",
+      "gas_gravity",
+      "water_cut"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Standing Black-Oil PVT Kernel",
+      "category": "PVT & Flow Assurance",
+      "domain": "fluid",
+      "description": "Standing black-oil correlation for solution gas-oil ratio Rs (scf/STB) and oil formation volume factor Bo (bbl/STB).",
+      "provenance": "Standing, M.B. (1947), 'A Pressure-Volume-Temperature Correlation for Mixtures of California Oils and Gases', API Drilling & Production Practice, 275-287",
+      "aliases": [
+        "pvt_black_oil",
+        "BLACK_OIL",
+        "STANDING_PVT"
+      ],
+      "parameters": [
+        {
+          "key": "api_gravity",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "degAPI",
+          "description": "Stock-tank oil API gravity"
+        },
+        {
+          "key": "gas_gravity",
+          "type": "real",
+          "defaultValue": 0.72,
+          "unit": "-",
+          "description": "Dissolved gas specific gravity (air = 1)"
+        },
+        {
+          "key": "water_cut",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "-",
+          "description": "Water volume fraction in liquid"
+        }
+      ],
+      "wasmKernel": "PVT_BLACK_OIL",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "PVT_COMPOSITIONAL_PR",
+    "kind": "olga_model",
+    "namePath": "olga:PVT_COMPOSITIONAL_PR",
+    "exports": [
+      "tc",
+      "pc",
+      "omega",
+      "molar_mass"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Peng-Robinson Compositional EOS",
+      "category": "PVT & Flow Assurance",
+      "domain": "fluid",
+      "description": "Peng-Robinson (1976) cubic equation of state solving compressibility factor Z and fluid density.",
+      "provenance": "Peng, D.-Y. & Robinson, D.B. (1976), 'A New Two-Constant Equation of State', Ind. Eng. Chem. Fundam. 15(1), 59-64",
+      "aliases": [
+        "pvt_compositional_pr",
+        "PENG_ROBINSON",
+        "PR_EOS"
+      ],
+      "parameters": [
+        {
+          "key": "tc",
+          "type": "real",
+          "defaultValue": 190.56,
+          "unit": "K",
+          "description": "Pseudo-critical temperature Tc"
+        },
+        {
+          "key": "pc",
+          "type": "real",
+          "defaultValue": 4599000,
+          "unit": "Pa",
+          "description": "Pseudo-critical pressure Pc"
+        },
+        {
+          "key": "omega",
+          "type": "real",
+          "defaultValue": 0.0115,
+          "unit": "-",
+          "description": "Acentric factor ω"
+        },
+        {
+          "key": "molar_mass",
+          "type": "real",
+          "defaultValue": 0.01604,
+          "unit": "kg/mol",
+          "description": "Mixture molar mass"
+        }
+      ],
+      "wasmKernel": "PVT_COMPOSITIONAL_PR",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "PVT_HYDRATE_CURVE",
+    "kind": "olga_model",
+    "namePath": "olga:PVT_HYDRATE_CURVE",
+    "exports": [
+      "a_coeff",
+      "b_coeff",
+      "t_ref",
+      "inhibitor_wt_pct",
+      "k_hammerschmidt",
+      "m_inhibitor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Gas Hydrate Equilibrium Curve",
+      "category": "PVT & Flow Assurance",
+      "domain": "fluid",
+      "description": "Gas hydrate phase boundary pressure and thermodynamic inhibitor (MEG/MeOH) subcooling depression.",
+      "provenance": "Sloan, E.D. & Koh, C.A. (2008), Clathrate Hydrates of Natural Gases (3rd Ed.), CRC Press; Hammerschmidt (1939)",
+      "aliases": [
+        "pvt_hydrate_curve",
+        "HYDRATE_CURVE",
+        "SLOAN_HYDRATE"
+      ],
+      "parameters": [
+        {
+          "key": "a_coeff",
+          "type": "real",
+          "defaultValue": -10.5,
+          "unit": "-",
+          "description": "Log-linear hydrate correlation intercept"
+        },
+        {
+          "key": "b_coeff",
+          "type": "real",
+          "defaultValue": 0.095,
+          "unit": "1/K",
+          "description": "Log-linear hydrate correlation temperature slope"
+        },
+        {
+          "key": "t_ref",
+          "type": "real",
+          "defaultValue": 273.15,
+          "unit": "K",
+          "description": "Reference ice-point temperature"
+        },
+        {
+          "key": "inhibitor_wt_pct",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "wt%",
+          "description": "Thermodynamic inhibitor (MEG) weight percent"
+        },
+        {
+          "key": "k_hammerschmidt",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "K*g/mol",
+          "description": "Hammerschmidt constant (2200 for MEG, 2335 for MeOH)"
+        },
+        {
+          "key": "m_inhibitor",
+          "type": "real",
+          "defaultValue": 62.07,
+          "unit": "g/mol",
+          "description": "Inhibitor molar mass (MEG = 62.07 g/mol)"
+        }
+      ],
+      "wasmKernel": "PVT_HYDRATE_CURVE",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "WALL_INSULATED",
+    "kind": "olga_model",
+    "namePath": "olga:WALL_INSULATED",
+    "exports": [
+      "inner_diameter",
+      "insul_thickness",
+      "k_insul",
+      "h_amb",
+      "length",
+      "cp_mix"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Insulated Subsea Pipe Wall",
+      "category": "Thermal Wall",
+      "domain": "fluid",
+      "description": "Composite cylindrical radial heat conduction through steel wall, syntactic foam insulation, and ambient film.",
+      "provenance": "Incropera, F.P. & DeWitt, D.P. (2007), Fundamentals of Heat and Mass Transfer, Ch. 3: Radial Systems (Cylindrical Wall)",
+      "aliases": [
+        "wall_insulated",
+        "INSULATED_PIPE",
+        "PIPE_WALL"
+      ],
+      "parameters": [
+        {
+          "key": "inner_diameter",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "m",
+          "description": "Pipe inner diameter"
+        },
+        {
+          "key": "insul_thickness",
+          "type": "real",
+          "defaultValue": 0.05,
+          "unit": "m",
+          "description": "Insulation layer thickness"
+        },
+        {
+          "key": "k_insul",
+          "type": "real",
+          "defaultValue": 0.16,
+          "unit": "W/(m*K)",
+          "description": "Insulation thermal conductivity"
+        },
+        {
+          "key": "h_amb",
+          "type": "real",
+          "defaultValue": 500,
+          "unit": "W/(m2*K)",
+          "description": "External seawater/air convective film coefficient"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "m",
+          "description": "Pipe segment length"
+        },
+        {
+          "key": "cp_mix",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "J/(kg*K)",
+          "description": "Fluid mixture specific heat capacity"
+        }
+      ],
+      "wasmKernel": "WALL_INSULATED",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "WALL_BURIED",
+    "kind": "olga_model",
+    "namePath": "olga:WALL_BURIED",
+    "exports": [
+      "outer_diameter",
+      "burial_depth",
+      "k_soil",
+      "length",
+      "cp_mix"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Buried Pipeline Thermal Wall",
+      "category": "Thermal Wall",
+      "domain": "fluid",
+      "description": "Buried pipeline steady radial heat loss using the cylindrical conduction shape factor in semi-infinite soil.",
+      "provenance": "Carslaw, H.S. & Jaeger, J.C. (1959), Conduction of Heat in Solids; Holman (2010) Buried Cylinder Shape Factor",
+      "aliases": [
+        "wall_buried",
+        "BURIED_PIPE",
+        "SOIL_WALL"
+      ],
+      "parameters": [
+        {
+          "key": "outer_diameter",
+          "type": "real",
+          "defaultValue": 0.3,
+          "unit": "m",
+          "description": "Pipe outer diameter"
+        },
+        {
+          "key": "burial_depth",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "m",
+          "description": "Burial depth to pipe centerline z"
+        },
+        {
+          "key": "k_soil",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "W/(m*K)",
+          "description": "Surrounding soil thermal conductivity"
+        },
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 1000,
+          "unit": "m",
+          "description": "Buried segment length"
+        },
+        {
+          "key": "cp_mix",
+          "type": "real",
+          "defaultValue": 2200,
+          "unit": "J/(kg*K)",
+          "description": "Fluid mixture specific heat capacity"
+        }
+      ],
+      "wasmKernel": "WALL_BURIED",
+      "archetypeId": 41
+    }
+  }
+]

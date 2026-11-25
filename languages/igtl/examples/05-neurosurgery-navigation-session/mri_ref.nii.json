@@ -1,0 +1,22 @@
+{
+  "nifti_version": 1,
+  "sizeof_hdr": 348,
+  "magic": "n+1",
+  "descrip": "Preoperative Cranial Navigation T1w MRI Reference Volume (RAS+)",
+  "dim": [3, 256, 256, 176, 1, 1, 1, 1],
+  "pixdim": [1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+  "datatype": "INT16",
+  "scl_slope": 1.0,
+  "scl_inter": 0.0,
+  "qform_code": 1,
+  "sform_code": 1,
+  "quatern_b": 0.0,
+  "quatern_c": 0.0,
+  "quatern_d": 0.0,
+  "qoffset_x": -128.0,
+  "qoffset_y": -128.0,
+  "qoffset_z": -88.0,
+  "srow_x": [1.0, 0.0, 0.0, -128.0],
+  "srow_y": [0.0, 1.0, 0.0, -128.0],
+  "srow_z": [0.0, 0.0, 1.0, -88.0]
+}

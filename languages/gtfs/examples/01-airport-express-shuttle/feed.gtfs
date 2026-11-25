@@ -1,0 +1,28 @@
+# STOPS
+stop_id,stop_name,stop_lat,stop_lon
+AIR_TERM,International Terminal,37.6152,-122.3899
+AIR_PARKING,Long-Term Garage,37.6285,-122.4012
+DOWNTOWN_HUB,Downtown Transit Center,37.7897,-122.3965
+
+# ROUTES
+route_id,route_short_name,route_long_name,route_type
+EXP_1,A1,Airport Express Electric Shuttle,3
+
+# TRIPS
+route_id,service_id,trip_id,shape_id
+EXP_1,WEEKDAY,TRIP_A1_0700,SHP_A1
+EXP_1,WEEKDAY,TRIP_A1_0730,SHP_A1
+
+# STOP_TIMES
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,shape_dist_traveled
+TRIP_A1_0700,07:00:00,07:01:00,AIR_TERM,1,0.0
+TRIP_A1_0700,07:06:00,07:07:00,AIR_PARKING,2,2100.0
+TRIP_A1_0700,07:25:00,07:25:00,DOWNTOWN_HUB,3,19500.0
+TRIP_A1_0730,07:30:00,07:31:00,AIR_TERM,1,0.0
+TRIP_A1_0730,07:36:00,07:37:00,AIR_PARKING,2,2100.0
+TRIP_A1_0730,07:55:00,07:55:00,DOWNTOWN_HUB,3,19500.0
+
+# VEHICLE
+mass 17500
+battery 320
+aux 7.5

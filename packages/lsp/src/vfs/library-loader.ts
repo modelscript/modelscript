@@ -16,12 +16,13 @@ import {
   mountPackageIndex,
   MSIDX_COMPILER_ABI_VERSION,
   type ModelscriptLibraryManifest,
+  type SymbolIndex,
 } from "@modelscript/runtime";
 import type { FederatedQueryCacheStore } from "@modelscript/runtime/wasm_cache_store.js";
 import { strFromU8, unzipSync } from "fflate";
 import { iconCache } from "../handlers/treeHandler.js";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import type { Parser, Tree } from "../utils/cst-facade.js";
+import type { Parser, SyntaxNode, Tree } from "../utils/cst-facade.js";
 import {
   getLibraryName,
   loadingLibraryState,
@@ -36,15 +37,65 @@ import {
   trimOuterChars,
 } from "../utils/lexical-utils.js";
 import { findCuratedPackageFallback } from "./curated-package-fallbacks.js";
-import { ingestSalsaIndex } from "./salsa-index-ingester.js";
+import { ingestSalsaIndex, type SalsaQueryEngineLike } from "./salsa-index-ingester.js";
+
+export interface LoaderQueryEngineLike extends SalsaQueryEngineLike {
+  index?: SymbolIndex | undefined;
+}
+
+export interface LoaderSharedContextLike {
+  queryEngine?: unknown;
+  parse(ext: string, text: string): Tree | null;
+}
+
+export interface LoaderWorkspaceIndexLike {
+  register?(uri: string, loader: () => SyntaxNode | null, parentFQN?: string): void;
+  getFileIndex?(uri: string): unknown;
+  ensureIndexed?(uri: string): unknown;
+  hydrate?(
+    uri: string,
+    payload: {
+      symbols: Map<number, HydratedSymbolLike>;
+      byName: Map<string, number[]>;
+      childrenOf: Map<number | null, number[]>;
+    },
+    version?: unknown,
+    mapResourceId?: (origPath: string) => string,
+  ): void;
+  clear?(uri: string): void;
+  fileLoaders?: Map<string, unknown> | undefined;
+  fileSymbols?: Map<string, unknown> | undefined;
+  unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string }> } | undefined;
+  getIndex?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
+  getLanguageDef?(langId: string): unknown;
+  registerLanguageDef?(langId: string, langDef: unknown): void;
+  indexDocumentText?(uri: string, text: string, langId: string): void;
+}
+
+interface CachedLspBundle {
+  indexJson: {
+    symbols?: [number | string, HydratedSymbolLike][] | Record<string, HydratedSymbolLike> | undefined;
+    byName?: [string, number[]][] | undefined;
+    childrenOf?: [number | null, number[]][] | undefined;
+  } | null;
+  indexMsidxBase64: string | null;
+  iconsJson: Record<string, string> | null;
+  files: Record<string, string>;
+  binaryFilesBase64: Record<string, string>;
+}
+
+interface GlobalLoaderEnv {
+  globalModelicaQueryEngine?: LoaderQueryEngineLike;
+  serverDistBase?: string;
+}
 
 export interface LoaderContext {
   connectionState: { sendNotification: (method: string, params: unknown) => void };
   logger: { log: (msg: string) => void; warn: (msg: string) => void; error: (msg: string, e: unknown) => void };
   sharedFs: BrowserFileSystem;
-  sharedContext: any;
-  globalWorkspaceIndex: any;
-  sysml2WorkspaceIndex: any;
+  sharedContext: LoaderSharedContextLike | null | undefined;
+  globalWorkspaceIndex: LoaderWorkspaceIndexLike | null | undefined;
+  sysml2WorkspaceIndex: LoaderWorkspaceIndexLike | null | undefined;
   documentTrees: Map<string, { text: string; tree: Tree | null; classCache: Map<string, unknown> }>;
   sysml2Parser: Parser | null;
   cacheStore?: FederatedQueryCacheStore | undefined;
@@ -102,7 +153,7 @@ function mountSysmlEntriesInContext(
     const uri = fullPath.startsWith("file://") ? fullPath : `file://${fullPath.startsWith("/") ? "" : "/"}${fullPath}`;
     ctx.documentTrees?.set(uri, { text: content, tree: null, classCache: new Map() });
     if (registerWorkspace && ctx.sysml2WorkspaceIndex) {
-      ctx.sysml2WorkspaceIndex.register(uri, () => {
+      ctx.sysml2WorkspaceIndex.register?.(uri, () => {
         if (!ctx.sysml2Parser)
           return null as unknown as ReturnType<NonNullable<LoaderContext["sysml2Parser"]>["parse"]>["rootNode"];
         const tree = ctx.sysml2Parser.parse(content);
@@ -405,7 +456,9 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     }
 
     if (ctx.cacheStore) {
-      const activeQueryEngine = ctx.sharedContext?.queryEngine ?? (globalThis as any).globalModelicaQueryEngine;
+      const activeQueryEngine =
+        (ctx.sharedContext?.queryEngine as LoaderQueryEngineLike | undefined) ??
+        (globalThis as GlobalLoaderEnv).globalModelicaQueryEngine;
       const msidxCacheKey = `msidx:abi${MSIDX_COMPILER_ABI_VERSION}:${pkg.name}@${pkg.version}`;
       const legacyCacheKey = `${pkg.name}@${pkg.version}`;
       let hydratedFromMsidx = false;
@@ -559,7 +612,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
             }
             parentFQN = pathParts.join(".");
 
-            ctx.globalWorkspaceIndex.register(
+            ctx.globalWorkspaceIndex?.register?.(
               uri,
               () => {
                 let tree: Tree | null = null;
@@ -569,7 +622,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
                     if (text.length > SAFE_PACKAGE_SIZE_LIMIT) {
                       text = getSafePackageSource(text, fullPath, ctx);
                     }
-                    tree = ctx.sharedContext.parse(".mo", text);
+                    tree = ctx.sharedContext?.parse(".mo", text) ?? null;
                   }
                 } catch {
                   /* ignore */
@@ -579,13 +632,13 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
                   // Schedule deletion to avoid WASM memory leaks.
                   setTimeout(() => {
                     try {
-                      (tree as any).delete?.();
+                      (tree as { delete?(): void }).delete?.();
                     } catch {
                       /* ignore */
                     }
                   }, 0);
                 }
-                return (tree?.rootNode ?? null) as any;
+                return tree?.rootNode ?? null;
               },
               parentFQN,
             );
@@ -610,7 +663,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     let indexErrors = 0;
     for (const uri of registeredUris) {
       try {
-        ctx.globalWorkspaceIndex.getFileIndex(uri);
+        ctx.globalWorkspaceIndex?.getFileIndex?.(uri);
         indexedCount++;
       } catch (err) {
         indexErrors++;
@@ -621,7 +674,7 @@ export async function loadRegistryPackage(pkg: RegistryPackageInfo, ctx: LoaderC
     }
     for (const sysmlUri of sysmlUris) {
       try {
-        ctx.sysml2WorkspaceIndex?.getFileIndex(sysmlUri);
+        ctx.sysml2WorkspaceIndex?.getFileIndex?.(sysmlUri);
         indexedCount++;
       } catch (err) {
         indexErrors++;
@@ -700,12 +753,12 @@ export async function loadDependencyFromRegistry(
   ctx.connectionState.sendNotification("modelscript/projectTreeChanged", {});
 
   try {
-    let cached: any = null;
+    let cached: CachedLspBundle | null = null;
     const db = await openMSLCache();
     try {
       const cacheKey = `lsp-bundle:dep:v4:${label}`;
 
-      cached = await idbGet<any>(db, cacheKey);
+      cached = (await idbGet<CachedLspBundle>(db, cacheKey)) ?? null;
 
       if (!cached || !cached.indexJson || !cached.files) {
         const baseUrl = ctx.registryUrl?.replace(/\/$/, "") || "http://127.0.0.1:3000";
@@ -780,7 +833,7 @@ export async function loadDependencyFromRegistry(
         const buffer = await res.arrayBuffer();
         const zipped = unzipSync(new Uint8Array(buffer));
 
-        let indexJson: Record<string, unknown> | null = null;
+        let indexJson: CachedLspBundle["indexJson"] = null;
         let indexMsidxBase64: string | null = null;
         let iconsJson: Record<string, string> | null = null;
         const files: Record<string, string> = {};
@@ -791,9 +844,9 @@ export async function loadDependencyFromRegistry(
           if (relativePath === "index.msidx") {
             indexMsidxBase64 = encodeBytesBase64(data);
           } else if (relativePath === "index.json") {
-            indexJson = JSON.parse(strFromU8(data));
+            indexJson = JSON.parse(strFromU8(data)) as CachedLspBundle["indexJson"];
           } else if (relativePath === "icons.json") {
-            iconsJson = JSON.parse(strFromU8(data));
+            iconsJson = JSON.parse(strFromU8(data)) as Record<string, string>;
           } else if (relativePath.startsWith("sources/")) {
             const fileRelPath = relativePath.substring("sources/".length);
             if (fileRelPath.toLowerCase().endsWith(".wasm")) {
@@ -1168,7 +1221,7 @@ export async function loadMSL(
     });
 
     for (const file of moFiles) {
-      ctx.globalWorkspaceIndex.register(
+      ctx.globalWorkspaceIndex?.register?.(
         file.uri,
         () => {
           let tree: Tree | null = null;
@@ -1178,21 +1231,21 @@ export async function loadMSL(
               if (text.length > SAFE_PACKAGE_SIZE_LIMIT) {
                 text = getSafePackageSource(text, file.fullPath, ctx);
               }
-              tree = ctx.sharedContext.parse(".mo", text);
+              tree = ctx.sharedContext?.parse(".mo", text) ?? null;
             }
-          } catch (err: any) {
+          } catch (err: unknown) {
             ctx.logger.error(`[loader] Error parsing ${file.fullPath}:`, err);
           }
           if (tree) {
             setTimeout(() => {
               try {
-                (tree as any).delete?.();
+                (tree as { delete?(): void }).delete?.();
               } catch {
                 /* ignore */
               }
             }, 0);
           }
-          return (tree?.rootNode ?? null) as any;
+          return tree?.rootNode ?? null;
         },
         file.parentFQN,
       );
@@ -1202,28 +1255,28 @@ export async function loadMSL(
     if (modelicaPkgUri) {
       try {
         ctx.logger.log(`[loadMSL] Ensuring indexed: ${modelicaPkgUri}`);
-        ctx.globalWorkspaceIndex.ensureIndexed(modelicaPkgUri);
+        ctx.globalWorkspaceIndex?.ensureIndexed?.(modelicaPkgUri);
         ctx.logger.log(
-          `[loadMSL] After ensureIndexed(${modelicaPkgUri}), symbols=${ctx.globalWorkspaceIndex.getIndex?.()?.symbols?.size}`,
+          `[loadMSL] After ensureIndexed(${modelicaPkgUri}), symbols=${ctx.globalWorkspaceIndex?.getIndex?.()?.symbols?.size}`,
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${modelicaPkgUri}:`, err);
       }
     }
     if (complexUri) {
       try {
         ctx.logger.log(`[loadMSL] Ensuring indexed: ${complexUri}`);
-        ctx.globalWorkspaceIndex.ensureIndexed(complexUri);
+        ctx.globalWorkspaceIndex?.ensureIndexed?.(complexUri);
         ctx.logger.log(
-          `[loadMSL] After ensureIndexed(${complexUri}), symbols=${ctx.globalWorkspaceIndex.getIndex?.()?.symbols?.size}`,
+          `[loadMSL] After ensureIndexed(${complexUri}), symbols=${ctx.globalWorkspaceIndex?.getIndex?.()?.symbols?.size}`,
         );
-      } catch (err: any) {
+      } catch (err: unknown) {
         ctx.logger.error(`[loadMSL] Failed to ensureIndexed ${complexUri}:`, err);
       }
     }
     if (iconsUri) {
       try {
-        ctx.globalWorkspaceIndex.ensureIndexed(iconsUri);
+        ctx.globalWorkspaceIndex?.ensureIndexed?.(iconsUri);
       } catch {
         /* ignore */
       }
@@ -1330,20 +1383,20 @@ export async function loadSysML2StandardLibrary(serverDistBase: string, ctx: Loa
       const uri = `sysml2://stdlib/${name}`;
 
       ctx.documentTrees.set(uri, { text, tree: null, classCache: new Map() });
-      ctx.sysml2WorkspaceIndex.register(uri, () => {
-        if (!ctx.sysml2Parser) return null as any;
+      ctx.sysml2WorkspaceIndex?.register?.(uri, () => {
+        if (!ctx.sysml2Parser) return null;
         const tree = ctx.sysml2Parser.parse(text);
         if (tree) {
           // WorkspaceIndex uses the node synchronously. Schedule deletion to avoid memory leak.
           setTimeout(() => {
             try {
-              (tree as any).delete?.();
+              (tree as { delete?(): void }).delete?.();
             } catch {
               /* ignore */
             }
           }, 0);
         }
-        return (tree ? tree.rootNode : null) as any;
+        return tree ? tree.rootNode : null;
       });
       registeredUris.push(uri);
       fileCount++;
@@ -1536,11 +1589,9 @@ export async function mountPolyglotLibrary(
         }
       } else if (!hasPrebuiltIndex && name !== "index.json" && name !== "icons.json") {
         const plugin = globalLanguageRegistry.getPluginForUri(fullPath);
-        if (
-          plugin &&
-          ((plugin.languageDef as any)?.indexing?.indexFile ||
-            typeof (plugin.workspaceIndex as any)?.indexFile === "function")
-        ) {
+        const langDefIndexing = (plugin?.languageDef as { indexing?: { indexFile?: unknown } } | undefined)?.indexing;
+        const wsIndex = plugin?.workspaceIndex as { indexFile?: unknown } | undefined;
+        if (plugin && (langDefIndexing?.indexFile || typeof wsIndex?.indexFile === "function")) {
           const text = textDecoder.decode(data);
           polyglotEntries.push({ fullPath, content: text });
         }
@@ -1571,9 +1622,10 @@ export async function mountPolyglotLibrary(
         const plugin = globalLanguageRegistry.getPluginForUri(entry.fullPath);
         if (!plugin) continue;
         const uw = ctx.globalWorkspaceIndex;
-        if ((plugin.languageDef as any)?.indexing?.indexFile && typeof uw?.indexDocumentText === "function") {
+        const langDefIndexing = (plugin.languageDef as { indexing?: { indexFile?: unknown } } | undefined)?.indexing;
+        if (langDefIndexing?.indexFile && typeof uw?.indexDocumentText === "function") {
           if (typeof uw.getLanguageDef === "function" && !uw.getLanguageDef(plugin.id)) {
-            uw.registerLanguageDef(plugin.id, plugin.languageDef);
+            uw.registerLanguageDef?.(plugin.id, plugin.languageDef);
           }
           uw.indexDocumentText(`file://${entry.fullPath}`, entry.content, plugin.id);
         } else {
@@ -1692,9 +1744,9 @@ export function unloadLibraryPackage(packageName: string, ctx: LoaderContext): n
 
   type WorkspaceIndexEvictionTarget = {
     clear?(uri: string): void;
-    fileLoaders?: Map<string, unknown>;
-    fileSymbols?: Map<string, unknown>;
-    unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string }> };
+    fileLoaders?: Map<string, unknown> | undefined;
+    fileSymbols?: Map<string, unknown> | undefined;
+    unifiedTreeIndex?: { symbols?: Map<number, { resourceId?: string }> } | undefined;
     getIndex?(): { symbols?: Map<number, { resourceId?: string }> } | undefined;
   };
 
@@ -1869,7 +1921,7 @@ export async function ensureLibraryVersionMounted(
     }
   }
 
-  const effectiveDistBase = serverDistBase || (globalThis as any).serverDistBase || "";
+  const effectiveDistBase = serverDistBase || (globalThis as GlobalLoaderEnv).serverDistBase || "";
 
   if (normName === "Modelica" && effectiveDistBase) {
     await loadMSL(effectiveDistBase, ctx, dep.version);

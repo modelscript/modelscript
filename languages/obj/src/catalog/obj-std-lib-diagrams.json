@@ -1,0 +1,383 @@
+[
+  {
+    "namePath": "ObjStd.GeometryPrimitives.UnitCube",
+    "aliases": [
+      "Cube",
+      "Box",
+      "OBJ_CUBE"
+    ],
+    "label": "Unit Cube (6 Quads / 12 Triangles)",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">UNITCUBE</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.GeometryPrimitives.Tetrahedron",
+    "aliases": [
+      "Tet",
+      "OBJ_TETRAHEDRON"
+    ],
+    "label": "Regular Tetrahedron (4 Triangles)",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">TETRAHEDRON</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.GeometryPrimitives.Octahedron",
+    "aliases": [
+      "Oct",
+      "OBJ_OCTAHEDRON"
+    ],
+    "label": "Regular Octahedron (8 Triangles)",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">OCTAHEDRON</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.GeometryPrimitives.Cylinder",
+    "aliases": [
+      "Cyl",
+      "OBJ_CYLINDER"
+    ],
+    "label": "Faceted Cylinder",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">CYLINDER</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.GeometryPrimitives.UVSphere",
+    "aliases": [
+      "Sphere",
+      "OBJ_SPHERE"
+    ],
+    "label": "UV Sphere",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">UVSPHERE</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.GeometryPrimitives.Torus",
+    "aliases": [
+      "Ring",
+      "OBJ_TORUS"
+    ],
+    "label": "Torus (Genus-1, χ=0)",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">TORUS</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.GeometryPrimitives.QuadPlane",
+    "aliases": [
+      "Plane",
+      "Quad",
+      "OBJ_PLANE"
+    ],
+    "label": "Planar Quad Patch",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">QUADPLANE</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.GeometryPrimitives.Pyramid",
+    "aliases": [
+      "SquarePyramid",
+      "OBJ_PYRAMID"
+    ],
+    "label": "Square-Base Pyramid",
+    "category": "Geometry Primitives",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MESH</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">PYRAMID</text></svg>",
+    "ports": [
+      {
+        "name": "material_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "mesh_out",
+        "kind": "geometry",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.EngineeringMaterials.Aluminum",
+    "aliases": [
+      "MTL_Aluminum",
+      "Al6061"
+    ],
+    "label": "Brushed Aluminum (MTL)",
+    "category": "Engineering Materials",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MTL</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">ALUMINUM</text></svg>",
+    "ports": [
+      {
+        "name": "surface_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "shaded_out",
+        "kind": "material",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.EngineeringMaterials.Steel",
+    "aliases": [
+      "MTL_Steel",
+      "StainlessSteel",
+      "AISI304"
+    ],
+    "label": "Stainless Steel (MTL)",
+    "category": "Engineering Materials",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MTL</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">STEEL</text></svg>",
+    "ports": [
+      {
+        "name": "surface_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "shaded_out",
+        "kind": "material",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.EngineeringMaterials.Copper",
+    "aliases": [
+      "MTL_Copper",
+      "Cu"
+    ],
+    "label": "Polished Copper (MTL)",
+    "category": "Engineering Materials",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MTL</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">COPPER</text></svg>",
+    "ports": [
+      {
+        "name": "surface_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "shaded_out",
+        "kind": "material",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.EngineeringMaterials.Glass",
+    "aliases": [
+      "MTL_Glass",
+      "BorosilicateGlass"
+    ],
+    "label": "Clear Optical Glass (MTL)",
+    "category": "Engineering Materials",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MTL</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.2\" font-weight=\"bold\" fill=\"#f8fafc\">GLASS</text></svg>",
+    "ports": [
+      {
+        "name": "surface_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "shaded_out",
+        "kind": "material",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "ObjStd.EngineeringMaterials.MatteWhite",
+    "aliases": [
+      "MTL_MatteWhite",
+      "Matte_White",
+      "LambertianWhite"
+    ],
+    "label": "Matte White Plaster (MTL)",
+    "category": "Engineering Materials",
+    "domain": "cad",
+    "width": 92,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 92 52\" width=\"92\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"88\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">MTL</text><text x=\"46\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">MATTEWHITE</text></svg>",
+    "ports": [
+      {
+        "name": "surface_in",
+        "kind": "material",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "shaded_out",
+        "kind": "material",
+        "side": "right",
+        "dx": 92,
+        "dy": 26
+      }
+    ]
+  }
+]

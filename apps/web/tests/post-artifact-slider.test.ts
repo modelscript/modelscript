@@ -314,7 +314,7 @@ end X;
       assert.ok(
         notebookStateSrc.includes("Short posts are limited to a maximum of 4 models") ||
           notebookStateSrc.includes("Short posts are limited to a maximum of 4 ansatzes") ||
-          notebookStateSrc.includes("Short posts are limited to a maximum of 4 morsels") ||
+          notebookStateSrc.includes("Short posts are limited to a maximum of 4 ansatzs") ||
           notebookStateSrc.includes("Short posts are limited to a maximum of 4 artifacts"),
         "attachArtifactToComposer must notify user when 4 model limit is reached",
       );

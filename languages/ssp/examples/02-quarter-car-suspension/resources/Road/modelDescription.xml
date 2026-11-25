@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="2.0" modelName="Road" guid="{22222222-2222-2222-2222-222222222201}">
+  <CoSimulation modelIdentifier="Road" />
+  <ModelVariables>
+    <ScalarVariable name="z_road" valueReference="0" causality="output"><Real /></ScalarVariable>
+  </ModelVariables>
+</fmiModelDescription>

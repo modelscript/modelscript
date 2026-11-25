@@ -1,0 +1,9 @@
+# Stoichiometric Methane-Air Adiabatic Flame Temperature (HP Problem)
+problem case=CH4_AIR_HP hp equilibrium
+  p,atm=1.0 phi=1.0
+reactants
+  fuel=CH4 wt%=100 t(k)=298.15
+  oxid=O2 wt%=23.2 t(k)=298.15
+  oxid=N2 wt%=76.8 t(k)=298.15
+output siunits short trace=1e-5
+end

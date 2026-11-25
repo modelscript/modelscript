@@ -1,0 +1,11 @@
+{
+  "id": "tough-03-radial-injection-theis",
+  "lang": "tough",
+  "subFormats": ["tgh"],
+  "difficulty": 3,
+  "title": "Radial Injection Well Pressure Buildup",
+  "description": "Logarithmically spaced concentric cylindrical radial mesh modeling single-well pressure buildup in a confined aquifer for analytical Theis line-source verification.",
+  "category": "Subsurface Flow & Transport",
+  "tags": ["tough", "radial-mesh", "theis", "well-testing"],
+  "activeFile": "radial_theis.tgh"
+}

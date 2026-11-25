@@ -15,7 +15,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe("Morsel Component Gallery Catalog & Full MSL Hydration", () => {
+describe("Ansatz Component Gallery Catalog & Full MSL Hydration", () => {
   it("classifies Magnetic, ComplexBlocks, StateGraph, and polyglot namespaces into clean domains", () => {
     assert.equal(inferDomainForFqn("Modelica.Magnetic.FluxTubes.Basic.ConstantReluctance"), "electrical");
     assert.equal(inferDomainForFqn("Modelica.ComplexBlocks.Sources.ComplexConstant"), "control");

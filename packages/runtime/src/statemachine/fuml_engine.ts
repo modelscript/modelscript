@@ -75,7 +75,8 @@ export interface ActivityNode {
   outputPins: PinId[];
   /** Optional behavior executed when an Action node fires */
   behavior?:
-    ((inputs: Record<string, any>, context: Record<string, any>) => Record<string, any> | undefined) | undefined;
+    | ((inputs: Record<string, unknown>, context: Record<string, unknown>) => Record<string, unknown> | undefined)
+    | undefined;
 }
 
 /**
@@ -90,7 +91,7 @@ export interface ActivityEdge {
   sourcePinId?: PinId | undefined;
   targetPinId?: PinId | undefined;
   /** Optional guard condition for decision routing */
-  guard?: ((context: Record<string, any>, tokenValue?: any) => boolean) | undefined;
+  guard?: ((context: Record<string, unknown>, tokenValue?: unknown) => boolean) | undefined;
 }
 
 /**
@@ -99,7 +100,7 @@ export interface ActivityEdge {
 export interface Token {
   id: TokenId;
   kind: "control" | "object";
-  value?: any;
+  value?: unknown;
 }
 
 /**
@@ -120,13 +121,13 @@ export interface StepRecord {
   tokensMoved: {
     tokenId: TokenId;
     kind: "control" | "object";
-    value?: any;
+    value?: unknown;
     from?: string | undefined;
     to?: string | undefined;
   }[];
   preMarking: SerializedMarking;
-  preVariables: Record<string, any>;
-  postVariables: Record<string, any>;
+  preVariables: Record<string, unknown>;
+  postVariables: Record<string, unknown>;
 }
 
 /**
@@ -146,7 +147,7 @@ export interface StepResult {
 export interface ExecutionSummary {
   totalSteps: number;
   status: "completed" | "terminated" | "suspended" | "max_steps_reached";
-  finalVariables: Record<string, any>;
+  finalVariables: Record<string, unknown>;
   historyLength: number;
 }
 
@@ -185,7 +186,7 @@ export class WasmFumlEngine {
   private nodeTokens: Map<NodeId, Token[]> = new Map();
 
   /** Mutable execution context variables shared across action behaviors and edge guards. */
-  private variables: Record<string, any> = {};
+  private variables: Record<string, unknown> = {};
   /** Chronological stack of `StepRecord` snapshots enabling `stepBack()` time-travel debugging. */
   private history: StepRecord[] = [];
   /** Number of discrete execution steps completed in the current run. */
@@ -199,7 +200,7 @@ export class WasmFumlEngine {
   addNode(
     name: string,
     kind: ActivityNodeKind,
-    behavior?: (inputs: Record<string, any>, ctx: Record<string, any>) => Record<string, any> | undefined,
+    behavior?: (inputs: Record<string, unknown>, ctx: Record<string, unknown>) => Record<string, unknown> | undefined,
   ): NodeId {
     const id = this.nextNodeId++;
     const node: ActivityNode = {
@@ -255,7 +256,7 @@ export class WasmFumlEngine {
       name?: string | undefined;
       sourcePinId?: PinId | undefined;
       targetPinId?: PinId | undefined;
-      guard?: ((context: Record<string, any>, tokenValue?: any) => boolean) | undefined;
+      guard?: ((context: Record<string, unknown>, tokenValue?: unknown) => boolean) | undefined;
     },
   ): EdgeId {
     const sourceNode = this.nodes.get(sourceNodeId);
@@ -320,7 +321,7 @@ export class WasmFumlEngine {
   /**
    * Initializes the engine state and places initial tokens.
    */
-  init(initialVariables: Record<string, any> = {}): void {
+  init(initialVariables: Record<string, unknown> = {}): void {
     this.variables = { ...initialVariables };
     this.edgeTokens.clear();
     this.pinTokens.clear();
@@ -510,7 +511,7 @@ export class WasmFumlEngine {
   /**
    * Retrieves current variables context.
    */
-  getVariables(): Record<string, any> {
+  getVariables(): Record<string, unknown> {
     return { ...this.variables };
   }
 
@@ -667,7 +668,7 @@ export class WasmFumlEngine {
         }
 
         // 2. Consume object tokens from input pins
-        const inputs: Record<string, any> = {};
+        const inputs: Record<string, unknown> = {};
         for (const pinId of node.inputPins) {
           const pin = this.pins.get(pinId)!;
           let token: Token | undefined;
@@ -703,7 +704,7 @@ export class WasmFumlEngine {
         }
 
         // 3. Execute behavior
-        let outputs: Record<string, any> | undefined;
+        let outputs: Record<string, unknown> | undefined;
         if (node.behavior) {
           outputs = node.behavior(inputs, this.variables);
         }

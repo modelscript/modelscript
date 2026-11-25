@@ -344,7 +344,8 @@ export function isIpTrustedProxy(ip: string): boolean {
 export const isTrustedProxyIp = isIpTrustedProxy;
 
 export function tryEnterpriseProxyAuth(req: Request): boolean {
-  if (!isEnterpriseHeaderAuthEnabled() || !sharedAuthDatabase) {
+  const authDb = getAuthDatabase(req);
+  if (!isEnterpriseHeaderAuthEnabled() || !authDb) {
     return false;
   }
 
@@ -399,9 +400,9 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
 
   const isAdmin = groups.some((g) => configuredAdminGroups.includes(g));
 
-  let user = sharedAuthDatabase.getUserByUsername(cleanUsername);
+  let user = authDb.getUserByUsername(cleanUsername);
   if (!user && rawEmailHeader) {
-    const userByEmail = sharedAuthDatabase.getUserByEmail(email);
+    const userByEmail = authDb.getUserByEmail(email);
     if (userByEmail) user = userByEmail;
   }
 
@@ -411,7 +412,7 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
 
   if (!user) {
     // JIT auto-provisioning
-    const created = sharedAuthDatabase.createUser(cleanUsername, email, null, {
+    const created = authDb.createUser(cleanUsername, email, null, {
       emailVerified: true,
       accountType: isAdmin ? "admin" : "user",
       status: "active",
@@ -428,11 +429,11 @@ export function tryEnterpriseProxyAuth(req: Request): boolean {
     // revoke local password and rotate token_version before trusting SAML/proxy identity or elevating to admin.
     const hasLocalPassword = Boolean(user.password_hash && !user.password_hash.startsWith("!"));
     if (hasLocalPassword && (user.email_verified === 0 || (isAdmin && user.account_type !== "admin"))) {
-      sharedAuthDatabase.updatePassword(user.id, "!enterprise_header_sso_no_local_password");
-      sharedAuthDatabase.incrementTokenVersion(user.id);
+      authDb.updatePassword(user.id, "!enterprise_header_sso_no_local_password");
+      authDb.incrementTokenVersion(user.id);
     }
     if (isAdmin && user.account_type !== "admin") {
-      sharedAuthDatabase.setUserAccountType(user.id, "admin");
+      authDb.setUserAccountType(user.id, "admin");
       user.account_type = "admin";
     }
   }
@@ -461,6 +462,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
+  const authDb = getAuthDatabase(req);
   const token = extractTokenFromRequest(req);
 
   if (!token) {
@@ -469,9 +471,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 
   // Check if it's a granular personal access token (PAT)
-  if (token.startsWith("ms_pat_") && sharedAuthDatabase) {
+  if (token.startsWith("ms_pat_") && authDb) {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-    const tokenRecord = sharedAuthDatabase.getApiTokenByHash(tokenHash);
+    const tokenRecord = authDb.getApiTokenByHash(tokenHash);
 
     if (!tokenRecord) {
       res.status(401).json({ error: "Invalid API token" });
@@ -486,7 +488,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       }
     }
 
-    const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
+    const user = authDb.getUserById(tokenRecord.user_id);
     if (!user || isAccountBlocked(user.status)) {
       res.status(401).json({ error: "User account inactive or not found" });
       return;
@@ -504,9 +506,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     if (
       !tokenRecord.last_used_at ||
       tokenRecord.last_used_ip !== (tokenClientIp ?? null) ||
-      !shouldThrottleDbTouch(sharedAuthDatabase, `pat:${tokenRecord.id}:${tokenClientIp || ""}`)
+      !shouldThrottleDbTouch(authDb, `pat:${tokenRecord.id}:${tokenClientIp || ""}`)
     ) {
-      sharedAuthDatabase.touchApiToken(tokenRecord.id, tokenClientIp);
+      authDb.touchApiToken(tokenRecord.id, tokenClientIp);
     }
 
     req.user = {
@@ -523,9 +525,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 
   // Check if it's a bot token
-  if (token.startsWith("ms_bot_") && sharedAuthDatabase) {
+  if (token.startsWith("ms_bot_") && authDb) {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-    const botUser = sharedAuthDatabase.getUserByBotTokenHash(tokenHash);
+    const botUser = authDb.getUserByBotTokenHash(tokenHash);
 
     if (!botUser || isAccountBlocked(botUser.status)) {
       res.status(401).json({ error: "Invalid bot token" });
@@ -533,15 +535,15 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     }
 
     if (botUser.owner_id) {
-      const owner = sharedAuthDatabase.getUserById(botUser.owner_id);
+      const owner = authDb.getUserById(botUser.owner_id);
       if (owner && isAccountBlocked(owner.status)) {
         res.status(403).json({ error: `Bot owner account is ${owner.status}.` });
         return;
       }
     }
 
-    if (!shouldThrottleDbTouch(sharedAuthDatabase, `bot:${botUser.id}`)) {
-      sharedAuthDatabase.touchBotLastUsed(botUser.id);
+    if (!shouldThrottleDbTouch(authDb, `bot:${botUser.id}`)) {
+      authDb.touchBotLastUsed(botUser.id);
     }
 
     req.user = {
@@ -568,8 +570,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     }
 
     // Fast path check to ensure the user exists, isn't suspended, and session is not revoked
-    if (sharedAuthDatabase) {
-      const user = sharedAuthDatabase.getUserById(decoded.id);
+    if (authDb) {
+      const user = authDb.getUserById(decoded.id);
       if (!user) {
         res.status(401).json({ error: "User no longer exists" });
         return;
@@ -688,6 +690,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
     return;
   }
 
+  const authDb = getAuthDatabase(req);
   const token = extractTokenFromRequest(req);
 
   if (!token) {
@@ -696,9 +699,9 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
   }
 
   // Check if it's a granular personal access token (PAT)
-  if (token.startsWith("ms_pat_") && sharedAuthDatabase) {
+  if (token.startsWith("ms_pat_") && authDb) {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-    const tokenRecord = sharedAuthDatabase.getApiTokenByHash(tokenHash);
+    const tokenRecord = authDb.getApiTokenByHash(tokenHash);
     if (tokenRecord) {
       let expired = false;
       if (tokenRecord.expires_at) {
@@ -706,7 +709,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
         if (!Number.isNaN(expires) && expires < Date.now()) expired = true;
       }
       if (!expired) {
-        const user = sharedAuthDatabase.getUserById(tokenRecord.user_id);
+        const user = authDb.getUserById(tokenRecord.user_id);
         const tokenClientIp = extractTrustedClientIp(req);
         const ipAllowed = !tokenRecord.ip_allowlist || isIpInAllowlist(tokenClientIp, tokenRecord.ip_allowlist);
 
@@ -728,20 +731,20 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
   }
 
   // Check if it's a bot token
-  if (token.startsWith("ms_bot_") && sharedAuthDatabase) {
+  if (token.startsWith("ms_bot_") && authDb) {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-    const botUser = sharedAuthDatabase.getUserByBotTokenHash(tokenHash);
+    const botUser = authDb.getUserByBotTokenHash(tokenHash);
     if (botUser && !isAccountBlocked(botUser.status)) {
       let ownerBlocked = false;
       if (botUser.owner_id) {
-        const owner = sharedAuthDatabase.getUserById(botUser.owner_id);
+        const owner = authDb.getUserById(botUser.owner_id);
         if (owner && isAccountBlocked(owner.status)) {
           ownerBlocked = true;
         }
       }
       if (!ownerBlocked) {
-        if (!shouldThrottleDbTouch(sharedAuthDatabase, `bot:${botUser.id}`)) {
-          sharedAuthDatabase.touchBotLastUsed(botUser.id);
+        if (!shouldThrottleDbTouch(authDb, `bot:${botUser.id}`)) {
+          authDb.touchBotLastUsed(botUser.id);
         }
         req.user = {
           ...botUser,
@@ -764,8 +767,8 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       next();
       return;
     }
-    if (sharedAuthDatabase) {
-      const user = sharedAuthDatabase.getUserById(decoded.id);
+    if (authDb) {
+      const user = authDb.getUserById(decoded.id);
       if (user && !isAccountBlocked(user.status) && (decoded.tokenVersion ?? 1) === (user.token_version ?? 1)) {
         decoded.accountType = user.account_type || decoded.accountType || decoded.role || "user";
         decoded.account_type = decoded.accountType;

@@ -1,0 +1,45 @@
+[TITLE]
+Single Urban Catchment and Circular Storm Drain
+
+[OPTIONS]
+FLOW_UNITS          CMS
+FLOW_ROUTING        DYNWAVE
+INFILTRATION        HORTON
+START_DATE          05/01/2026
+START_TIME          00:00:00
+REPORT_START_DATE   05/01/2026
+REPORT_START_TIME   00:00:00
+END_DATE            05/01/2026
+END_TIME            06:00:00
+ALLOW_PONDING       YES
+
+[JUNCTIONS]
+;;Name           Elevation  MaxDepth   InitDepth  SurDepth   Apond
+J1               24.00      2.50       0.00       0.00       20.0
+J2               22.20      2.50       0.00       0.00       20.0
+
+[OUTFALLS]
+;;Name           Elevation  Type       Stage Data       Gated
+OF1              20.50      FREE                        NO
+
+[CONDUITS]
+;;Name           From Node        To Node          Length     Roughness  InOffset   OutOffset  InitFlow   MaxFlow
+C1               J1               J2               180.00     0.013      0.00       0.00       0.00       0.00
+C2               J2               OF1              160.00     0.013      0.00       0.00       0.00       0.00
+
+[XSECTIONS]
+;;Link           Shape        Geom1      Geom2      Geom3      Geom4      Barrels
+C1               CIRCULAR     0.90       0.00       0.00       0.00       1
+C2               CIRCULAR     1.05       0.00       0.00       0.00       1
+
+[SUBCATCHMENTS]
+;;Name           RainGage         Outlet           Area     PctImperv Width    PctSlope CurbLen  SnowPack
+SC1              RG1              J1               4.50     65.00     210.00   1.50     0.00
+
+[INFILTRATION]
+;;Subcatchment   MaxRate    MinRate    Decay      DryTime    MaxInfil
+SC1              75.00      7.50       3.00       7.00       0.00
+
+[INFLOWS]
+;;Node           Parameter        Time Series      Type     Mfactor  Sfactor  Base     Pat
+J1               FLOW             ""               FLOW     1.0      1.0      0.45     ""

@@ -520,7 +520,9 @@ export function scriptsRouter(db: LibraryDatabase): Router {
               }
             }
           }
-        } catch {}
+        } catch {
+          // Cloud job cancellation sync is best-effort
+        }
 
         return res.json({ success: true, message: `Job ${job.id} cancelled` });
       }
@@ -1039,7 +1041,9 @@ export function scriptsRouter(db: LibraryDatabase): Router {
               studyResults.studyInstance = synthesizedInst;
             }
           }
-        } catch {}
+        } catch {
+          // Synthesis of standardFormat study instance is best-effort
+        }
 
         return res.json({ job, steps, studyResults });
       }
@@ -1156,7 +1160,9 @@ export function scriptsRouter(db: LibraryDatabase): Router {
               }
             }
           }
-        } catch {}
+        } catch {
+          // Fall back to DB log text if metadata JSON or disk log is unavailable
+        }
       }
 
       return res.send(
@@ -1264,7 +1270,9 @@ export function scriptsRouter(db: LibraryDatabase): Router {
           const meta = JSON.parse(job!.metadata);
           resultDir = meta.resultDir;
         }
-      } catch {}
+      } catch {
+        // Ignore malformed job metadata JSON
+      }
 
       let logPath = resultDir ? path.join(resultDir, "study.log") : undefined;
       if (resultDir && (!logPath || !fs.existsSync(logPath))) {
@@ -1404,7 +1412,9 @@ export function scriptsRouter(db: LibraryDatabase): Router {
             res.setHeader("Content-Disposition", `attachment; filename="study_run_${job.id}_results.json"`);
             return res.send(JSON.stringify(metadata.studyResults, null, 2));
           }
-        } catch {}
+        } catch {
+          // Fall through to 404 when job metadata JSON is malformed
+        }
       }
 
       res.status(404).json({ error: "Results not available for this job" });

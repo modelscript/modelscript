@@ -78,7 +78,12 @@ export function matrixMultiply(A: number[][], B: number[][]): number[][] {
   const colsA = A[0]!.length;
   const colsB = B[0]!.length;
 
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as {
+    memory: WebAssembly.Memory;
+    alloc?: (size: number) => number;
+    free?: (ptr: number) => void;
+    denseMatMulWasm?: (aPtr: number, bPtr: number, cPtr: number, rowsA: number, colsA: number, colsB: number) => void;
+  } | null;
   if (
     w &&
     typeof w.denseMatMulWasm === "function" &&
@@ -663,7 +668,8 @@ export class ConservativeLinearizationSolver {
     const initialZ0 =
       options.initialSet instanceof Zonotope ? options.initialSet : Zonotope.fromIntervals(options.initialSet);
     let currentZ = initialZ0;
-    const n = dae.numDiffStates ?? (dae as any).nx ?? currentZ.dim;
+    const daeCompat = dae as unknown as { nx?: number; ny?: number };
+    const n = dae.numDiffStates ?? daeCompat.nx ?? currentZ.dim;
     const dt = options.dt ?? 0.02;
     const maxOrder = options.maxOrder ?? 5;
     const expansionOrder = options.expansionOrder ?? 6;
@@ -674,7 +680,7 @@ export class ConservativeLinearizationSolver {
         ? options.disturbanceSet
         : Zonotope.fromIntervals(options.disturbanceSet)
       : null;
-    const numAlg = dae.numAlgStates ?? (dae as any).ny ?? 0;
+    const numAlg = dae.numAlgStates ?? daeCompat.ny ?? 0;
     const algIv = options.algebraicSet ?? Array.from({ length: numAlg }, () => new Interval(0, 0));
     const algNom = algIv.map((iv) => iv.mid);
 

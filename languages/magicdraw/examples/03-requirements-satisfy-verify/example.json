@@ -1,0 +1,11 @@
+{
+  "id": "magicdraw-03-requirements-satisfy-verify",
+  "lang": "magicdraw",
+  "subFormats": ["mdxml"],
+  "difficulty": 3,
+  "title": "Brake-by-Wire Requirements with Satisfy & Verify Traceability",
+  "description": "SysML 1.x requirements traceability model linking ISO 26262 brake-by-wire safety requirements to satisfying controller blocks and verifying hardware-in-the-loop test cases.",
+  "category": "MBSE & SysML",
+  "tags": ["magicdraw", "sysml", "requirements", "satisfy", "verify"],
+  "activeFile": "brake_reqs.mdxml"
+}

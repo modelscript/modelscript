@@ -1,0 +1,13 @@
+program "Commercial_Peak_Shave" {
+  event "DR_PEAK_001" {
+    status: "active"
+    signalType: "setpoint"
+    targetVenId: "VEN-OFFICE-TOWER-01"
+
+    interval {
+      start: "2026-07-20T15:00:00Z"
+      durationSeconds: 7200
+      payload: 85.0
+    }
+  }
+}

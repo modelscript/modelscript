@@ -1,0 +1,294 @@
+[
+  {
+    "namePath": "SINDA.STDSTL",
+    "aliases": [
+      "STEADY",
+      "STDSTL_NR"
+    ],
+    "label": "Steady-State Newton-Raphson Solver (STDSTL)",
+    "category": "Solver Routines",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SOLV</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">STDSTL</text></svg>",
+    "ports": [
+      {
+        "name": "network_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "solution_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.FWDBCK",
+    "aliases": [
+      "FORWARD_BACKWARD"
+    ],
+    "label": "Forward-Backward Implicit Transient Solver (FWDBCK)",
+    "category": "Solver Routines",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SOLV</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">FWDBCK</text></svg>",
+    "ports": [
+      {
+        "name": "network_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "solution_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.CRANKN",
+    "aliases": [
+      "CRANK_NICOLSON",
+      "CN"
+    ],
+    "label": "Crank-Nicolson Implicit Transient Solver (CRANKN)",
+    "category": "Solver Routines",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SOLV</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">CRANKN</text></svg>",
+    "ports": [
+      {
+        "name": "network_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "solution_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.SNFR",
+    "aliases": [
+      "SNFR_SOLVER",
+      "FAST_RELAX"
+    ],
+    "label": "Simultaneous Newton / Fast Relaxation Solver (SNFR)",
+    "category": "Solver Routines",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#60a5fa\">SOLV</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">SNFR</text></svg>",
+    "ports": [
+      {
+        "name": "network_in",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "solution_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.AL_6061",
+    "aliases": [
+      "ALUMINUM_6061",
+      "AL6061",
+      "AL6061_T6"
+    ],
+    "label": "Aluminum 6061-T6 Structural Alloy",
+    "category": "Spacecraft Thermal Materials",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MATL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">AL_6061</text></svg>",
+    "ports": [
+      {
+        "name": "port_a",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "port_b",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.TI_6AL_4V",
+    "aliases": [
+      "TITANIUM_6AL_4V",
+      "TI64",
+      "TITANIUM"
+    ],
+    "label": "Titanium Ti-6Al-4V Thermal Isolator Alloy",
+    "category": "Spacecraft Thermal Materials",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MATL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">TI_6AL_4V</text></svg>",
+    "ports": [
+      {
+        "name": "port_a",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "port_b",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.MLI",
+    "aliases": [
+      "MULTI_LAYER_INSULATION",
+      "BLANKET"
+    ],
+    "label": "Multi-Layer Insulation (MLI Blanket)",
+    "category": "Spacecraft Thermal Materials",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MATL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">MLI</text></svg>",
+    "ports": [
+      {
+        "name": "port_a",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "port_b",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.KAPTON",
+    "aliases": [
+      "ALUMINIZED_KAPTON",
+      "POLYIMIDE"
+    ],
+    "label": "Aluminized Kapton (2 mil Polyimide Film)",
+    "category": "Spacecraft Thermal Materials",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MATL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">KAPTON</text></svg>",
+    "ports": [
+      {
+        "name": "port_a",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "port_b",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.BLACK_ANODIZE",
+    "aliases": [
+      "BLACK_ANODIZED_AL",
+      "ANODIZE_BLACK"
+    ],
+    "label": "Black Anodized Aluminum Coating",
+    "category": "Spacecraft Thermal Materials",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MATL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" font-weight=\"bold\" fill=\"#f8fafc\">BLACK_ANODIZ</text></svg>",
+    "ports": [
+      {
+        "name": "port_a",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "port_b",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "SINDA.OSR",
+    "aliases": [
+      "OPTICAL_SOLAR_REFLECTOR",
+      "SSM",
+      "SILVER_TEFLON"
+    ],
+    "label": "Optical Solar Reflector (OSR Quartz Mirror)",
+    "category": "Spacecraft Thermal Materials",
+    "domain": "thermal",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#3b2314\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">MATL</text><text x=\"44\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.0\" font-weight=\"bold\" fill=\"#f8fafc\">OSR</text></svg>",
+    "ports": [
+      {
+        "name": "port_a",
+        "kind": "thermal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "port_b",
+        "kind": "thermal",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

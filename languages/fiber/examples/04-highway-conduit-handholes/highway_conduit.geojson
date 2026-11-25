@@ -1,0 +1,168 @@
+{
+  "type": "FeatureCollection",
+  "name": "I95-Backbone-Conduit",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.006,
+          40.7128
+        ]
+      },
+      "properties": {
+        "id": "POP_SOUTH",
+        "name": "South Backbone POP",
+        "node-type": "central-office"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.004,
+          40.7145
+        ]
+      },
+      "properties": {
+        "id": "HH_01",
+        "name": "Handhole Milepost 1",
+        "node-type": "manhole"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74.002,
+          40.7162
+        ]
+      },
+      "properties": {
+        "id": "VAULT_02",
+        "name": "Splice Vault Milepost 2",
+        "node-type": "splice-closure"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -74,
+          40.718
+        ]
+      },
+      "properties": {
+        "id": "POP_NORTH",
+        "name": "North Backbone POP",
+        "node-type": "central-office"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -74.006,
+            40.7128
+          ],
+          [
+            -74.004,
+            40.7145
+          ]
+        ]
+      },
+      "properties": {
+        "id": "TRUNK-288-S1",
+        "name": "Backbone Seg 1",
+        "from": "POP_SOUTH",
+        "to": "HH_01",
+        "strands": 288,
+        "length": 250,
+        "slack": 25,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -74.004,
+            40.7145
+          ],
+          [
+            -74.002,
+            40.7162
+          ]
+        ]
+      },
+      "properties": {
+        "id": "TRUNK-288-S2",
+        "name": "Backbone Seg 2",
+        "from": "HH_01",
+        "to": "VAULT_02",
+        "strands": 288,
+        "length": 260,
+        "slack": 25,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -74.002,
+            40.7162
+          ],
+          [
+            -74,
+            40.718
+          ]
+        ]
+      },
+      "properties": {
+        "id": "TRUNK-288-S3",
+        "name": "Backbone Seg 3",
+        "from": "VAULT_02",
+        "to": "POP_NORTH",
+        "strands": 288,
+        "length": 270,
+        "slack": 25,
+        "helix-factor": 1.03
+      }
+    }
+  ],
+  "splices": [
+    {
+      "id": "SPL-V2-01",
+      "closure": "VAULT_02",
+      "tray": 1,
+      "in": "TRUNK-288-S2",
+      "in-strand": 1,
+      "out": "TRUNK-288-S3",
+      "out-strand": 1,
+      "type": "fusion",
+      "loss": 0.03
+    },
+    {
+      "id": "SPL-V2-02",
+      "closure": "VAULT_02",
+      "tray": 1,
+      "in": "TRUNK-288-S2",
+      "in-strand": 13,
+      "out": "TRUNK-288-S3",
+      "out-strand": 13,
+      "type": "fusion",
+      "loss": 0.04
+    }
+  ]
+}

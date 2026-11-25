@@ -1,0 +1,11 @@
+{
+  "id": "oneliner-03-mutual-coupling-loop",
+  "lang": "oneliner",
+  "subFormats": ["dxt"],
+  "difficulty": 3,
+  "title": "6-Bus Transmission Loop with Zero-Sequence Mutual Coupling",
+  "description": "Six-bus 230 kV meshed corridor featuring parallel double-circuit overhead lines on shared right-of-way towers with explicit zero-sequence mutual impedance coupling.",
+  "category": "Power System Protection",
+  "tags": ["oneliner", "mutual-coupling", "230kv", "parallel-lines", "fault-study"],
+  "activeFile": "mutual_loop.dxt"
+}

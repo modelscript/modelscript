@@ -2,7 +2,7 @@
 
 /**
  * @modelscript/three-mf — 3MF (ISO/IEC 25422) & Medical Extension 3D Mesh Extractor
- * for Morsel & CAD Viewers.
+ * for Ansatz & CAD Viewers.
  *
  * Converts parsed ThreeMfDocument objects (`<mesh>`, `<build><item>`, `<basematerials>`,
  * and `<medical:SurgicalGuide>` drill sleeves / osteotomy planes) into browser-ready
@@ -364,7 +364,7 @@ function estimateMeshExtent(obj: ThreeMfObject): number {
 /**
  * Parse a 3MF (.3mf) XML document and tessellate all objects, build items,
  * and medical surgical guide features into CadComponent descriptors ready
- * for the Morsel 3D CadViewer.
+ * for the Ansatz 3D CadViewer.
  */
 export function extractThreeMfCadComponents(content: string): ThreeMfCadComponent[] {
   if (!content || !content.trim()) return [];

@@ -1,0 +1,12 @@
+{
+  "id": "cplex-lp-01-profit-maximization-lp",
+  "lang": "cplex-lp",
+  "subFormats": ["cplex-lp", "lp"],
+  "difficulty": 1,
+  "title": "Two-Variable Workshop Profit Maximization LP",
+  "description": "Textbook two-variable CPLEX LP maximizing workshop profit subject to CNC milling, finishing, and raw-material availability constraints.",
+  "category": "Linear Programming",
+  "tags": ["cplex-lp", "lp", "profit-maximization"],
+  "activeFile": "profit_max.lp",
+  "isDefaultStarter": true
+}

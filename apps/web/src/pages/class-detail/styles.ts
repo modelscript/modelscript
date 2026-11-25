@@ -4,7 +4,7 @@ import { Heading } from "@primer/react";
 import { Link } from "react-router-dom";
 import styledImport, { css, keyframes } from "styled-components";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 export const fadeIn = keyframes`
   from { opacity: 0; transform: translateY(8px); }

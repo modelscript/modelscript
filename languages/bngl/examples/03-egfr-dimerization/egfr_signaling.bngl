@@ -1,0 +1,52 @@
+begin model
+begin parameters
+  EGF0 300
+  EGFR0 150
+  HER20 150
+  Grb20 100
+  kp_egf 0.003
+  km_egf 0.06
+  kp_dim 0.005
+  km_dim 0.1
+  k_phos 0.5
+  k_dephos 0.08
+  kp_grb 0.004
+  km_grb 0.05
+end parameters
+
+begin compartments
+  PM 2 1.0
+end compartments
+
+begin molecule types
+  EGF(r)
+  EGFR(l,d,Y~U~P)
+  HER2(d,Y~U~P)
+  Grb2(sh2)
+end molecule types
+
+begin seed species
+  EGF(r) EGF0
+  EGFR(l,d,Y~U) EGFR0
+  HER2(d,Y~U) HER20
+  Grb2(sh2) Grb20
+end seed species
+
+begin observables
+  Molecules BoundEGF EGF(r!1).EGFR(l!1)
+  Molecules Heterodimers EGFR(d!1).HER2(d!1)
+  Molecules PhosphoEGFR EGFR(Y~P)
+  Molecules RecruitedGrb2 EGFR(Y~P!1).Grb2(sh2!1)
+end observables
+
+begin reaction rules
+  EGFBind: EGF(r) + EGFR(l) <-> EGF(r!1).EGFR(l!1) kp_egf, km_egf
+  Heterodimerize: EGF(r!1).EGFR(l!1,d) + HER2(d) <-> EGF(r!1).EGFR(l!1,d!2).HER2(d!2) kp_dim, km_dim
+  TransPhos: EGFR(d!1,Y~U).HER2(d!1) -> EGFR(d!1,Y~P).HER2(d!1) k_phos
+  Dephos: EGFR(Y~P) -> EGFR(Y~U) k_dephos
+  Grb2Bind: EGFR(Y~P) + Grb2(sh2) <-> EGFR(Y~P!1).Grb2(sh2!1) kp_grb, km_grb
+end reaction rules
+end model
+
+generate_network({overwrite=>1,max_iter=>10})
+simulate({method=>"ode",t_end=>30,n_steps=>200})

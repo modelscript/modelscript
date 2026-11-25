@@ -17,6 +17,7 @@ import { attachPostProofToNote, verifyRestPostProof } from "../services/git-sync
 import { locationService } from "../services/location.js";
 import { assertSafePublicUrl, safePublicFetch } from "../util/ssrf.js";
 import { isCorporateOrAirgapTier, isFederationDisabled } from "../util/tier-presets.js";
+import { publicErrorMessage } from "../utils/http-error.js";
 import { generateThumbnail } from "../workers/thumbnailWorker.js";
 import { verifySignedEmbedToken } from "./oembed.js";
 
@@ -381,7 +382,9 @@ export function socialRouter(
       if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
         isPrivateArtifact = true;
       }
-    } catch {}
+    } catch {
+      // Treat malformed view_config as non-private
+    }
     if (
       artifactOwnerId &&
       artifactOwnerId !== authorId &&
@@ -907,7 +910,7 @@ export function socialRouter(
       res.status(201).json({ post });
     } catch (err) {
       console.error("POST /posts error:", err);
-      res.status(500).json({ error: "Failed to create post", details: String(err) });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to create post") });
     }
   });
 
@@ -977,7 +980,9 @@ export function socialRouter(
       if (typeof existingPost.metadata === "string") {
         try {
           existingMetaObj = JSON.parse(existingPost.metadata) as Record<string, unknown>;
-        } catch {}
+        } catch {
+          // Fall back to empty metadata when stored post JSON is malformed
+        }
       } else if (existingPost.metadata && typeof existingPost.metadata === "object") {
         existingMetaObj = existingPost.metadata as Record<string, unknown>;
       }
@@ -1214,7 +1219,7 @@ export function socialRouter(
       res.json({ post: updatedPost });
     } catch (err: unknown) {
       console.error("PUT /posts/:id error:", err);
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to update post" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to update post") });
     }
   };
 
@@ -1242,10 +1247,14 @@ export function socialRouter(
       let parsedProof: unknown = null;
       try {
         parsedPayload = JSON.parse(r.payload_json);
-      } catch {}
+      } catch {
+        // Leave parsedPayload null when stored JSON is malformed
+      }
       try {
         parsedProof = JSON.parse(r.proof_json);
-      } catch {}
+      } catch {
+        // Leave parsedProof null when stored JSON is malformed
+      }
 
       return {
         rev: r.rev,
@@ -1315,7 +1324,7 @@ export function socialRouter(
       res.json({ success: true, postId });
     } catch (err: unknown) {
       console.error("DELETE /posts/:id error:", err);
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete post" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to delete post") });
     }
   });
 
@@ -1817,7 +1826,7 @@ export function socialRouter(
       });
     } catch (err: unknown) {
       console.error("POST /posts/:id/report error:", err);
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to submit report" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to submit report") });
     }
   });
 
@@ -1869,7 +1878,7 @@ export function socialRouter(
         targetType: resolvedTargetType,
       });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to submit resource report" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to submit resource report") });
     }
   });
 
@@ -1891,7 +1900,7 @@ export function socialRouter(
       res.json({ quotes, posts: quotes });
     } catch (err: unknown) {
       console.error("GET /posts/:id/quotes error:", err);
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch quotes" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to fetch quotes") });
     }
   });
 
@@ -1913,7 +1922,7 @@ export function socialRouter(
       res.json({ reposts, posts: reposts });
     } catch (err: unknown) {
       console.error("GET /posts/:id/reposts error:", err);
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to fetch reposts" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to fetch reposts") });
     }
   });
 
@@ -1968,7 +1977,9 @@ export function socialRouter(
         if (cfg && (cfg["private"] === true || cfg["visibility"] === "private")) {
           isPrivate = true;
         }
-      } catch {}
+      } catch {
+        // Treat malformed view_config as non-private
+      }
 
       const ownerId = artifactView.creator_id ?? artifactView.author_id;
       const isOwnerOrAdmin = Boolean(req.user && (req.user.id === ownerId || req.user.role === "admin"));
@@ -2114,7 +2125,7 @@ export function socialRouter(
           const parsedTitle = typeof parsed["title"] === "string" ? parsed["title"] : undefined;
           const rawDialect = typeof parsed["dialect"] === "string" ? parsed["dialect"].toLowerCase().trim() : "";
           const effectiveType =
-            artifactType === "morsel" || artifactType === "polyglot-morsel"
+            artifactType === "ansatz" || artifactType === "polyglot-ansatz"
               ? !rawDialect || rawDialect === "modelica"
                 ? "modelica-diagram"
                 : rawDialect
@@ -2599,7 +2610,7 @@ export function socialRouter(
       res.status(200).json({ success: true, feed });
     } catch (err: unknown) {
       console.error(err);
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to subscribe to RSS feed" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to subscribe to RSS feed") });
     }
   });
 
@@ -2715,7 +2726,7 @@ export function socialRouter(
       });
       res.json(result);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to draft post from artifact" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to draft post from artifact") });
     }
   });
 
@@ -2765,7 +2776,7 @@ export function socialRouter(
       });
       res.json(result);
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to polish post content" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to polish post content") });
     }
   });
 
@@ -2855,7 +2866,7 @@ export function socialRouter(
       const filters = database.listContentFilters(req.user!.id);
       res.json({ filters });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to list content filters" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to list content filters") });
     }
   });
 
@@ -2945,7 +2956,7 @@ export function socialRouter(
       }
       res.json({ success: true });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Failed to delete content filter" });
+      res.status(500).json({ error: publicErrorMessage(err, "Failed to delete content filter") });
     }
   });
 

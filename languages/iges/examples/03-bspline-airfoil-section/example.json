@@ -1,0 +1,11 @@
+{
+  "id": "iges-03-bspline-airfoil-section",
+  "lang": "iges",
+  "subFormats": ["iges-5.3", "nurbs"],
+  "difficulty": 3,
+  "title": "Cubic B-Spline Airfoil Cross-Section (Entity 126)",
+  "description": "Cambered aerodynamic airfoil profile represented by upper and lower cubic Rational B-Spline Curves (Entity Type 126) with clamped knot vectors and chord line.",
+  "category": "Aerospace CAD",
+  "tags": ["iges", "nurbs", "entity-126", "airfoil"],
+  "activeFile": "airfoil_nurbs.igs"
+}

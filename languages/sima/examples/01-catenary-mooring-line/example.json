@@ -1,0 +1,12 @@
+{
+  "id": "sima-01-catenary-mooring-line",
+  "lang": "sima",
+  "subFormats": ["sima"],
+  "difficulty": 1,
+  "title": "Single Catenary Mooring Line Static Equilibrium",
+  "description": "Single studless R4 chain catenary mooring line connected from a calm-water surface buoy fairlead to a seabed anchor in 150 m water depth for static tension and touchdown equilibrium.",
+  "category": "Offshore Marine Engineering",
+  "tags": ["catenary", "mooring", "offshore", "static-equilibrium"],
+  "activeFile": "catenary_line.sima",
+  "isDefaultStarter": true
+}

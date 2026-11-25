@@ -30,7 +30,7 @@ export const ihexLanguage = language({
         shortTitle: "Intel HEX",
         selector: ["*.hex", "*.ihx", "*.ihex", "*.h86", "*.mcs"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/IhexPanel.tsx",
         artifactViewTypes: ["ihex", "hex", "ihx"],
       },

@@ -1,0 +1,73 @@
+[
+  {
+    "id": "jedec-01-pal16l8-and-or-gate",
+    "lang": "jedec",
+    "subFormats": ["jesd3"],
+    "difficulty": 1,
+    "title": "PAL16L8 4-Input Combinational AND/OR Gate Fuse Map",
+    "description": "JESD3 JEDEC fuse map targeting a 20-pin PAL16L8 (2048 fuses) implementing a two-product-term combinational AND/OR gate with programmatically verified 16-bit fuse checksum.",
+    "category": "Programmable Logic",
+    "tags": ["jedec", "jesd3", "pal16l8", "combinational", "checksum"],
+    "activeFile": "pal16l8_and_or.jed",
+    "fileNames": ["pal16l8_and_or.jed"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "PAL16L8 4-Input Combinational AND/OR Gate*\nQP20*\nQF2048*\nF1*\nG0*\nN DEVICE PAL16L8*\nL0000 11111111111111111111111111111111*\nL0032 01110111111111111111111111111111*\nL0064 11111111011101111111111111111111*\nCFEDE*\n"
+  },
+  {
+    "id": "jedec-02-gal16v8-address-decoder",
+    "lang": "jedec",
+    "subFormats": ["jesd3"],
+    "difficulty": 2,
+    "title": "GAL16V8 3-to-8 Active-Low Address Decoder",
+    "description": "Lattice GAL16V8 (2194 fuses) JESD3 fuse map decoding 3 address lines into active-low chip-select outputs with 4 functional test vectors and verified C-checksum.",
+    "category": "Programmable Logic",
+    "tags": ["jedec", "gal16v8", "decoder", "test-vectors"],
+    "activeFile": "gal16v8_decoder.jed",
+    "fileNames": ["gal16v8_decoder.jed"],
+    "fileCount": 1,
+    "code": "GAL16V8 3-to-8 Active-Low Address Decoder*\nQP20*\nQF2194*\nQV4*\nF1*\nG0*\nN DEVICE GAL16V8*\nL0000 10101011111111111111111111111111*\nL0256 01101011111111111111111111111111*\nL0512 10011011111111111111111111111111*\nL0768 01011011111111111111111111111111*\nL2048 11111111000000001010101010101010*\nV0001 000000000N0LHHHHHHHN*\nV0002 100000000N0HLHHHHHHN*\nV0003 010000000N0HHLHHHHHN*\nV0004 110000000N0HHHLHHHHN*\nC0E00*\n"
+  },
+  {
+    "id": "jedec-03-gal22v10-priority-encoder",
+    "lang": "jedec",
+    "subFormats": ["jesd3"],
+    "difficulty": 3,
+    "title": "GAL22V10 4-Bit Binary Priority Encoder",
+    "description": "24-pin GAL22V10 (5892 fuses) JESD3 fuse map implementing a 4-input priority encoder with OLMC architecture configuration bits and 5 functional verification vectors.",
+    "category": "Digital Logic Design",
+    "tags": ["jedec", "gal22v10", "priority-encoder", "pld"],
+    "activeFile": "gal22v10_encoder.jed",
+    "fileNames": ["gal22v10_encoder.jed"],
+    "fileCount": 1,
+    "code": "GAL22V10 4-to-2 Binary Priority Encoder*\nQP24*\nQF5892*\nQV5*\nF1*\nG0*\nN DEVICE GAL22V10*\nL0000 11111111111111111111111111111111111111111111*\nL0044 01111111111111111111111111111111111111111111*\nL0088 10011111111111111111111111111111111111111111*\nL0132 10100111111111111111111111111111111111111111*\nL5808 00000000000000000000*\nV0001 00000000000N00000000LLLN*\nV0002 00001000000N00000000LLHN*\nV0003 00010000000N00000000LHLN*\nV0004 00100000000N00000000HLLN*\nV0005 01000000000N00000000HHHN*\nCDA6B*\n"
+  },
+  {
+    "id": "jedec-04-gal22v10-sync-counter",
+    "lang": "jedec",
+    "subFormats": ["jesd3"],
+    "difficulty": 4,
+    "title": "GAL22V10 Registered Synchronous 4-Bit Binary Counter",
+    "description": "Registered-mode GAL22V10 JESD3 fuse map configuring four clocked D-flip-flop macrocells with synchronous clear and clocked test vectors (C-clock stimulus).",
+    "category": "Sequential Programmable Logic",
+    "tags": ["jedec", "gal22v10", "counter", "registered", "sequential"],
+    "activeFile": "gal22v10_counter.jed",
+    "fileNames": ["gal22v10_counter.jed"],
+    "fileCount": 1,
+    "code": "GAL22V10 Synchronous 4-Bit Up Counter with Clear*\nQP24*\nQF5892*\nQV5*\nF1*\nG0*\nN DEVICE GAL22V10*\nL0000 01111111111111111111111111111111111111111111*\nL0396 10110111111111111111111111111111111111111111*\nL0792 10111001111111111111111111111111111111111111*\nL1188 10111010011111111111111111111111111111111111*\nL1584 10111010100111111111111111111111111111111111*\nL5808 01010101000000000000*\nV0001 C1000000000N0000000LLLLN*\nV0002 C0100000000N0000000LLLHN*\nV0003 C0100000000N0000000LLHLN*\nV0004 C0100000000N0000000LLHHN*\nV0005 C0100000000N0000000LHLLN*\nCDA66*\n"
+  },
+  {
+    "id": "jedec-05-cpu-memory-map-glue-logic",
+    "lang": "jedec",
+    "subFormats": ["jesd3"],
+    "difficulty": 5,
+    "title": "Microprocessor Bus Memory-Map & Chip-Select Glue Logic GAL22V10",
+    "description": "Complete GAL22V10 bus-interface glue logic fuse map decoding ROM, RAM, UART, GPIO chip selects plus DTACK/BERR handshake signals, user electronic signature, and 6 bus test vectors.",
+    "category": "Computer Architecture",
+    "tags": ["jedec", "gal22v10", "glue-logic", "address-decoder", "bus"],
+    "activeFile": "cpu_glue_logic.jed",
+    "fileNames": ["cpu_glue_logic.jed"],
+    "fileCount": 1,
+    "code": "GAL22V10 68000 Bus Memory-Map & Peripheral Chip-Select Glue Logic*\nQP24*\nQF5892*\nQV6*\nF1*\nG0*\nN DEVICE GAL22V10*\nL0000 01010101111111111111111111111111111111111111*\nL0396 01011001111111111111111111111111111111111111*\nL0792 10010101111111111111111111111111111111111111*\nL1188 10011001111111111111111111111111111111111111*\nL1584 10100101111111111111111111111111111111111111*\nL1980 10101001111111111111111111111111111111111111*\nL5808 00000000000000000000*\nL5828 01001101001101100011100001001011*\nV0001 00000000000N000000LHHHLN*\nV0002 00100000000N000000HLHHLN*\nV0003 10000000000N000000HHLHLN*\nV0004 10100000000N000000HHHLLN*\nV0005 11110000000N000000HHHHHN*\nV0006 00001000000N000000HHHHHN*\nCD69E*\n"
+  }
+]

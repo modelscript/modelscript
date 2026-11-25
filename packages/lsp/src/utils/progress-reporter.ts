@@ -81,7 +81,9 @@ export class LspWorkDoneProgressReporter {
           percentage: options.initialPercentage ?? 0,
         },
       });
-    } catch {}
+    } catch {
+      // Client may not support $/progress notifications or connection may be closing.
+    }
 
     return reporter;
   }
@@ -92,14 +94,16 @@ export class LspWorkDoneProgressReporter {
   public report(percentage?: number, message?: string): void {
     if (this.isEnded || this.isCancelled) return;
     try {
-      const payload: any = { kind: "report" };
+      const payload: { kind: "report"; percentage?: number; message?: string } = { kind: "report" };
       if (typeof percentage === "number") payload.percentage = Math.min(100, Math.max(0, percentage));
       if (message) payload.message = message;
       this.connection.sendNotification("$/progress", {
         token: this.token,
         value: payload,
       });
-    } catch {}
+    } catch {
+      // Best-effort progress update; ignore transport errors if client disconnected.
+    }
   }
 
   /**
@@ -118,6 +122,8 @@ export class LspWorkDoneProgressReporter {
           message: message || "Verification complete",
         },
       });
-    } catch {}
+    } catch {
+      // Best-effort progress completion; ignore transport errors if client disconnected.
+    }
   }
 }

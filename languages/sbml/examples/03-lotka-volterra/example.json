@@ -1,0 +1,11 @@
+{
+  "id": "sbml-03-lotka-volterra",
+  "lang": "sbml",
+  "subFormats": ["sbml-l2v4"],
+  "difficulty": 3,
+  "title": "Lotka-Volterra Ecological Oscillator",
+  "description": "Nonlinear predator-prey population dynamics encoded as an SBML reaction network with autocatalytic prey growth, predation coupling, and predator mortality.",
+  "category": "Systems Biology",
+  "tags": ["sbml", "oscillator", "lotka-volterra", "nonlinear"],
+  "activeFile": "lotka_volterra.sbml"
+}

@@ -1,0 +1,770 @@
+[
+  {
+    "namePath": "eclipse:pvto",
+    "aliases": [
+      "PVTO",
+      "PVTO_LIVE_OIL",
+      "STANDING_PVTO"
+    ],
+    "label": "Live Oil PVT (PVTO / Standing)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PVTO</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:pvdo",
+    "aliases": [
+      "PVDO",
+      "PVDO_DEAD_OIL"
+    ],
+    "label": "Dead Oil PVT (PVDO)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PVDO</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:pvtg",
+    "aliases": [
+      "PVTG",
+      "PVTG_WET_GAS"
+    ],
+    "label": "Wet Gas PVT (PVTG)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PVTG</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:pvdg",
+    "aliases": [
+      "PVDG",
+      "PVDG_DRY_GAS"
+    ],
+    "label": "Dry Gas PVT (PVDG)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PVDG</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:pvtw",
+    "aliases": [
+      "PVTW",
+      "PVTW_WATER"
+    ],
+    "label": "Water PVT (PVTW)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PVTW</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:eos_pr",
+    "aliases": [
+      "EOS_PR_COMP",
+      "PR",
+      "PENG_ROBINSON"
+    ],
+    "label": "Peng-Robinson Cubic EOS (PR)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">EOS_PR</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:eos_srk",
+    "aliases": [
+      "EOS_SRK_COMP",
+      "SRK",
+      "SOAVE_REDLICH_KWONG"
+    ],
+    "label": "Soave-Redlich-Kwong EOS (SRK)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">EOS_SRK</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:rock",
+    "aliases": [
+      "ROCK",
+      "ROCK_COMPRESS"
+    ],
+    "label": "Rock Pore Compressibility (ROCK)",
+    "category": "PVT & EOS",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">PVT</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ROCK</text></svg>",
+    "ports": [
+      {
+        "name": "pressure",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "temperature",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "props",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:swof",
+    "aliases": [
+      "SWOF",
+      "SWOF_COREY",
+      "COREY_OW"
+    ],
+    "label": "Oil-Water Corey SCAL (SWOF)",
+    "category": "Relative Permeability & SCAL",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1f3b2e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SCAL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SWOF</text></svg>",
+    "ports": [
+      {
+        "name": "sw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "sg",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "kr",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 16
+      },
+      {
+        "name": "pc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 32
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:sgof",
+    "aliases": [
+      "SGOF",
+      "SGOF_COREY",
+      "COREY_GO"
+    ],
+    "label": "Gas-Oil Corey SCAL (SGOF)",
+    "category": "Relative Permeability & SCAL",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1f3b2e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SCAL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SGOF</text></svg>",
+    "ports": [
+      {
+        "name": "sw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "sg",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "kr",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 16
+      },
+      {
+        "name": "pc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 32
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:stone1",
+    "aliases": [
+      "STONE1",
+      "STONE1_3PHASE"
+    ],
+    "label": "Stone I 3-Phase RelPerm (STONE1)",
+    "category": "Relative Permeability & SCAL",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1f3b2e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SCAL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">STONE1</text></svg>",
+    "ports": [
+      {
+        "name": "sw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "sg",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "kr",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 16
+      },
+      {
+        "name": "pc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 32
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:stone2",
+    "aliases": [
+      "STONE2",
+      "STONE2_3PHASE"
+    ],
+    "label": "Stone II 3-Phase RelPerm (STONE2)",
+    "category": "Relative Permeability & SCAL",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1f3b2e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SCAL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">STONE2</text></svg>",
+    "ports": [
+      {
+        "name": "sw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "sg",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "kr",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 16
+      },
+      {
+        "name": "pc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 32
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:pc_jfunc",
+    "aliases": [
+      "JFUNC",
+      "PC_LEVERETT_J",
+      "LEVERETT_J"
+    ],
+    "label": "Leverett J-Function (JFUNC)",
+    "category": "Relative Permeability & SCAL",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#1f3b2e\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">SCAL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">PC_JFUNC</text></svg>",
+    "ports": [
+      {
+        "name": "sw",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "sg",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "kr",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 16
+      },
+      {
+        "name": "pc",
+        "kind": "signal",
+        "side": "right",
+        "dx": 84,
+        "dy": 32
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:welspecs_prod",
+    "aliases": [
+      "WELSPECS_PROD",
+      "WCONPROD",
+      "PRODUCER"
+    ],
+    "label": "Production Well Control (WCONPROD)",
+    "category": "Wells & Aquifers",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#3f2718\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">WELL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WELSPECS_</text></svg>",
+    "ports": [
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bhp",
+        "kind": "signal",
+        "side": "top",
+        "dx": 42,
+        "dy": 0
+      },
+      {
+        "name": "rate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:welspecs_inj",
+    "aliases": [
+      "WELSPECS_INJ",
+      "WCONINJE",
+      "INJECTOR"
+    ],
+    "label": "Injection Well Control (WCONINJE)",
+    "category": "Wells & Aquifers",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#3f2718\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">WELL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">WELSPECS_</text></svg>",
+    "ports": [
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bhp",
+        "kind": "signal",
+        "side": "top",
+        "dx": 42,
+        "dy": 0
+      },
+      {
+        "name": "rate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:compdat",
+    "aliases": [
+      "COMPDAT",
+      "COMPDAT_PEACEMAN",
+      "PEACEMAN_WI"
+    ],
+    "label": "Peaceman Completion Index (COMPDAT)",
+    "category": "Wells & Aquifers",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#3f2718\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">WELL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">COMPDAT</text></svg>",
+    "ports": [
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bhp",
+        "kind": "signal",
+        "side": "top",
+        "dx": 42,
+        "dy": 0
+      },
+      {
+        "name": "rate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:vfpprod",
+    "aliases": [
+      "VFPPROD",
+      "VFPPROD_LIFT"
+    ],
+    "label": "Production VFP Lift Curve (VFPPROD)",
+    "category": "Wells & Aquifers",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#3f2718\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">WELL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">VFPPROD</text></svg>",
+    "ports": [
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bhp",
+        "kind": "signal",
+        "side": "top",
+        "dx": 42,
+        "dy": 0
+      },
+      {
+        "name": "rate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:mswell",
+    "aliases": [
+      "WELSEGS",
+      "MSWELL",
+      "MSWELL_SEGMENT"
+    ],
+    "label": "Multi-Segment Wellbore (WELSEGS)",
+    "category": "Wells & Aquifers",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#3f2718\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">WELL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">MSWELL</text></svg>",
+    "ports": [
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bhp",
+        "kind": "signal",
+        "side": "top",
+        "dx": 42,
+        "dy": 0
+      },
+      {
+        "name": "rate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:aqufetp",
+    "aliases": [
+      "AQUFETP",
+      "AQUFETP_FETKOVICH",
+      "FETKOVICH"
+    ],
+    "label": "Fetkovich Analytical Aquifer (AQUFETP)",
+    "category": "Wells & Aquifers",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#3f2718\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">WELL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AQUFETP</text></svg>",
+    "ports": [
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bhp",
+        "kind": "signal",
+        "side": "top",
+        "dx": 42,
+        "dy": 0
+      },
+      {
+        "name": "rate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "eclipse:aqutab",
+    "aliases": [
+      "AQUTAB",
+      "AQUCT",
+      "AQUTAB_CARTER_TRACY",
+      "CARTER_TRACY"
+    ],
+    "label": "Carter-Tracy Aquifer (AQUTAB / AQUCT)",
+    "category": "Wells & Aquifers",
+    "domain": "subsurface",
+    "width": 84,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 84 48\" width=\"84\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"80\" height=\"44\" rx=\"6\" fill=\"#3f2718\" stroke=\"#f59e0b\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"28\" height=\"12\" rx=\"3\" fill=\"#f59e0b\" fill-opacity=\"0.22\"/><text x=\"20\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#f59e0b\">WELL</text><text x=\"42\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">AQUTAB</text></svg>",
+    "ports": [
+      {
+        "name": "reservoir",
+        "kind": "fluid",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "bhp",
+        "kind": "signal",
+        "side": "top",
+        "dx": 42,
+        "dy": 0
+      },
+      {
+        "name": "rate",
+        "kind": "fluid",
+        "side": "right",
+        "dx": 84,
+        "dy": 24
+      }
+    ]
+  }
+]

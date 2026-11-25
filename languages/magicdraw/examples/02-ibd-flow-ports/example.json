@@ -1,0 +1,11 @@
+{
+  "id": "magicdraw-02-ibd-flow-ports",
+  "lang": "magicdraw",
+  "subFormats": ["mdxml"],
+  "difficulty": 2,
+  "title": "Internal Block Diagram (IBD) with Flow Ports & Connectors",
+  "description": "SysML 1.x Internal Block Diagram connecting a heat exchanger, circulation pump, and battery cold plate through typed Real flow properties and binding connectors.",
+  "category": "MBSE & SysML",
+  "tags": ["magicdraw", "sysml", "ibd", "connectors", "thermal"],
+  "activeFile": "thermal_ibd.mdxml"
+}

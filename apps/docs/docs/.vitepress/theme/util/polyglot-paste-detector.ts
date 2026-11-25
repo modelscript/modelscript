@@ -3,7 +3,7 @@
 /**
  * Landing-page Polyglot Sandbox helpers:
  * Re-exports shared dialect detection & fault injection from `@modelscript/lsp/utils/polyglot-detector.js`
- * alongside the stateful Morsel handoff URL encoder (`#m=<deflated-base64url>`).
+ * alongside the stateful Ansatz handoff URL encoder (`#m=<deflated-base64url>`).
  */
 
 export {
@@ -22,10 +22,10 @@ function bytesToBase64Url(bytes: Uint8Array): string {
 }
 
 /**
- * Compresses open sandbox tabs into a URL hash compatible with Morsel's
- * `decompressMorselPayload` (`#m=<deflated-base64url>`).
+ * Compresses open sandbox tabs into a URL hash compatible with Ansatz's
+ * `decompressAnsatzPayload` (`#m=<deflated-base64url>`).
  */
-export async function buildMorselHandoffUrl(
+export async function buildAnsatzHandoffUrl(
   ansatzOrigin: string,
   tabs: Array<{ fileName: string; langSlug: string; code: string }>,
   activeIndex: number,

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#" xml:base="http://modelscript.org/sbol/repressors#">
+  <sbol:Sequence displayId="seq_cI_cds" encoding="IUPAC_DNA">
+    <sbol:elements>ATGAAAGCAATTTTCGTACTGAAAGGTTGGTGGCGGTAA</sbol:elements>
+  </sbol:Sequence>
+  <sbol:Component displayId="cds_cI" name="Lambda cI Coding Sequence" role="SO:0000316" hasSequence="seq_cI_cds"/>
+</rdf:RDF>

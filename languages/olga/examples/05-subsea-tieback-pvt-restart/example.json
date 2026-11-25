@@ -1,0 +1,11 @@
+{
+  "id": "olga-05-subsea-tieback-pvt-restart",
+  "lang": "olga",
+  "subFormats": ["opi", "tab"],
+  "difficulty": 5,
+  "title": "Subsea Tieback with PVT Table & Restart Ramp",
+  "description": "Full deepwater subsea tieback coupled to an external tabular PVT fluid property file with Vogel wellbore IPR, insulated riser, and active anti-slug choke control for restart ramp-up.",
+  "category": "Multiphase Flow Assurance",
+  "tags": ["olga", "pvt-table", "restart-ramp", "multi-file", "deepwater"],
+  "activeFile": "tieback.opi"
+}

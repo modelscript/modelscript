@@ -3,7 +3,7 @@
 /**
  * Client-only AntV X6 diagram renderer wrapper for the VitePress Polyglot Sandbox,
  * using the exact same `@modelscript/diagram` engine (`initGraph` + `renderDiagram`)
- * as Morsel IDE.
+ * as Ansatz Editor.
  */
 
 export interface SandboxDiagramHandle {

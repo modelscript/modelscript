@@ -48,7 +48,26 @@ export const StudyTemplateViewer: React.FC<StudyTemplateViewerProps> = ({ viewCo
   const hasCloudSolver = useFeatureFlag("cae_cloud_solver");
   const [showRawSpec, setShowRawSpec] = useState(false);
 
-  const studyDef = (viewConfig.studyDefinition || viewConfig) as Record<string, any>;
+  interface StudyDefinitionShape {
+    artifactPath?: string | undefined;
+    standardFormat?: string | undefined;
+    slug?: string | undefined;
+    name?: string | undefined;
+    kind?: string | undefined;
+    category?: string | undefined;
+    description?: string | undefined;
+    modelContract?: { domains?: string[] | undefined } | undefined;
+    execution?:
+      | {
+          supportedTargets?: string[] | undefined;
+          recommendedSolver?: string | undefined;
+          pipelineSteps?: string[] | undefined;
+        }
+      | undefined;
+    outputs?: { kpis?: ({ id?: string; label?: string; unit?: string } | string)[] | undefined } | undefined;
+    [key: string]: unknown;
+  }
+  const studyDef = (viewConfig.studyDefinition || viewConfig) as StudyDefinitionShape;
   const rawPath = String(artifactPath || viewConfig.artifactPath || studyDef.artifactPath || "");
   const stdFormat: "sedml" | "ssp-ssv" | "dakota" =
     studyDef.standardFormat === "ssp-ssv" || rawPath.endsWith(".ssv")

@@ -20,13 +20,15 @@ import {
   type NotebookCell,
   parseNotebookFromContent,
   serializeCellsToMarkdown,
+  type TutorialDifficulty,
 } from "../../util/notebook";
 import { getPostUrl } from "../../util/url";
 import type { SpatialPin } from "../artifacts/spatial-pin";
 import { useToast } from "../ToastContext";
 import { type AttachContext, extractArtifactSourceText, toEditableView, useAttachFlow } from "./attach";
+import type { ComposePostRef, CreatedPostItem } from "./types";
 
-export interface AttachedMorselDraft {
+export interface AttachedAnsatzDraft {
   id?: number | undefined;
   code: string;
   title: string;
@@ -40,15 +42,15 @@ export interface UseComposeSubmitParams {
   setContent: (val: string) => void;
   artifactId: number | string | null;
   setArtifactId: (val: number | string | null) => void;
-  attachedMorsel?: AttachedMorselDraft | null | undefined;
-  setAttachedMorsel?: ((val: AttachedMorselDraft | null) => void) | undefined;
+  attachedAnsatz?: AttachedAnsatzDraft | null | undefined;
+  setAttachedAnsatz?: ((val: AttachedAnsatzDraft | null) => void) | undefined;
   isNotebookMode: boolean;
   setIsNotebookMode: (val: boolean) => void;
   notebookTitle: string;
   setNotebookTitle: (val: string) => void;
   notebookSummary: string;
   setNotebookSummary: (val: string) => void;
-  notebookDifficulty: any;
+  notebookDifficulty: TutorialDifficulty | undefined;
   notebookSeries: string;
   setNotebookSeries: (val: string) => void;
   notebookDialect: string;
@@ -64,13 +66,13 @@ export interface UseComposeSubmitParams {
   setShowContentWarning: (val: boolean) => void;
   visibility?: "public" | "unlisted" | "followers" | "direct" | undefined;
   replyVisibility: "everyone" | "following" | "mentioned";
-  quotePost?: any;
-  replyToPost?: any;
+  quotePost?: ComposePostRef | null | undefined;
+  replyToPost?: ComposePostRef | null | undefined;
   editPostId?: string | number | null | undefined;
   forkedFromArtifactId?: number | string | null | undefined;
   pendingPin?: SpatialPin | undefined;
   excludedUsers?: Set<string> | undefined;
-  onPostCreated?: ((post: any) => void) | undefined;
+  onPostCreated?: ((post: CreatedPostItem) => void) | undefined;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   /** Called after the attach wizard saved a customization to an existing artifact. */
   onArtifactEdited?: ((artifactId: number | string) => void) | undefined;
@@ -82,8 +84,8 @@ export function useComposeSubmit({
   setContent,
   artifactId,
   setArtifactId,
-  attachedMorsel,
-  setAttachedMorsel,
+  attachedAnsatz,
+  setAttachedAnsatz,
   isNotebookMode,
   setIsNotebookMode,
   notebookTitle,
@@ -239,27 +241,27 @@ export function useComposeSubmit({
     (notebookTitle.trim().length > 0 ||
       notebookCells.some((c) => (c.type === "markdown" ? c.content.trim().length > 0 : Boolean(c.artifactId))));
 
-  const hasAttachedMorsel = Boolean(attachedMorsel && (attachedMorsel.id || attachedMorsel.code?.trim()));
+  const hasAttachedAnsatz = Boolean(attachedAnsatz && (attachedAnsatz.id || attachedAnsatz.code?.trim()));
 
   const handleSubmit = async () => {
-    if ((!content.trim() && !artifactId && !hasNotebookContent && !hasAttachedMorsel) || !token) return;
+    if ((!content.trim() && !artifactId && !hasNotebookContent && !hasAttachedAnsatz) || !token) return;
     setSubmitting(true);
     try {
       let resolvedArtifactId = artifactId;
-      if (!resolvedArtifactId && attachedMorsel) {
-        if (attachedMorsel.id) {
-          resolvedArtifactId = attachedMorsel.id;
-        } else if (attachedMorsel.code) {
-          const morselDialect = attachedMorsel.dialect || attachedMorsel.language || "modelica";
-          const morselTitle = attachedMorsel.title || "Model";
+      if (!resolvedArtifactId && attachedAnsatz) {
+        if (attachedAnsatz.id) {
+          resolvedArtifactId = attachedAnsatz.id;
+        } else if (attachedAnsatz.code) {
+          const ansatzDialect = attachedAnsatz.dialect || attachedAnsatz.language || "modelica";
+          const ansatzTitle = attachedAnsatz.title || "Model";
           const created = await createArtifactView({
-            artifact_type: morselDialect === "modelica" ? "modelica-diagram" : morselDialect,
-            dialect: morselDialect,
-            title: morselTitle,
+            artifact_type: ansatzDialect === "modelica" ? "modelica-diagram" : ansatzDialect,
+            dialect: ansatzDialect,
+            title: ansatzTitle,
             view_config: JSON.stringify({
-              code: attachedMorsel.code,
-              title: morselTitle,
-              dialect: morselDialect,
+              code: attachedAnsatz.code,
+              title: ansatzTitle,
+              dialect: ansatzDialect,
             }),
           });
           if (created?.id) {
@@ -312,7 +314,16 @@ export function useComposeSubmit({
 
       const excludedList = excludedUsers && excludedUsers.size > 0 ? Array.from(excludedUsers) : undefined;
 
-      const payload: any = {
+      const metadata: Record<string, unknown> = {
+        ...(pendingPin ? { spatialPin: pendingPin } : {}),
+        ...(contentWarning.trim() ? { contentWarning: contentWarning.trim() } : {}),
+        ...(notebookPayload ? { notebook: notebookPayload } : {}),
+        ...(!isNotebookMode && effectiveArtIds.length > 0 ? { artifactIds: effectiveArtIds.slice(0, 4) } : {}),
+        ...(forkedFromArtifactId ? { forkedFromArtifactId } : {}),
+        ...(excludedList ? { excludedMentions: excludedList } : {}),
+      };
+
+      const payload: Record<string, unknown> = {
         content: text,
         content_warning: contentWarning.trim() || (editPostId ? null : undefined),
         artifact_view_id: primaryArtifactId !== undefined ? primaryArtifactId : undefined,
@@ -322,14 +333,7 @@ export function useComposeSubmit({
         reply_visibility: replyVisibility,
         ...(excludedList ? { excluded_mentions: excludedList } : {}),
         ...(notebookPayload ? { notebook: notebookPayload } : {}),
-        metadata: {
-          ...(pendingPin ? { spatialPin: pendingPin } : {}),
-          ...(contentWarning.trim() ? { contentWarning: contentWarning.trim() } : {}),
-          ...(notebookPayload ? { notebook: notebookPayload } : {}),
-          ...(!isNotebookMode && effectiveArtIds.length > 0 ? { artifactIds: effectiveArtIds.slice(0, 4) } : {}),
-          ...(forkedFromArtifactId ? { forkedFromArtifactId } : {}),
-          ...(excludedList ? { excludedMentions: excludedList } : {}),
-        },
+        metadata,
       };
 
       if (signatureObj) {
@@ -338,8 +342,7 @@ export function useComposeSubmit({
         if ("proof" in signatureObj && signatureObj.proof) {
           payload.proof = signatureObj.proof;
           payload.proof_payload = signatureObj.proofPayload;
-          if (!payload.metadata) payload.metadata = {};
-          payload.metadata.proof = signatureObj.proof;
+          metadata.proof = signatureObj.proof;
         }
       }
 
@@ -348,7 +351,7 @@ export function useComposeSubmit({
       setContentWarning("");
       setShowContentWarning(false);
       setArtifactId(null);
-      setAttachedMorsel?.(null);
+      setAttachedAnsatz?.(null);
       setNotebookTitle("");
       setNotebookSummary("");
       setNotebookSeries("");
@@ -380,7 +383,7 @@ export function useComposeSubmit({
           : undefined,
       });
 
-      onPostCreated?.(data.post);
+      onPostCreated?.(data.post as unknown as CreatedPostItem);
     } catch (err: unknown) {
       console.error(err);
       const errObj = err as { response?: { data?: { error?: string } }; message?: string } | undefined;

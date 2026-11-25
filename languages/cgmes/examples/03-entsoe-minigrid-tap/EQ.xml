@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:cim="http://iec.ch/TC57/2013/CIM-schema-cim16#"
+         xmlns:md="http://iec.ch/TC57/61970-552/ModelDescription/1#">
+  <cim:Substation rdf:ID="_subA">
+    <cim:IdentifiedObject.name>Substation_A</cim:IdentifiedObject.name>
+  </cim:Substation>
+  <cim:Substation rdf:ID="_subB">
+    <cim:IdentifiedObject.name>Substation_B</cim:IdentifiedObject.name>
+  </cim:Substation>
+  <cim:BaseVoltage rdf:ID="_bv380">
+    <cim:BaseVoltage.nominalVoltage>380.0</cim:BaseVoltage.nominalVoltage>
+  </cim:BaseVoltage>
+  <cim:BaseVoltage rdf:ID="_bv110">
+    <cim:BaseVoltage.nominalVoltage>110.0</cim:BaseVoltage.nominalVoltage>
+  </cim:BaseVoltage>
+  <cim:VoltageLevel rdf:ID="_vlA380">
+    <cim:IdentifiedObject.name>A_380kV</cim:IdentifiedObject.name>
+    <cim:VoltageLevel.BaseVoltage rdf:resource="#_bv380"/>
+    <cim:VoltageLevel.Substation rdf:resource="#_subA"/>
+  </cim:VoltageLevel>
+  <cim:VoltageLevel rdf:ID="_vlA110">
+    <cim:IdentifiedObject.name>A_110kV</cim:IdentifiedObject.name>
+    <cim:VoltageLevel.BaseVoltage rdf:resource="#_bv110"/>
+    <cim:VoltageLevel.Substation rdf:resource="#_subA"/>
+  </cim:VoltageLevel>
+  <cim:VoltageLevel rdf:ID="_vlB380">
+    <cim:IdentifiedObject.name>B_380kV</cim:IdentifiedObject.name>
+    <cim:VoltageLevel.BaseVoltage rdf:resource="#_bv380"/>
+    <cim:VoltageLevel.Substation rdf:resource="#_subB"/>
+  </cim:VoltageLevel>
+  <cim:VoltageLevel rdf:ID="_vlB110">
+    <cim:IdentifiedObject.name>B_110kV</cim:IdentifiedObject.name>
+    <cim:VoltageLevel.BaseVoltage rdf:resource="#_bv110"/>
+    <cim:VoltageLevel.Substation rdf:resource="#_subB"/>
+  </cim:VoltageLevel>
+  <cim:TopologicalNode rdf:ID="_n1">
+    <cim:IdentifiedObject.name>A_380_1</cim:IdentifiedObject.name>
+    <cim:TopologicalNode.BaseVoltage rdf:resource="#_bv380"/>
+    <cim:TopologicalNode.ConnectivityNodeContainer rdf:resource="#_vlA380"/>
+  </cim:TopologicalNode>
+  <cim:TopologicalNode rdf:ID="_n2">
+    <cim:IdentifiedObject.name>B_380_1</cim:IdentifiedObject.name>
+    <cim:TopologicalNode.BaseVoltage rdf:resource="#_bv380"/>
+    <cim:TopologicalNode.ConnectivityNodeContainer rdf:resource="#_vlB380"/>
+  </cim:TopologicalNode>
+  <cim:TopologicalNode rdf:ID="_n3">
+    <cim:IdentifiedObject.name>A_110_1</cim:IdentifiedObject.name>
+    <cim:TopologicalNode.BaseVoltage rdf:resource="#_bv110"/>
+    <cim:TopologicalNode.ConnectivityNodeContainer rdf:resource="#_vlA110"/>
+  </cim:TopologicalNode>
+  <cim:TopologicalNode rdf:ID="_n4">
+    <cim:IdentifiedObject.name>B_110_1</cim:IdentifiedObject.name>
+    <cim:TopologicalNode.BaseVoltage rdf:resource="#_bv110"/>
+    <cim:TopologicalNode.ConnectivityNodeContainer rdf:resource="#_vlB110"/>
+  </cim:TopologicalNode>
+  <cim:ACLineSegment rdf:ID="_line380">
+    <cim:IdentifiedObject.name>Tie_380_AB</cim:IdentifiedObject.name>
+    <cim:ACLineSegment.r>1.8</cim:ACLineSegment.r>
+    <cim:ACLineSegment.x>18.5</cim:ACLineSegment.x>
+    <cim:ACLineSegment.bch>0.00032</cim:ACLineSegment.bch>
+  </cim:ACLineSegment>
+  <cim:Terminal rdf:ID="_tl380_1">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_line380"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n1"/>
+    <cim:Terminal.sequenceNumber>1</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:Terminal rdf:ID="_tl380_2">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_line380"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n2"/>
+    <cim:Terminal.sequenceNumber>2</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:ACLineSegment rdf:ID="_line110">
+    <cim:IdentifiedObject.name>SubTrans_110_AB</cim:IdentifiedObject.name>
+    <cim:ACLineSegment.r>2.6</cim:ACLineSegment.r>
+    <cim:ACLineSegment.x>11.2</cim:ACLineSegment.x>
+    <cim:ACLineSegment.bch>0.00012</cim:ACLineSegment.bch>
+  </cim:ACLineSegment>
+  <cim:Terminal rdf:ID="_tl110_1">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_line110"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n3"/>
+    <cim:Terminal.sequenceNumber>1</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:Terminal rdf:ID="_tl110_2">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_line110"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n4"/>
+    <cim:Terminal.sequenceNumber>2</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:PowerTransformer rdf:ID="_trA">
+    <cim:IdentifiedObject.name>AutoXfmr_A_OLTC</cim:IdentifiedObject.name>
+  </cim:PowerTransformer>
+  <cim:PowerTransformerEnd rdf:ID="_trA_e1">
+    <cim:PowerTransformerEnd.PowerTransformer rdf:resource="#_trA"/>
+    <cim:PowerTransformerEnd.ratedU>380.0</cim:PowerTransformerEnd.ratedU>
+    <cim:PowerTransformerEnd.ratedS>350.0</cim:PowerTransformerEnd.ratedS>
+    <cim:PowerTransformerEnd.r>0.35</cim:PowerTransformerEnd.r>
+    <cim:PowerTransformerEnd.x>14.2</cim:PowerTransformerEnd.x>
+    <cim:TransformerEnd.endNumber>1</cim:TransformerEnd.endNumber>
+  </cim:PowerTransformerEnd>
+  <cim:PowerTransformerEnd rdf:ID="_trA_e2">
+    <cim:PowerTransformerEnd.PowerTransformer rdf:resource="#_trA"/>
+    <cim:PowerTransformerEnd.ratedU>110.0</cim:PowerTransformerEnd.ratedU>
+    <cim:PowerTransformerEnd.ratedS>350.0</cim:PowerTransformerEnd.ratedS>
+    <cim:PowerTransformerEnd.r>0.03</cim:PowerTransformerEnd.r>
+    <cim:PowerTransformerEnd.x>1.1</cim:PowerTransformerEnd.x>
+    <cim:TransformerEnd.endNumber>2</cim:TransformerEnd.endNumber>
+  </cim:PowerTransformerEnd>
+  <cim:Terminal rdf:ID="_ttrA_1">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_trA"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n1"/>
+    <cim:Terminal.sequenceNumber>1</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:Terminal rdf:ID="_ttrA_2">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_trA"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n3"/>
+    <cim:Terminal.sequenceNumber>2</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:PowerTransformer rdf:ID="_trB">
+    <cim:IdentifiedObject.name>AutoXfmr_B_OLTC</cim:IdentifiedObject.name>
+  </cim:PowerTransformer>
+  <cim:PowerTransformerEnd rdf:ID="_trB_e1">
+    <cim:PowerTransformerEnd.PowerTransformer rdf:resource="#_trB"/>
+    <cim:PowerTransformerEnd.ratedU>380.0</cim:PowerTransformerEnd.ratedU>
+    <cim:PowerTransformerEnd.ratedS>350.0</cim:PowerTransformerEnd.ratedS>
+    <cim:PowerTransformerEnd.r>0.35</cim:PowerTransformerEnd.r>
+    <cim:PowerTransformerEnd.x>14.2</cim:PowerTransformerEnd.x>
+    <cim:TransformerEnd.endNumber>1</cim:TransformerEnd.endNumber>
+  </cim:PowerTransformerEnd>
+  <cim:PowerTransformerEnd rdf:ID="_trB_e2">
+    <cim:PowerTransformerEnd.PowerTransformer rdf:resource="#_trB"/>
+    <cim:PowerTransformerEnd.ratedU>110.0</cim:PowerTransformerEnd.ratedU>
+    <cim:PowerTransformerEnd.ratedS>350.0</cim:PowerTransformerEnd.ratedS>
+    <cim:PowerTransformerEnd.r>0.03</cim:PowerTransformerEnd.r>
+    <cim:PowerTransformerEnd.x>1.1</cim:PowerTransformerEnd.x>
+    <cim:TransformerEnd.endNumber>2</cim:TransformerEnd.endNumber>
+  </cim:PowerTransformerEnd>
+  <cim:Terminal rdf:ID="_ttrB_1">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_trB"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n2"/>
+    <cim:Terminal.sequenceNumber>1</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:Terminal rdf:ID="_ttrB_2">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_trB"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n4"/>
+    <cim:Terminal.sequenceNumber>2</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:SynchronousMachine rdf:ID="_genA">
+    <cim:IdentifiedObject.name>NUCLEAR_A</cim:IdentifiedObject.name>
+    <cim:RotatingMachine.ratedS>450.0</cim:RotatingMachine.ratedS>
+    <cim:SynchronousMachine.p>320.0</cim:SynchronousMachine.p>
+    <cim:SynchronousMachine.q>65.0</cim:SynchronousMachine.q>
+    <cim:SynchronousMachine.minP>100.0</cim:SynchronousMachine.minP>
+    <cim:SynchronousMachine.maxP>420.0</cim:SynchronousMachine.maxP>
+  </cim:SynchronousMachine>
+  <cim:Terminal rdf:ID="_tgA">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_genA"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n1"/>
+    <cim:Terminal.sequenceNumber>1</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+  <cim:EnergyConsumer rdf:ID="_ldB">
+    <cim:IdentifiedObject.name>METRO_LOAD_110</cim:IdentifiedObject.name>
+    <cim:EnergyConsumer.p>310.0</cim:EnergyConsumer.p>
+    <cim:EnergyConsumer.q>85.0</cim:EnergyConsumer.q>
+  </cim:EnergyConsumer>
+  <cim:Terminal rdf:ID="_tldB">
+    <cim:Terminal.ConductingEquipment rdf:resource="#_ldB"/>
+    <cim:Terminal.TopologicalNode rdf:resource="#_n4"/>
+    <cim:Terminal.sequenceNumber>1</cim:Terminal.sequenceNumber>
+  </cim:Terminal>
+</rdf:RDF>

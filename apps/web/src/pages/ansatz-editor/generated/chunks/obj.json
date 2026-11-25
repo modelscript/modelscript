@@ -1,0 +1,89 @@
+[
+  {
+    "id": "obj-01-unit-cube-normals",
+    "lang": "obj",
+    "subFormats": ["wavefront-obj"],
+    "difficulty": 1,
+    "title": "Unit Calibration Cube with Vertex Normals",
+    "description": "Clean Wavefront OBJ unit cube mesh defining 8 vertices, 6 cardinal face normals, and 6 quad faces with explicit vertex/normal indices.",
+    "category": "3D Mesh Geometry",
+    "tags": ["obj", "wavefront", "cube", "normals"],
+    "activeFile": "cube.obj",
+    "fileNames": ["cube.obj"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# Wavefront OBJ Unit Calibration Cube\no UnitCube\nv 0.0 0.0 0.0\nv 1.0 0.0 0.0\nv 1.0 1.0 0.0\nv 0.0 1.0 0.0\nv 0.0 0.0 1.0\nv 1.0 0.0 1.0\nv 1.0 1.0 1.0\nv 0.0 1.0 1.0\n\nvn  0.0  0.0 -1.0\nvn  0.0  0.0  1.0\nvn  0.0 -1.0  0.0\nvn  0.0  1.0  0.0\nvn -1.0  0.0  0.0\nvn  1.0  0.0  0.0\n\nf 1//1 4//1 3//1 2//1\nf 5//2 6//2 7//2 8//2\nf 1//3 2//3 6//3 5//3\nf 3//4 4//4 8//4 7//4\nf 1//5 5//5 8//5 4//5\nf 2//6 3//6 7//6 6//6\n"
+  },
+  {
+    "id": "obj-02-metallic-flange-mtl",
+    "lang": "obj",
+    "subFormats": ["wavefront-obj", "wavefront-mtl"],
+    "difficulty": 2,
+    "title": "Machined Aluminum Mounting Plate with Material Library",
+    "description": "Wavefront OBJ mounting plate paired with a companion metals.mtl library specifying anodized aluminum and stainless steel Phong surface reflectance parameters.",
+    "category": "Mechanical CAD",
+    "tags": ["obj", "mtl", "aluminum", "flange", "multi-file"],
+    "activeFile": "flange.obj",
+    "fileNames": ["flange.obj", "metals.mtl"],
+    "fileCount": 2,
+    "code": "# Machined Aluminum Mounting Flange\nmtllib metals.mtl\no MountingFlange\ng FlangeBody\nusemtl AnodizedAluminum\n\nv -25.0 -25.0 0.0\nv  25.0 -25.0 0.0\nv  25.0  25.0 0.0\nv -25.0  25.0 0.0\nv -25.0 -25.0 6.0\nv  25.0 -25.0 6.0\nv  25.0  25.0 6.0\nv -25.0  25.0 6.0\n\nvn  0.0  0.0 -1.0\nvn  0.0  0.0  1.0\nvn  0.0 -1.0  0.0\nvn  0.0  1.0  0.0\nvn -1.0  0.0  0.0\nvn  1.0  0.0  0.0\n\nf 1//1 4//1 3//1 2//1\nf 5//2 6//2 7//2 8//2\nf 1//3 2//3 6//3 5//3\nf 3//4 4//4 8//4 7//4\nf 1//5 5//5 8//5 4//5\nf 2//6 3//6 7//6 6//6\n",
+    "files": {
+      "flange.obj": "# Machined Aluminum Mounting Flange\nmtllib metals.mtl\no MountingFlange\ng FlangeBody\nusemtl AnodizedAluminum\n\nv -25.0 -25.0 0.0\nv  25.0 -25.0 0.0\nv  25.0  25.0 0.0\nv -25.0  25.0 0.0\nv -25.0 -25.0 6.0\nv  25.0 -25.0 6.0\nv  25.0  25.0 6.0\nv -25.0  25.0 6.0\n\nvn  0.0  0.0 -1.0\nvn  0.0  0.0  1.0\nvn  0.0 -1.0  0.0\nvn  0.0  1.0  0.0\nvn -1.0  0.0  0.0\nvn  1.0  0.0  0.0\n\nf 1//1 4//1 3//1 2//1\nf 5//2 6//2 7//2 8//2\nf 1//3 2//3 6//3 5//3\nf 3//4 4//4 8//4 7//4\nf 1//5 5//5 8//5 4//5\nf 2//6 3//6 7//6 6//6\n",
+      "metals.mtl": "# Engineering Metal Material Library\nnewmtl AnodizedAluminum\nKa 0.20 0.22 0.24\nKd 0.72 0.75 0.78\nKs 0.85 0.88 0.90\nNs 180.0\nd 1.0\nNi 1.0\nillum 2\n\nnewmtl StainlessSteel\nKa 0.25 0.25 0.25\nKd 0.65 0.67 0.70\nKs 0.92 0.92 0.95\nNs 300.0\nd 1.0\nNi 1.0\nillum 2\n"
+    }
+  },
+  {
+    "id": "obj-03-uv-textured-cylinder",
+    "lang": "obj",
+    "subFormats": ["wavefront-obj", "wavefront-mtl"],
+    "difficulty": 3,
+    "title": "UV-Mapped Textured Copper Pressure Cylinder",
+    "description": "Closed cylindrical pressure vessel mesh with cylindrical UV texture coordinates (vt), radial smooth vertex normals (vn), and a brushed copper material library.",
+    "category": "3D Surface Modeling",
+    "tags": ["obj", "mtl", "uv-mapping", "cylinder", "multi-file"],
+    "activeFile": "cylinder.obj",
+    "fileNames": ["cylinder.obj", "materials.mtl"],
+    "fileCount": 2,
+    "code": "# UV-Mapped Octagonal Pressure Cylinder\nmtllib materials.mtl\no PressureCylinder\nusemtl BrushedCopper\ns 1\nv 10.0000 0.0000 0.0000\nv 7.0711 7.0711 0.0000\nv 0.0000 10.0000 0.0000\nv -7.0711 7.0711 0.0000\nv -10.0000 0.0000 0.0000\nv -7.0711 -7.0711 0.0000\nv -0.0000 -10.0000 0.0000\nv 7.0711 -7.0711 0.0000\nv 10.0000 0.0000 20.0000\nv 7.0711 7.0711 20.0000\nv 0.0000 10.0000 20.0000\nv -7.0711 7.0711 20.0000\nv -10.0000 0.0000 20.0000\nv -7.0711 -7.0711 20.0000\nv -0.0000 -10.0000 20.0000\nv 7.0711 -7.0711 20.0000\nv 0.0000 0.0000 0.0000\nv 0.0000 0.0000 20.0000\nvt 0.0000 0.0000\nvt 0.1250 0.0000\nvt 0.2500 0.0000\nvt 0.3750 0.0000\nvt 0.5000 0.0000\nvt 0.6250 0.0000\nvt 0.7500 0.0000\nvt 0.8750 0.0000\nvt 1.0000 0.0000\nvt 0.0000 1.0000\nvt 0.1250 1.0000\nvt 0.2500 1.0000\nvt 0.3750 1.0000\nvt 0.5000 1.0000\nvt 0.6250 1.0000\nvt 0.7500 1.0000\nvt 0.8750 1.0000\nvt 1.0000 1.0000\nvt 0.5000 0.5000\nvn 1.0000 0.0000 0.0000\nvn 0.7071 0.7071 0.0000\nvn 0.0000 1.0000 0.0000\nvn -0.7071 0.7071 0.0000\nvn -1.0000 0.0000 0.0000\nvn -0.7071 -0.7071 0.0000\nvn -0.0000 -1.0000 0.0000\nvn 0.7071 -0.7071 0.0000\nvn 0.0000 0.0000 -1.0000\nvn 0.0000 0.0000 1.0000\nf 1/1/1 2/2/2 10/11/2 9/10/1\nf 17/19/9 2/2/9 1/1/9\nf 18/19/10 9/10/10 10/11/10\nf 2/2/2 3/3/3 11/12/3 10/11/2\nf 17/19/9 3/3/9 2/2/9\nf 18/19/10 10/11/10 11/12/10\nf 3/3/3 4/4/4 12/13/4 11/12/3\nf 17/19/9 4/4/9 3/3/9\nf 18/19/10 11/12/10 12/13/10\nf 4/4/4 5/5/5 13/14/5 12/13/4\nf 17/19/9 5/5/9 4/4/9\nf 18/19/10 12/13/10 13/14/10\nf 5/5/5 6/6/6 14/15/6 13/14/5\nf 17/19/9 6/6/9 5/5/9\nf 18/19/10 13/14/10 14/15/10\nf 6/6/6 7/7/7 15/16/7 14/15/6\nf 17/19/9 7/7/9 6/6/9\nf 18/19/10 14/15/10 15/16/10\nf 7/7/7 8/8/8 16/17/8 15/16/7\nf 17/19/9 8/8/9 7/7/9\nf 18/19/10 15/16/10 16/17/10\nf 8/8/8 1/9/1 9/18/1 16/17/8\nf 17/19/9 1/9/9 8/8/9\nf 18/19/10 16/17/10 9/18/10\n",
+    "files": {
+      "cylinder.obj": "# UV-Mapped Octagonal Pressure Cylinder\nmtllib materials.mtl\no PressureCylinder\nusemtl BrushedCopper\ns 1\nv 10.0000 0.0000 0.0000\nv 7.0711 7.0711 0.0000\nv 0.0000 10.0000 0.0000\nv -7.0711 7.0711 0.0000\nv -10.0000 0.0000 0.0000\nv -7.0711 -7.0711 0.0000\nv -0.0000 -10.0000 0.0000\nv 7.0711 -7.0711 0.0000\nv 10.0000 0.0000 20.0000\nv 7.0711 7.0711 20.0000\nv 0.0000 10.0000 20.0000\nv -7.0711 7.0711 20.0000\nv -10.0000 0.0000 20.0000\nv -7.0711 -7.0711 20.0000\nv -0.0000 -10.0000 20.0000\nv 7.0711 -7.0711 20.0000\nv 0.0000 0.0000 0.0000\nv 0.0000 0.0000 20.0000\nvt 0.0000 0.0000\nvt 0.1250 0.0000\nvt 0.2500 0.0000\nvt 0.3750 0.0000\nvt 0.5000 0.0000\nvt 0.6250 0.0000\nvt 0.7500 0.0000\nvt 0.8750 0.0000\nvt 1.0000 0.0000\nvt 0.0000 1.0000\nvt 0.1250 1.0000\nvt 0.2500 1.0000\nvt 0.3750 1.0000\nvt 0.5000 1.0000\nvt 0.6250 1.0000\nvt 0.7500 1.0000\nvt 0.8750 1.0000\nvt 1.0000 1.0000\nvt 0.5000 0.5000\nvn 1.0000 0.0000 0.0000\nvn 0.7071 0.7071 0.0000\nvn 0.0000 1.0000 0.0000\nvn -0.7071 0.7071 0.0000\nvn -1.0000 0.0000 0.0000\nvn -0.7071 -0.7071 0.0000\nvn -0.0000 -1.0000 0.0000\nvn 0.7071 -0.7071 0.0000\nvn 0.0000 0.0000 -1.0000\nvn 0.0000 0.0000 1.0000\nf 1/1/1 2/2/2 10/11/2 9/10/1\nf 17/19/9 2/2/9 1/1/9\nf 18/19/10 9/10/10 10/11/10\nf 2/2/2 3/3/3 11/12/3 10/11/2\nf 17/19/9 3/3/9 2/2/9\nf 18/19/10 10/11/10 11/12/10\nf 3/3/3 4/4/4 12/13/4 11/12/3\nf 17/19/9 4/4/9 3/3/9\nf 18/19/10 11/12/10 12/13/10\nf 4/4/4 5/5/5 13/14/5 12/13/4\nf 17/19/9 5/5/9 4/4/9\nf 18/19/10 12/13/10 13/14/10\nf 5/5/5 6/6/6 14/15/6 13/14/5\nf 17/19/9 6/6/9 5/5/9\nf 18/19/10 13/14/10 14/15/10\nf 6/6/6 7/7/7 15/16/7 14/15/6\nf 17/19/9 7/7/9 6/6/9\nf 18/19/10 14/15/10 15/16/10\nf 7/7/7 8/8/8 16/17/8 15/16/7\nf 17/19/9 8/8/9 7/7/9\nf 18/19/10 15/16/10 16/17/10\nf 8/8/8 1/9/1 9/18/1 16/17/8\nf 17/19/9 1/9/9 8/8/9\nf 18/19/10 16/17/10 9/18/10\n",
+      "materials.mtl": "# Brushed Copper Vessel Material\nnewmtl BrushedCopper\nKa 0.22 0.11 0.07\nKd 0.85 0.45 0.30\nKs 0.92 0.64 0.54\nNs 220.0\nd 1.0\nNi 1.10\nillum 2\n"
+    }
+  },
+  {
+    "id": "obj-04-robotic-link-assembly",
+    "lang": "obj",
+    "subFormats": ["wavefront-obj", "wavefront-mtl"],
+    "difficulty": 4,
+    "title": "Multi-Group Robotic Arm Link & Joint Assembly",
+    "description": "Multi-object Wavefront OBJ robotic manipulator sub-assembly separating an anodized orange structural link and matte-black servo housing with dedicated material groups.",
+    "category": "Robotics Visualization",
+    "tags": ["obj", "mtl", "robotics", "multi-group", "multi-file"],
+    "activeFile": "arm_link.obj",
+    "fileNames": ["arm_link.obj", "robot.mtl"],
+    "fileCount": 2,
+    "code": "# Multi-Group Robotic Manipulator Link & Servo Joint Assembly\nmtllib robot.mtl\n\no ServoJointHousing\ng JointBase\nusemtl MatteCarbon\nv -12.0 -12.0  0.0\nv  12.0 -12.0  0.0\nv  12.0  12.0  0.0\nv -12.0  12.0  0.0\nv -12.0 -12.0 16.0\nv  12.0 -12.0 16.0\nv  12.0  12.0 16.0\nv -12.0  12.0 16.0\n\nvn  0.0  0.0 -1.0\nvn  0.0  0.0  1.0\nvn  0.0 -1.0  0.0\nvn  0.0  1.0  0.0\nvn -1.0  0.0  0.0\nvn  1.0  0.0  0.0\n\nf 1//1 4//1 3//1 2//1\nf 5//2 6//2 7//2 8//2\nf 1//3 2//3 6//3 5//3\nf 3//4 4//4 8//4 7//4\nf 1//5 5//5 8//5 4//5\nf 2//6 3//6 7//6 6//6\n\no StructuralArmLink\ng UpperBoom\nusemtl SafetyOrangeAlloy\nv -6.0 -6.0 16.0\nv  6.0 -6.0 16.0\nv  6.0  6.0 16.0\nv -6.0  6.0 16.0\nv -6.0 -6.0 96.0\nv  6.0 -6.0 96.0\nv  6.0  6.0 96.0\nv -6.0  6.0 96.0\n\nf 9//1 12//1 11//1 10//1\nf 13//2 14//2 15//2 16//2\nf 9//3 10//3 14//3 13//3\nf 11//4 12//4 16//4 15//4\nf 9//5 13//5 16//5 12//5\nf 10//6 11//6 15//6 14//6\n",
+    "files": {
+      "arm_link.obj": "# Multi-Group Robotic Manipulator Link & Servo Joint Assembly\nmtllib robot.mtl\n\no ServoJointHousing\ng JointBase\nusemtl MatteCarbon\nv -12.0 -12.0  0.0\nv  12.0 -12.0  0.0\nv  12.0  12.0  0.0\nv -12.0  12.0  0.0\nv -12.0 -12.0 16.0\nv  12.0 -12.0 16.0\nv  12.0  12.0 16.0\nv -12.0  12.0 16.0\n\nvn  0.0  0.0 -1.0\nvn  0.0  0.0  1.0\nvn  0.0 -1.0  0.0\nvn  0.0  1.0  0.0\nvn -1.0  0.0  0.0\nvn  1.0  0.0  0.0\n\nf 1//1 4//1 3//1 2//1\nf 5//2 6//2 7//2 8//2\nf 1//3 2//3 6//3 5//3\nf 3//4 4//4 8//4 7//4\nf 1//5 5//5 8//5 4//5\nf 2//6 3//6 7//6 6//6\n\no StructuralArmLink\ng UpperBoom\nusemtl SafetyOrangeAlloy\nv -6.0 -6.0 16.0\nv  6.0 -6.0 16.0\nv  6.0  6.0 16.0\nv -6.0  6.0 16.0\nv -6.0 -6.0 96.0\nv  6.0 -6.0 96.0\nv  6.0  6.0 96.0\nv -6.0  6.0 96.0\n\nf 9//1 12//1 11//1 10//1\nf 13//2 14//2 15//2 16//2\nf 9//3 10//3 14//3 13//3\nf 11//4 12//4 16//4 15//4\nf 9//5 13//5 16//5 12//5\nf 10//6 11//6 15//6 14//6\n",
+      "robot.mtl": "# Industrial Robot Paint & Composite Materials\nnewmtl MatteCarbon\nKa 0.04 0.04 0.05\nKd 0.14 0.15 0.17\nKs 0.25 0.25 0.28\nNs 45.0\nd 1.0\nillum 2\n\nnewmtl SafetyOrangeAlloy\nKa 0.22 0.08 0.02\nKd 0.92 0.36 0.08\nKs 0.65 0.65 0.65\nNs 140.0\nd 1.0\nillum 2\n"
+    }
+  },
+  {
+    "id": "obj-05-architectural-pavilion",
+    "lang": "obj",
+    "subFormats": ["wavefront-obj", "wavefront-mtl"],
+    "difficulty": 5,
+    "title": "Architectural Pavilion with Concrete Plinth, Columns & Glass Roof",
+    "description": "Multi-object architectural pavilion Wavefront OBJ combining a concrete plinth, two structural steel columns, and a translucent glazed canopy referencing a 3-material MTL library.",
+    "category": "Architectural Visualization",
+    "tags": ["obj", "mtl", "architecture", "glass", "multi-object", "multi-file"],
+    "activeFile": "pavilion.obj",
+    "fileNames": ["pavilion.obj", "pavilion.mtl"],
+    "fileCount": 2,
+    "code": "# Modernist Architectural Pavilion (Plinth + Columns + Glazed Canopy)\nmtllib pavilion.mtl\n\nvn  0.0  0.0 -1.0\nvn  0.0  0.0  1.0\nvn  0.0 -1.0  0.0\nvn  0.0  1.0  0.0\nvn -1.0  0.0  0.0\nvn  1.0  0.0  0.0\n\no ConcretePlinth\ng Foundation\nusemtl ArchitecturalConcrete\ns off\nv -4.0 -3.0 0.0\nv  4.0 -3.0 0.0\nv  4.0  3.0 0.0\nv -4.0  3.0 0.0\nv -4.0 -3.0 0.4\nv  4.0 -3.0 0.4\nv  4.0  3.0 0.4\nv -4.0  3.0 0.4\nf 1//1 4//1 3//1 2//1\nf 5//2 6//2 7//2 8//2\nf 1//3 2//3 6//3 5//3\nf 3//4 4//4 8//4 7//4\nf 1//5 5//5 8//5 4//5\nf 2//6 3//6 7//6 6//6\n\no WestColumn\ng StructuralSteel\nusemtl DarkSteel\nv -3.2 -0.2 0.4\nv -2.8 -0.2 0.4\nv -2.8  0.2 0.4\nv -3.2  0.2 0.4\nv -3.2 -0.2 3.4\nv -2.8 -0.2 3.4\nv -2.8  0.2 3.4\nv -3.2  0.2 3.4\nf 9//1 12//1 11//1 10//1\nf 13//2 14//2 15//2 16//2\nf 9//3 10//3 14//3 13//3\nf 11//4 12//4 16//4 15//4\nf 9//5 13//5 16//5 12//5\nf 10//6 11//6 15//6 14//6\n\no EastColumn\ng StructuralSteel\nusemtl DarkSteel\nv 2.8 -0.2 0.4\nv 3.2 -0.2 0.4\nv 3.2  0.2 0.4\nv 2.8  0.2 0.4\nv 2.8 -0.2 3.4\nv 3.2 -0.2 3.4\nv 3.2  0.2 3.4\nv 2.8  0.2 3.4\nf 17//1 20//1 19//1 18//1\nf 21//2 22//2 23//2 24//2\nf 17//3 18//3 22//3 21//3\nf 19//4 20//4 24//4 23//4\nf 17//5 21//5 24//5 20//5\nf 18//6 19//6 23//6 22//6\n\no GlazedCanopy\ng RoofGlass\nusemtl ArchitecturalGlass\ns 1\nv -4.2 -3.2 3.4\nv  4.2 -3.2 3.4\nv  4.2  3.2 3.4\nv -4.2  3.2 3.4\nv -4.2 -3.2 3.55\nv  4.2 -3.2 3.55\nv  4.2  3.2 3.55\nv -4.2  3.2 3.55\nf 25//1 28//1 27//1 26//1\nf 29//2 30//2 31//2 32//2\nf 25//3 26//3 30//3 29//3\nf 27//4 28//4 32//4 31//4\nf 25//5 29//5 32//5 28//5\nf 26//6 27//6 31//6 30//6\n",
+    "files": {
+      "pavilion.obj": "# Modernist Architectural Pavilion (Plinth + Columns + Glazed Canopy)\nmtllib pavilion.mtl\n\nvn  0.0  0.0 -1.0\nvn  0.0  0.0  1.0\nvn  0.0 -1.0  0.0\nvn  0.0  1.0  0.0\nvn -1.0  0.0  0.0\nvn  1.0  0.0  0.0\n\no ConcretePlinth\ng Foundation\nusemtl ArchitecturalConcrete\ns off\nv -4.0 -3.0 0.0\nv  4.0 -3.0 0.0\nv  4.0  3.0 0.0\nv -4.0  3.0 0.0\nv -4.0 -3.0 0.4\nv  4.0 -3.0 0.4\nv  4.0  3.0 0.4\nv -4.0  3.0 0.4\nf 1//1 4//1 3//1 2//1\nf 5//2 6//2 7//2 8//2\nf 1//3 2//3 6//3 5//3\nf 3//4 4//4 8//4 7//4\nf 1//5 5//5 8//5 4//5\nf 2//6 3//6 7//6 6//6\n\no WestColumn\ng StructuralSteel\nusemtl DarkSteel\nv -3.2 -0.2 0.4\nv -2.8 -0.2 0.4\nv -2.8  0.2 0.4\nv -3.2  0.2 0.4\nv -3.2 -0.2 3.4\nv -2.8 -0.2 3.4\nv -2.8  0.2 3.4\nv -3.2  0.2 3.4\nf 9//1 12//1 11//1 10//1\nf 13//2 14//2 15//2 16//2\nf 9//3 10//3 14//3 13//3\nf 11//4 12//4 16//4 15//4\nf 9//5 13//5 16//5 12//5\nf 10//6 11//6 15//6 14//6\n\no EastColumn\ng StructuralSteel\nusemtl DarkSteel\nv 2.8 -0.2 0.4\nv 3.2 -0.2 0.4\nv 3.2  0.2 0.4\nv 2.8  0.2 0.4\nv 2.8 -0.2 3.4\nv 3.2 -0.2 3.4\nv 3.2  0.2 3.4\nv 2.8  0.2 3.4\nf 17//1 20//1 19//1 18//1\nf 21//2 22//2 23//2 24//2\nf 17//3 18//3 22//3 21//3\nf 19//4 20//4 24//4 23//4\nf 17//5 21//5 24//5 20//5\nf 18//6 19//6 23//6 22//6\n\no GlazedCanopy\ng RoofGlass\nusemtl ArchitecturalGlass\ns 1\nv -4.2 -3.2 3.4\nv  4.2 -3.2 3.4\nv  4.2  3.2 3.4\nv -4.2  3.2 3.4\nv -4.2 -3.2 3.55\nv  4.2 -3.2 3.55\nv  4.2  3.2 3.55\nv -4.2  3.2 3.55\nf 25//1 28//1 27//1 26//1\nf 29//2 30//2 31//2 32//2\nf 25//3 26//3 30//3 29//3\nf 27//4 28//4 32//4 31//4\nf 25//5 29//5 32//5 28//5\nf 26//6 27//6 31//6 30//6\n",
+      "pavilion.mtl": "# Architectural Pavilion Material Library\nnewmtl ArchitecturalConcrete\nKa 0.25 0.25 0.24\nKd 0.68 0.67 0.64\nKs 0.12 0.12 0.12\nNs 18.0\nd 1.0\nillum 2\n\nnewmtl DarkSteel\nKa 0.08 0.09 0.10\nKd 0.22 0.24 0.26\nKs 0.72 0.75 0.78\nNs 210.0\nd 1.0\nillum 2\n\nnewmtl ArchitecturalGlass\nKa 0.10 0.15 0.18\nKd 0.80 0.92 0.96\nKs 0.95 0.98 1.00\nNs 400.0\nTr 0.70\nNi 1.52\nillum 4\n"
+    }
+  }
+]

@@ -221,7 +221,9 @@ export function registerAnalyticalCommands(
             if (massMatch) mass = parseFloat(massMatch[1]!);
             const misesMatch = inpText.match(/\bmax_von_mises\s*=\s*([\d.]+)/i);
             if (misesMatch) maxVonMisesPa = parseFloat(misesMatch[1]!) * 1e6;
-          } catch {}
+          } catch {
+            // Optional config read or best-effort workspace edit ignored
+          }
         }
 
         // 2. Read CFD config
@@ -236,7 +238,9 @@ export function registerAnalyticalCommands(
             if (areaMatch) area = parseFloat(areaMatch[1]!);
             const rhoMatch = cfgText.match(/INC_DENSITY_INIT\s*=\s*([\d.]+)/i);
             if (rhoMatch) rho = parseFloat(rhoMatch[1]!);
-          } catch {}
+          } catch {
+            // Optional config read or best-effort workspace edit ignored
+          }
         }
 
         // 3. Propagate into Modelica document
@@ -260,7 +264,9 @@ export function registerAnalyticalCommands(
               );
               await vscode.workspace.applyEdit(edit);
             }
-          } catch {}
+          } catch {
+            // Optional config read or best-effort workspace edit ignored
+          }
         }
 
         // 4. Propagate into SysML v2 document
@@ -289,7 +295,9 @@ export function registerAnalyticalCommands(
               );
               await vscode.workspace.applyEdit(edit);
             }
-          } catch {}
+          } catch {
+            // Optional config read or best-effort workspace edit ignored
+          }
         }
 
         if (filesReadOrUpdated === 0) {

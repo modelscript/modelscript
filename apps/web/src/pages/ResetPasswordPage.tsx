@@ -7,6 +7,7 @@ import styled from "styled-components";
 import { requestPasswordReset, resetPassword } from "../api";
 import Spinner from "../components/Spinner";
 import { useInstanceBranding } from "../InstanceBrandingContext";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 import {
   Button,
@@ -97,9 +98,9 @@ export default function ResetPasswordPage() {
       } else {
         setError(res.message || "Failed to reset password.");
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(
-        err.response?.data?.error || "This password reset link is invalid or has expired. Please request a new one.",
+        getApiErrorMessage(err, "This password reset link is invalid or has expired. Please request a new one."),
       );
     } finally {
       setLoading(false);
@@ -114,8 +115,8 @@ export default function ResetPasswordPage() {
     try {
       await requestPasswordReset(requestEmail);
       setRequestSent(true);
-    } catch (err: any) {
-      setError(err.response?.data?.error || "Failed to send reset link. Please try again.");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to send reset link. Please try again."));
     } finally {
       setRequestLoading(false);
     }

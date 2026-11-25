@@ -1,0 +1,15 @@
+%chk=sn2_cl_ch3cl_ts.chk
+%mem=8GB
+%nprocshared=8
+#p wB97XD/def2-TZVP Opt=(TS,CalcFC,NoEigenTest) Freq
+
+Identity SN2 transition state [Cl---CH3---Cl]- D3h Walden inversion
+
+-1 1
+C     0.000000    0.000000    0.000000
+Cl    0.000000    0.000000    2.305000
+Cl    0.000000    0.000000   -2.305000
+H     1.072000    0.000000    0.000000
+H    -0.536000    0.928400    0.000000
+H    -0.536000   -0.928400    0.000000
+

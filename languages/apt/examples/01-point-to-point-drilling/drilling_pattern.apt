@@ -1,0 +1,49 @@
+$$ APT III Point-to-Point 4-Hole Mounting Flange Drilling Pattern
+PARTNO FLANGE_DRILL_01
+MACHIN / MILL, 1
+UNITS / MM
+INTOL / 0.01
+OUTTOL / 0.01
+CUTTER / 8.0
+SPINDL / 2200, CLW
+FEDRAT / 120.0
+COOLNT / ON
+
+$$ Clearance and hole center geometry
+SETPT = POINT / 0.0, 0.0, 50.0
+H1 = POINT / 25.0, 25.0, 5.0
+H1D = POINT / 25.0, 25.0, -15.0
+H2 = POINT / 75.0, 25.0, 5.0
+H2D = POINT / 75.0, 25.0, -15.0
+H3 = POINT / 75.0, 75.0, 5.0
+H3D = POINT / 75.0, 75.0, -15.0
+H4 = POINT / 25.0, 75.0, 5.0
+H4D = POINT / 25.0, 75.0, -15.0
+
+$$ Point-to-point drilling cycle
+FROM / SETPT
+RAPID
+GOTO / H1
+GOTO / H1D
+RAPID
+GOTO / H1
+RAPID
+GOTO / H2
+GOTO / H2D
+RAPID
+GOTO / H2
+RAPID
+GOTO / H3
+GOTO / H3D
+RAPID
+GOTO / H3
+RAPID
+GOTO / H4
+GOTO / H4D
+RAPID
+GOTO / H4
+RAPID
+GOTO / SETPT
+COOLNT / OFF
+SPINDL / OFF
+FINI

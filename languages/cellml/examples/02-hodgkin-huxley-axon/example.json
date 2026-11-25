@@ -1,0 +1,11 @@
+{
+  "id": "cellml-02-hodgkin-huxley-axon",
+  "lang": "cellml",
+  "subFormats": ["cellml"],
+  "difficulty": 2,
+  "title": "Hodgkin-Huxley 1952 Squid Giant Axon Action Potential",
+  "description": "Classic 4-state Hodgkin-Huxley neuronal excitability model with voltage-gated sodium (m, h), potassium (n), and leak ion channels encapsulated beneath the membrane component.",
+  "category": "Electrophysiology & Systems Biology",
+  "tags": ["cellml", "hodgkin-huxley", "action-potential", "ion-channels"],
+  "activeFile": "hh1952.cellml"
+}

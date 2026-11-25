@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="BCU_01_ICD" version="1.0" revision="1.0" toolID="Ansatz"/>
+  <IED name="BCU_01" desc="Breaker Control Unit" type="BCU-500" manufacturer="Siemens">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="CTRL">
+          <LN0 lnClass="LLN0" lnType="LLN0_Type" inst="">
+            <DataSet name="DS_CB">
+              <FCDA ldInst="CTRL" lnClass="XCBR" lnInst="1" doName="Pos" daName="stVal" fc="ST"/>
+            </DataSet>
+            <GSEControl name="GC_CB_POS" appID="BCU_POS_220" datSet="DS_CB" confRev="1" minTime="4.0" maxTime="2000.0"/>
+          </LN0>
+          <LN lnClass="CSWI" inst="1" lnType="CSWI_Type">
+            <Inputs>
+              <ExtRef iedName="PROT_MAIN" ldInst="PROT" lnClass="PTRC" doName="Tr"/>
+            </Inputs>
+          </LN>
+          <LN lnClass="XCBR" inst="1" lnType="XCBR_Type"/>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>

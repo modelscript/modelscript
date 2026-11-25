@@ -1,0 +1,11 @@
+{
+  "id": "melcor-02-two-volume-pressure-equalization",
+  "lang": "melcor",
+  "subFormats": ["melcor2"],
+  "difficulty": 2,
+  "title": "Two-Volume Compartment Pressure Equalization Flow Path",
+  "description": "High-pressure steam generator compartment venting through a rupture junction into a large containment dome with differential pressure control function.",
+  "category": "Nuclear Severe Accident Analysis",
+  "tags": ["melcor", "flow-path", "pressure-equalization", "control-function"],
+  "activeFile": "two_volume_eq.mel"
+}

@@ -1,0 +1,21 @@
+TITLE Calcite-CO2-Water Equilibrium and Karst Limestone Dissolution
+SOLUTION 1 Recharge Rainwater
+    temp      15.0
+    pH        5.6 charge
+    pe        4.0
+    units     mmol/kgw
+    Ca        0.1
+    C(4)      0.2
+
+EQUILIBRIUM_PHASES 1
+    Calcite   0.0 10.0
+    CO2(g)    -2.5 10.0
+
+KINETICS 1
+    Calcite
+        -m0     5.0
+        -m      5.0
+        -parms  1.5e-6 12.0
+    -steps 7200 in 12 steps
+
+END

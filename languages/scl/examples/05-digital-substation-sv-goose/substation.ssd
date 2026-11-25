@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="DIGI_SUB_400_SSD" version="1.0" revision="1.0" toolID="Ansatz"/>
+  <Substation name="DIGI_SUB_400" desc="400 kV Primary Specification">
+    <VoltageLevel name="VL_400">
+      <Voltage unit="V" multiplier="k">400.0</Voltage>
+      <Bay name="BAY_T1">
+        <ConductingEquipment name="QA1" type="CBR" desc="400 kV Breaker">
+          <Terminal name="T1" connectivityNode="DIGI_SUB_400/VL_400/BAY_T1/CN1"/>
+          <Terminal name="T2" connectivityNode="DIGI_SUB_400/VL_400/BAY_T1/CN2"/>
+        </ConductingEquipment>
+        <ConnectivityNode name="CN1" pathName="DIGI_SUB_400/VL_400/BAY_T1/CN1"/>
+        <ConnectivityNode name="CN2" pathName="DIGI_SUB_400/VL_400/BAY_T1/CN2"/>
+      </Bay>
+    </VoltageLevel>
+  </Substation>
+</SCL>

@@ -1,0 +1,11 @@
+{
+  "id": "trnsys-04-gshp-hydronic-loop",
+  "lang": "trnsys",
+  "subFormats": ["dck", "csv"],
+  "difficulty": 4,
+  "title": "Ground-Source Heat Pump Hydronic Building Loop",
+  "description": "Hydronic ground-source heat pump space conditioning loop coupling a multi-zone building thermal capacitance model (Type 56), buffer storage tank (Type 4), forcing schedule (Type 14), circulation pump (Type 3), and companion ground load profile.",
+  "category": "Building & Solar Thermal",
+  "tags": ["trnsys", "gshp", "type56", "multi-file"],
+  "activeFile": "gshp.dck"
+}

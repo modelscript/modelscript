@@ -7,12 +7,20 @@ import mermaid from "mermaid";
 import React, { useEffect, useRef, useState } from "react";
 import styled from "styled-components";
 import { useTheme } from "../../theme";
+import { getErrorMessage } from "../../util/error";
 import Box from "../Box";
 import Spinner from "../Spinner";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
+export interface MermaidViewConfig {
+  code?: string | undefined;
+  codeUrl?: string | undefined;
+  title?: string | undefined;
+  [key: string]: unknown;
+}
+
 interface MermaidViewerProps {
-  viewConfig: any; // expects { code?: string, codeUrl?: string, title?: string }
+  viewConfig?: MermaidViewConfig | null | undefined;
   isFullScreen?: boolean | undefined;
 }
 
@@ -146,9 +154,10 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
           if (!cancelled && !abortController.signal.aborted) {
             setCode(text);
           }
-        } catch (err: any) {
-          if (!cancelled && !abortController.signal.aborted && err?.name !== "AbortError") {
-            setError(err.message || "Failed to fetch Mermaid code");
+        } catch (err: unknown) {
+          const isAbort = err instanceof Error && err.name === "AbortError";
+          if (!cancelled && !abortController.signal.aborted && !isAbort) {
+            setError(getErrorMessage(err, "Failed to fetch Mermaid code"));
           }
         } finally {
           if (!cancelled && !abortController.signal.aborted) {
@@ -240,15 +249,15 @@ const MermaidViewer: React.FC<MermaidViewerProps> = ({ viewConfig, isFullScreen 
         });
         setSvgString(cleanSvg);
         if (typeof window !== "undefined") {
-          (window as any).__ARTIFACT_READY = true;
+          window.__ARTIFACT_READY = true;
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         cleanupOrphanedNode(id);
         if (cancelled) return;
         console.error("Mermaid rendering failed:", err);
-        setError(err.message || "Failed to render Mermaid diagram");
+        setError(getErrorMessage(err, "Failed to render Mermaid diagram"));
         if (typeof window !== "undefined") {
-          (window as any).__ARTIFACT_READY = true;
+          window.__ARTIFACT_READY = true;
         }
       }
     };

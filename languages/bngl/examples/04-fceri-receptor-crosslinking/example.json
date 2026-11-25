@@ -1,0 +1,11 @@
+{
+  "id": "bngl-04-fceri-receptor-crosslinking",
+  "lang": "bngl",
+  "subFormats": ["bngl"],
+  "difficulty": 4,
+  "title": "FcεRI Immune Receptor Cross-Linking Network",
+  "description": "Mast-cell FcεRI early signaling cascade modeling bivalent antigen cross-linking of IgE-FcεRI complexes, Lyn kinase recruitment, and Syk activation.",
+  "category": "Immunology & Signaling",
+  "tags": ["bngl", "fceri", "immunology", "crosslinking", "lyn"],
+  "activeFile": "fceri_crosslink.bngl"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "apt-02-rectangular-pocket-milling",
+  "lang": "apt",
+  "subFormats": ["apt"],
+  "difficulty": 2,
+  "title": "3-Axis Rectangular Pocket Milling Path",
+  "description": "Three-axis CNC rectangular pocket roughing and perimeter finishing toolpath in 6061-T6 aluminum using APT geometry definitions, plane drive surfaces, and continuous contour motion.",
+  "category": "CAD/CAM & CNC",
+  "tags": ["apt", "milling", "pocket", "3-axis"],
+  "activeFile": "rect_pocket.apt"
+}

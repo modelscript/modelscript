@@ -1,0 +1,12 @@
+{
+  "id": "step-01-aluminum-spacer-block",
+  "lang": "step",
+  "subFormats": ["step"],
+  "difficulty": 1,
+  "title": "Machined Aluminum Spacer Block (AP214)",
+  "description": "ISO 10303-21 STEP AP214 geometric definition of a 50x40x20 mm machined 6061-T6 aluminum spacer block with datum coordinate frame.",
+  "category": "3D Mechanical CAD",
+  "tags": ["step", "ap214", "cad", "brep", "spacer"],
+  "activeFile": "spacer_block.step",
+  "isDefaultStarter": true
+}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Formula evaluator and detector for Modelica/Morsel parameter expressions.
+ * Formula evaluator and detector for Modelica/Ansatz parameter expressions.
  * Provides safe arithmetic, constant and function evaluation with variable substitution.
  */
 
@@ -183,7 +183,7 @@ class Parser {
 
   constructor(
     input: string,
-    private scope: Record<string, any> = {},
+    private scope: Record<string, unknown> = {},
   ) {
     this.tokenizer = new Tokenizer(input);
     this.currentToken = this.tokenizer.nextToken();
@@ -415,7 +415,7 @@ class Parser {
  */
 export function tryEvaluateFormula(
   expression: string | undefined | null,
-  scope: Record<string, any> = {},
+  scope: Record<string, unknown> = {},
 ): FormulaResult {
   if (!expression || expression.trim() === "" || expression.trim() === "-") {
     return { success: false, error: "Empty expression" };
@@ -450,8 +450,8 @@ export function tryEvaluateFormula(
     }
 
     return { success: false, error: "Unsupported return type" };
-  } catch (err: any) {
-    return { success: false, error: err?.message || "Invalid formula syntax" };
+  } catch (err: unknown) {
+    return { success: false, error: err instanceof Error ? err.message : "Invalid formula syntax" };
   }
 }
 

@@ -1,0 +1,46 @@
+! Steady-State 2D Thermal Conduction in Finned Aluminum Heatsink
+/TITLE, Finned Electronics Heatsink Steady-State Thermal Analysis
+/UNITS, SI
+/PREP7
+
+K_AL = 200.0
+T_BASE = 85.0
+T_AMB = 25.0
+Q_LOAD = 45.0
+
+ET, 1, PLANE55
+MP, KXX, 1, K_AL
+MP, DENS, 1, 2700.0
+MP, C, 1, 900.0
+
+! Base plate nodes (y = 0 and y = 0.01)
+N, 1, 0.00, 0.00, 0.0
+N, 2, 0.02, 0.00, 0.0
+N, 3, 0.04, 0.00, 0.0
+N, 4, 0.00, 0.01, 0.0
+N, 5, 0.02, 0.01, 0.0
+N, 6, 0.04, 0.01, 0.0
+! Vertical cooling fin nodes (y = 0.04 and y = 0.07)
+N, 7, 0.00, 0.04, 0.0
+N, 8, 0.02, 0.04, 0.0
+N, 9, 0.00, 0.07, 0.0
+N, 10, 0.02, 0.07, 0.0
+
+TYPE, 1
+MAT, 1
+E, 1, 2, 5, 4
+E, 2, 3, 6, 5
+E, 4, 5, 8, 7
+E, 7, 8, 10, 9
+FINISH
+
+/SOLU
+ANTYPE, STATIC
+D, 1, TEMP, T_BASE
+D, 2, TEMP, T_BASE
+D, 3, TEMP, T_BASE
+D, 9, TEMP, T_AMB
+D, 10, TEMP, T_AMB
+F, 6, HEAT, -Q_LOAD
+SOLVE
+FINISH

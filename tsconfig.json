@@ -59,7 +59,7 @@
       "@modelscript/react/*": ["./packages/react/src/*"],
       "@modelscript/mcp": ["./packages/mcp/src/index.ts"],
       "@modelscript/mcp/*": ["./packages/mcp/src/*"],
-      "@modelscript/design-tokens": ["./packages/design-tokens/src/index.ts"],
+      "@modelscript/design-tokens": ["./packages/design-tokens/src/runtime.ts"],
       "@modelscript/design-tokens/*": ["./packages/design-tokens/src/*"],
       "@modelscript/editor": ["./packages/editor/src/index.ts"],
       "@modelscript/editor/*": ["./packages/editor/src/*"],
@@ -428,5 +428,5 @@
     "composite": false
   },
   "include": ["scripts/**/*", "eslint.config.ts"],
-  "exclude": ["scripts/playground/**"]
+  "exclude": ["scripts/ansatz/**"]
 }

@@ -1,0 +1,11 @@
+{
+  "id": "dxf-05-pid-assembly-titleblock",
+  "lang": "dxf",
+  "subFormats": ["dxf-ascii", "pid", "title-block"],
+  "difficulty": 5,
+  "title": "Multi-Layer P&ID Process Flowsheet with Title Block",
+  "description": "Engineering A3-format P&ID process drawing combining border title block, centrifugal pump vessel, instrumentation loops, and reusable GATE_VALVE block inserts.",
+  "category": "Process Engineering CAD",
+  "tags": ["dxf", "pid", "title-block", "blocks", "layers"],
+  "activeFile": "pid_drawing.dxf"
+}

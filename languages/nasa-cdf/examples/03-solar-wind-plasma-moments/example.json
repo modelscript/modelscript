@@ -1,0 +1,11 @@
+{
+  "id": "nasa-cdf-03-solar-wind-plasma-moments",
+  "lang": "nasa-cdf",
+  "subFormats": ["skt", "istp"],
+  "difficulty": 3,
+  "title": "Solar Wind Proton Density, Velocity & Temperature Moments",
+  "description": "DSCOVR Faraday Cup solar wind plasma moments dataset containing proton number density, bulk GSE velocity vector, and thermal speed.",
+  "category": "Heliophysics",
+  "tags": ["nasa-cdf", "solar-wind", "plasma", "proton", "moments"],
+  "activeFile": "solar_wind_swe.skt"
+}

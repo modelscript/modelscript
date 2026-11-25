@@ -546,7 +546,7 @@ describe("Spaces UI/UX Layout & Polish Invariants", () => {
     );
   });
 
-  it("verifies Issues tab implements GitHub-native problem reports cockpit with severity badges, Morsel links, and PR linkages", () => {
+  it("verifies Issues tab implements GitHub-native problem reports cockpit with severity badges, Ansatz links, and PR linkages", () => {
     // 1. SpacePage delegates Tab 3 to SpaceIssuesTab
     assert.ok(
       spacePageSrc.includes("<SpaceIssuesTab") && spacePageSrc.includes('activeTab === "issues"'),
@@ -572,7 +572,7 @@ describe("Spaces UI/UX Layout & Polish Invariants", () => {
       "SpaceIssuesTab must implement issue creation modal and comment/status updates",
     );
 
-    // 4. Engineering metadata: Severity badges, impacted models linked to Morsel, and linked PR badge
+    // 4. Engineering metadata: Severity badges, impacted models linked to Ansatz, and linked PR badge
     assert.ok(
       spaceIssuesSrc.includes("issue.severity") &&
         spaceIssuesSrc.includes("impacted_models") &&

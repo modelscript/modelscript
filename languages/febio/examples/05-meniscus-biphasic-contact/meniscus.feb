@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<febio_spec version="4.0">
+  <Module type="biphasic"/>
+  <Control>
+    <analysis>TRANSIENT</analysis>
+    <time_steps>40</time_steps>
+    <step_size>0.025</step_size>
+  </Control>
+  <Material>
+    <material id="1" name="MeniscusBiphasic" type="biphasic">
+      <phi0>0.25</phi0>
+      <solid type="neo-Hookean">
+        <E>0.85</E>
+        <v>0.30</v>
+        <density>1.08</density>
+      </solid>
+      <permeability type="perm-const-iso">
+        <perm>0.0012</perm>
+      </permeability>
+    </material>
+    <material id="2" name="FemoralCartilage" type="neo-Hookean">
+      <E>1.50</E>
+      <v>0.40</v>
+      <density>1.10</density>
+    </material>
+  </Material>
+  <Mesh>
+    <Nodes name="KneeJointNodes">
+      <node id="1">0.0, 0.0, 0.0</node>
+      <node id="2">10.0, 0.0, 0.0</node>
+      <node id="3">10.0, 10.0, 0.0</node>
+      <node id="4">0.0, 10.0, 0.0</node>
+      <node id="5">0.0, 0.0, 4.0</node>
+      <node id="6">10.0, 0.0, 4.0</node>
+      <node id="7">10.0, 10.0, 4.0</node>
+      <node id="8">0.0, 10.0, 4.0</node>
+      <node id="9">0.0, 0.0, 4.0</node>
+      <node id="10">10.0, 0.0, 4.0</node>
+      <node id="11">10.0, 10.0, 4.0</node>
+      <node id="12">0.0, 10.0, 4.0</node>
+      <node id="13">0.0, 0.0, 7.0</node>
+      <node id="14">10.0, 0.0, 7.0</node>
+      <node id="15">10.0, 10.0, 7.0</node>
+      <node id="16">0.0, 10.0, 7.0</node>
+    </Nodes>
+    <Elements type="hex8" name="MeniscusDomain">
+      <elem id="1">1, 2, 3, 4, 5, 6, 7, 8</elem>
+    </Elements>
+    <Elements type="hex8" name="CondyleDomain">
+      <elem id="2">9, 10, 11, 12, 13, 14, 15, 16</elem>
+    </Elements>
+    <NodeSet name="TibialPlateauBase">
+      <node id="1"/>
+      <node id="2"/>
+      <node id="3"/>
+      <node id="4"/>
+    </NodeSet>
+    <NodeSet name="CondyleTop">
+      <node id="13"/>
+      <node id="14"/>
+      <node id="15"/>
+      <node id="16"/>
+    </NodeSet>
+    <Surface name="MeniscusSuperior">
+      <quad4 id="1">5, 6, 7, 8</quad4>
+    </Surface>
+    <Surface name="CondyleInferior">
+      <quad4 id="2">9, 10, 11, 12</quad4>
+    </Surface>
+  </Mesh>
+  <MeshDomains>
+    <SolidDomain name="MeniscusDomain" mat="1"/>
+    <SolidDomain name="CondyleDomain" mat="2"/>
+  </MeshDomains>
+  <Boundary>
+    <bc name="FixTibia" type="zero displacement" node_set="TibialPlateauBase">
+      <x_dof>1</x_dof>
+      <y_dof>1</y_dof>
+      <z_dof>1</z_dof>
+    </bc>
+    <bc name="CondyleCompression" type="prescribed displacement" node_set="CondyleTop">
+      <dof>z</dof>
+      <value>-0.45</value>
+    </bc>
+  </Boundary>
+  <contact name="MeniscusCondyleContact" type="sliding-elastic" primary="MeniscusSuperior" secondary="CondyleInferior" penalty="100.0"/>
+</febio_spec>

@@ -1,0 +1,11 @@
+{
+  "id": "ocpp-03-smart-charging-profile",
+  "lang": "ocpp",
+  "subFormats": ["ocpp.json"],
+  "difficulty": 3,
+  "title": "Smart Charging Profile (SetChargingProfile JSON-RPC)",
+  "description": "OCPP 2.0.1 SetChargingProfile JSON-RPC payload defining a multi-period time-of-use power ramp schedule for a depot DC fast charger.",
+  "category": "Smart Charging",
+  "tags": ["ocpp", "json-rpc", "smart-charging", "tou"],
+  "activeFile": "smart_profile.ocpp.json"
+}

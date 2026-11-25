@@ -25,8 +25,8 @@ function syncHeroAnsatzLinks(): void {
   const links = document.querySelectorAll<HTMLAnchorElement>(".VPHero .actions a");
   links.forEach((a) => {
     const href = a.getAttribute("href") || "";
-    if (href.endsWith("/editor") || href.endsWith("/morsel")) {
-      a.href = `${origin}${href.endsWith("/editor") ? "/editor" : "/morsel"}`;
+    if (href.endsWith("/editor") || href.endsWith("/ansatz")) {
+      a.href = `${origin}${href.endsWith("/editor") ? "/editor" : "/ansatz"}`;
       a.target = "_blank";
       a.rel = "noopener noreferrer";
     } else if (href.endsWith("/studio")) {

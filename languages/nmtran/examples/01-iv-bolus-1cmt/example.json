@@ -1,0 +1,13 @@
+{
+  "id": "nmtran-01-iv-bolus-1cmt",
+  "lang": "nmtran",
+  "subFormats": ["nmtran"],
+  "difficulty": 1,
+  "title": "One-Compartment IV Bolus Population PK",
+  "description": "Single-compartment intravenous bolus pharmacokinetic control stream (ADVAN1 TRANS2) estimating clearance and central volume with proportional residual error.",
+  "category": "Pharmacometrics",
+  "tags": ["nmtran", "nonmem", "pk", "iv-bolus", "multi-file"],
+  "activeFile": "iv_1cmt.ctl",
+  "fileOrder": ["iv_1cmt.ctl", "iv_1cmt.csv"],
+  "isDefaultStarter": true
+}

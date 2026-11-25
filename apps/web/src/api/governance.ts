@@ -41,7 +41,7 @@ export const createThreadProposal = async (payload: {
   title: string;
   description?: string | undefined;
   proposedBy?: string | undefined;
-  diffSummary?: any;
+  diffSummary?: Record<string, unknown> | string | undefined;
   safetyStandard?: string | undefined;
 }): Promise<ThreadProposalDto> => {
   const { data } = await api.post("/threads/proposals", payload);

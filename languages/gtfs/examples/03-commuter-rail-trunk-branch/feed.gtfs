@@ -1,0 +1,30 @@
+# STOPS
+stop_id,stop_name,stop_lat,stop_lon
+UNION_STA,Union Central Station,42.3523,-71.0552
+JUNCTION_STA,River Junction Transfer,42.3680,-71.0785
+NORTH_BRANCH,Northvale Heights,42.4120,-71.0910
+SOUTH_BRANCH,Southport Harbor,42.3210,-71.1120
+
+# ROUTES
+route_id,route_short_name,route_long_name,route_type
+CR_NORTH,CR-N,Northvale Commuter Rail,2
+CR_SOUTH,CR-S,Southport Commuter Rail,2
+
+# TRIPS
+route_id,service_id,trip_id,shape_id
+CR_NORTH,WEEKDAY,TR_N1,SHP_CRN
+CR_SOUTH,WEEKDAY,TR_S1,SHP_CRS
+
+# STOP_TIMES
+trip_id,arrival_time,departure_time,stop_id,stop_sequence,shape_dist_traveled
+TR_N1,07:15:00,07:16:00,UNION_STA,1,0.0
+TR_N1,07:24:00,07:26:00,JUNCTION_STA,2,4200.0
+TR_N1,07:40:00,07:40:00,NORTH_BRANCH,3,13800.0
+TR_S1,07:20:00,07:21:00,UNION_STA,1,0.0
+TR_S1,07:29:00,07:31:00,JUNCTION_STA,2,4200.0
+TR_S1,07:46:00,07:46:00,SOUTH_BRANCH,3,15200.0
+
+# VEHICLE
+mass 180000
+battery 2400
+aux 45.0

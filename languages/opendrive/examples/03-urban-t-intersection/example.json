@@ -1,0 +1,11 @@
+{
+  "id": "opendrive-03-urban-t-intersection",
+  "lang": "opendrive",
+  "subFormats": ["xodr"],
+  "difficulty": 3,
+  "title": "Signalized Urban T-Intersection with Crosswalks",
+  "description": "Urban signalized T-intersection connecting an east-west arterial and a northbound side street via a junction with connecting roads, pedestrian sidewalks, and traffic light signals.",
+  "category": "Urban Road Networks",
+  "tags": ["intersection", "junction", "traffic-signals", "urban"],
+  "activeFile": "urban_intersection.xodr"
+}

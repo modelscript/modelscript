@@ -79,7 +79,7 @@ export interface HpcJobSummary {
   completedAt: string | null;
   hasVtu: boolean;
   hasScalars: boolean;
-  scalars?: Record<string, any> | undefined;
+  scalars?: Record<string, unknown> | undefined;
   resultDir?: string | undefined;
 }
 
@@ -279,7 +279,7 @@ export interface ComputeJob {
   completedAt?: string | number | null | undefined;
   elapsedSeconds?: number | undefined;
   costCredits?: number | undefined;
-  usage?: Record<string, any> | undefined;
+  usage?: Record<string, unknown> | undefined;
   error?: string | undefined;
   hasResult?: boolean | undefined;
   resultPath?: string | undefined;
@@ -289,20 +289,53 @@ export interface ComputeJob {
   job?: ComputeJob | undefined;
 }
 
-function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
-  const raw = data?.job && typeof data.job === "object" ? data.job : data || {};
+interface RawComputeJobPayload {
+  id?: string | number | undefined;
+  jobId?: string | number | undefined;
+  name?: string | undefined;
+  status?: string | undefined;
+  type?: string | undefined;
+  domain?: string | undefined;
+  solver?: string | undefined;
+  profile?: string | undefined;
+  compute_profile?: string | undefined;
+  computeProfile?: string | undefined;
+  started_at?: string | undefined;
+  createdAt?: string | undefined;
+  startTime?: number | undefined;
+  startedAt?: string | number | undefined;
+  completed_at?: string | null | undefined;
+  completedAt?: string | number | null | undefined;
+  endTime?: number | undefined;
+  elapsedSeconds?: number | undefined;
+  cpu_seconds?: number | undefined;
+  costCredits?: number | undefined;
+  cost_credits?: number | undefined;
+  usage?: (Record<string, unknown> & { costCredits?: number | undefined }) | undefined;
+  error?: string | undefined;
+  hasResult?: boolean | undefined;
+  resultPath?: string | undefined;
+  metadata?: string | Record<string, unknown> | undefined;
+  studyResults?: { solver?: string | undefined; [key: string]: unknown } | undefined;
+  steps?: ComputeJobStep[] | undefined;
+  job?: RawComputeJobPayload | undefined;
+}
+
+function mapToComputeJob(data: RawComputeJobPayload | null | undefined, fallbackId: string | number): ComputeJob {
+  const raw: RawComputeJobPayload = data?.job && typeof data.job === "object" ? data.job : data || {};
   const steps: ComputeJobStep[] = Array.isArray(data?.steps) ? data.steps : Array.isArray(raw?.steps) ? raw.steps : [];
 
   let parsedMeta: Record<string, unknown> = {};
   try {
     if (typeof raw.metadata === "string") {
-      parsedMeta = JSON.parse(raw.metadata);
+      parsedMeta = JSON.parse(raw.metadata) as Record<string, unknown>;
     } else if (raw.metadata && typeof raw.metadata === "object") {
       parsedMeta = raw.metadata;
     }
   } catch {}
 
-  const studyResults = data?.studyResults || raw?.studyResults || parsedMeta?.studyResults;
+  const studyResults = (data?.studyResults || raw?.studyResults || parsedMeta?.studyResults) as
+    { solver?: string | undefined; [key: string]: unknown } | undefined;
   const resolvedId = raw.id ?? raw.jobId ?? fallbackId;
   const startedIso =
     raw.started_at ??
@@ -314,7 +347,7 @@ function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
         : undefined);
   const completedIso =
     raw.completed_at ??
-    raw.completedAt ??
+    (typeof raw.completedAt === "string" ? raw.completedAt : undefined) ??
     (typeof raw.endTime === "number" ? new Date(raw.endTime).toISOString() : null);
 
   const baseJob: ComputeJob = {
@@ -327,10 +360,18 @@ function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
       (raw.domain ? String(raw.domain).toUpperCase() : raw.solver ? String(raw.solver).toUpperCase() : "SIMULATION"),
     domain:
       raw.domain ||
-      parsedMeta?.modelDomain ||
+      (typeof parsedMeta?.modelDomain === "string" ? parsedMeta.modelDomain : undefined) ||
       (raw.solver === "su2" ? "cfd" : raw.solver === "calculix" ? "fea" : "simulation"),
-    solver: raw.solver || parsedMeta?.solver || studyResults?.solver,
-    profile: raw.profile || raw.compute_profile || raw.computeProfile || parsedMeta?.computeProfile || "standard",
+    solver:
+      raw.solver ||
+      (typeof parsedMeta?.solver === "string" ? parsedMeta.solver : undefined) ||
+      (typeof studyResults?.solver === "string" ? studyResults.solver : undefined),
+    profile:
+      raw.profile ||
+      raw.compute_profile ||
+      raw.computeProfile ||
+      (typeof parsedMeta?.computeProfile === "string" ? parsedMeta.computeProfile : undefined) ||
+      "standard",
     started_at: startedIso,
     startedAt: raw.startedAt ?? raw.startTime ?? startedIso,
     completed_at: completedIso,
@@ -353,12 +394,36 @@ function mapToComputeJob(data: any, fallbackId: string | number): ComputeJob {
   };
 }
 
+interface RawCloudJobEntry {
+  id?: string | number | undefined;
+  jobId?: string | number | undefined;
+  dbJobId?: number | null | undefined;
+  name?: string | undefined;
+  domain?: string | undefined;
+  profile?: string | undefined;
+  status: string;
+  costCredits?: number | undefined;
+  startTime?: string | number | undefined;
+}
+
+interface RawCaeJobEntry {
+  id: string | number;
+  name: string;
+  solver?: string | undefined;
+  computeProfile?: string | undefined;
+  status: string;
+  costCredits?: number | undefined;
+  startedAt?: string | number | undefined;
+  hasVtu?: boolean | undefined;
+  hasScalars?: boolean | undefined;
+}
+
 export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
   const jobs: UnifiedJob[] = [];
   const seenDbIds = new Set<string>();
 
   try {
-    const cloudRes = await api.get<{ jobs: any[] }>("/cloud/jobs");
+    const cloudRes = await api.get<{ jobs: RawCloudJobEntry[] }>("/cloud/jobs");
     if (cloudRes.data?.jobs && Array.isArray(cloudRes.data.jobs)) {
       for (const j of cloudRes.data.jobs) {
         // Use canonical dbJobId when available so we never duplicate SQLite jobs
@@ -383,7 +448,7 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
   }
 
   try {
-    const caeRes = await api.get<{ jobs: any[] }>("/cae/user-jobs", { params: { limit } });
+    const caeRes = await api.get<{ jobs: RawCaeJobEntry[] }>("/cae/user-jobs", { params: { limit } });
     if (caeRes.data?.jobs && Array.isArray(caeRes.data.jobs)) {
       for (const j of caeRes.data.jobs) {
         const canonicalId = String(j.id ?? "");
@@ -413,7 +478,7 @@ export const getUnifiedUserJobs = async (limit = 50): Promise<UnifiedJob[]> => {
 
 // ── Background Jobs & Engineering Study Templates API ───────────────
 
-export const getDbJobs = async (): Promise<{ jobs: any[] }> => {
+export const getDbJobs = async (): Promise<{ jobs: ComputeJob[] }> => {
   const { data } = await api.get("/jobs");
   return data;
 };
@@ -524,8 +589,7 @@ export interface StudyDefinitionPayload {
       }
     | undefined;
   steps?:
-    | (string | { id?: string; name?: string; title?: string; description?: string; command?: string })[]
-    | undefined;
+    (string | { id?: string; name?: string; title?: string; description?: string; command?: string })[] | undefined;
 }
 
 export interface CompatibleModelItem {
@@ -864,7 +928,9 @@ export const getJob = async (id: string | number): Promise<ComputeJob> => {
 
 export const getJobDetails = getJob;
 
-export const getJobLogs = async (id: string | number): Promise<any> => {
+export const getJobLogs = async (
+  id: string | number,
+): Promise<string | { logs?: string[] | string; [key: string]: unknown }> => {
   const strId = String(id);
   if (strId.startsWith("cloud-")) {
     const rawId = strId.slice("cloud-".length);
@@ -890,7 +956,9 @@ export const getJobLogs = async (id: string | number): Promise<any> => {
   return data;
 };
 
-export const cancelJob = async (id: string | number): Promise<any> => {
+export const cancelJob = async (
+  id: string | number,
+): Promise<{ success?: boolean; status?: string; message?: string; [key: string]: unknown }> => {
   const strId = String(id);
   if (strId.startsWith("cloud-")) {
     const rawId = strId.slice("cloud-".length);
@@ -949,18 +1017,54 @@ export const retryJob = async (id: string | number): Promise<ComputeJob> => {
   return mapToComputeJob(data, strId);
 };
 
-export const getJobTemplate = async (id: string | number): Promise<any> => {
+export interface JobTemplateRecord {
+  id: number | string;
+  slug?: string | undefined;
+  name?: string | undefined;
+  title?: string | undefined;
+  description?: string | undefined;
+  category?: string | undefined;
+  config?: string | Record<string, unknown> | undefined;
+  template?: Record<string, unknown> | undefined;
+  [key: string]: unknown;
+}
+
+export interface CloudComputeProfile {
+  id: string;
+  name: string;
+  description?: string | undefined;
+  cpuCores?: number | undefined;
+  memoryGb?: number | undefined;
+  gpu?: string | null | undefined;
+  creditsPerMinute?: number | undefined;
+  costPerMinute?: number | undefined;
+  [key: string]: unknown;
+}
+
+export interface MqttParticipant {
+  id?: string | undefined;
+  clientId?: string | undefined;
+  username?: string | undefined;
+  topic?: string | undefined;
+  connectedAt?: string | undefined;
+  [key: string]: unknown;
+}
+
+export const getJobTemplate = async (id: string | number): Promise<JobTemplateRecord> => {
   const { data } = await api.get(`/jobs/templates/${id}`);
   return data;
 };
 
-export const runJobTemplate = async (id: string | number, payload?: any): Promise<any> => {
+export const runJobTemplate = async (
+  id: string | number,
+  payload?: Record<string, unknown>,
+): Promise<{ jobId?: string | number; job?: ComputeJob; [key: string]: unknown }> => {
   const { data } = await api.post(`/jobs/templates/${id}/run`, payload || {});
   return data;
 };
 
 // ── Dev & System API ────────────────────────────────────────────────
-export const resetDevDb = async (): Promise<any> => {
+export const resetDevDb = async (): Promise<{ success?: boolean; message?: string; [key: string]: unknown }> => {
   const { data } = await api.post("/dev/reset");
   return data;
 };
@@ -968,7 +1072,7 @@ export const resetDevDb = async (): Promise<any> => {
 // ── MQTT API ────────────────────────────────────────────────────────
 export const getMqttParticipants = async (
   apiBaseUrl?: string,
-): Promise<{ participants: any[]; connected: boolean }> => {
+): Promise<{ participants: MqttParticipant[]; connected: boolean }> => {
   if (apiBaseUrl) {
     const res = await axios.get(`${apiBaseUrl}/api/v1/mqtt/participants`, { timeout: 10000 });
     return res.data;
@@ -978,7 +1082,7 @@ export const getMqttParticipants = async (
 };
 
 // ── Cloud HPC & Simulation API ──────────────────────────────────────
-export const getCloudProfiles = async (): Promise<{ profiles: any[] }> => {
+export const getCloudProfiles = async (): Promise<{ profiles: CloudComputeProfile[] }> => {
   const { data } = await api.get("/cloud/profiles");
   return data;
 };
@@ -988,7 +1092,7 @@ export const getCloudBalance = async (): Promise<{ balance: number }> => {
   return data;
 };
 
-export const dispatchCloudJob = async (payload: any): Promise<{ jobId: string }> => {
+export const dispatchCloudJob = async (payload: Record<string, unknown>): Promise<{ jobId: string }> => {
   const { data } = await api.post("/cloud/dispatch", payload);
   return data;
 };
@@ -1004,7 +1108,7 @@ export const getSimulationJobResult = async (jobId: string | number): Promise<st
 };
 
 // ── Physics & CAD API ───────────────────────────────────────────────
-export const flattenPhysicsStudy = async (className: string): Promise<any> => {
+export const flattenPhysicsStudy = async (className: string): Promise<Record<string, unknown>> => {
   const { data } = await api.get("/physics/flattenStudy", { params: { className } });
   return data;
 };
@@ -1014,12 +1118,15 @@ export const uploadPhysicsGeometry = async (formData: FormData): Promise<{ hash:
   return data;
 };
 
-export const runPhysicsJob = async (payload: { geometryHash: string; config: any }): Promise<{ jobId: string }> => {
+export const runPhysicsJob = async (payload: {
+  geometryHash: string;
+  config: Record<string, unknown>;
+}): Promise<{ jobId: string }> => {
   const { data } = await api.post("/physics/run", payload);
   return data;
 };
 
-export const convertCadGeometry = async (url: string): Promise<any> => {
+export const convertCadGeometry = async (url: string): Promise<Record<string, unknown>> => {
   const { data } = await api.get("/cad/convert", { params: { url } });
   return data;
 };

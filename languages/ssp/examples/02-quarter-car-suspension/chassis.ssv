@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  version="1.0"
+                  name="ChassisParameters">
+  <ssv:Parameters>
+    <ssv:Parameter name="m_sprung">
+      <ssv:Real value="320.0" />
+    </ssv:Parameter>
+    <ssv:Parameter name="k_spring">
+      <ssv:Real value="24000.0" />
+    </ssv:Parameter>
+    <ssv:Parameter name="c_damper">
+      <ssv:Real value="1850.0" />
+    </ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>

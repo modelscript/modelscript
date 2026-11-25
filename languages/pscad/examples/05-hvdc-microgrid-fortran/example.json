@@ -1,0 +1,11 @@
+{
+  "id": "pscad-05-hvdc-microgrid-fortran",
+  "lang": "pscad",
+  "subFormats": ["pscx", "pslx"],
+  "difficulty": 5,
+  "title": "Hybrid Microgrid EMT Case with Custom Library & Fortran Droop Control",
+  "description": "Multi-file PSCAD microgrid integrating a synchronous diesel generator, custom PSLX battery inverter library component, and external Fortran 90 droop controller.",
+  "category": "Multi-File EMT Systems",
+  "tags": ["pscad", "pslx", "fortran", "microgrid", "multi-file"],
+  "activeFile": "microgrid.pscx"
+}

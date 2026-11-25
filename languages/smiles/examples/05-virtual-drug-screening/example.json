@@ -1,0 +1,12 @@
+{
+  "id": "smiles-05-virtual-drug-screening",
+  "lang": "smiles",
+  "subFormats": ["smiles", "sdf"],
+  "difficulty": 5,
+  "title": "Virtual Drug Screening Set with 3D Conformers and IC50 Assay",
+  "description": "Multi-file virtual screening package pairing a SMILES candidate library with an MDL V2000 SDF conformer file and biochemical IC50 potency assay data.",
+  "category": "Drug Discovery",
+  "tags": ["smiles", "sdf", "virtual-screening", "ic50", "multi-file"],
+  "activeFile": "inhibitors.smi",
+  "fileOrder": ["inhibitors.smi", "aspirin_3d.sdf", "assay_ic50.csv"]
+}

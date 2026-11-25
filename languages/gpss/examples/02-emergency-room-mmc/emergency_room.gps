@@ -1,0 +1,16 @@
+* MODEL: EmergencyRoomMMc
+* Multi-Server Hospital Emergency Room with Exponential Arrivals & Wait Table
+BAYS  STORAGE 4
+EXPON FUNCTION RN1,C4
+0,0/.5,.693/.9,2.303/.99,4.605
+WAIT_T TABLE M1,5,5,20
+      GENERATE 8,FN$EXPON   ; Patients arrive exponentially (mean 8 min)
+      QUEUE    TRIAGE_Q     ; Enter waiting room
+      ENTER    BAYS,1       ; Occupy one of 4 treatment bays
+      DEPART   TRIAGE_Q     ; Leave waiting room
+      ADVANCE  26,FN$EXPON  ; Treatment duration (mean 26 min)
+      LEAVE    BAYS,1       ; Vacate treatment bay
+      TABULATE WAIT_T       ; Record total time in ER
+      TERMINATE 1           ; Patient discharged
+      START    250          ; Simulate 250 patients
+      END

@@ -85,6 +85,7 @@ export function extractLanguageAST(
   const topLevelFunctions = new Map<string, ts.FunctionDeclaration>();
   const topLevelVariables = new Map<string, ts.Expression>();
   const namedImports = new Map<string, { moduleSpecifier: string; importedName: string }>();
+  const reExportSpecifiers: string[] = [];
 
   ts.forEachChild(sourceFile, (node) => {
     if (ts.isClassDeclaration(node) && node.name) {
@@ -118,18 +119,23 @@ export function extractLanguageAST(
           namedImports.set(localName, { moduleSpecifier, importedName });
         }
       }
-    } else if (ts.isExportDeclaration(node) && node.exportClause && ts.isNamedExports(node.exportClause)) {
-      for (const spec of node.exportClause.elements) {
-        const localName = spec.propertyName ? spec.propertyName.text : spec.name.text;
-        const exportedName = spec.name.text;
-        const cls = topLevelClasses.get(localName);
-        if (cls) {
-          result.classes.set(exportedName, cls);
+    } else if (ts.isExportDeclaration(node)) {
+      if (node.exportClause && ts.isNamedExports(node.exportClause)) {
+        for (const spec of node.exportClause.elements) {
+          const localName = spec.propertyName ? spec.propertyName.text : spec.name.text;
+          const exportedName = spec.name.text;
+          const cls = topLevelClasses.get(localName);
+          if (cls) {
+            result.classes.set(exportedName, cls);
+          }
+          const fn = topLevelFunctions.get(localName);
+          if (fn) {
+            result.functions.set(exportedName, fn);
+          }
         }
-        const fn = topLevelFunctions.get(localName);
-        if (fn) {
-          result.functions.set(exportedName, fn);
-        }
+      }
+      if (node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+        reExportSpecifiers.push(node.moduleSpecifier.text);
       }
     }
   });
@@ -142,6 +148,44 @@ export function extractLanguageAST(
       targetPath = targetPath.slice(0, -3);
     }
     return [targetPath + ".ts", targetPath + ".js", path.join(targetPath, "index.ts"), targetPath];
+  }
+
+  // Automatically resolve relative re-export barrels (export * from "./..." and export { ... } from "./...")
+  for (const modSpec of reExportSpecifiers) {
+    if (modSpec.startsWith("./") || modSpec.startsWith("../")) {
+      try {
+        const candidates = getImportCandidates(modSpec);
+        for (const testPath of candidates) {
+          const normalized = path!.resolve(testPath);
+          const normalizedSlash = normalized.replace(/\\/g, "/");
+          if (
+            normalizedSlash.includes("/packages/dsl/src/") ||
+            normalizedSlash.includes("/packages/runtime/src/") ||
+            normalizedSlash.includes("/packages/language/src/") ||
+            normalizedSlash.includes("/node_modules/")
+          ) {
+            continue;
+          }
+          if (fs!.existsSync(normalized)) {
+            const subAst = extractLanguageAST(normalized, _memo);
+            if (subAst) {
+              for (const [k, v] of subAst.constants) {
+                if (!result.constants.has(k)) result.constants.set(k, v);
+              }
+              for (const [k, v] of subAst.classes) {
+                if (!result.classes.has(k)) result.classes.set(k, v);
+              }
+              for (const [k, v] of subAst.functions) {
+                if (!result.functions.has(k)) result.functions.set(k, v);
+              }
+              break;
+            }
+          }
+        }
+      } catch {
+        // Optional transpiler re-export barrel probe failed; try next path
+      }
+    }
   }
 
   // Automatically resolve all relative named imports to collect helper functions and constants
@@ -185,7 +229,9 @@ export function extractLanguageAST(
             }
           }
         }
-      } catch {}
+      } catch {
+        // Optional transpiler candidate file probe failed; try next path
+      }
     }
   }
 
@@ -216,7 +262,9 @@ export function extractLanguageAST(
             }
           }
         }
-      } catch {}
+      } catch {
+        // Optional transpiler candidate file probe failed; try next path
+      }
     }
     return undefined;
   }
@@ -250,7 +298,9 @@ export function extractLanguageAST(
             }
           }
         }
-      } catch {}
+      } catch {
+        // Optional transpiler candidate file probe failed; try next path
+      }
     }
     return undefined;
   }
@@ -292,7 +342,9 @@ export function extractLanguageAST(
             }
           }
         }
-      } catch {}
+      } catch {
+        // Optional transpiler candidate file probe failed; try next path
+      }
     }
     return undefined;
   }

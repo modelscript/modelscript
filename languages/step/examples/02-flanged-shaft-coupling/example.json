@@ -1,0 +1,11 @@
+{
+  "id": "step-02-flanged-shaft-coupling",
+  "lang": "step",
+  "subFormats": ["step"],
+  "difficulty": 2,
+  "title": "ISO Metric Flanged Shaft Coupling",
+  "description": "STEP AP214 cylindrical shaft coupling featuring concentric bore, outer flange cylinder, and four-bolt mounting circle geometry.",
+  "category": "Power Transmission CAD",
+  "tags": ["step", "coupling", "cylindrical", "flange", "ap214"],
+  "activeFile": "flanged_coupling.step"
+}

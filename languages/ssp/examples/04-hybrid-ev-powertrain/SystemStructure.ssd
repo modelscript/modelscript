@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"
+                                xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+                                name="EvPowertrainCoSim"
+                                version="1.0"
+                                description="800V EV battery, traction inverter, and PMSM motor co-simulation">
+  <ssd:System name="EvPowertrain">
+    <ssd:Connectors>
+      <ssd:Connector name="torque_cmd" kind="input"><ssc:Real unit="N.m" /></ssd:Connector>
+      <ssd:Connector name="shaft_torque" kind="output"><ssc:Real unit="N.m" /></ssd:Connector>
+      <ssd:Connector name="soc" kind="output"><ssc:Real /></ssd:Connector>
+    </ssd:Connectors>
+    <ssd:ParameterBindings>
+      <ssd:ParameterBinding source="battery.ssv" />
+      <ssd:ParameterBinding source="inverter.ssv" />
+    </ssd:ParameterBindings>
+    <ssd:Elements>
+      <ssd:Component name="BatteryPack" type="application/x-fmu-sharedlibrary" source="resources/Battery">
+        <ssd:Connectors>
+          <ssd:Connector name="i_dc" kind="input"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="v_dc" kind="output"><ssc:Real unit="V" /></ssd:Connector>
+          <ssd:Connector name="soc" kind="output"><ssc:Real /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="TractionInverter" type="application/x-fmu-sharedlibrary" source="resources/Inverter">
+        <ssd:Connectors>
+          <ssd:Connector name="v_dc" kind="input"><ssc:Real unit="V" /></ssd:Connector>
+          <ssd:Connector name="tau_ref" kind="input"><ssc:Real unit="N.m" /></ssd:Connector>
+          <ssd:Connector name="i_dc" kind="output"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="i_q" kind="output"><ssc:Real unit="A" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="PmsmMotor" type="application/x-fmu-sharedlibrary" source="resources/Motor">
+        <ssd:Connectors>
+          <ssd:Connector name="i_q" kind="input"><ssc:Real unit="A" /></ssd:Connector>
+          <ssd:Connector name="tau_out" kind="output"><ssc:Real unit="N.m" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+    </ssd:Elements>
+    <ssd:Connections>
+      <ssd:Connection startElement="EvPowertrain" startConnector="torque_cmd" endElement="TractionInverter" endConnector="tau_ref" />
+      <ssd:Connection startElement="BatteryPack" startConnector="v_dc" endElement="TractionInverter" endConnector="v_dc" />
+      <ssd:Connection startElement="TractionInverter" startConnector="i_dc" endElement="BatteryPack" endConnector="i_dc" />
+      <ssd:Connection startElement="TractionInverter" startConnector="i_q" endElement="PmsmMotor" endConnector="i_q" />
+      <ssd:Connection startElement="PmsmMotor" startConnector="tau_out" endElement="EvPowertrain" endConnector="shaft_torque" />
+      <ssd:Connection startElement="BatteryPack" startConnector="soc" endElement="EvPowertrain" endConnector="soc" />
+    </ssd:Connections>
+  </ssd:System>
+  <ssd:DefaultExperiment startTime="0.0" stopTime="1800.0" />
+</ssd:SystemStructureDescription>

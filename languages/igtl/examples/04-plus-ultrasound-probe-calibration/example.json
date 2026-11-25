@@ -1,0 +1,11 @@
+{
+  "id": "igtl-04-plus-ultrasound-probe-calibration",
+  "lang": "igtl",
+  "subFormats": ["plus.xml"],
+  "difficulty": 4,
+  "title": "PLUS Toolkit Tracked Ultrasound Probe Calibration",
+  "description": "PLUS Toolkit (.plus.xml) surgical device set configuring an NDI Polaris optical tracker, B-mode ultrasound scanner, Image-to-Probe calibration matrix, and OpenIGTLink TCP server.",
+  "category": "Image-Guided Surgery & Navigation",
+  "tags": ["igtl", "plus-toolkit", "ultrasound-calibration", "polaris"],
+  "activeFile": "us_probe.plus.xml"
+}

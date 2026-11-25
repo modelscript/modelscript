@@ -1,0 +1,12 @@
+{
+  "id": "waterml-01-stream-gage-stage",
+  "lang": "waterml",
+  "subFormats": ["waterml"],
+  "difficulty": 1,
+  "title": "Single Stream Gage Stage Hydrograph",
+  "description": "OGC WaterML 2.0 XML collection recording hourly river gage height stage measurements at a single USGS monitoring point during a rising hydrograph.",
+  "category": "Hydrologic Telemetry",
+  "tags": ["waterml", "ogc", "gage-stage", "hydrograph"],
+  "activeFile": "stream_stage.waterml",
+  "isDefaultStarter": true
+}

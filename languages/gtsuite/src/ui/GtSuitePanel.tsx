@@ -81,9 +81,12 @@ export const GtSuitePanel: React.FC<LanguagePanelProps> = ({
                 Export SVG
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "gtsuite", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton
+                variant="primary"
+                onClick={() => host.openInAnsatzEditor?.(code, dialect || "gtsuite", title)}
+              >
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

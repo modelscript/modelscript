@@ -7,6 +7,8 @@ import {
   evaluateConstantArenaExpression,
   ExprKind,
   StmtKind,
+  type SymbolEntry,
+  type SymbolId,
   UnifiedWorkspace,
   VarAttrKind,
   Variability,
@@ -22,6 +24,58 @@ import {
 } from "./flattener/expressions/cst-utils.js";
 import { getSymbolQualifiedName } from "./flattener/expressions/functions.js";
 import { getFlatteningState } from "./flattener/support/state.js";
+
+interface ConnExtraStateFields {
+  innerOuterNames?: Iterable<unknown> | undefined;
+  outerPrefs?: Iterable<unknown> | undefined;
+  innerPrefs?: Iterable<unknown> | undefined;
+}
+
+interface ConnectionFlattenerWasmExports {
+  flattener_create?: ((daePtr: number) => number) | undefined;
+  flattener_destroy?: ((flattenerPtr: number) => void) | undefined;
+  flattener_expandConnections?: ((flattenerPtr: number, flags: number) => number) | undefined;
+  flattener_unionSets?: ((flattenerPtr: number, varA: number, varB: number) => void) | undefined;
+}
+
+interface ConnSymbolMeta {
+  isInner?: boolean | undefined;
+  isOuter?: boolean | undefined;
+  isProtected?: boolean | undefined;
+  flowPrefix?: string | boolean | undefined;
+  typeSpecifier?: string | undefined;
+  classKind?: string | undefined;
+  classPrefixes?: string | undefined;
+}
+
+interface ConnModArgLike {
+  name: string;
+  value?: { text?: string | undefined; value?: unknown } | null | undefined;
+}
+
+interface ConnIfEquationEntry {
+  kind: EqKind;
+  lhsExprId: number;
+  rhsExprId: number;
+  ifMeta?: ConnIfMetaLike | undefined;
+  thenEquations?: ConnIfEquationEntry[] | undefined;
+  elseIfClauses?: ConnElseIfClauseLike[] | undefined;
+  elseEquations?: ConnIfEquationEntry[] | undefined;
+}
+
+interface ConnElseIfClauseLike {
+  conditionExprId: number;
+  bodyEquations?: ConnIfEquationEntry[] | undefined;
+  equations?: Array<{ lhs: number; rhs: number }> | undefined;
+}
+
+interface ConnIfMetaLike {
+  conditionExprId: number;
+  hasResolvedConnectionQuery?: boolean | undefined;
+  thenEquations: ConnIfEquationEntry[];
+  elseIfClauses: ConnElseIfClauseLike[];
+  elseEquations?: ConnIfEquationEntry[] | undefined;
+}
 
 function parseLeadingIndexedMember(name: string): { base: string; index: number; rest: string } | null {
   const open = name.indexOf("[");
@@ -255,25 +309,26 @@ export class ModelicaPortBalancer {
     // Fast path: delegate standard acausal connections to the in-WASM AssemblyScript connection kernel
     // when no expandable buses or hierarchical outside connector flags are present.
     const state = getFlatteningState(dae);
+    const flattenerExports = dae.exports as (typeof dae.exports & ConnectionFlattenerWasmExports) | undefined;
     if (
       hasConnectEq &&
       !hasOutsideConnect &&
       options?.useWasmKernel !== false &&
-      dae.exports &&
-      typeof dae.exports.flattener_expandConnections === "function" &&
+      flattenerExports &&
+      typeof flattenerExports.flattener_expandConnections === "function" &&
       !options?.omcCompatibility &&
       expBuses.length === 0
     ) {
       const existingWasmFlattener = state.wasmFlattener;
       const wasmFlattener =
-        existingWasmFlattener ?? (dae.exports.flattener_create ? dae.exports.flattener_create(dae.ptr) : 0);
+        existingWasmFlattener ?? (flattenerExports.flattener_create ? flattenerExports.flattener_create(dae.ptr) : 0);
       if (wasmFlattener) {
         try {
-          const expanded = dae.exports.flattener_expandConnections(wasmFlattener, 0);
+          const expanded = flattenerExports.flattener_expandConnections(wasmFlattener, 0);
           if (expanded > 0) return;
         } finally {
-          if (!existingWasmFlattener && typeof dae.exports.flattener_destroy === "function") {
-            dae.exports.flattener_destroy(wasmFlattener);
+          if (!existingWasmFlattener && typeof flattenerExports.flattener_destroy === "function") {
+            flattenerExports.flattener_destroy(wasmFlattener);
           }
         }
       }
@@ -296,21 +351,29 @@ export class ModelicaPortBalancer {
       return Boolean(strippedCand) && (strippedVar === strippedCand || strippedVar.startsWith(strippedCand + "."));
     };
 
+    interface ConnComponentInstanceLike {
+      isInner?: boolean | undefined;
+      isOuter?: boolean | undefined;
+      flowPrefix?: string | boolean | undefined;
+      typeSpecifier?: string | undefined;
+      modification?: { args?: readonly ConnModArgLike[] | undefined } | null | undefined;
+    }
+
     const dbInnerOuterCompNames = new Set<string>();
     const topLevelConnectorPrefixes = new Set<string>();
-    const isSymInnerOrOuter = (sym: any): boolean => {
+    const isSymInnerOrOuter = (sym: SymbolEntry | null | undefined): boolean => {
       if (!sym || sym.kind !== "Component") return false;
-      const meta = sym.metadata as any;
+      const meta = sym.metadata as ConnSymbolMeta | undefined;
       if (meta?.isInner || meta?.isOuter) return true;
-      const ci = state.db?.query?.("componentInstance", sym.id);
+      const ci = state.db?.query?.<ConnComponentInstanceLike | null>("componentInstance", sym.id);
       if (ci?.isInner || ci?.isOuter) return true;
-      let cst = (state.db as any)?.cstNode?.(sym.id);
+      let cst = (state.db as { cstNode?: (id: SymbolId) => CstNodeLike | null } | undefined)?.cstNode?.(sym.id);
       while (cst && cst.type !== "element" && cst.parent) {
         cst = cst.parent;
       }
       if (
         cst?.children?.some(
-          (ch: any) => ch.type === "inner" || ch.type === "outer" || ch.text === "inner" || ch.text === "outer",
+          (ch: CstNodeLike) => ch.type === "inner" || ch.type === "outer" || ch.text === "inner" || ch.text === "outer",
         )
       ) {
         return true;
@@ -334,49 +397,54 @@ export class ModelicaPortBalancer {
     if (state.db) {
       const rootClassId = state.flattener?.currentRootClassId ?? state.currentRootClassId ?? state.currentClassId;
       if (rootClassId) {
-        const rootElems = state.db.query?.("allElements", rootClassId) ?? state.db.childrenOf?.(rootClassId) ?? [];
+        const rootElems =
+          state.db.query?.<SymbolEntry[] | null>("allElements", rootClassId) ??
+          state.db.childrenOf?.(rootClassId) ??
+          [];
         for (const el of rootElems) {
           if (el.kind === "Component") {
-            let compClassId = state.db.query?.("classInstance", el.id);
+            let compClassId = state.db.query?.<SymbolId | null>("classInstance", el.id) ?? undefined;
             if (!compClassId) {
-              const ci = state.db.query?.("componentInstance", el.id);
-              const tSpec = ci?.typeSpecifier ?? (el.metadata as any)?.typeSpecifier;
+              const ci = state.db.query?.<ConnComponentInstanceLike | null>("componentInstance", el.id);
+              const tSpec = ci?.typeSpecifier ?? (el.metadata as ConnSymbolMeta | undefined)?.typeSpecifier;
               if (tSpec) {
-                const found = state.db.byName?.(String(tSpec).split(".").pop()!)?.find((s: any) => s.kind === "Class");
+                const found = state.db
+                  .byName?.(String(tSpec).split(".").pop()!)
+                  ?.find((s: SymbolEntry) => s.kind === "Class");
                 if (found) compClassId = found.id;
               }
             }
             if (compClassId) {
               const compClass = state.db.symbol?.(compClassId);
-              const classKind = String(
-                (compClass?.metadata as any)?.classKind ?? (compClass?.metadata as any)?.classPrefixes ?? "",
-              ).toLowerCase();
-              if (state.db.query?.("isConnector", compClassId) || classKind.includes("connector")) {
+              const compMeta = compClass?.metadata as ConnSymbolMeta | undefined;
+              const classKind = String(compMeta?.classKind ?? compMeta?.classPrefixes ?? "").toLowerCase();
+              if (state.db.query?.<boolean>("isConnector", compClassId) || classKind.includes("connector")) {
                 topLevelConnectorPrefixes.add(el.name);
               }
             }
           }
         }
-        const visitedClasses = new Set<any>();
-        const classQueue: any[] = [rootClassId];
+        const visitedClasses = new Set<SymbolId>();
+        const classQueue: SymbolId[] = [rootClassId];
         while (classQueue.length > 0) {
           const clsId = classQueue.shift()!;
           if (!clsId || visitedClasses.has(clsId)) continue;
           visitedClasses.add(clsId);
-          const elems = state.db.query?.("allElements", clsId) ?? state.db.childrenOf?.(clsId) ?? [];
+          const elems =
+            state.db.query?.<SymbolEntry[] | null>("allElements", clsId) ?? state.db.childrenOf?.(clsId) ?? [];
           for (const el of elems) {
             if (el.kind === "Component") {
               if (isSymInnerOrOuter(el)) {
                 dbInnerOuterCompNames.add(el.name);
               }
-              let compClassId = state.db.query?.("classInstance", el.id);
+              let compClassId = state.db.query?.<SymbolId | null>("classInstance", el.id) ?? undefined;
               if (!compClassId) {
-                const ci = state.db.query?.("componentInstance", el.id);
-                const tSpec = ci?.typeSpecifier ?? (el.metadata as any)?.typeSpecifier;
+                const ci = state.db.query?.<ConnComponentInstanceLike | null>("componentInstance", el.id);
+                const tSpec = ci?.typeSpecifier ?? (el.metadata as ConnSymbolMeta | undefined)?.typeSpecifier;
                 if (tSpec) {
                   const found = state.db
                     .byName?.(String(tSpec).split(".").pop()!)
-                    ?.find((s: any) => s.kind === "Class");
+                    ?.find((s: SymbolEntry) => s.kind === "Class");
                   if (found) compClassId = found.id;
                 }
               }
@@ -384,7 +452,7 @@ export class ModelicaPortBalancer {
                 classQueue.push(compClassId);
               }
             } else if (el.kind === "Extends") {
-              const base = state.db.query?.("resolvedBaseClass", el.id);
+              const base = state.db.query?.<SymbolEntry | null>("resolvedBaseClass", el.id);
               if (base?.id && !visitedClasses.has(base.id)) {
                 classQueue.push(base.id);
               }
@@ -415,8 +483,8 @@ export class ModelicaPortBalancer {
           }
         }
       }
-      const anyState = state as any;
-      for (const setProp of [anyState.innerOuterNames, anyState.outerPrefs, anyState.innerPrefs]) {
+      const extraState = state as unknown as ConnExtraStateFields;
+      for (const setProp of [extraState.innerOuterNames, extraState.outerPrefs, extraState.innerPrefs]) {
         if (setProp && typeof setProp[Symbol.iterator] === "function") {
           for (const entry of setProp) {
             if (typeof entry === "string" && matchesConnectorPrefix(varName, entry)) return true;
@@ -432,8 +500,8 @@ export class ModelicaPortBalancer {
         if (state.db) {
           let cached = innerOuterSegCache.get(seg);
           if (cached === undefined) {
-            const syms = (state.db.byName?.(seg) ?? []).filter((s: any) => s.kind === "Component");
-            cached = syms.length > 0 && syms.every((s: any) => isSymInnerOrOuter(s));
+            const syms = (state.db.byName?.(seg) ?? []).filter((s: SymbolEntry) => s.kind === "Component");
+            cached = syms.length > 0 && syms.every((s: SymbolEntry) => isSymInnerOrOuter(s));
             innerOuterSegCache.set(seg, Boolean(cached));
           }
           if (cached) return true;
@@ -833,47 +901,58 @@ export class ModelicaPortBalancer {
             range,
           });
           if (state.db && state.flattener?.currentRootClassId) {
+            const connDb = state.db;
             const r0Raw = fromStr.split(".")[0]!;
             const r1Raw = toStr.split(".")[0]!;
             const scopeId = state.flattener.currentRootClassId;
-            const allChildren = state.db.childrenOf(scopeId);
-            const c0Sym = allChildren.find((c: any) => c.kind === "Component" && c.name === r0Raw);
-            const c1Sym = allChildren.find((c: any) => c.kind === "Component" && c.name === r1Raw);
-            const c0Inst = c0Sym ? state.db.query("componentInstance", c0Sym.id) : null;
-            const c1Inst = c1Sym ? state.db.query("componentInstance", c1Sym.id) : null;
+            const allChildren = connDb.childrenOf(scopeId);
+            const c0Sym = allChildren.find((c: SymbolEntry) => c.kind === "Component" && c.name === r0Raw);
+            const c1Sym = allChildren.find((c: SymbolEntry) => c.kind === "Component" && c.name === r1Raw);
+            const c0Inst = c0Sym ? connDb.query<ConnComponentInstanceLike | null>("componentInstance", c0Sym.id) : null;
+            const c1Inst = c1Sym ? connDb.query<ConnComponentInstanceLike | null>("componentInstance", c1Sym.id) : null;
             const resolveConnectorSym = (typeSpec: string | null | undefined) => {
               if (!typeSpec) return null;
-              const matches = state.db.byName(typeSpec);
-              return matches?.find((e: any) => e.kind === "Class") ?? null;
+              const matches = connDb.byName(typeSpec);
+              return matches?.find((e: SymbolEntry) => e.kind === "Class") ?? null;
             };
             const sym0 = resolveConnectorSym(c0Inst?.typeSpecifier);
             const sym1 = resolveConnectorSym(c1Inst?.typeSpecifier);
             if (sym0 && sym1) {
-              const formatConnectorType = (sym: any): string => {
-                const elems = state.db.query("allElements", sym.id) ?? state.db.childrenOf(sym.id);
-                const comps = elems.filter((e: any) => e.kind === "Component" && !(e.metadata as any)?.isProtected);
-                const compLines = comps.map((c: any) => {
-                  const inst = state.db.query("componentInstance", c.id);
-                  const m = (c.metadata as any) ?? {};
+              const formatConnectorType = (sym: SymbolEntry): string => {
+                const elems: SymbolEntry[] =
+                  connDb.query<SymbolEntry[] | null>("allElements", sym.id) ?? connDb.childrenOf(sym.id);
+                const comps = elems.filter(
+                  (e: SymbolEntry) =>
+                    e.kind === "Component" && !(e.metadata as ConnSymbolMeta | undefined)?.isProtected,
+                );
+                const compLines = comps.map((c: SymbolEntry) => {
+                  const inst = connDb.query<ConnComponentInstanceLike | null>("componentInstance", c.id);
+                  const m = (c.metadata as ConnSymbolMeta | undefined) ?? {};
                   const flow = inst?.flowPrefix || m.flowPrefix ? "flow " : "";
-                  let typeName = inst?.typeSpecifier ?? (c as any).typeSpecifier ?? "Real";
+                  let typeName =
+                    inst?.typeSpecifier ?? (c as SymbolEntry & { typeSpecifier?: string }).typeSpecifier ?? "Real";
                   let modStr = "";
                   if (inst?.modification?.args && inst.modification.args.length > 0) {
                     modStr =
                       "(" +
-                      inst.modification.args
-                        .map((a: any) => `${a.name} = "${a.value?.text ?? a.value?.value ?? ""}"`)
+                      (inst.modification.args as readonly ConnModArgLike[])
+                        .map((a) => `${a.name} = "${a.value?.text ?? a.value?.value ?? ""}"`)
                         .join(", ") +
                       ")";
                   } else {
-                    const resolved = state.db.byName(typeName)?.find((e: any) => e.kind === "Class");
+                    const resolved = connDb.byName(typeName)?.find((e: SymbolEntry) => e.kind === "Class");
                     if (resolved) {
-                      const src = (state.db as any).source ? ((state.db as any).source(resolved.resourceId) ?? "") : "";
+                      const dbWithSource = connDb as { source?: (resId: string) => string | null };
+                      const src =
+                        dbWithSource.source && resolved.resourceId
+                          ? (dbWithSource.source(resolved.resourceId) ?? "")
+                          : "";
+                      const resolvedCst = connDb.cstNode?.(resolved.id) as CstNodeLike | null | undefined;
                       const snippet =
                         src && resolved.startOffset !== undefined && resolved.endOffset !== undefined
                           ? src.substring(resolved.startOffset, resolved.endOffset)
-                          : ((state.db.cstNode?.(resolved.id) as any)?.text ?? "");
-                      const aliasType = extractShortClassAliasTypeText(state.db.cstNode?.(resolved.id), snippet);
+                          : (resolvedCst?.text ?? "");
+                      const aliasType = extractShortClassAliasTypeText(resolvedCst, snippet);
                       if (aliasType) {
                         typeName = aliasType;
                       }
@@ -900,9 +979,9 @@ export class ModelicaPortBalancer {
           resolvedPairs.push([fromExact, toExact, eqIdx]);
           if (!varConnectEqIdx.has(fromExact)) varConnectEqIdx.set(fromExact, eqIdx);
           if (!varConnectEqIdx.has(toExact)) varConnectEqIdx.set(toExact, eqIdx);
-          if (dae.exports?.flattener_unionSets) {
+          if (flattenerExports?.flattener_unionSets) {
             const wasmFlattener = state.wasmFlattener;
-            if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, fromExact, toExact);
+            if (wasmFlattener) flattenerExports.flattener_unionSets(wasmFlattener, fromExact, toExact);
           }
         }
       } else {
@@ -1000,11 +1079,12 @@ export class ModelicaPortBalancer {
               return false;
             };
             const isConditionallyDisabledSubcomponent = (fullVarName: string): boolean => {
-              if (state.flattener?.isComponentDisabled(fullVarName)) return true;
+              const flattenerCheck = state.flattener as { isComponentDisabled?: (name: string) => boolean } | undefined;
+              if (flattenerCheck?.isComponentDisabled?.(fullVarName)) return true;
               const parts = fullVarName.split(".");
               for (let pLen = 1; pLen < parts.length; pLen++) {
                 const subPrefix = parts.slice(0, pLen).join(".");
-                if (state.flattener?.isComponentDisabled(subPrefix)) return true;
+                if (flattenerCheck?.isComponentDisabled?.(subPrefix)) return true;
               }
               if (state.db) {
                 for (let pIdx = 1; pIdx < parts.length; pIdx++) {
@@ -1013,33 +1093,33 @@ export class ModelicaPortBalancer {
 
                   const bIdxParent = parts[pIdx - 1]!.indexOf("[");
                   const parentSeg = bIdxParent >= 0 ? parts[pIdx - 1]!.slice(0, bIdxParent) : parts[pIdx - 1]!;
-                  const validParentClassIds = new Set<any>();
+                  const validParentClassIds = new Set<SymbolId>();
                   const parentSyms = state.db.byName?.(parentSeg) || [];
                   for (const pSym of parentSyms) {
                     if (pSym.kind !== "Component") continue;
-                    let pClassId = state.db.query?.("classInstance", pSym.id);
+                    let pClassId = state.db.query?.<SymbolId | null>("classInstance", pSym.id) ?? undefined;
                     if (!pClassId) {
-                      const ci = state.db.query?.("componentInstance", pSym.id);
-                      const tSpec = ci?.typeSpecifier ?? (pSym.metadata as any)?.typeSpecifier;
+                      const ci = state.db.query?.<ConnComponentInstanceLike | null>("componentInstance", pSym.id);
+                      const tSpec = ci?.typeSpecifier ?? (pSym.metadata as ConnSymbolMeta | undefined)?.typeSpecifier;
                       if (tSpec) {
                         const found = state.db
                           .byName?.(String(tSpec).split(".").pop()!)
-                          ?.find((s: any) => s.kind === "Class");
+                          ?.find((s: SymbolEntry) => s.kind === "Class");
                         if (found) pClassId = found.id;
                       }
                     }
                     if (pClassId) {
-                      const queue = [pClassId];
+                      const queue: SymbolId[] = [pClassId];
                       while (queue.length > 0) {
                         const cid = queue.shift()!;
                         if (!cid || validParentClassIds.has(cid)) continue;
                         validParentClassIds.add(cid);
-                        const base = state.db.query?.("resolvedBaseClass", cid);
+                        const base = state.db.query?.<SymbolEntry | null>("resolvedBaseClass", cid);
                         if (base?.id && !validParentClassIds.has(base.id)) queue.push(base.id);
                         const children = state.db.childrenOf?.(cid) ?? [];
                         for (const ch of children) {
                           if (ch.kind === "Extends") {
-                            const extBase = state.db.query?.("resolvedBaseClass", ch.id);
+                            const extBase = state.db.query?.<SymbolEntry | null>("resolvedBaseClass", ch.id);
                             if (extBase?.id && !validParentClassIds.has(extBase.id)) queue.push(extBase.id);
                           }
                         }
@@ -1089,9 +1169,9 @@ export class ModelicaPortBalancer {
                   resolvedPairs.push([idxA, idxB, eqIdx]);
                   if (!varConnectEqIdx.has(idxA)) varConnectEqIdx.set(idxA, eqIdx);
                   if (!varConnectEqIdx.has(idxB)) varConnectEqIdx.set(idxB, eqIdx);
-                  if (dae.exports?.flattener_unionSets) {
+                  if (flattenerExports?.flattener_unionSets) {
                     const wasmFlattener = state.wasmFlattener;
-                    if (wasmFlattener) dae.exports.flattener_unionSets(wasmFlattener, idxA, idxB);
+                    if (wasmFlattener) flattenerExports.flattener_unionSets(wasmFlattener, idxA, idxB);
                   }
                 }
               } else if (
@@ -1282,8 +1362,8 @@ export class ModelicaPortBalancer {
           if (matchesDirect(op) || matchesDirect(tp)) return true;
         }
       }
-      const anyState = state as any;
-      for (const setProp of [anyState.innerOuterNames, anyState.outerPrefs, anyState.innerPrefs]) {
+      const extraState = state as unknown as ConnExtraStateFields;
+      for (const setProp of [extraState.innerOuterNames, extraState.outerPrefs, extraState.innerPrefs]) {
         if (setProp && typeof setProp[Symbol.iterator] === "function") {
           for (const entry of setProp) {
             if (typeof entry === "string" && matchesDirect(entry)) return true;
@@ -1295,8 +1375,8 @@ export class ModelicaPortBalancer {
       if (state.db) {
         let cached = innerOuterSegCache.get(connSeg);
         if (cached === undefined) {
-          const syms = (state.db.byName?.(connSeg) ?? []).filter((s: any) => s.kind === "Component");
-          cached = syms.length > 0 && syms.every((s: any) => isSymInnerOrOuter(s));
+          const syms = (state.db.byName?.(connSeg) ?? []).filter((s: SymbolEntry) => s.kind === "Component");
+          cached = syms.length > 0 && syms.every((s: SymbolEntry) => isSymInnerOrOuter(s));
           innerOuterSegCache.set(connSeg, Boolean(cached));
         }
         if (cached) return true;
@@ -1819,7 +1899,7 @@ export class ModelicaPortBalancer {
           }
         }
       } else if (eqKind === EqKind.If) {
-        const pruneAndRewriteEqList = (list: any[], rootMeta: any) => {
+        const pruneAndRewriteEqList = (list: ConnIfEquationEntry[], rootMeta: ConnIfMetaLike | undefined) => {
           for (let bi = list.length - 1; bi >= 0; bi--) {
             const bEq = list[bi]!;
             const origLhs = bEq.lhsExprId;
@@ -1837,14 +1917,14 @@ export class ModelicaPortBalancer {
               }
             }
             if (bEq.kind === EqKind.If) {
-              if ((bEq as any).ifMeta) {
-                rewriteIfMeta((bEq as any).ifMeta, rootMeta);
-              } else if (Array.isArray((bEq as any).thenEquations)) {
+              if (bEq.ifMeta) {
+                rewriteIfMeta(bEq.ifMeta, rootMeta);
+              } else if (Array.isArray(bEq.thenEquations)) {
                 if (bEq.lhsExprId !== origLhs && rootMeta) {
                   rootMeta.hasResolvedConnectionQuery = true;
                 }
-                pruneAndRewriteEqList((bEq as any).thenEquations, rootMeta);
-                for (const ei of (bEq as any).elseIfClauses ?? []) {
+                pruneAndRewriteEqList(bEq.thenEquations, rootMeta);
+                for (const ei of bEq.elseIfClauses ?? []) {
                   const origEiCond = ei.conditionExprId;
                   ei.conditionExprId = rewriteStreamExpr(ei.conditionExprId);
                   if (ei.conditionExprId !== origEiCond && rootMeta) {
@@ -1858,14 +1938,14 @@ export class ModelicaPortBalancer {
                     e2.rhs = rewriteStreamExpr(e2.rhs);
                   }
                 }
-                if (Array.isArray((bEq as any).elseEquations)) {
-                  pruneAndRewriteEqList((bEq as any).elseEquations, rootMeta);
+                if (Array.isArray(bEq.elseEquations)) {
+                  pruneAndRewriteEqList(bEq.elseEquations, rootMeta);
                 }
               }
             }
           }
         };
-        const rewriteIfMeta = (meta: any, rootMeta?: any) => {
+        const rewriteIfMeta = (meta: ConnIfMetaLike | null | undefined, rootMeta?: ConnIfMetaLike) => {
           if (!meta) return;
           const targetRoot = rootMeta ?? meta;
           const origCond = meta.conditionExprId;
@@ -1882,8 +1962,10 @@ export class ModelicaPortBalancer {
               meta.hasResolvedConnectionQuery = true;
               if (targetRoot !== meta) targetRoot.hasResolvedConnectionQuery = true;
             }
-            pruneAndRewriteEqList(ei.bodyEquations, targetRoot);
-            for (const bEq of ei.equations) {
+            if (ei.bodyEquations) {
+              pruneAndRewriteEqList(ei.bodyEquations, targetRoot);
+            }
+            for (const bEq of ei.equations ?? []) {
               bEq.lhs = rewriteStreamExpr(bEq.lhs);
               bEq.rhs = rewriteStreamExpr(bEq.rhs);
             }
@@ -3062,8 +3144,8 @@ export class ModelicaPortBalancer {
                 });
               }
             } else {
-              const emittedFlowSums = new Set<any>();
-              const emittedZeroFlows = new Set<any>();
+              const emittedFlowSums = new Set<(typeof flowSumEqs)[number]>();
+              const emittedZeroFlows = new Set<(typeof zeroFlows)[number]>();
               const hasInnerOuterOO = ooGroupData.some((gd) => gd.group.some((p) => isInnerOrOuterVar(p)));
 
               // 1. Then, emit top-level zero flows
@@ -3190,8 +3272,8 @@ export class ModelicaPortBalancer {
                 const rankA = a.eqIdx ?? 99999;
                 const rankB = b.eqIdx ?? 99999;
                 if (rankA !== rankB) return rankA - rankB;
-                const orderA = (a as any).connOrder ?? 99999;
-                const orderB = (b as any).connOrder ?? 99999;
+                const orderA = a.connOrder ?? 99999;
+                const orderB = b.connOrder ?? 99999;
                 if (orderA !== orderB) return orderA - orderB;
                 const lhsNameA =
                   dae.getExprKind(a.lhs) === ExprKind.Name ? dae.interner.resolve(dae.getExprData1(a.lhs)) : a.str;
@@ -3269,8 +3351,8 @@ export class ModelicaPortBalancer {
             lhs: eq.lhs,
             rhs: eq.rhs,
             varIdx: dae.getVarIdxByName(eq.str),
-            eqIdx: (eq as any).eqIdx ?? 99999,
-            connOrder: (eq as any).connOrder ?? 99999,
+            eqIdx: eq.eqIdx ?? 99999,
+            connOrder: eq.connOrder ?? 99999,
           }),
         );
         flowSumEqs.forEach((eq) =>
@@ -3279,7 +3361,7 @@ export class ModelicaPortBalancer {
             lhs: eq.lhs,
             rhs: eq.rhs,
             varIdx: dae.getVarIdxByName(eq.str),
-            eqIdx: (eq as any).eqIdx ?? 99999,
+            eqIdx: eq.eqIdx ?? 99999,
           }),
         );
         zeroFlows.forEach((eq) =>
@@ -3348,9 +3430,11 @@ export class ModelicaPortBalancer {
     if (brokenOverconstrainedConnections.length > 0) {
       const db = state.db;
       const flattener = state.flattener;
-      const eqSyms =
+      const eqSyms: SymbolEntry[] =
         db && typeof db.byName === "function"
-          ? (db.byName("equalityConstraint") ?? []).filter((s: any) => s.kind === "Class" || s.kind === "Function")
+          ? (db.byName("equalityConstraint") ?? []).filter(
+              (s: SymbolEntry) => s.kind === "Class" || s.kind === "Function",
+            )
           : [];
       const eqCache = new Map<string, { eqConstraintName: string; residueLen: number }>();
 
@@ -3364,11 +3448,11 @@ export class ModelicaPortBalancer {
         let eqSym = eqSyms.length === 1 ? eqSyms[0] : undefined;
         let cacheKey = "__default__";
         if (leafName) {
-          const compCandidates = (db.byName(leafName) ?? []).filter((s: any) => s.kind === "Component");
+          const compCandidates = (db.byName(leafName) ?? []).filter((s: SymbolEntry) => s.kind === "Component");
           for (const comp of compCandidates) {
             const typeClassId = db.query?.("classInstance", comp.id);
             if (typeClassId) {
-              const matched = eqSyms.find((s: any) => s.parentId === typeClassId);
+              const matched = eqSyms.find((s: SymbolEntry) => s.parentId === typeClassId);
               if (matched) {
                 eqSym = matched;
                 cacheKey = String(typeClassId);
@@ -3393,12 +3477,12 @@ export class ModelicaPortBalancer {
           if (!fnDae && flattener && typeof flattener.flattenFunction === "function") {
             fnDae = flattener.flattenFunction(eqSym.id, eqConstraintName, undefined, dae);
             if (fnDae) {
-              (fnDae as any).wasCalled = true;
+              (fnDae as DAEBuilder & { wasCalled?: boolean }).wasCalled = true;
               dae.addFunction(eqConstraintName, fnDae);
             }
           }
           if (fnDae) {
-            (fnDae as any).wasCalled = true;
+            (fnDae as DAEBuilder & { wasCalled?: boolean }).wasCalled = true;
             for (let v = 0; v < fnDae.varCount; v++) {
               if (fnDae.getVarCausality(v) === 2) {
                 const shape = fnDae.getVarShape(v);

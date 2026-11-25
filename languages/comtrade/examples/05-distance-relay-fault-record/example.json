@@ -1,0 +1,11 @@
+{
+  "id": "comtrade-05-distance-relay-fault-record",
+  "lang": "comtrade",
+  "subFormats": ["cfg", "dat", "hdr"],
+  "difficulty": 5,
+  "title": "Zone-1 Distance Relay Fault Record with Engineering Header (.hdr)",
+  "description": "Complete multi-file COMTRADE fault package (.cfg, .dat, .hdr) for a 230 kV transmission line Zone-1 distance relay operation with pilot trip telemetry.",
+  "category": "Transmission Line Protection",
+  "tags": ["comtrade", "distance-relay", "zone1", "hdr", "multi-file"],
+  "activeFile": "line_fault.cfg"
+}

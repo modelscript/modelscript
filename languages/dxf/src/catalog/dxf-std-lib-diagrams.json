@@ -1,0 +1,233 @@
+[
+  {
+    "namePath": "DXF.LINE",
+    "aliases": [
+      "SEG",
+      "SEGMENT"
+    ],
+    "label": "Line Segment",
+    "category": "2D Primitives",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#60a5fa\">2D</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">LINE</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DXF.ARC",
+    "aliases": [
+      "CIRCULAR_ARC"
+    ],
+    "label": "Circular Arc",
+    "category": "2D Primitives",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#60a5fa\">2D</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ARC</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DXF.CIRCLE",
+    "aliases": [
+      "HOLE",
+      "BORE"
+    ],
+    "label": "Circle",
+    "category": "2D Primitives",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#60a5fa\">2D</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">CIRCLE</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DXF.LWPOLYLINE",
+    "aliases": [
+      "POLYLINE",
+      "PROFILE"
+    ],
+    "label": "Lightweight Polyline",
+    "category": "Curves & Profiles",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">CURV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"8.0\" font-weight=\"bold\" fill=\"#f8fafc\">LWPOLYLINE</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DXF.SPLINE",
+    "aliases": [
+      "NURBS",
+      "BSPLINE"
+    ],
+    "label": "NURBS / B-Spline",
+    "category": "Curves & Profiles",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">CURV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">SPLINE</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DXF.ELLIPSE",
+    "aliases": [
+      "OVAL"
+    ],
+    "label": "Ellipse",
+    "category": "Curves & Profiles",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#2dd4bf\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#2dd4bf\">CURV</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">ELLIPSE</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DXF.3DFACE",
+    "aliases": [
+      "FACE",
+      "TRIANGLE",
+      "QUAD"
+    ],
+    "label": "3D Face",
+    "category": "3D Surface",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#f97316\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#f97316\">3D</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">3DFACE</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "DXF.INSERT",
+    "aliases": [
+      "BLOCK_REF",
+      "INSTANCE"
+    ],
+    "label": "Block Insert",
+    "category": "Blocks & Hierarchy",
+    "domain": "cad",
+    "width": 88,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 88 52\" width=\"88\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"84\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"2\"/><text x=\"8\" y=\"15\" font-family=\"monospace\" font-size=\"7\" fill=\"#c084fc\">BLK</text><text x=\"44\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">INSERT</text></svg>",
+    "ports": [
+      {
+        "name": "geom_in",
+        "kind": "mechanical",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "geom_out",
+        "kind": "mechanical",
+        "side": "right",
+        "dx": 88,
+        "dy": 26
+      }
+    ]
+  }
+]

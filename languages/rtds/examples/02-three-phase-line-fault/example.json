@@ -1,0 +1,11 @@
+{
+  "id": "rtds-02-three-phase-line-fault",
+  "lang": "rtds",
+  "subFormats": ["dft"],
+  "difficulty": 2,
+  "title": "Three-Phase 230 kV Transmission Line Fault Injection",
+  "description": "Two-terminal 230 kV transmission corridor modeled in RTDS RSCAD with pi-section line inductance, shunt capacitance, and mid-span fault branch for distance relay HIL testing.",
+  "category": "Real-Time HIL Simulation",
+  "tags": ["rtds", "dft", "fault-injection", "230kv", "relay-testing"],
+  "activeFile": "line_fault.dft"
+}

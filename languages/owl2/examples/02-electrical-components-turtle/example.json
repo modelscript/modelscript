@@ -1,0 +1,11 @@
+{
+  "id": "owl2-02-electrical-components-turtle",
+  "lang": "owl2",
+  "subFormats": ["ttl"],
+  "difficulty": 2,
+  "title": "Electrical Component Ontology in Turtle",
+  "description": "RDF/Turtle OWL 2 ontology modeling passive and active circuit elements, terminals, and rated electrical properties.",
+  "category": "Electrical Knowledge Graph",
+  "tags": ["owl2", "turtle", "rdf", "electrical", "components"],
+  "activeFile": "electrical_components.ttl"
+}

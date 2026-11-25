@@ -434,11 +434,11 @@ test("Cantera Modelica Projection, UnifiedWorkspace, and LSP Services", async ()
   assert.equal(canteraLanguage.name, "cantera");
 });
 
-test("Cantera WASM GLR Parser & LSP: parses Morsel defaultCode without error and reports syntax errors", async () => {
+test("Cantera WASM GLR Parser & LSP: parses Ansatz defaultCode without error and reports syntax errors", async () => {
   const { getCanteraWasmParser } = await import("../src/parser/wasm-loader.js");
   const { collectWasmSyntaxErrors } = await import("@modelscript/dsl");
 
-  const morselDefaultCode = `phases:
+  const ansatzDefaultCode = `phases:
   - name: h2_air_mix
     thermo: ideal-gas
     elements: [H, O, N]
@@ -452,11 +452,11 @@ reactions:
     rate-constant: {A: 3.55e+15, b: -0.41, Ea: 16600.0}
 `;
 
-  const tree = getCanteraWasmParser().parse(morselDefaultCode);
+  const tree = getCanteraWasmParser().parse(ansatzDefaultCode);
   assert.ok(tree?.rootNode);
   assert.equal(tree.rootNode.hasError, false);
   assert.equal(collectWasmSyntaxErrors(tree.rootNode).length, 0);
-  assert.equal(validateCantera(morselDefaultCode).filter((d) => d.code === "M9200").length, 0);
+  assert.equal(validateCantera(ansatzDefaultCode).filter((d) => d.code === "M9200").length, 0);
 
   const validFullTree = getCanteraWasmParser().parse(VALID_H2O2_YAML);
   assert.equal(validFullTree?.rootNode.hasError, false);

@@ -31,7 +31,7 @@ esbuild
   .then(() => {
     console.log("DSL browser bundle created at dist/browser.js");
 
-    // Build self-hosted typescript bundle for browser playground workers
+    // Build self-hosted typescript bundle for browser ansatz workers
     return esbuild.build({
       entryPoints: [path.resolve(pkgDir, "../../node_modules/typescript/lib/typescript.js")],
       bundle: true,

@@ -1,0 +1,12 @@
+{
+  "id": "simulink-05-foc-pmsm-electric-drive",
+  "lang": "simulink",
+  "subFormats": ["mdl", "m"],
+  "difficulty": 5,
+  "title": "Cascade FOC PMSM Electric Drive with Inverter Subsystem",
+  "description": "Field-Oriented Control (FOC) permanent-magnet synchronous motor (PMSM) cascade drive with outer speed loop, inner q-axis current loop, companion referenced inverter subsystem, and motor parameter script.",
+  "category": "Electric Drives & Power Electronics",
+  "tags": ["simulink", "foc", "pmsm", "inverter", "multi-file"],
+  "activeFile": "foc_drive.mdl",
+  "fileOrder": ["foc_drive.mdl", "inverter_sub.mdl", "motor_params.m"]
+}

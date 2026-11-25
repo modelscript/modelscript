@@ -1,0 +1,12 @@
+{
+  "id": "gridlabd-01-single-house-hvac",
+  "lang": "gridlabd",
+  "subFormats": ["glm"],
+  "difficulty": 1,
+  "title": "Single-House Thermal Envelope & HVAC Powerflow Model",
+  "description": "GridLAB-D residential feeder node supplying a single-family thermal house model with thermostatic HVAC cooling setpoint, clock block, and Newton-Raphson powerflow.",
+  "category": "Distribution Power Systems",
+  "tags": ["gridlabd", "glm", "hvac", "residential", "powerflow"],
+  "activeFile": "house_hvac.glm",
+  "isDefaultStarter": true
+}

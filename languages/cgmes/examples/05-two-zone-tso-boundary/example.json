@@ -1,0 +1,11 @@
+{
+  "id": "cgmes-05-two-zone-tso-boundary",
+  "lang": "cgmes",
+  "subFormats": ["cgmes", "xml"],
+  "difficulty": 5,
+  "title": "2-Zone Interconnected TSO Grid with Boundary Profile",
+  "description": "Full 5-file ENTSO-E CGMES cross-border exchange uniting two TSO control areas via a shared X-node boundary profile (EQ, TP, SSH, SV, BD).",
+  "category": "Cross-Border TSO Exchange",
+  "tags": ["cgmes", "entsoe", "boundary", "tso", "multi-file"],
+  "activeFile": "EQ.xml"
+}

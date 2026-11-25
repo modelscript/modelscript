@@ -1,0 +1,12 @@
+{
+  "id": "nifti-01-brain-phantom-ras",
+  "lang": "nifti",
+  "subFormats": ["nii.json"],
+  "difficulty": 1,
+  "title": "3D Brain Phantom Volume Header in RAS Space",
+  "description": "Isotropic 1 mm MNI152-aligned 3D structural brain phantom NIfTI-1 JSON header with consistent right-handed RAS qform and sform affine transforms.",
+  "category": "Medical Imaging & Volumetric Formats",
+  "tags": ["nifti", "brain-mri", "ras-coordinates", "sform"],
+  "activeFile": "brain_phantom.nii.json",
+  "isDefaultStarter": true
+}

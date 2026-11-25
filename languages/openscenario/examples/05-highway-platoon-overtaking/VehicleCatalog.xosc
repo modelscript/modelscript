@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-11-24T12:00:00" description="Standard Vehicle Catalog for Highway Platoon" author="Ansatz"/>
+  <Catalog name="VehicleCatalog">
+    <Vehicle name="Sedan_Compact" vehicleCategory="car">
+      <Performance maxSpeed="60.0" maxAcceleration="4.0" maxDeceleration="9.5"/>
+      <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.6" height="1.45"/></BoundingBox>
+    </Vehicle>
+    <Vehicle name="HeavyTruck_Class8" vehicleCategory="truck">
+      <Performance maxSpeed="30.0" maxAcceleration="1.5" maxDeceleration="6.5"/>
+      <BoundingBox><Center x="3.5" y="0.0" z="1.7"/><Dimensions width="2.55" length="12.0" height="3.60"/></BoundingBox>
+    </Vehicle>
+  </Catalog>
+</OpenSCENARIO>

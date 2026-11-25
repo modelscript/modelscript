@@ -21,6 +21,36 @@ import { probabilisticVerdictFromBounds, type ProbabilisticVerdict, type Verdict
 import { ivAdd, ivDiv, ivMul, ivSub, nextDown, nextUp } from "./outward_rounding.js";
 import { Interval } from "./wasm_interval.js";
 
+interface PBoxWasmExports {
+  memory: WebAssembly.Memory;
+  alloc?: (size: number) => number;
+  free?: (ptr: number) => void;
+  pbox_meanBounds?: (loPtr: number, hiPtr: number, mPtr: number, n: number, outPtr: number) => void;
+  pbox_probBound?: (
+    loPtr: number,
+    hiPtr: number,
+    mPtr: number,
+    n: number,
+    opCode: number,
+    threshold: number,
+    outPtr: number,
+  ) => void;
+  pbox_combineIndependent?: (
+    aLoPtr: number,
+    aHiPtr: number,
+    aMPtr: number,
+    nA: number,
+    bLoPtr: number,
+    bHiPtr: number,
+    bMPtr: number,
+    nB: number,
+    opCode: number,
+    oLoPtr: number,
+    oHiPtr: number,
+    oMPtr: number,
+  ) => number;
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Normal Quantile (Acklam's rational approximation, |err| < 1.15e-9)
 // ─────────────────────────────────────────────────────────────────────
@@ -250,7 +280,7 @@ export class PBox {
   /** Sound bounds [meanLo, meanHi] on the expectation E[X]. */
   public meanBounds(): [number, number] {
     const n = this.focals.length;
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as PBoxWasmExports | null;
     if (
       w &&
       typeof w.pbox_meanBounds === "function" &&
@@ -306,7 +336,7 @@ export class PBox {
   /** Sound probability bounds [pMin, pMax] for P(X op threshold). */
   public probBound(op: PBoxComparisonOp, threshold: number): [number, number] {
     const n = this.focals.length;
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as PBoxWasmExports | null;
     if (
       w &&
       typeof w.pbox_probBound === "function" &&
@@ -449,7 +479,7 @@ function combinePBoxes(
   if (dependence === "independent") {
     const nA = a.focals.length;
     const nB = b.focals.length;
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as PBoxWasmExports | null;
     if (
       w &&
       typeof w.pbox_combineIndependent === "function" &&

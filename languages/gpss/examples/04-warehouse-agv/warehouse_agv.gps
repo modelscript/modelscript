@@ -1,0 +1,24 @@
+* MODEL: WarehouseAGVDispatch
+* Automated Warehouse AGV Fleet with Aisle Gate & Dock Capacity Control
+AGVS  STORAGE 6
+DOCKS STORAGE 3
+PICK_T TABLE M1,5,5,25
+      GENERATE 4,1          ; Pallet pick orders arrive every 4 +/- 1 min
+      QUEUE    ORDER_Q      ; Wait for available AGV
+      ENTER    AGVS,1       ; Dispatch one AGV forklift
+      DEPART   ORDER_Q      ; Leave order queue
+      GATE NU  AISLE        ; Wait until main aisle facility is free
+      SEIZE    AISLE        ; Lock main aisle for transit
+      ADVANCE  2,1          ; Traverse main aisle
+      RELEASE  AISLE        ; Release main aisle lock
+      QUEUE    DOCK_Q       ; Wait for outbound loading dock
+      ENTER    DOCKS,1      ; Acquire loading dock
+      DEPART   DOCK_Q       ; Leave dock queue
+      ADVANCE  7,2          ; Unload pallet onto trailer
+      LEAVE    DOCKS,1      ; Free loading dock
+      ADVANCE  3,1          ; Return AGV to staging zone
+      LEAVE    AGVS,1       ; Return AGV to fleet pool
+      TABULATE PICK_T       ; Record order fulfillment time
+      TERMINATE 1           ; Order fulfilled
+      START    300          ; Simulate 300 pallet orders
+      END

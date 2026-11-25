@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="interfaces.aml" SchemaVersion="2.15">
+  <InterfaceClassLib Name="AutomationMLInterfaceClassLib">
+    <Version>2.2.2</Version>
+    <InterfaceClass Name="AutomationMLBaseInterface" />
+    <InterfaceClass Name="SignalInterface" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+    <InterfaceClass Name="COLLADAInterface" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+    <InterfaceClass Name="PLCopenXMLInterface" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface" />
+  </InterfaceClassLib>
+</CAEXFile>

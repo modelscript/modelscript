@@ -333,8 +333,8 @@ export function extractXmlTags(xml: string, tag: string): { attrs: string; body:
 }
 
 /** Lightweight XML tag parser into a key-value structure. */
-export function parseXmlSimple(xml: string): Record<string, any> {
-  const result: Record<string, any> = {};
+export function parseXmlSimple(xml: string): Record<string, string> {
+  const result: Record<string, string> = {};
   if (!xml) return result;
   const doc = parseXmlSync(xml);
   if (!doc.root) return result;

@@ -1,0 +1,11 @@
+{
+  "id": "febio-05-meniscus-biphasic-contact",
+  "lang": "febio",
+  "subFormats": ["feb", "csv"],
+  "difficulty": 5,
+  "title": "Biphasic Porohyperelastic Knee Meniscus Contact Analysis",
+  "description": "Multi-file FEBio 4.0 biphasic poroelastic knee meniscus and femoral condyle cartilage sliding contact model with physiological gait load curve data.",
+  "category": "Soft-Tissue Biomechanics & FEA",
+  "tags": ["febio", "biphasic", "meniscus", "contact", "multi-file"],
+  "activeFile": "meniscus.feb"
+}

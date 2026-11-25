@@ -59,9 +59,9 @@ export function decompressEmbedPayload(rawHash: string): UniversalEmbedPayload |
  */
 export function getLaunchUrl(
   payload: UniversalEmbedPayload,
-  baseUrl: { playground?: string; ide?: string } = {},
-): { target: "playground" | "ide"; url: string } {
-  const playgroundBase = baseUrl.playground ?? "/playground";
+  baseUrl: { ansatz?: string; ide?: string } = {},
+): { target: "ansatz" | "ide"; url: string } {
+  const ansatzEditorBase = baseUrl.ansatz ?? "/editor";
   const ideBase = baseUrl.ide ?? "/vscode/workbench";
 
   if (payload.isMultiFile && payload.artifactId) {
@@ -73,5 +73,5 @@ export function getLaunchUrl(
   }
 
   const token = compressEmbedPayload(payload);
-  return { target: "playground", url: `${playgroundBase}#m=${token}` };
+  return { target: "ansatz", url: `${ansatzEditorBase}#m=${token}` };
 }

@@ -1,0 +1,11 @@
+{
+  "id": "psse-05-ieee39-transient-stability",
+  "lang": "psse",
+  "subFormats": ["raw", "dyr", "seq"],
+  "difficulty": 5,
+  "title": "New England Regional Transient Stability Study",
+  "description": "Full multi-file PSS/E stability workspace combining a 10-bus regional 345 kV backbone (.raw), GENROU/SEXS/TGOV1/PSS2A dynamics (.dyr), and zero-sequence fault data (.seq).",
+  "category": "Transient Stability",
+  "tags": ["psse", "raw", "dyr", "seq", "stability", "multi-file"],
+  "activeFile": "ne_grid.raw"
+}

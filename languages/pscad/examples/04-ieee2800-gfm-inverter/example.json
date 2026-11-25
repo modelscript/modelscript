@@ -1,0 +1,11 @@
+{
+  "id": "pscad-04-ieee2800-gfm-inverter",
+  "lang": "pscad",
+  "subFormats": ["pscx"],
+  "difficulty": 4,
+  "title": "IEEE 2800 Grid-Forming Inverter with LCL Filter",
+  "description": "100 MVA grid-forming battery inverter connected through an LCL harmonic filter and 0.69/34.5/230 kV step-up transformers to a weak transmission grid.",
+  "category": "Inverter-Based Resources",
+  "tags": ["pscad", "ieee2800", "grid-forming", "lcl-filter", "ibr"],
+  "activeFile": "gfm_inverter.pscx"
+}

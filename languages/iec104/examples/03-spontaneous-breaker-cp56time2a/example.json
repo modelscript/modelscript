@@ -1,0 +1,11 @@
+{
+  "id": "iec104-03-spontaneous-breaker-cp56time2a",
+  "lang": "iec104",
+  "subFormats": ["iec104"],
+  "difficulty": 3,
+  "title": "Spontaneous Breaker Events with CP56Time2a Timestamps",
+  "description": "IEC 104 protection bay RTU configured for millisecond-accurate Sequence-of-Events (SOE) reporting using M_SP_TB_1 and M_DP_TB_1 with CP56Time2a timestamps.",
+  "category": "Power Systems SCADA",
+  "tags": ["iec104", "cp56time2a", "soe", "breaker", "protection"],
+  "activeFile": "breaker_events.iec104"
+}

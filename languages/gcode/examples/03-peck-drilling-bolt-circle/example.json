@@ -1,0 +1,11 @@
+{
+  "id": "gcode-03-peck-drilling-bolt-circle",
+  "lang": "gcode",
+  "subFormats": ["iso-6983", "canned-cycle"],
+  "difficulty": 3,
+  "title": "Peck-Drilling Bolt Circle (G83 Canned Cycle)",
+  "description": "Six-hole 80 mm bolt-circle deep-hole peck-drilling cycle using G83 with 4 mm Q-peck increments, R2.0 retract plane, and G80 cycle cancellation.",
+  "category": "CNC Machining & CAM",
+  "tags": ["gcode", "drilling", "g83", "bolt-circle"],
+  "activeFile": "bolt_circle.nc"
+}

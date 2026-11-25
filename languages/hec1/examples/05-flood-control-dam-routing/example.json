@@ -1,0 +1,11 @@
+{
+  "id": "hec1-05-flood-control-dam-routing",
+  "lang": "hec1",
+  "subFormats": ["hec1"],
+  "difficulty": 5,
+  "title": "Multi-Subbasin Flood Control Dam Spillway Storage Routing",
+  "description": "Full six-station river basin with two headwater tributaries, reservoir inflow combination (HC 2), Modified Puls dam storage routing (RS), downstream channel routing (RM), and town gage confluence.",
+  "category": "Watershed Hydrology",
+  "tags": ["hec1", "reservoir-routing", "dam-spillway", "flood-control"],
+  "activeFile": "dam_spillway.hec1"
+}

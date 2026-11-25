@@ -1,0 +1,77 @@
+[
+  {
+    "id": "iec104-01-startdt-testfr-supervision",
+    "lang": "iec104",
+    "subFormats": ["iec104"],
+    "difficulty": 1,
+    "title": "IEC 60870-5-104 StartDT & TestFR Connection Supervision",
+    "description": "Minimal IEC 104 substation RTU station configuration defining TCP port 2404, APCI flow-control parameters (k=12, w=8, t1=15s, t2=10s), and link supervision status points.",
+    "category": "Power Systems SCADA",
+    "tags": ["iec104", "scada", "rtu", "apci", "supervision"],
+    "activeFile": "supervision.iec104",
+    "fileNames": ["supervision.iec104"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "station Sub_Link_RTU ca=101 oa=1 port=2404 k=12 w=8 t1=15 t2=10\npoint 1001 M_SP_NA_1 Link_StartDT_Active init=1\npoint 1002 M_SP_NA_1 TestFR_Keepalive_OK init=1\npoint 2001 M_ME_NC_1 Aux_DC_Bus_V units=V scale=1.0 offset=0.0 deadband=0.5 init=125.0\npoint 2002 M_ME_NC_1 RTU_Temp_C units=C scale=1.0 offset=0.0 deadband=1.0 init=32.5\n"
+  },
+  {
+    "id": "iec104-02-general-interrogation-telemetry",
+    "lang": "iec104",
+    "subFormats": ["iec104"],
+    "difficulty": 2,
+    "title": "General Interrogation (C_IC_NA_1) Substation Telemetry",
+    "description": "138 kV distribution substation IEC 104 RTU point table responding to master General Interrogation with breaker positions, bus voltages, feeder currents, and energy totals.",
+    "category": "Power Systems SCADA",
+    "tags": ["iec104", "general-interrogation", "substation", "telemetry", "scada"],
+    "activeFile": "interrogation.iec104",
+    "fileNames": ["interrogation.iec104"],
+    "fileCount": 1,
+    "code": "station Sub_138kV_East ca=102 oa=1 port=2404 k=12 w=8 t1=15 t2=10\npoint 1001 M_SP_NA_1 CB_138_Line1_Closed init=1\npoint 1002 M_SP_NA_1 CB_138_Xfmr1_Closed init=1\npoint 1003 M_SP_NA_1 Relay_86_Lockout init=0\npoint 2001 M_ME_NC_1 Bus_138_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.25 init=138.4\npoint 2002 M_ME_NC_1 Line1_Current_A units=A scale=1.0 offset=0.0 deadband=2.0 init=385.0\npoint 2003 M_ME_NC_1 Xfmr1_Active_MW units=MW scale=1.0 offset=0.0 deadband=0.5 init=78.5\npoint 3001 M_IT_NA_1 Feeder1_Import_MWh units=MWh scale=1.0 offset=0.0 deadband=0.1 init=14280.0\n"
+  },
+  {
+    "id": "iec104-03-spontaneous-breaker-cp56time2a",
+    "lang": "iec104",
+    "subFormats": ["iec104"],
+    "difficulty": 3,
+    "title": "Spontaneous Breaker Events with CP56Time2a Timestamps",
+    "description": "IEC 104 protection bay RTU configured for millisecond-accurate Sequence-of-Events (SOE) reporting using M_SP_TB_1 and M_DP_TB_1 with CP56Time2a timestamps.",
+    "category": "Power Systems SCADA",
+    "tags": ["iec104", "cp56time2a", "soe", "breaker", "protection"],
+    "activeFile": "breaker_events.iec104",
+    "fileNames": ["breaker_events.iec104"],
+    "fileCount": 1,
+    "code": "station Bay_230kV_Prot ca=203 oa=2 port=2404 k=12 w=8 t1=15 t2=10\npoint 1101 M_SP_TB_1 Zone1_Distance_Trip init=0\npoint 1102 M_SP_TB_1 Inst_50P_Trip init=0\npoint 1103 M_SP_TB_1 Recloser_79_Active init=0\npoint 1104 M_DP_TB_1 Breaker_52_Position init=2\npoint 1105 M_SP_TB_1 SF6_Pressure_Alarm init=0\npoint 2101 M_ME_TF_1 Fault_Current_kA units=kA scale=1.0 offset=0.0 deadband=0.05 init=0.42\npoint 2102 M_ME_TF_1 Bus_230_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.3 init=231.2\n"
+  },
+  {
+    "id": "iec104-04-measured-float-power-tap",
+    "lang": "iec104",
+    "subFormats": ["iec104"],
+    "difficulty": 4,
+    "title": "Measured Short-Float Power Flow & Transformer Tap Control",
+    "description": "345/138 kV autotransformer substation IEC 104 profile exposing IEEE 754 short-float power flows (M_ME_NC_1), OLTC step position (M_ST_NA_1), and regulating step commands.",
+    "category": "Power Systems SCADA",
+    "tags": ["iec104", "short-float", "oltc", "transformer", "power-flow"],
+    "activeFile": "power_tap.iec104",
+    "fileNames": ["power_tap.iec104"],
+    "fileCount": 1,
+    "code": "station AutoXfmr_345kV ca=345 oa=1 port=2404 k=12 w=8 t1=15 t2=10\npoint 1201 M_SP_TB_1 OLTC_Auto_Mode init=1\npoint 1202 M_SP_TB_1 Cooling_Bank1_Running init=1\npoint 1203 M_ST_NA_1 OLTC_Tap_Position init=9\npoint 2201 M_ME_NC_1 HV_345_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.5 init=347.2\npoint 2202 M_ME_NC_1 LV_138_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.25 init=139.1\npoint 2203 M_ME_NC_1 Xfmr_Active_MW units=MW scale=1.0 offset=0.0 deadband=1.0 init=265.4\npoint 2204 M_ME_NC_1 Xfmr_Reactive_MVAR units=MVAR scale=1.0 offset=0.0 deadband=1.0 init=48.2\npoint 2205 M_ME_NC_1 Top_Oil_Temp_C units=C scale=1.0 offset=0.0 deadband=0.5 init=61.5\npoint 4201 C_RC_NA_1 OLTC_Raise_Lower_Cmd init=0\n"
+  },
+  {
+    "id": "iec104-05-redundant-scada-control-seq",
+    "lang": "iec104",
+    "subFormats": ["iec104"],
+    "difficulty": 5,
+    "title": "Dual-Redundant SCADA Control & Protection Telemetry Suite",
+    "description": "Multi-file IEC 60870-5-104 transmission substation gateway pairing a primary RTU telemetry point table (rtu_points.iec104) with a redundant backup control channel configuration (control_seq.iec104).",
+    "category": "Power Systems SCADA",
+    "tags": ["iec104", "redundant", "scada", "control", "multi-file"],
+    "activeFile": "rtu_points.iec104",
+    "fileNames": ["rtu_points.iec104", "control_seq.iec104"],
+    "fileCount": 2,
+    "code": "station Gateway_Primary_A ca=501 oa=1 port=2404 k=12 w=8 t1=15 t2=10\npoint 1001 M_SP_TB_1 BusTie_CB_Closed init=1\npoint 1002 M_SP_TB_1 LineA_CB_Closed init=1\npoint 1003 M_SP_TB_1 LineB_CB_Closed init=1\npoint 1004 M_SP_TB_1 BusDiff_87B_Trip init=0\npoint 2001 M_ME_TF_1 BusA_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.4 init=230.8\npoint 2002 M_ME_TF_1 BusB_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.4 init=230.6\npoint 2003 M_ME_TF_1 Net_Tie_MW units=MW scale=1.0 offset=0.0 deadband=1.0 init=185.0\npoint 2004 M_ME_TF_1 System_Freq_Hz units=Hz scale=1.0 offset=0.0 deadband=0.01 init=60.002\npoint 4001 C_DC_NA_1 BusTie_CB_Command init=0\npoint 4002 C_SE_NC_1 BESS_Power_Setpoint_MW units=MW scale=1.0 offset=0.0 deadband=0.5 init=0.0\n",
+    "files": {
+      "rtu_points.iec104": "station Gateway_Primary_A ca=501 oa=1 port=2404 k=12 w=8 t1=15 t2=10\npoint 1001 M_SP_TB_1 BusTie_CB_Closed init=1\npoint 1002 M_SP_TB_1 LineA_CB_Closed init=1\npoint 1003 M_SP_TB_1 LineB_CB_Closed init=1\npoint 1004 M_SP_TB_1 BusDiff_87B_Trip init=0\npoint 2001 M_ME_TF_1 BusA_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.4 init=230.8\npoint 2002 M_ME_TF_1 BusB_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.4 init=230.6\npoint 2003 M_ME_TF_1 Net_Tie_MW units=MW scale=1.0 offset=0.0 deadband=1.0 init=185.0\npoint 2004 M_ME_TF_1 System_Freq_Hz units=Hz scale=1.0 offset=0.0 deadband=0.01 init=60.002\npoint 4001 C_DC_NA_1 BusTie_CB_Command init=0\npoint 4002 C_SE_NC_1 BESS_Power_Setpoint_MW units=MW scale=1.0 offset=0.0 deadband=0.5 init=0.0\n",
+      "control_seq.iec104": "station Gateway_Backup_B ca=502 oa=2 port=2404 k=12 w=8 t1=15 t2=10\npoint 1001 M_SP_TB_1 Redundancy_Standby_Ready init=1\npoint 1002 M_SP_TB_1 Primary_Heartbeat_OK init=1\npoint 4001 C_DC_NA_1 Emergency_LoadShed_Cmd init=0\npoint 4002 C_IC_NA_1 Backup_General_Interrogation init=0\n"
+    }
+  }
+]

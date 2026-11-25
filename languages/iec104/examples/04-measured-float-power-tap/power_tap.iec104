@@ -1,0 +1,10 @@
+station AutoXfmr_345kV ca=345 oa=1 port=2404 k=12 w=8 t1=15 t2=10
+point 1201 M_SP_TB_1 OLTC_Auto_Mode init=1
+point 1202 M_SP_TB_1 Cooling_Bank1_Running init=1
+point 1203 M_ST_NA_1 OLTC_Tap_Position init=9
+point 2201 M_ME_NC_1 HV_345_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.5 init=347.2
+point 2202 M_ME_NC_1 LV_138_Voltage_kV units=kV scale=1.0 offset=0.0 deadband=0.25 init=139.1
+point 2203 M_ME_NC_1 Xfmr_Active_MW units=MW scale=1.0 offset=0.0 deadband=1.0 init=265.4
+point 2204 M_ME_NC_1 Xfmr_Reactive_MVAR units=MVAR scale=1.0 offset=0.0 deadband=1.0 init=48.2
+point 2205 M_ME_NC_1 Top_Oil_Temp_C units=C scale=1.0 offset=0.0 deadband=0.5 init=61.5
+point 4201 C_RC_NA_1 OLTC_Raise_Lower_Cmd init=0

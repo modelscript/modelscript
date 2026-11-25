@@ -1,0 +1,11 @@
+{
+  "id": "psse-02-ieee9-wscc",
+  "lang": "psse",
+  "subFormats": ["raw"],
+  "difficulty": 2,
+  "title": "IEEE 9-Bus WSCC System",
+  "description": "Classic Anderson & Fouad WSCC 9-bus 3-machine 230 kV transmission benchmark case in PSS/E Rev 33 RAW format.",
+  "category": "Transmission Benchmark",
+  "tags": ["psse", "ieee9", "wscc", "power-flow"],
+  "activeFile": "ieee9.raw"
+}

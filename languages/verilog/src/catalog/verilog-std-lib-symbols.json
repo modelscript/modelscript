@@ -1,0 +1,719 @@
+[
+  {
+    "name": "and",
+    "kind": "Component",
+    "namePath": "Verilog.Std.and",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "AND Gate",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state N-input AND gate primitive (controlling value 0).",
+      "provenance": "IEEE Std 1364-2001 §7.2",
+      "aliases": [
+        "AND2",
+        "AND_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "nand",
+    "kind": "Component",
+    "namePath": "Verilog.Std.nand",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NAND Gate",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state N-input NAND gate primitive.",
+      "provenance": "IEEE Std 1364-2001 §7.2",
+      "aliases": [
+        "NAND2",
+        "NAND_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "or",
+    "kind": "Component",
+    "namePath": "Verilog.Std.or",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "OR Gate",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state N-input OR gate primitive (controlling value 1).",
+      "provenance": "IEEE Std 1364-2001 §7.2",
+      "aliases": [
+        "OR2",
+        "OR_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "nor",
+    "kind": "Component",
+    "namePath": "Verilog.Std.nor",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "NOR Gate",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state N-input NOR gate primitive.",
+      "provenance": "IEEE Std 1364-2001 §7.2",
+      "aliases": [
+        "NOR2",
+        "NOR_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "xor",
+    "kind": "Component",
+    "namePath": "Verilog.Std.xor",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "XOR Gate",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state N-input XOR gate primitive.",
+      "provenance": "IEEE Std 1364-2001 §7.2",
+      "aliases": [
+        "XOR2",
+        "XOR_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "xnor",
+    "kind": "Component",
+    "namePath": "Verilog.Std.xnor",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "XNOR Gate",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state N-input XNOR gate primitive.",
+      "provenance": "IEEE Std 1364-2001 §7.2",
+      "aliases": [
+        "XNOR2",
+        "XNOR_GATE"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "buf",
+    "kind": "Component",
+    "namePath": "Verilog.Std.buf",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Buffer",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state non-inverting buffer primitive (maps Z -> X).",
+      "provenance": "IEEE Std 1364-2001 §7.3",
+      "aliases": [
+        "BUFFER"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 7
+    }
+  },
+  {
+    "name": "not",
+    "kind": "Component",
+    "namePath": "Verilog.Std.not",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Inverter (NOT)",
+      "category": "Logic Gates",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 built-in 4-state inverting gate primitive.",
+      "provenance": "IEEE Std 1364-2001 §7.3",
+      "aliases": [
+        "INV",
+        "INVERTER"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 8
+    }
+  },
+  {
+    "name": "bufif0",
+    "kind": "Component",
+    "namePath": "Verilog.Std.bufif0",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tri-State Buffer (Active-Low)",
+      "category": "Tri-State Buffers",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 tri-state non-inverting buffer enabled when control is 0; drives Z when control is 1.",
+      "provenance": "IEEE Std 1364-2001 §7.4",
+      "aliases": [
+        "TRISTATE_BUF_L"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 9
+    }
+  },
+  {
+    "name": "bufif1",
+    "kind": "Component",
+    "namePath": "Verilog.Std.bufif1",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tri-State Buffer (Active-High)",
+      "category": "Tri-State Buffers",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 tri-state non-inverting buffer enabled when control is 1; drives Z when control is 0.",
+      "provenance": "IEEE Std 1364-2001 §7.4",
+      "aliases": [
+        "TRISTATE_BUF_H"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "notif0",
+    "kind": "Component",
+    "namePath": "Verilog.Std.notif0",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tri-State Inverter (Active-Low)",
+      "category": "Tri-State Buffers",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 tri-state inverting buffer enabled when control is 0; drives Z when control is 1.",
+      "provenance": "IEEE Std 1364-2001 §7.4",
+      "aliases": [
+        "TRISTATE_INV_L"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "notif1",
+    "kind": "Component",
+    "namePath": "Verilog.Std.notif1",
+    "exports": [
+      "DELAY"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tri-State Inverter (Active-High)",
+      "category": "Tri-State Buffers",
+      "domain": "digital-rtl",
+      "description": "IEEE 1364 tri-state inverting buffer enabled when control is 1; drives Z when control is 0.",
+      "provenance": "IEEE Std 1364-2001 §7.4",
+      "aliases": [
+        "TRISTATE_INV_H"
+      ],
+      "parameters": [
+        {
+          "key": "DELAY",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "ns",
+          "description": "Propagation delay"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "dff",
+    "kind": "Component",
+    "namePath": "Verilog.Std.dff",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "D Flip-Flop",
+      "category": "Sequential Elements",
+      "domain": "digital-rtl",
+      "description": "Positive-edge triggered D flip-flop.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "D_FF",
+        "FLIPFLOP"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bits",
+          "description": "Data bus width"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "dffr",
+    "kind": "Component",
+    "namePath": "Verilog.Std.dffr",
+    "exports": [
+      "WIDTH",
+      "RESET_VAL"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "D Flip-Flop w/ Reset",
+      "category": "Sequential Elements",
+      "domain": "digital-rtl",
+      "description": "Positive-edge triggered D flip-flop with synchronous active-high reset.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "D_FF_RST"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bits",
+          "description": "Data bus width"
+        },
+        {
+          "key": "RESET_VAL",
+          "type": "integer",
+          "defaultValue": 0,
+          "unit": "",
+          "description": "Reset value"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "dffe",
+    "kind": "Component",
+    "namePath": "Verilog.Std.dffe",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "D Flip-Flop w/ Enable",
+      "category": "Sequential Elements",
+      "domain": "digital-rtl",
+      "description": "Positive-edge triggered D flip-flop with clock enable and synchronous reset.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "D_FF_EN"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bits",
+          "description": "Data bus width"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "dlatch",
+    "kind": "Component",
+    "namePath": "Verilog.Std.dlatch",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "D Latch",
+      "category": "Sequential Elements",
+      "domain": "digital-rtl",
+      "description": "Level-sensitive transparent D latch.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "D_LATCH"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bits",
+          "description": "Data bus width"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "mux2",
+    "kind": "Component",
+    "namePath": "Verilog.Std.mux2",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "2:1 Multiplexer",
+      "category": "Multiplexers",
+      "domain": "digital-rtl",
+      "description": "4-state 2-to-1 multiplexer (sel=0 -> a, sel=1 -> b).",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "MUX2TO1"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bits",
+          "description": "Bus width"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "mux4",
+    "kind": "Component",
+    "namePath": "Verilog.Std.mux4",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "4:1 Multiplexer",
+      "category": "Multiplexers",
+      "domain": "digital-rtl",
+      "description": "4-state 4-to-1 multiplexer with 2-bit select.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "MUX4TO1"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 1,
+          "unit": "bits",
+          "description": "Bus width"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "half_adder",
+    "kind": "Component",
+    "namePath": "Verilog.Std.half_adder",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Half Adder",
+      "category": "Arithmetic & ALU",
+      "domain": "digital-rtl",
+      "description": "1-bit gate-level half adder (sum = a ^ b, cout = a & b).",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "HA"
+      ],
+      "parameters": [],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "full_adder",
+    "kind": "Component",
+    "namePath": "Verilog.Std.full_adder",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Full Adder",
+      "category": "Arithmetic & ALU",
+      "domain": "digital-rtl",
+      "description": "1-bit gate-level full adder with 4-state X/Z propagation.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "FA"
+      ],
+      "parameters": [],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "alu4",
+    "kind": "Component",
+    "namePath": "Verilog.Std.alu4",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "4-Bit ALU",
+      "category": "Arithmetic & ALU",
+      "domain": "digital-rtl",
+      "description": "4-bit combinational Arithmetic Logic Unit supporting ADD, SUB, AND, OR, XOR, NOT, SHL, SHR.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "ALU_4BIT"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 4,
+          "unit": "bits",
+          "description": "ALU operand width"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "shift_reg",
+    "kind": "Component",
+    "namePath": "Verilog.Std.shift_reg",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Shift Register",
+      "category": "Registers & Counters",
+      "domain": "digital-rtl",
+      "description": "Synchronous serial-in parallel-out shift register.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "SISO",
+        "SIPO"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 8,
+          "unit": "bits",
+          "description": "Shift register stages"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 50
+    }
+  },
+  {
+    "name": "lfsr7",
+    "kind": "Component",
+    "namePath": "Verilog.Std.lfsr7",
+    "exports": [
+      "SEED"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "PRBS-7 LFSR",
+      "category": "Registers & Counters",
+      "domain": "digital-rtl",
+      "description": "7-bit maximal-length PRBS-7 LFSR (polynomial x^7 + x^6 + 1, period 127).",
+      "provenance": "ITU-T O.150 / IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "PRBS7"
+      ],
+      "parameters": [
+        {
+          "key": "SEED",
+          "type": "integer",
+          "defaultValue": 127,
+          "unit": "",
+          "description": "Non-zero 7-bit seed"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 51
+    }
+  },
+  {
+    "name": "counter",
+    "kind": "Component",
+    "namePath": "Verilog.Std.counter",
+    "exports": [
+      "WIDTH"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Binary Counter",
+      "category": "Registers & Counters",
+      "domain": "digital-rtl",
+      "description": "Synchronous N-bit binary up-counter with enable and reset.",
+      "provenance": "IEEE 1364 RTL Standard Library",
+      "aliases": [
+        "UP_COUNTER"
+      ],
+      "parameters": [
+        {
+          "key": "WIDTH",
+          "type": "integer",
+          "defaultValue": 8,
+          "unit": "bits",
+          "description": "Counter width"
+        }
+      ],
+      "wasmKernel": "verilogEvalPrimitive",
+      "archetypeId": 52
+    }
+  }
+]

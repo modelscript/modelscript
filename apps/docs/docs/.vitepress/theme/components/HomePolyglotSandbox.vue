@@ -14,7 +14,7 @@ import {
   type LspWorkerStatus,
 } from "../util/docs-lsp-client.js";
 import {
-  buildMorselHandoffUrl,
+  buildAnsatzHandoffUrl,
   detectPolyglotLanguage,
   injectRealisticFault,
   type DetectedLanguageMatch,
@@ -727,15 +727,15 @@ async function revealDiagnosticLocation(entry: ScopedDiagnosticEntry): Promise<v
   el.scrollTop = Math.max(0, entry.diag.range.start.line * lineHeight - el.clientHeight / 3);
 }
 
-async function openInMorselWithState(): Promise<void> {
+async function openInAnsatzWithState(): Promise<void> {
   const activeIdx = Math.max(0, tabs.value.findIndex((t) => t.id === activeTab.value.id));
-  const url = await buildMorselHandoffUrl(ansatzOrigin.value, tabs.value, activeIdx);
+  const url = await buildAnsatzHandoffUrl(ansatzOrigin.value, tabs.value, activeIdx);
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-async function copyMorselLink(): Promise<void> {
+async function copyAnsatzLink(): Promise<void> {
   const activeIdx = Math.max(0, tabs.value.findIndex((t) => t.id === activeTab.value.id));
-  const url = await buildMorselHandoffUrl(ansatzOrigin.value, tabs.value, activeIdx);
+  const url = await buildAnsatzHandoffUrl(ansatzOrigin.value, tabs.value, activeIdx);
   try {
     await navigator.clipboard?.writeText(url);
     copiedLink.value = true;
@@ -771,11 +771,11 @@ function severityLabel(sev?: number): string {
             <MsIcon name="workflow" :size="14" />
             <span>Load SysML + SPICE Twin Demo</span>
           </button>
-          <button type="button" class="sb-btn sb-btn-ghost" @click="copyMorselLink">
+          <button type="button" class="sb-btn sb-btn-ghost" @click="copyAnsatzLink">
             <MsIcon name="copy" :size="14" />
             <span>{{ copiedLink ? "Copied Link!" : "Copy Share Link" }}</span>
           </button>
-          <button type="button" class="sb-btn sb-btn-outline" @click="openInMorselWithState">
+          <button type="button" class="sb-btn sb-btn-outline" @click="openInAnsatzWithState">
             <span>Open in Ansatz</span>
             <MsIcon name="arrow-up-right" :size="14" />
           </button>

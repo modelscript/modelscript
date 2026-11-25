@@ -1,0 +1,11 @@
+{
+  "id": "hdf4-04-vgroup-calibration-geolocation",
+  "lang": "hdf4",
+  "subFormats": ["ddl"],
+  "difficulty": 4,
+  "title": "Hierarchical Vgroup Sensor Calibration & Geolocation Cube",
+  "description": "Multi-level HDF4 Vgroup hierarchy separating Geolocation SDS arrays, Radiance SDS data, and blackbody calibration telemetry Vdata under a root granule Vgroup.",
+  "category": "Remote Sensing",
+  "tags": ["hdf4", "vgroup", "geolocation", "calibration", "hierarchy"],
+  "activeFile": "calibrated_granule.hdf"
+}

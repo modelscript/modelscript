@@ -1,0 +1,13 @@
+PREFIX uav: <http://modelscript.dev/ontology/uav#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?subsystemName (COUNT(?part) AS ?partCount) (SUM(?mass) AS ?totalMassKg) (SUM(?power) AS ?totalPowerW)
+WHERE {
+  ?subsystem a uav:Subsystem ;
+             rdfs:label ?subsystemName ;
+             uav:containsPart ?part .
+  ?part uav:massKg ?mass ;
+        uav:powerW ?power .
+}
+GROUP BY ?subsystemName
+ORDER BY DESC(?totalMassKg)

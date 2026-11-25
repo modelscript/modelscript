@@ -128,10 +128,10 @@ $$\begin{bmatrix} \Delta P \\ \Delta Q \end{bmatrix} = \begin{bmatrix} H & N \\ 
 | $\Delta P_i, \Delta Q_i, \Delta P, \Delta Q$    | Active and reactive power mismatch scalars and vectors                                                                                                              | $\text{p.u.}$     |
 | $H, N, M, L$                                    | Jacobian block submatrices ($\frac{\partial P}{\partial\theta}, V\frac{\partial P}{\partial V}, \frac{\partial Q}{\partial\theta}, V\frac{\partial Q}{\partial V}$) | $\text{p.u.}$     |
 
-- **$H_{ik} = \frac{\partial P_i}{\partial \theta_k} = V_i V_k (G_{ik} \sin\theta_{ik} - B_{ik} \cos\theta_{ik})$** ($k \ne i$), and $H_{ii} = -Q_i - B_{ii} V_i^2$.
-- **$N_{ik} = V_k \frac{\partial P_i}{\partial V_k} = V_i V_k (G_{ik} \cos\theta_{ik} + B_{ik} \sin\theta_{ik})$** ($k \ne i$), and $N_{ii} = P_i + G_{ii} V_i^2$.
-- **$M_{ik} = \frac{\partial Q_i}{\partial \theta_k} = -V_i V_k (G_{ik} \cos\theta_{ik} + B_{ik} \sin\theta_{ik})$** ($k \ne i$), and $M_{ii} = P_i - G_{ii} V_i^2$.
-- **$L_{ik} = V_k \frac{\partial Q_i}{\partial V_k} = V_i V_k (G_{ik} \sin\theta_{ik} - B_{ik} \cos\theta_{ik})$** ($k \ne i$), and $L_{ii} = Q_i - B_{ii} V_i^2$.
+- **$H\_{ik} = \frac{\partial P_i}{\partial \theta_k} = V_i V_k (G\_{ik} \sin\theta\_{ik} - B\_{ik} \cos\theta\_{ik})$** ($k \ne i$), and $H_{ii} = -Q_i - B_{ii} V_i^2$.
+- **$N\_{ik} = V_k \frac{\partial P_i}{\partial V_k} = V_i V_k (G\_{ik} \cos\theta\_{ik} + B\_{ik} \sin\theta\_{ik})$** ($k \ne i$), and $N_{ii} = P_i + G_{ii} V_i^2$.
+- **$M\_{ik} = \frac{\partial Q_i}{\partial \theta_k} = -V_i V_k (G\_{ik} \cos\theta\_{ik} + B\_{ik} \sin\theta\_{ik})$** ($k \ne i$), and $M_{ii} = P_i - G_{ii} V_i^2$.
+- **$L\_{ik} = V_k \frac{\partial Q_i}{\partial V_k} = V_i V_k (G\_{ik} \sin\theta\_{ik} - B\_{ik} \cos\theta\_{ik})$** ($k \ne i$), and $L_{ii} = Q_i - B_{ii} V_i^2$.
 
 ### Generator $Q$-Limit Clamping & PV-to-PQ Switching
 
@@ -217,7 +217,7 @@ msx psse netlist case.raw
 
 ## 6. Custom Visual Webview Editor (`modelscript.rawEditor`)
 
-Opening any `.raw` file in the ModelScript IDE or VS Code launches the custom dual-mode editor:
+Opening any `.raw` file in the Ansatz Studio or VS Code launches the custom dual-mode editor:
 
 - **Single-Line Diagram View**: Interactive pan/zoom SVG canvas with voltage-tier color coding (345 kV red, 138 kV blue, 69 kV green), power flow overlays, and generator/transformer glyphs.
 - **High-Density Tabular Grid**: Live-filterable tables for Buses, Generators, Branches, Transformers, and Loads with search.

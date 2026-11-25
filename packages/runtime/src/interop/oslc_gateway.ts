@@ -85,7 +85,7 @@ export interface OslcArchitectureResource {
   sourceFile?: string | undefined;
   allocates: string[];
   satisfiedRequirements: string[];
-  properties: Record<string, any>;
+  properties: Record<string, unknown>;
 }
 
 export class OslcGateway {
@@ -679,7 +679,7 @@ export class OslcGateway {
 
     const sendResponse = (
       statusCode: number,
-      data: any,
+      data: unknown,
       isGraphOrTurtle: boolean = false,
       domain: "rm" | "qm" | "am" | "cm" | "all" = "all",
     ) => {
@@ -689,7 +689,9 @@ export class OslcGateway {
           "OSLC-Core-Version": "3.0",
           "Access-Control-Allow-Origin": "*",
         });
-        res.end(isGraphOrTurtle ? this.exportTurtle(domain) : data);
+        res.end(
+          isGraphOrTurtle ? this.exportTurtle(domain) : typeof data === "string" ? data : JSON.stringify(data, null, 2),
+        );
       } else if (prefersJsonLd) {
         res.writeHead(statusCode, {
           "Content-Type": "application/ld+json; charset=utf-8",
@@ -765,9 +767,10 @@ export class OslcGateway {
               "Content-Type": "application/json",
             });
             res.end(JSON.stringify(created, null, 2));
-          } catch (err: any) {
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
             res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err.message }));
+            res.end(JSON.stringify({ error: message }));
           }
         });
         return;
@@ -802,9 +805,10 @@ export class OslcGateway {
               "Content-Type": "application/json",
             });
             res.end(JSON.stringify(created, null, 2));
-          } catch (err: any) {
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
             res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err.message }));
+            res.end(JSON.stringify({ error: message }));
           }
         });
         return;
@@ -855,9 +859,10 @@ export class OslcGateway {
               "Content-Type": "application/json",
             });
             res.end(JSON.stringify(created, null, 2));
-          } catch (err: any) {
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
             res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err.message }));
+            res.end(JSON.stringify({ error: message }));
           }
         });
         return;
@@ -887,7 +892,8 @@ export class OslcGateway {
     const httpId = "node:http";
     const http = (await import(/* @vite-ignore */ httpId)) as typeof import("node:http");
     if (this.server) {
-      return (this.server.address() as any).port;
+      const existingAddr = this.server.address();
+      return typeof existingAddr === "object" && existingAddr ? existingAddr.port : port;
     }
 
     return new Promise((resolve, reject) => {

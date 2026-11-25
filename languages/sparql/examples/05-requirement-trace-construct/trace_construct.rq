@@ -1,0 +1,20 @@
+PREFIX req: <http://modelscript.dev/ontology/req#>
+PREFIX arch: <http://modelscript.dev/ontology/arch#>
+PREFIX trace: <http://modelscript.dev/ontology/trace#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+CONSTRUCT {
+  ?req trace:verifiedByComponent ?comp ;
+       trace:requirementTitle ?reqTitle ;
+       trace:componentName ?compName .
+}
+WHERE {
+  ?req a req:SafetyRequirement ;
+       rdfs:label ?reqTitle .
+  ?comp a arch:SubsystemComponent ;
+        rdfs:label ?compName ;
+        arch:satisfies ?req .
+  ?test a req:VerificationTest ;
+        req:verifies ?req ;
+        req:testsComponent ?comp .
+}

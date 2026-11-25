@@ -6,9 +6,10 @@ import {
   createStarterNotebookCells,
   extractArtifactIdsFromCells,
   hasArtifactDirectives,
-  type NotebookCell,
   parseNotebookFromContent,
   serializeCellsToMarkdown,
+  type NotebookCell,
+  type TutorialDifficulty,
 } from "../../util/notebook";
 import { ToastContext } from "../ToastContext";
 import type { ComposeBoxProps } from "./types";
@@ -40,7 +41,9 @@ export function useComposeNotebookState({
   const notebookSummary = props.notebookSummary !== undefined ? props.notebookSummary : internalNotebookSummary;
   const setNotebookSummary = props.setNotebookSummary || setInternalNotebookSummary;
 
-  const [internalNotebookDifficulty, setInternalNotebookDifficulty] = useState<any>(undefined);
+  const [internalNotebookDifficulty, setInternalNotebookDifficulty] = useState<TutorialDifficulty | undefined>(
+    undefined,
+  );
   const notebookDifficulty =
     props.notebookDifficulty !== undefined ? props.notebookDifficulty : internalNotebookDifficulty;
   const setNotebookDifficulty = props.setNotebookDifficulty || setInternalNotebookDifficulty;

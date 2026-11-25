@@ -6,7 +6,9 @@ import { Environment, Html, useProgress } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import React, { Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { GCodeLoader } from "three/examples/jsm/loaders/GCodeLoader.js";
+import { getErrorMessage } from "../../util/error";
 import Box from "../Box";
 import Spinner from "../Spinner";
 import AutoThumbnailCapture from "./AutoThumbnailCapture";
@@ -15,9 +17,28 @@ import SafeOrbitControls from "./SafeOrbitControls";
 import ViewportCameraControls, { type CameraPreset } from "./ViewportCameraControls";
 import { XrSceneBridge, XrViewportOverlay } from "./XrViewportOverlay";
 
+type GCodeLineObject = THREE.Line | THREE.LineSegments;
+
+function isGCodeLineObject(obj: THREE.Object3D): obj is GCodeLineObject {
+  return (obj as THREE.Line).isLine === true || (obj as THREE.LineSegments).isLineSegments === true;
+}
+
+export interface GCodeViewConfig {
+  data?: string | undefined;
+  code?: string | undefined;
+  gcode?: string | undefined;
+  url?: string | undefined;
+  downloadUrl?: string | undefined;
+  fileUrl?: string | undefined;
+  artifactId?: string | number | undefined;
+  thumbnailUrl?: string | undefined;
+  thumbnail_url?: string | undefined;
+  [key: string]: unknown;
+}
+
 interface GCodeViewerProps {
   artifactId?: number | undefined;
-  viewConfig: any;
+  viewConfig: GCodeViewConfig;
   isFullScreen?: boolean | undefined;
 }
 
@@ -45,7 +66,7 @@ function CameraController({
   controlsRef,
   presetTrigger,
 }: {
-  controlsRef: React.RefObject<any>;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
   presetTrigger: { preset: CameraPreset; timestamp: number } | null;
 }) {
   const { camera } = useThree();
@@ -101,7 +122,7 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
   const [sliderValue, setSliderValue] = useState(0);
   const [presetTrigger, setPresetTrigger] = useState<{ preset: CameraPreset; timestamp: number } | null>(null);
   const [speed, setSpeed] = useState<number>(1);
-  const controlsRef = useRef<any>(null);
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -126,7 +147,7 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
             setObject(null);
             setLoading(false);
           }
-          (window as any).__ARTIFACT_READY = true;
+          window.__ARTIFACT_READY = true;
           return;
         }
 
@@ -139,8 +160,8 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           const center = new THREE.Vector3();
           let totalVertices = 0;
 
-          obj.traverse((child: any) => {
-            if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
+          obj.traverse((child: THREE.Object3D) => {
+            if (isGCodeLineObject(child) && child.geometry?.attributes?.position) {
               const pos = child.geometry.attributes.position;
               for (let i = 0; i < pos.count; i++) {
                 center.x += pos.getX(i);
@@ -154,8 +175,8 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           if (totalVertices > 0) {
             center.divideScalar(totalVertices);
 
-            obj.traverse((child: any) => {
-              if ((child.isLine || child.isLineSegments) && child.geometry) {
+            obj.traverse((child: THREE.Object3D) => {
+              if (isGCodeLineObject(child) && child.geometry) {
                 child.geometry.translate(-center.x, -center.y, -center.z);
               }
             });
@@ -163,8 +184,8 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
             // Robust scaling using 99th percentile radius
             const dists = new Float32Array(totalVertices);
             let idx = 0;
-            obj.traverse((child: any) => {
-              if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
+            obj.traverse((child: THREE.Object3D) => {
+              if (isGCodeLineObject(child) && child.geometry?.attributes?.position) {
                 const pos = child.geometry.attributes.position;
                 for (let i = 0; i < pos.count; i++) {
                   const x = pos.getX(i);
@@ -186,20 +207,20 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
           setObject(obj);
           setLoading(false);
           setTimeout(() => {
-            (window as any).__ARTIFACT_READY = true;
+            window.__ARTIFACT_READY = true;
           }, 1500);
         } else if (active) {
           setGcodeLines([]);
           setObject(null);
           setLoading(false);
-          (window as any).__ARTIFACT_READY = true;
+          window.__ARTIFACT_READY = true;
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (active) {
-          setError(err.message || "Error parsing GCode");
+          setError(getErrorMessage(err, "Error parsing GCode"));
           setLoading(false);
         }
-        (window as any).__ARTIFACT_READY = true;
+        window.__ARTIFACT_READY = true;
       }
     }
 
@@ -265,15 +286,19 @@ const GCodeViewer: React.FC<GCodeViewerProps> = ({ artifactId, viewConfig, isFul
   useEffect(() => {
     return () => {
       if (!object) return;
-      object.traverse((child: any) => {
-        if (child.geometry && typeof child.geometry.dispose === "function") {
-          child.geometry.dispose();
+      object.traverse((child: THREE.Object3D) => {
+        const disposable = child as THREE.Object3D & {
+          geometry?: THREE.BufferGeometry;
+          material?: THREE.Material | THREE.Material[];
+        };
+        if (disposable.geometry && typeof disposable.geometry.dispose === "function") {
+          disposable.geometry.dispose();
         }
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach((m: any) => m?.dispose?.());
-          } else if (typeof child.material.dispose === "function") {
-            child.material.dispose();
+        if (disposable.material) {
+          if (Array.isArray(disposable.material)) {
+            disposable.material.forEach((m) => m?.dispose?.());
+          } else if (typeof disposable.material.dispose === "function") {
+            disposable.material.dispose();
           }
         }
       });
@@ -481,8 +506,8 @@ function AnimatedGCode({
     }
 
     let totalVertices = 0;
-    object.traverse((child: any) => {
-      if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
+    object.traverse((child: THREE.Object3D) => {
+      if (isGCodeLineObject(child) && child.geometry?.attributes?.position) {
         totalVertices += child.geometry.attributes.position.count;
       }
     });
@@ -490,8 +515,8 @@ function AnimatedGCode({
     let currentVertices = Math.floor(totalVertices * progressRef.current);
     let foundSpindlePos = false;
 
-    object.traverse((child: any) => {
-      if ((child.isLine || child.isLineSegments) && child.geometry?.attributes?.position) {
+    object.traverse((child: THREE.Object3D) => {
+      if (isGCodeLineObject(child) && child.geometry?.attributes?.position) {
         const count = child.geometry.attributes.position.count;
         if (currentVertices >= count) {
           child.geometry.setDrawRange(0, count);

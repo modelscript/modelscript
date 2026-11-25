@@ -1,0 +1,1027 @@
+[
+  {
+    "namePath": "ampl:ampl_abs",
+    "aliases": [
+      "abs",
+      "ABS"
+    ],
+    "label": "Absolute Value abs(x)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ABS</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_ceil",
+    "aliases": [
+      "ceil",
+      "CEIL"
+    ],
+    "label": "Ceiling Function ceil(x)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">CEIL</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_floor",
+    "aliases": [
+      "floor",
+      "FLOOR"
+    ],
+    "label": "Floor Function floor(x)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">FLOOR</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_round",
+    "aliases": [
+      "round",
+      "ROUND"
+    ],
+    "label": "Decimal Rounding round(x, n)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ROUND</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_trunc",
+    "aliases": [
+      "trunc",
+      "TRUNC"
+    ],
+    "label": "Decimal Truncation trunc(x, n)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">TRUNC</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_mod",
+    "aliases": [
+      "mod",
+      "MOD"
+    ],
+    "label": "Floored Modulo mod(a, b)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">MOD</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_div",
+    "aliases": [
+      "div",
+      "DIV"
+    ],
+    "label": "Integer Quotient div(a, b)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">DIV</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_min",
+    "aliases": [
+      "min",
+      "MIN"
+    ],
+    "label": "Minimum min(a, b)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">MIN</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_max",
+    "aliases": [
+      "max",
+      "MAX"
+    ],
+    "label": "Maximum max(a, b)",
+    "category": "Elementary Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#60a5fa\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#60a5fa\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#60a5fa\">MTH</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">MAX</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_exp",
+    "aliases": [
+      "exp",
+      "EXP"
+    ],
+    "label": "Exponential exp(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EXP</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_log",
+    "aliases": [
+      "log",
+      "ln",
+      "LOG"
+    ],
+    "label": "Natural Logarithm log(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">LOG</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_log10",
+    "aliases": [
+      "log10",
+      "LOG10"
+    ],
+    "label": "Base-10 Logarithm log10(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">LOG10</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_sqrt",
+    "aliases": [
+      "sqrt",
+      "SQRT"
+    ],
+    "label": "Square Root sqrt(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">SQRT</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_sin",
+    "aliases": [
+      "sin",
+      "SIN"
+    ],
+    "label": "Sine sin(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">SIN</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_cos",
+    "aliases": [
+      "cos",
+      "COS"
+    ],
+    "label": "Cosine cos(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">COS</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_tan",
+    "aliases": [
+      "tan",
+      "TAN"
+    ],
+    "label": "Tangent tan(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">TAN</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_atan2",
+    "aliases": [
+      "atan2",
+      "ATAN2"
+    ],
+    "label": "Two-Argument Arctangent atan2(y, x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ATAN2</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_sinh",
+    "aliases": [
+      "sinh",
+      "SINH"
+    ],
+    "label": "Hyperbolic Sine sinh(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">SINH</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_cosh",
+    "aliases": [
+      "cosh",
+      "COSH"
+    ],
+    "label": "Hyperbolic Cosine cosh(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">COSH</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_tanh",
+    "aliases": [
+      "tanh",
+      "TANH"
+    ],
+    "label": "Hyperbolic Tangent tanh(x)",
+    "category": "Transcendental Math",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#2a2b4a\" stroke=\"#818cf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#818cf8\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#818cf8\">TRN</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">TANH</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_Normal",
+    "aliases": [
+      "Normal",
+      "Normal01",
+      "normal"
+    ],
+    "label": "Normal Distribution Normal(mu, sigma)",
+    "category": "Probability / Distribution",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">NORMAL</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_Uniform",
+    "aliases": [
+      "Uniform",
+      "Uniform01",
+      "uniform"
+    ],
+    "label": "Uniform Distribution Uniform(a, b)",
+    "category": "Probability / Distribution",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">UNIFORM</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_Exponential",
+    "aliases": [
+      "Exponential",
+      "exponential"
+    ],
+    "label": "Exponential Distribution Exponential(lambda)",
+    "category": "Probability / Distribution",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">EXPONENT</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_Poisson",
+    "aliases": [
+      "Poisson",
+      "poisson"
+    ],
+    "label": "Poisson Distribution Poisson(lambda)",
+    "category": "Probability / Distribution",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">POISSON</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_Beta",
+    "aliases": [
+      "Beta",
+      "beta"
+    ],
+    "label": "Beta Distribution Beta(alpha, beta)",
+    "category": "Probability / Distribution",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">BETA</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_Gamma",
+    "aliases": [
+      "Gamma",
+      "gamma"
+    ],
+    "label": "Gamma Function Gamma(x)",
+    "category": "Probability / Distribution",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3b1f47\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#c084fc\">PRB</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">GAMMA</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "pdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 14
+      },
+      {
+        "name": "cdf",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 34
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_pwl",
+    "aliases": [
+      "pwl",
+      "PWL",
+      "piecewise"
+    ],
+    "label": "Continuous Piecewise-Linear <<bp1, bp2; s0, s1, s2>> x",
+    "category": "Optimization / PWL",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">OPT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">PWL</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "ref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_precision",
+    "aliases": [
+      "precision",
+      "PRECISION"
+    ],
+    "label": "Significant-Digit Rounding precision(x, n)",
+    "category": "Optimization / PWL",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">OPT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">PRECISIO</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "ref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_less",
+    "aliases": [
+      "less",
+      "LESS"
+    ],
+    "label": "Positive Excess less(a, b) = max(a - b, 0)",
+    "category": "Optimization / PWL",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#1e3f2f\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#34d399\">OPT</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">LESS</text></svg>",
+    "ports": [
+      {
+        "name": "x",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 14
+      },
+      {
+        "name": "ref",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 34
+      },
+      {
+        "name": "y",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_sum",
+    "aliases": [
+      "sum",
+      "SUM"
+    ],
+    "label": "Indexed Summation sum{i in S} x[i]",
+    "category": "Set / Aggregation",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">SET</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">SUM</text></svg>",
+    "ports": [
+      {
+        "name": "items",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_prod",
+    "aliases": [
+      "prod",
+      "PROD"
+    ],
+    "label": "Indexed Product prod{i in S} x[i]",
+    "category": "Set / Aggregation",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">SET</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">PROD</text></svg>",
+    "ports": [
+      {
+        "name": "items",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_card",
+    "aliases": [
+      "card",
+      "CARD"
+    ],
+    "label": "Set Cardinality card(S)",
+    "category": "Set / Aggregation",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">SET</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">CARD</text></svg>",
+    "ports": [
+      {
+        "name": "items",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  },
+  {
+    "namePath": "ampl:ampl_ord",
+    "aliases": [
+      "ord",
+      "ORD",
+      "ord0"
+    ],
+    "label": "Ordered Set Position ord(e, S)",
+    "category": "Set / Aggregation",
+    "domain": "optimization",
+    "width": 80,
+    "height": 48,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 80 48\" width=\"80\" height=\"48\"><rect x=\"2\" y=\"2\" width=\"76\" height=\"44\" rx=\"6\" fill=\"#3f2e18\" stroke=\"#fbbf24\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"24\" height=\"12\" rx=\"3\" fill=\"#fbbf24\" fill-opacity=\"0.22\"/><text x=\"18\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.5\" fill=\"#fbbf24\">SET</text><text x=\"40\" y=\"34\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"10\" font-weight=\"bold\" fill=\"#f8fafc\">ORD</text></svg>",
+    "ports": [
+      {
+        "name": "items",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 24
+      },
+      {
+        "name": "out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 80,
+        "dy": 24
+      }
+    ]
+  }
+]

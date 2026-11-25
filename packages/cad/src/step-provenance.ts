@@ -4,7 +4,7 @@
  * @modelscript/cad — Shared STEP provenance metadata, source-linking directives,
  * Modelica telemetry extractors, and browser/Node-portable multi-file pairing.
  *
- * Used uniformly by `@modelscript/lsp`, `@modelscript/ide-client`, `/morsel`,
+ * Used uniformly by `@modelscript/lsp`, `@modelscript/ide-client`, `/ansatz`,
  * and Docs Studio so compiled `.step` artifacts embed full provenance metadata
  * (`/* @modelscript-meta {...} *\/`) without separate sidecar manifests.
  */
@@ -539,7 +539,7 @@ function deriveOutputStepPath(
 
 /**
  * Resolves a coordinated `.scad` + `.qif` + `.mo` + `.step` tuple from an arbitrary
- * project file map (e.g., `/morsel` virtual filesystem or test fixture workspace),
+ * project file map (e.g., `/ansatz` virtual filesystem or test fixture workspace),
  * honoring bidirectional header directives, embedded STEP `@modelscript-meta`,
  * same-folder pairing, and workspace-wide stem/unique fallbacks.
  */

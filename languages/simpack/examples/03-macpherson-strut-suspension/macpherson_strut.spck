@@ -1,0 +1,28 @@
+<simpack_model name="MacPhersonStrutSuspension">
+  <!-- Bodies with valid positive-definite principal inertias -->
+  <body id="chassis" name="QuarterChassis" mass="360.0" ixx="85.0" iyy="130.0" izz="150.0" />
+  <body id="lca" name="LowerControlArm" mass="4.5" ixx="0.06" iyy="0.08" izz="0.07" />
+  <body id="knuckle" name="SteeringKnuckle" mass="11.2" ixx="0.16" iyy="0.18" izz="0.14" />
+  <body id="wheel" name="WheelTire" mass="21.5" ixx="1.10" iyy="1.80" izz="1.10" />
+
+  <!-- Markers -->
+  <marker id="m_road" body="$inertial" x="0.0" y="0.76" z="0.0" />
+  <marker id="m_chassis_lca" body="chassis" x="0.0" y="0.28" z="0.24" />
+  <marker id="m_chassis_tower" body="chassis" x="0.0" y="0.56" z="0.78" />
+  <marker id="m_lca_inboard" body="lca" x="0.0" y="-0.20" z="0.0" />
+  <marker id="m_lca_balljoint" body="lca" x="0.0" y="0.20" z="0.0" />
+  <marker id="m_knuckle_lower" body="knuckle" x="0.0" y="-0.04" z="-0.12" />
+  <marker id="m_knuckle_strut" body="knuckle" x="0.0" y="-0.06" z="0.22" />
+  <marker id="m_knuckle_spindle" body="knuckle" x="0.0" y="0.08" z="0.0" />
+  <marker id="m_wheel_hub" body="wheel" x="0.0" y="0.0" z="0.0" />
+  <marker id="m_wheel_patch" body="wheel" x="0.0" y="0.0" z="-0.32" />
+
+  <!-- Joints: 4 bodies (24 DOF); 2 revolute (10) + 1 spherical (3) = 13 constraints => 11 DOF -->
+  <joint id="j_lca_pivot" type="revolute" from="m_chassis_lca" to="m_lca_inboard" />
+  <joint id="j_lower_ball" type="spherical" from="m_lca_balljoint" to="m_knuckle_lower" />
+  <joint id="j_wheel_spin" type="revolute" from="m_knuckle_spindle" to="m_wheel_hub" />
+
+  <!-- MacPherson Strut Coilover & Vertical Tire Stiffness -->
+  <spring id="strut_coilover" from="m_chassis_tower" to="m_knuckle_strut" kx="8500" ky="8500" kz="36000" cx="350" cy="350" cz="2900" />
+  <spring id="tire_vertical" from="m_road" to="m_wheel_patch" kx="120000" ky="110000" kz="220000" cx="150" cy="150" cz="250" />
+</simpack_model>

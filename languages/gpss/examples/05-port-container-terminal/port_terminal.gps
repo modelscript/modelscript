@@ -1,0 +1,32 @@
+* MODEL: PortContainerTerminal
+* Multi-Stage Container Terminal: Quay Cranes, Yard Trucks & Customs Inspection
+CRANES STORAGE 4
+TRUCKS STORAGE 8
+GATES  STORAGE 2
+EXPON  FUNCTION RN1,C4
+0,0/.5,.693/.9,2.303/.99,4.605
+DWELL  TABLE M1,15,15,24
+      GENERATE 5,FN$EXPON   ; Container lift demand arrives
+      QUEUE    QUAY_Q       ; Wait for quay gantry crane
+      ENTER    CRANES,1     ; Assign gantry crane
+      DEPART   QUAY_Q       ; Leave quay queue
+      ADVANCE  4,1          ; Lift container from vessel to chassis
+      QUEUE    TRUCK_Q      ; Wait for yard drayage truck
+      ENTER    TRUCKS,1     ; Capture yard truck
+      DEPART   TRUCK_Q      ; Leave truck queue
+      LEAVE    CRANES,1     ; Release gantry crane for next lift
+      ADVANCE  6,2          ; Haul container to yard stack
+      TRANSFER 0.15,YARD_OUT,CUSTOMS ; 15% routed to customs X-ray inspection
+CUSTOMS SEIZE  XRAY_SCAN    ; Acquire customs X-ray bay
+      ADVANCE  12,4         ; Perform customs scan
+      RELEASE  XRAY_SCAN    ; Free customs X-ray bay
+YARD_OUT QUEUE GATE_Q       ; Approach terminal exit gate
+      ENTER    GATES,1      ; Acquire exit gate lane
+      DEPART   GATE_Q       ; Leave gate queue
+      ADVANCE  3,1          ; Process gate-out manifest
+      LEAVE    GATES,1      ; Free exit gate lane
+      LEAVE    TRUCKS,1     ; Return yard truck to pool
+      TABULATE DWELL        ; Record container terminal dwell time
+      TERMINATE 1           ; Container exits terminal
+      START    400          ; Simulate 400 containers
+      END

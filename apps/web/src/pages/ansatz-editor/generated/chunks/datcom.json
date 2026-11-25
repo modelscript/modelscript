@@ -1,0 +1,73 @@
+[
+  {
+    "id": "datcom-01-subsonic-rectangular-wing",
+    "lang": "datcom",
+    "subFormats": ["digital-datcom"],
+    "difficulty": 1,
+    "title": "Subsonic Rectangular Straight Wing",
+    "description": "USAF Digital DATCOM baseline subsonic NACA 0012 rectangular wing (AR = 6.0) evaluated across angles of attack from -4 to +10 degrees at Mach 0.20.",
+    "category": "Aerodynamics & Stability",
+    "tags": ["datcom", "subsonic", "wing", "naca-0012"],
+    "activeFile": "rect_wing.dcm",
+    "fileNames": ["rect_wing.dcm"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "* USAF Digital DATCOM Subsonic Rectangular Wing Baseline\nCASEID SUBSONIC RECTANGULAR NACA 0012 WING\nDIM M\nDERIV DEG\n $FLTCON NMACH=1.0, MACH(1)=0.20, NALT=1.0, ALT(1)=1000.0,\n  NALPHA=8.0, ALSCHD(1)=-4.0,-2.0,0.0,2.0,4.0,6.0,8.0,10.0,\n  WT=4500.0$\n $OPTINS SREF=12.0, CBARR=1.414, BLREF=8.485$\n $SYNTHS XCG=1.30, ZCG=0.0, XW=1.0, ZW=0.0, ALIW=0.0$\n $WGPLNF CHRDR=1.414, CHRDTP=1.414, SSPN=4.2425, SSPNE=4.2425,\n  SAVSI=0.0, CHSTAT=0.25, TWISTA=0.0, DHDADI=0.0, TYPE=1.0$\nNACA-W-4-0012\nDAMP\nNEXT CASE\n"
+  },
+  {
+    "id": "datcom-02-cessna-172-wing-body-tail",
+    "lang": "datcom",
+    "subFormats": ["digital-datcom"],
+    "difficulty": 2,
+    "title": "Cessna 172 Wing-Body-Tail Configuration",
+    "description": "Complete general-aviation trainer configuration combining fuselage body stations, NACA 2412 high wing, horizontal stabilizer, and vertical fin.",
+    "category": "Aerodynamics & Stability",
+    "tags": ["datcom", "general-aviation", "wing-body-tail", "stability"],
+    "activeFile": "cessna172.dcm",
+    "fileNames": ["cessna172.dcm"],
+    "fileCount": 1,
+    "code": "* Cessna 172 Class General Aviation Trainer Configuration\nCASEID CESSNA 172 WING BODY TAIL\nDIM M\nDERIV DEG\n $FLTCON NMACH=1.0, MACH(1)=0.18, NALT=1.0, ALT(1)=1524.0,\n  NALPHA=7.0, ALSCHD(1)=-4.0,-2.0,0.0,2.0,4.0,6.0,8.0,\n  WT=10230.0$\n $OPTINS SREF=16.17, CBARR=1.49, BLREF=10.92$\n $SYNTHS XCG=2.55, ZCG=0.0, XW=2.15, ZW=0.45, ALIW=1.5,\n  XH=6.75, ZH=0.10, ALIH=-1.5, XV=6.45, ZV=0.20, VERTUP=.TRUE.$\n $BODY NX=6.0, X(1)=0.0,0.8,2.2,4.5,6.8,8.2,\n  S(1)=0.0,0.95,1.42,1.10,0.38,0.06,\n  R(1)=0.0,0.55,0.67,0.59,0.35,0.14$\n $WGPLNF CHRDR=1.63, CHRDTP=1.12, SSPN=5.46, SSPNE=4.86,\n  SAVSI=0.0, CHSTAT=0.25, TWISTA=-1.5, DHDADI=1.7, TYPE=1.0$\n $HTPLNF CHRDR=1.09, CHRDTP=0.72, SSPN=1.73, SSPNE=1.55,\n  SAVSI=5.0, CHSTAT=0.25, TYPE=1.0$\n $VTPLNF CHRDR=1.45, CHRDTP=0.65, SSPN=1.52, SSPNE=1.42,\n  SAVSI=32.0, CHSTAT=0.25, TYPE=1.0$\nNACA-W-4-2412\nNACA-H-4-0009\nNACA-V-4-0009\nBUILD\nDAMP\nNEXT CASE\n"
+  },
+  {
+    "id": "datcom-03-swept-transport-wing-body",
+    "lang": "datcom",
+    "subFormats": ["digital-datcom"],
+    "difficulty": 3,
+    "title": "Swept High-Subsonic Transport Wing-Body Polar",
+    "description": "Twin-jet regional transport aircraft with 28-degree swept supercritical-class wing, cylindrical fuselage, and T-tail empennage at Mach 0.72 cruise.",
+    "category": "Aerodynamics & Stability",
+    "tags": ["datcom", "transport", "swept-wing", "drag-polar"],
+    "activeFile": "swept_transport.dcm",
+    "fileNames": ["swept_transport.dcm"],
+    "fileCount": 1,
+    "code": "* Swept High-Subsonic Transport Wing-Body-Tail Polar\nCASEID SWEPT TRANSPORT CRUISE POLAR\nDIM M\nDERIV DEG\n $FLTCON NMACH=2.0, MACH(1)=0.50,0.72, NALT=2.0, ALT(1)=6000.0,10500.0,\n  NALPHA=7.0, ALSCHD(1)=-2.0,0.0,2.0,4.0,6.0,8.0,10.0,\n  WT=380000.0$\n $OPTINS SREF=78.0, CBARR=3.15, BLREF=28.0$\n $SYNTHS XCG=15.6, ZCG=-0.2, XW=10.8, ZW=-0.6, ALIW=2.0,\n  XH=26.5, ZH=3.8, ALIH=-1.0, XV=24.0, ZV=1.2, VERTUP=.TRUE.$\n $BODY NX=7.0, X(1)=0.0,2.5,6.0,15.0,23.0,28.5,31.0,\n  S(1)=0.0,4.2,8.04,8.04,6.5,1.8,0.15,\n  R(1)=0.0,1.15,1.60,1.60,1.44,0.76,0.22$\n $WGPLNF CHRDR=4.60, CHRDTP=1.45, SSPN=14.0, SSPNE=12.4,\n  SAVSI=28.0, CHSTAT=0.25, TWISTA=-3.0, DHDADI=5.0, TYPE=1.0$\n $HTPLNF CHRDR=2.40, CHRDTP=0.95, SSPN=4.80, SSPNE=4.50,\n  SAVSI=30.0, CHSTAT=0.25, TYPE=1.0$\n $VTPLNF CHRDR=4.20, CHRDTP=1.80, SSPN=4.60, SSPNE=3.80,\n  SAVSI=38.0, CHSTAT=0.25, TYPE=1.0$\nNACA-W-6-64A210\nNACA-H-4-0010\nNACA-V-4-0010\nBUILD\nDAMP\nNEXT CASE\n"
+  },
+  {
+    "id": "datcom-04-delta-wing-supersonic-fighter",
+    "lang": "datcom",
+    "subFormats": ["digital-datcom", "supersonic"],
+    "difficulty": 4,
+    "title": "Delta-Wing Supersonic Fighter Mach Sweep",
+    "description": "Cropped-delta supersonic fighter configuration with 52-degree leading-edge sweep and Sears-Haack area-ruled fuselage swept from Mach 1.4 to 2.2.",
+    "category": "Supersonic Aerodynamics",
+    "tags": ["datcom", "supersonic", "delta-wing", "fighter"],
+    "activeFile": "supersonic_delta.dcm",
+    "fileNames": ["supersonic_delta.dcm"],
+    "fileCount": 1,
+    "code": "* Cropped-Delta Supersonic Fighter Configuration (Mach 1.4 - 2.2)\nCASEID DELTA WING SUPERSONIC FIGHTER\nDIM M\nDERIV DEG\n $FLTCON NMACH=3.0, MACH(1)=1.40,1.80,2.20, NALT=3.0, ALT(1)=11000.0,12500.0,15000.0,\n  NALPHA=6.0, ALSCHD(1)=-2.0,0.0,2.0,4.0,6.0,8.0,\n  WT=135000.0$\n $OPTINS SREF=32.5, CBARR=4.25, BLREF=9.80$\n $SYNTHS XCG=7.80, ZCG=0.0, XW=5.20, ZW=-0.10, ALIW=0.0,\n  XH=12.2, ZH=0.0, ALIH=0.0, XV=11.0, ZV=0.40, VERTUP=.TRUE.$\n $BODY NX=7.0, X(1)=0.0,2.0,5.0,8.5,11.5,14.0,15.5,\n  S(1)=0.0,0.85,1.95,2.25,1.80,1.25,0.65,\n  R(1)=0.0,0.52,0.79,0.85,0.76,0.63,0.45$\n $WGPLNF CHRDR=6.80, CHRDTP=0.95, SSPN=4.90, SSPNE=4.10,\n  SAVSI=52.0, CHSTAT=0.0, TWISTA=0.0, DHDADI=-2.0, TYPE=1.0$\n $HTPLNF CHRDR=2.10, CHRDTP=0.55, SSPN=2.20, SSPNE=1.65,\n  SAVSI=42.0, CHSTAT=0.25, TYPE=1.0$\n $VTPLNF CHRDR=3.40, CHRDTP=0.90, SSPN=2.85, SSPNE=2.35,\n  SAVSI=48.0, CHSTAT=0.25, TYPE=1.0$\nNACA-W-4-0004\nNACA-H-4-0004\nNACA-V-4-0004\nBUILD\nDAMP\nNEXT CASE\n"
+  },
+  {
+    "id": "datcom-05-high-lift-flaps-multi-case",
+    "lang": "datcom",
+    "subFormats": ["digital-datcom", "high-lift", "multi-case"],
+    "difficulty": 5,
+    "title": "Wing-Body-Tail High-Lift Flaps and Aileron Control Study",
+    "description": "Multi-case SAVE/NEXT CASE DATCOM study evaluating trailing-edge symmetric plain flaps ($SYMFLP) and differential ailerons ($ASYFLP) across approach and climb.",
+    "category": "Flight Control & High-Lift",
+    "tags": ["datcom", "flaps", "ailerons", "high-lift", "multi-case"],
+    "activeFile": "high_lift_flaps.dcm",
+    "fileNames": ["high_lift_flaps.dcm"],
+    "fileCount": 1,
+    "code": "* Multi-Case High-Lift Trailing-Edge Flaps and Differential Ailerons Study\nCASEID APPROACH HIGH LIFT FLAPS\nDIM M\nDERIV DEG\nSAVE\n $FLTCON NMACH=1.0, MACH(1)=0.22, NALT=1.0, ALT(1)=300.0,\n  NALPHA=7.0, ALSCHD(1)=-4.0,-2.0,0.0,2.0,4.0,6.0,8.0,\n  WT=185000.0$\n $OPTINS SREF=42.0, CBARR=2.35, BLREF=19.2$\n $SYNTHS XCG=8.90, ZCG=-0.1, XW=6.60, ZW=-0.35, ALIW=1.5,\n  XH=15.8, ZH=0.60, ALIH=-1.5, XV=14.6, ZV=0.50, VERTUP=.TRUE.$\n $BODY NX=6.0, X(1)=0.0,2.0,6.0,12.0,16.0,18.2,\n  S(1)=0.0,2.1,3.6,3.4,1.2,0.12,\n  R(1)=0.0,0.82,1.07,1.04,0.62,0.20$\n $WGPLNF CHRDR=3.10, CHRDTP=1.20, SSPN=9.60, SSPNE=8.55,\n  SAVSI=18.0, CHSTAT=0.25, TWISTA=-2.0, DHDADI=3.0, TYPE=1.0$\n $HTPLNF CHRDR=1.80, CHRDTP=0.80, SSPN=3.40, SSPNE=3.10,\n  SAVSI=22.0, CHSTAT=0.25, TYPE=1.0$\n $VTPLNF CHRDR=2.90, CHRDTP=1.10, SSPN=3.10, SSPNE=2.60,\n  SAVSI=34.0, CHSTAT=0.25, TYPE=1.0$\n $SYMFLP FTYPE=1.0, NDELTA=4.0, DELTA(1)=0.0,10.0,20.0,30.0,\n  SPANFI=1.20, SPANFO=5.80, CHRDFI=0.75, CHRDFO=0.55$\nNACA-W-4-2412\nNACA-H-4-0009\nNACA-V-4-0009\nBUILD\nDAMP\nNEXT CASE\nCASEID ROLL CONTROL AILERON DEFLECTION\n $FLTCON NMACH=1.0, MACH(1)=0.35, NALT=1.0, ALT(1)=3000.0,\n  NALPHA=5.0, ALSCHD(1)=-2.0,0.0,2.0,4.0,6.0,\n  WT=185000.0$\n $ASYFLP STYPE=4.0, NDELTA=3.0, DELTAL(1)=-15.0,-5.0,10.0,\n  DELTAR(1)=15.0,5.0,-10.0, SPANFI=6.0, SPANFO=9.2,\n  CHRDFI=0.45, CHRDFO=0.30$\nPLOT\nNEXT CASE\n"
+  }
+]

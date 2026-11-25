@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="2" date="2026-11-24T12:00:00" description="Multi-Agent Highway Platoon Overtaking Scenario" author="Ansatz"/>
+  <ParameterDeclarations>
+    <ParameterDeclaration name="PlatoonSpeed" parameterType="double" value="22.22"/>
+    <ParameterDeclaration name="EgoOvertakeSpeed" parameterType="double" value="33.33"/>
+  </ParameterDeclarations>
+  <CatalogLocations>
+    <VehicleCatalog><Directory path="VehicleCatalog.xosc"/></VehicleCatalog>
+  </CatalogLocations>
+  <RoadNetwork>
+    <LogicFile filepath="highway_curve.xodr"/>
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="Ego">
+      <Vehicle name="Ego" vehicleCategory="car">
+        <Performance maxSpeed="60.0" maxAcceleration="4.0" maxDeceleration="9.5"/>
+        <BoundingBox><Center x="1.4" y="0.0" z="0.7"/><Dimensions width="1.85" length="4.6" height="1.45"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="TruckLead">
+      <Vehicle name="TruckLead" vehicleCategory="truck">
+        <Performance maxSpeed="30.0" maxAcceleration="1.5" maxDeceleration="6.5"/>
+        <BoundingBox><Center x="3.5" y="0.0" z="1.7"/><Dimensions width="2.55" length="12.0" height="3.60"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="TruckFollow">
+      <Vehicle name="TruckFollow" vehicleCategory="truck">
+        <Performance maxSpeed="30.0" maxAcceleration="1.5" maxDeceleration="6.5"/>
+        <BoundingBox><Center x="3.5" y="0.0" z="1.7"/><Dimensions width="2.55" length="12.0" height="3.60"/></BoundingBox>
+      </Vehicle>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <Private entityRef="Ego">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-2" s="20.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$EgoOvertakeSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="TruckFollow">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-2" s="75.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$PlatoonSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="TruckLead">
+          <PrivateAction><TeleportAction><Position><LanePosition roadId="1" laneId="-2" s="115.0"/></Position></TeleportAction></PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0.0" dynamicsDimension="time"/>
+                <SpeedActionTarget><AbsoluteTargetSpeed value="$PlatoonSpeed"/></SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="PlatoonOvertakeStory">
+      <Act name="OvertakeAct">
+        <ManeuverGroup maximumExecutionCount="1" name="EgoOvertakeGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Ego"/>
+          </Actors>
+          <Maneuver name="PassPlatoonManeuver">
+            <Event name="MoveToFastLane" priority="overwrite" maximumExecutionCount="1">
+              <Action name="ShiftLeft">
+                <PrivateAction>
+                  <LateralAction>
+                    <LaneChangeAction>
+                      <LaneChangeActionDynamics dynamicsShape="sinusoidal" value="2.5" dynamicsDimension="time"/>
+                      <LaneChangeTarget><AbsoluteTargetLane value="-1"/></LaneChangeTarget>
+                    </LaneChangeAction>
+                  </LateralAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="PassStart" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition><SimulationTimeCondition value="2.0" rule="greaterOrEqual"/></ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="ReturnToRightLane" priority="overwrite" maximumExecutionCount="1">
+              <Action name="ShiftRight">
+                <PrivateAction>
+                  <LateralAction>
+                    <LaneChangeAction>
+                      <LaneChangeActionDynamics dynamicsShape="sinusoidal" value="2.5" dynamicsDimension="time"/>
+                      <LaneChangeTarget><AbsoluteTargetLane value="-2"/></LaneChangeTarget>
+                    </LaneChangeAction>
+                  </LateralAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="PassComplete" delay="0.0" conditionEdge="rising">
+                    <ByValueCondition><SimulationTimeCondition value="11.0" rule="greaterOrEqual"/></ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+      </Act>
+    </Story>
+  </Storyboard>
+</OpenSCENARIO>

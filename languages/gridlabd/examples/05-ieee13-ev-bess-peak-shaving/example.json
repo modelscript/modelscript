@@ -1,0 +1,11 @@
+{
+  "id": "gridlabd-05-ieee13-ev-bess-peak-shaving",
+  "lang": "gridlabd",
+  "subFormats": ["glm", "player"],
+  "difficulty": 5,
+  "title": "13-Node Feeder with EV Fast Chargers & BESS Peak Shaving",
+  "description": "Multi-file GridLAB-D distribution feeder combining substation transformer, multi-branch topology, commercial EV fast-charging hub, and battery energy storage peak shaving with companion player schedules.",
+  "category": "Distribution Power Systems",
+  "tags": ["gridlabd", "ev-charging", "bess", "peak-shaving", "multi-file"],
+  "activeFile": "ieee13_ev.glm"
+}

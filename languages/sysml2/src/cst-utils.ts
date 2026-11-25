@@ -168,6 +168,24 @@ export function extractLinearNodeText(tree: SysmlCstTree, startOffset: number, p
 /**
  * Returns direct visible CST children matching `type`, descending transparently through hidden rules (`_`).
  */
+const AST_FLAG_IS_LEAF_WORD0 = 8192 << 16;
+
+function readCstFirstChild(mem32: Uint32Array, ptr: number): number {
+  return (mem32[ptr >>> 2]! & AST_FLAG_IS_LEAF_WORD0) !== 0 ? 0 : mem32[(ptr + 12) >>> 2]!;
+}
+
+function readCstNextSibling(mem32: Uint32Array, ptr: number, isLeaf: boolean): number {
+  return isLeaf ? mem32[(ptr + 8) >>> 2]! : mem32[(ptr + 16) >>> 2]!;
+}
+
+function readCstLenAndPad(mem32: Uint32Array, ptr: number, isLeaf: boolean): { len: number; pad: number } {
+  const w1 = mem32[(ptr + 4) >>> 2]!;
+  if (isLeaf) {
+    return { len: w1 & 0xfff, pad: (w1 >>> 12) & 0xfff };
+  }
+  return { len: w1, pad: mem32[(ptr + 8) >>> 2]! };
+}
+
 export function findCstChildren(
   node: SysmlCstNode | null | undefined,
   type: string,
@@ -182,33 +200,37 @@ export function findCstChildren(
     !(node as { _cachedChildren?: unknown })._cachedChildren
   ) {
     const mem32: Uint32Array = node.tree.mem32;
+    const maxBytePtr = mem32.length * 4;
+    if (node.ptr + 12 > maxBytePtr) return results;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
     const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     const ptrStack: number[] = [];
     const offsetStack: number[] = [];
-    let currentChildPtr = mem32[(node.ptr + 12) >>> 2]!;
+    const visited = new Set<number>([node.ptr]);
+    let currentChildPtr = readCstFirstChild(mem32, node.ptr);
     let currentOffset = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
 
     while (true) {
-      if (currentChildPtr !== 0) {
+      if (currentChildPtr !== 0 && currentChildPtr + 12 <= maxBytePtr && !visited.has(currentChildPtr)) {
+        visited.add(currentChildPtr);
         const typeFlags = mem32[currentChildPtr >>> 2]!;
         const typeId = typeFlags & 0xffff;
         const name = syntaxNames[typeId] || "";
         const flags = typeFlags >>> 16;
-        const len = mem32[(currentChildPtr + 4) >>> 2]!;
-        const pad = mem32[(currentChildPtr + 8) >>> 2]!;
+        const isLeaf = (flags & 8192) !== 0;
         const isInvisible = (flags & 4) !== 0;
+        const { len, pad } = readCstLenAndPad(mem32, currentChildPtr, isLeaf);
 
-        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
+        const nextChildPtr = readCstNextSibling(mem32, currentChildPtr, isLeaf);
         const nextOffset = currentOffset + pad + len;
 
         if (name.startsWith("_") || isInvisible) {
-          if (nextChildPtr !== 0) {
+          if (nextChildPtr !== 0 && nextChildPtr + 12 <= maxBytePtr && !visited.has(nextChildPtr)) {
             ptrStack.push(nextChildPtr);
             offsetStack.push(nextOffset);
           }
-          currentChildPtr = mem32[(currentChildPtr + 12) >>> 2]!;
+          currentChildPtr = isLeaf ? 0 : mem32[(currentChildPtr + 12) >>> 2]!;
           currentOffset = currentOffset + pad;
           continue;
         } else if (name === type) {
@@ -249,34 +271,38 @@ export function findCstDescendants(
   if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
     if (node.type === type) results.push(node);
     const mem32: Uint32Array = node.tree.mem32;
+    const maxBytePtr = mem32.length * 4;
+    if (node.ptr + 12 > maxBytePtr) return results;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
     const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     const ptrStack: number[] = [];
     const offsetStack: number[] = [];
-    let currentChildPtr = mem32[(node.ptr + 12) >>> 2]!;
+    const visited = new Set<number>([node.ptr]);
+    let currentChildPtr = readCstFirstChild(mem32, node.ptr);
     let currentOffset = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
 
     while (true) {
-      if (currentChildPtr !== 0) {
+      if (currentChildPtr !== 0 && currentChildPtr + 12 <= maxBytePtr && !visited.has(currentChildPtr)) {
+        visited.add(currentChildPtr);
         const typeFlags = mem32[currentChildPtr >>> 2]!;
         const typeId = typeFlags & 0xffff;
         const name = syntaxNames[typeId] || "";
         const flags = typeFlags >>> 16;
-        const len = mem32[(currentChildPtr + 4) >>> 2]!;
-        const pad = mem32[(currentChildPtr + 8) >>> 2]!;
+        const isLeaf = (flags & 8192) !== 0;
         const isInvisible = (flags & 4) !== 0;
+        const { len, pad } = readCstLenAndPad(mem32, currentChildPtr, isLeaf);
 
         if (!isInvisible && name === type) {
           results.push(new NodeCtor(node.tree, currentChildPtr, currentOffset, node, pad, len, typeId, -1));
         }
 
-        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
+        const nextChildPtr = readCstNextSibling(mem32, currentChildPtr, isLeaf);
         const nextOffset = currentOffset + pad + len;
-        const grandChildPtr = mem32[(currentChildPtr + 12) >>> 2]!;
+        const grandChildPtr = isLeaf ? 0 : mem32[(currentChildPtr + 12) >>> 2]!;
 
-        if (grandChildPtr !== 0) {
-          if (nextChildPtr !== 0) {
+        if (grandChildPtr !== 0 && grandChildPtr + 12 <= maxBytePtr && !visited.has(grandChildPtr)) {
+          if (nextChildPtr !== 0 && nextChildPtr + 12 <= maxBytePtr && !visited.has(nextChildPtr)) {
             ptrStack.push(nextChildPtr);
             offsetStack.push(nextOffset);
           }
@@ -312,34 +338,38 @@ export function findFirstDescendant(node: SysmlCstNode | null | undefined, type:
   if (typeof node.ptr === "number" && node.ptr > 0 && node.tree?.mem32 && node.tree?.facade?.syntaxNames) {
     if (node.type === type) return node;
     const mem32: Uint32Array = node.tree.mem32;
+    const maxBytePtr = mem32.length * 4;
+    if (node.ptr + 12 > maxBytePtr) return null;
     const syntaxNames: string[] = node.tree.facade.syntaxNames;
     const NodeCtor = node.constructor as unknown as SysmlCstNodeConstructor;
 
     const ptrStack: number[] = [];
     const offsetStack: number[] = [];
-    let currentChildPtr = mem32[(node.ptr + 12) >>> 2]!;
+    const visited = new Set<number>([node.ptr]);
+    let currentChildPtr = readCstFirstChild(mem32, node.ptr);
     let currentOffset = (node._startOffset ?? 0) + (node._cachedPad ?? 0);
 
     while (true) {
-      if (currentChildPtr !== 0) {
+      if (currentChildPtr !== 0 && currentChildPtr + 12 <= maxBytePtr && !visited.has(currentChildPtr)) {
+        visited.add(currentChildPtr);
         const typeFlags = mem32[currentChildPtr >>> 2]!;
         const typeId = typeFlags & 0xffff;
         const name = syntaxNames[typeId] || "";
         const flags = typeFlags >>> 16;
-        const len = mem32[(currentChildPtr + 4) >>> 2]!;
-        const pad = mem32[(currentChildPtr + 8) >>> 2]!;
+        const isLeaf = (flags & 8192) !== 0;
         const isInvisible = (flags & 4) !== 0;
+        const { len, pad } = readCstLenAndPad(mem32, currentChildPtr, isLeaf);
 
         if (!isInvisible && name === type) {
           return new NodeCtor(node.tree, currentChildPtr, currentOffset, node, pad, len, typeId, -1);
         }
 
-        const nextChildPtr = mem32[(currentChildPtr + 16) >>> 2]!;
+        const nextChildPtr = readCstNextSibling(mem32, currentChildPtr, isLeaf);
         const nextOffset = currentOffset + pad + len;
-        const grandChildPtr = mem32[(currentChildPtr + 12) >>> 2]!;
+        const grandChildPtr = isLeaf ? 0 : mem32[(currentChildPtr + 12) >>> 2]!;
 
-        if (grandChildPtr !== 0) {
-          if (nextChildPtr !== 0) {
+        if (grandChildPtr !== 0 && grandChildPtr + 12 <= maxBytePtr && !visited.has(grandChildPtr)) {
+          if (nextChildPtr !== 0 && nextChildPtr + 12 <= maxBytePtr && !visited.has(nextChildPtr)) {
             ptrStack.push(nextChildPtr);
             offsetStack.push(nextOffset);
           }

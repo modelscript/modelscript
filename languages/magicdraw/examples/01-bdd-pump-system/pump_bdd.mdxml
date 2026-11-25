@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.5"
+  xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+  xmlns:uml="http://www.omg.org/spec/UML/20131001"
+  xmlns:sysml="http://www.omg.org/spec/SysML/20181001/SysML">
+  <uml:Model xmi:id="m_pump_bdd" name="CoolantPumpBDD">
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_pump_sys" name="CoolantPumpAssembly">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="part_motor" name="driveMotor" type="blk_motor" aggregation="composite"/>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="part_impeller" name="impeller" type="blk_impeller" aggregation="composite"/>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="val_flow" name="nominalFlowLpm">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_motor" name="BrushlessDriveMotor">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="val_voltage" name="ratedVoltageV">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="val_rpm" name="maxSpeedRpm">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="blk_impeller" name="CentrifugalImpeller">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="val_dia" name="outerDiameterMm">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#Real"/>
+      </ownedAttribute>
+    </packagedElement>
+  </uml:Model>
+  <sysml:Block xmi:id="st_pump_sys" base_Class="blk_pump_sys"/>
+  <sysml:Block xmi:id="st_motor" base_Class="blk_motor"/>
+  <sysml:Block xmi:id="st_impeller" base_Class="blk_impeller"/>
+</xmi:XMI>

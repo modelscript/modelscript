@@ -1,0 +1,11 @@
+{
+  "id": "relap5-04-sbloca-accumulator-injection",
+  "lang": "relap5",
+  "subFormats": ["r5"],
+  "difficulty": 4,
+  "title": "Small-Break LOCA with Accumulator Injection",
+  "description": "Pressurized Water Reactor cold-leg small-break loss-of-coolant accident (SBLOCA) with nitrogen-pressurized ECCS accumulator injection, containment sink, and low-pressure scram trip.",
+  "category": "Nuclear Safety Analysis",
+  "tags": ["relap5", "sbloca", "eccs", "accumulator", "reactor-trip"],
+  "activeFile": "sbloca_eccs.r5"
+}

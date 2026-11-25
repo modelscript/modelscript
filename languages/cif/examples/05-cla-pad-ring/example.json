@@ -1,0 +1,11 @@
+{
+  "id": "cif-05-cla-pad-ring",
+  "lang": "cif",
+  "subFormats": ["cif"],
+  "difficulty": 5,
+  "title": "4-Bit Carry-Lookahead Pad-Ring Macrocell",
+  "description": "Multi-level CIF 2.0 ASIC macrocell integrating four mirrored carry-lookahead bit slices, Metal-1/Metal-2 carry-propagate buses, and perimeter I/O bonding pads using symbol calls and transforms.",
+  "category": "ASIC Macrocell Layout",
+  "tags": ["cif", "carry-lookahead", "pad-ring", "macrocell", "hierarchy"],
+  "activeFile": "cla_macro.cif"
+}

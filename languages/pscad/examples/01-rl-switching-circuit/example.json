@@ -1,0 +1,12 @@
+{
+  "id": "pscad-01-rl-switching-circuit",
+  "lang": "pscad",
+  "subFormats": ["pscx"],
+  "difficulty": 1,
+  "title": "Single-Phase RL Switching Circuit",
+  "description": "Single-phase 13.8 kV AC source energizing a series RL load through a timed circuit breaker to study asymmetrical DC offset and transient inrush current.",
+  "category": "Electromagnetic Transients",
+  "tags": ["pscad", "emt", "rl-switching", "transient"],
+  "activeFile": "rl_switching.pscx",
+  "isDefaultStarter": true
+}

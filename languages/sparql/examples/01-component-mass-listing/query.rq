@@ -1,0 +1,10 @@
+PREFIX eng: <http://modelscript.dev/ontology/engineering#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+
+SELECT ?component ?label ?massKg
+WHERE {
+  ?component a eng:Component ;
+             rdfs:label ?label ;
+             eng:massKg ?massKg .
+}
+ORDER BY DESC(?massKg)

@@ -1,0 +1,11 @@
+{
+  "id": "modflow-04-river-aquifer-interaction",
+  "lang": "modflow",
+  "subFormats": ["nam", "dis", "npf", "ic", "chd", "wel", "riv", "drn"],
+  "difficulty": 4,
+  "title": "River-Aquifer Interaction & Stream Depletion",
+  "description": "Two-layer alluvial valley groundwater model coupling a gaining/losing river boundary (RIV6), agricultural subsurface drains (DRN6), and a near-stream irrigation pumping well.",
+  "category": "Surface-Groundwater Interaction",
+  "tags": ["modflow", "mf6", "river-aquifer", "drain", "multi-file"],
+  "activeFile": "gwf.dis"
+}

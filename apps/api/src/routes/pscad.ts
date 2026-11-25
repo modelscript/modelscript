@@ -4,7 +4,7 @@ import express from "express";
 
 /**
  * REST routes for PSCAD `.pscx`/`.pslx` linting, EMT simulation, and IEEE 2800-2022 verification
- * used by Morsel (`apps/web`).
+ * used by Ansatz (`apps/web`).
  */
 export function pscadRouter(): express.Router {
   const router = express.Router();

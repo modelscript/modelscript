@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<model name="fitzhugh_nagumo_cardiac" xmlns="http://www.cellml.org/cellml/1.1#">
+  <units name="millisecond">
+    <unit units="second" prefix="milli"/>
+  </units>
+  <units name="per_millisecond">
+    <unit units="second" prefix="milli" exponent="-1"/>
+  </units>
+
+  <component name="environment">
+    <variable name="time" units="millisecond" public_interface="out"/>
+  </component>
+
+  <component name="stimulus">
+    <variable name="time" units="millisecond" public_interface="in"/>
+    <variable name="I_ext" units="per_millisecond" public_interface="out"/>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <eq/>
+        <ci>I_ext</ci>
+        <piecewise>
+          <piece>
+            <cn>0.5</cn>
+            <apply>
+              <and/>
+              <apply><geq/><ci>time</ci><cn>5.0</cn></apply>
+              <apply><leq/><ci>time</ci><cn>15.0</cn></apply>
+            </apply>
+          </piece>
+          <otherwise>
+            <cn>0.0</cn>
+          </otherwise>
+        </piecewise>
+      </apply>
+    </math>
+  </component>
+
+  <component name="cardiac_cell">
+    <variable name="time" units="millisecond" public_interface="in"/>
+    <variable name="I_ext" units="per_millisecond" public_interface="in"/>
+    <variable name="v" units="dimensionless" initial_value="0.0" public_interface="out"/>
+    <variable name="w" units="dimensionless" initial_value="0.0" public_interface="out"/>
+    <variable name="a" units="dimensionless" initial_value="0.13"/>
+    <variable name="b" units="dimensionless" initial_value="0.013"/>
+    <variable name="c1" units="per_millisecond" initial_value="0.26"/>
+    <variable name="c2" units="per_millisecond" initial_value="0.10"/>
+    <variable name="d" units="dimensionless" initial_value="1.0"/>
+    <math xmlns="http://www.w3.org/1998/Math/MathML">
+      <apply>
+        <eq/>
+        <apply><diff/><bvar><ci>time</ci></bvar><ci>v</ci></apply>
+        <apply>
+          <plus/>
+          <apply>
+            <minus/>
+            <apply>
+              <times/>
+              <ci>c1</ci>
+              <ci>v</ci>
+              <apply><minus/><ci>v</ci><ci>a</ci></apply>
+              <apply><minus/><cn>1.0</cn><ci>v</ci></apply>
+            </apply>
+            <apply><times/><ci>c2</ci><ci>v</ci><ci>w</ci></apply>
+          </apply>
+          <ci>I_ext</ci>
+        </apply>
+      </apply>
+      <apply>
+        <eq/>
+        <apply><diff/><bvar><ci>time</ci></bvar><ci>w</ci></apply>
+        <apply>
+          <times/>
+          <ci>b</ci>
+          <apply><minus/><ci>v</ci><apply><times/><ci>d</ci><ci>w</ci></apply></apply>
+        </apply>
+      </apply>
+    </math>
+  </component>
+
+  <connection>
+    <map_components component_1="environment" component_2="stimulus"/>
+    <map_variables variable_1="time" variable_2="time"/>
+  </connection>
+  <connection>
+    <map_components component_1="environment" component_2="cardiac_cell"/>
+    <map_variables variable_1="time" variable_2="time"/>
+  </connection>
+  <connection>
+    <map_components component_1="stimulus" component_2="cardiac_cell"/>
+    <map_variables variable_1="I_ext" variable_2="I_ext"/>
+  </connection>
+</model>

@@ -1,0 +1,7 @@
+model EnzymeStep(S, P)
+  compartment cell = 1.0;
+  species S in cell = 10.0, P in cell = 0.0;
+  const Vmax = 2.5, Km = 1.5;
+
+  J_step: S => P; (Vmax * S) / (Km + S);
+end

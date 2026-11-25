@@ -1,0 +1,11 @@
+{
+  "id": "gams-05-energy-transition-expansion",
+  "lang": "gams",
+  "subFormats": ["gams", "lp", "energy-systems"],
+  "difficulty": 5,
+  "title": "Multi-Region Energy Transition Capacity Expansion",
+  "description": "Two-region electricity generation capacity expansion planning across solar, wind, nuclear, and gas with inter-regional transmission and carbon cap.",
+  "category": "Energy Systems Planning",
+  "tags": ["gams", "capacity-expansion", "decarbonization", "multi-file"],
+  "activeFile": "energy_sys.gms"
+}

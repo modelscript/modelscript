@@ -1,0 +1,11 @@
+{
+  "id": "oneliner-02-delta-wye-ground-fault",
+  "lang": "oneliner",
+  "subFormats": ["dxt"],
+  "difficulty": 2,
+  "title": "4-Bus Transformer Delta-Wye Ground Fault Study",
+  "description": "Four-bus 138/13.8 kV substation with a grounded-wye/delta step-down transformer isolating zero-sequence fault currents during distribution feeder single-line-to-ground faults.",
+  "category": "Power System Protection",
+  "tags": ["oneliner", "ground-fault", "transformer", "zero-sequence", "138kv"],
+  "activeFile": "delta_wye_gf.dxt"
+}

@@ -6,12 +6,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import styled from "styled-components";
 import { getFeeds, subscribeFeed, unsubscribeFeed } from "../api";
+import type { SocialFeedRecord } from "../api/social";
 import { useAuth } from "../AuthContext";
 import Box from "../components/Box";
 import PageHeader from "../components/PageHeader";
 import { CircleIconButton } from "../components/SharedStyles";
 import Spinner from "../components/Spinner";
 import { useFeatureFlag } from "../FeatureFlagContext";
+import { getApiErrorMessage } from "../util/error";
 import { usePageTitle } from "../util/title";
 import { safeCssImageUrl } from "../util/url";
 
@@ -122,16 +124,22 @@ function formatRssHandle(urlStr: string) {
   }
 }
 
+type RssFeedItem = SocialFeedRecord & {
+  avatar_url?: string | undefined;
+  username?: string | undefined;
+  display_name?: string | undefined;
+};
+
 const FeedsPage: React.FC = () => {
   usePageTitle("Feeds");
   const hasFeeds = useFeatureFlag(["feeds_page", "rss_feeds"]);
   const { token } = useAuth();
-  const [feeds, setFeeds] = useState<any[]>([]);
+  const [feeds, setFeeds] = useState<RssFeedItem[]>([]);
   const [urlInput, setUrlInput] = useState("");
   const [initialLoading, setInitialLoading] = useState(Boolean(token));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [unsubscribingFeed, setUnsubscribingFeed] = useState<any | null>(null);
+  const [unsubscribingFeed, setUnsubscribingFeed] = useState<RssFeedItem | null>(null);
   const [isUnsubscribing, setIsUnsubscribing] = useState(false);
 
   const fetchFeeds = useCallback(async () => {
@@ -141,7 +149,7 @@ const FeedsPage: React.FC = () => {
     }
     try {
       const data = await getFeeds();
-      setFeeds(data.feeds || []);
+      setFeeds((data.feeds || []) as RssFeedItem[]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -168,8 +176,8 @@ const FeedsPage: React.FC = () => {
       await subscribeFeed(urlInput.trim());
       setUrlInput("");
       fetchFeeds();
-    } catch (e: any) {
-      setError(e.response?.data?.error || e.message || "Failed to subscribe to feed");
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, "Failed to subscribe to feed"));
     } finally {
       setIsLoading(false);
     }

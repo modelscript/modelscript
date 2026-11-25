@@ -20,7 +20,12 @@ import {
   type DiagramTextEdit as TextEdit,
 } from "@modelscript/diagram/protocol";
 
-function getUnifiedIndexFromDeps(backends: DiagramBackendHost): any {
+interface RawPscadDiagramLike {
+  cells: Array<{ shape?: string }>;
+  metadata?: unknown;
+}
+
+function getUnifiedIndexFromDeps(backends: DiagramBackendHost): unknown {
   return (
     backends.getUnifiedIndex?.() ??
     backends.generic?.deps?.getUnifiedIndex?.() ??
@@ -32,7 +37,7 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
   const createDropBatchState = () => backends.crossLanguageDrop?.createDropBatchState?.() ?? {};
   const mergeCoincidentInsertEdits = (edits: TextEdit[]) =>
     backends.crossLanguageDrop?.mergeCoincidentInsertEdits?.(edits) ?? edits;
-  const computePscadComponentDropEdits = (opts: any): TextEdit[] =>
+  const computePscadComponentDropEdits = (opts: unknown): TextEdit[] =>
     backends.crossLanguageDrop?.computePscadComponentDropEdits?.(opts) ?? [];
 
   const readPscxSource = async (targetUri: string): Promise<string | null> => {
@@ -51,9 +56,9 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
     return null;
   };
 
-  const formatDiagramData = (rawDiagram: any): DiagramData => {
-    const nodes = rawDiagram.cells.filter((c: any) => c.shape !== "edge");
-    const edges = rawDiagram.cells.filter((c: any) => c.shape === "edge");
+  const formatDiagramData = (rawDiagram: RawPscadDiagramLike): DiagramData => {
+    const nodes = rawDiagram.cells.filter((c) => c.shape !== "edge");
+    const edges = rawDiagram.cells.filter((c) => c.shape === "edge");
     return {
       nodes,
       edges,
@@ -61,7 +66,7 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
       diagramBackground: null,
       cells: rawDiagram.cells,
       metadata: rawDiagram.metadata,
-    } as any;
+    } as unknown as DiagramData;
   };
 
   return {
@@ -82,7 +87,7 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
           cleanroomIcons.set(short.toLowerCase(), d.svg);
         }
         const rawDiagram = buildPscadDiagram(project, params.className, { cleanroomIcons });
-        return formatDiagramData(rawDiagram);
+        return formatDiagramData(rawDiagram as unknown as RawPscadDiagramLike);
       } catch {
         return null;
       }
@@ -121,7 +126,7 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
               }
             }
           }
-          const mergedValues: Record<string, any> = {};
+          const mergedValues: Record<string, unknown> = {};
           if (masterSchema) {
             for (const p of masterSchema.parameters) {
               mergedValues[p.key] = p.defaultValue;

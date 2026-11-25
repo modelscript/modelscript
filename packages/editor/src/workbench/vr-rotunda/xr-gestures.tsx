@@ -401,7 +401,7 @@ export function XrControllerBindings({
       const rightX = rightStick?.xAxis ?? 0;
       const rightY = rightStick?.yAxis ?? 0;
 
-      if (scaleMode === "tabletop") {
+      if (scaleMode !== "real-scale") {
         if (Math.abs(rightX) < PAGE_SCHMITT_RESET) {
           pageArmedRef.current = true;
         } else if (

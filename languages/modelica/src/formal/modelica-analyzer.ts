@@ -7,10 +7,17 @@ import {
   NumericalInterval as Interval,
   ReducedProductState,
   type RTECheckResult,
+  type SymbolId,
   type VerificationSummary,
 } from "@modelscript/runtime";
 import { ModelicaAbstractEvaluator } from "./modelica-abstract-evaluator.js";
-import { findCstNodesByType, ModelicaCFGLowerer, type ModelicaStatement } from "./modelica-cfg-lowerer.js";
+import {
+  type CfgCstNodeLike,
+  type CfgDbLike,
+  findCstNodesByType,
+  ModelicaCFGLowerer,
+  type ModelicaStatement,
+} from "./modelica-cfg-lowerer.js";
 
 export interface ModelicaVariableDecl {
   name: string;
@@ -269,7 +276,11 @@ export class ModelicaAlgorithmAnalyzer {
   /**
    * Extracts declared variable specifications directly from a class_definition CST node.
    */
-  static extractVariablesFromClassCst(classCst: any, _db?: any, _classId?: any): ModelicaVariableDecl[] {
+  static extractVariablesFromClassCst(
+    classCst: CfgCstNodeLike | null | undefined,
+    _db?: CfgDbLike | CfgCstNodeLike | null,
+    _classId?: SymbolId | CfgCstNodeLike | null,
+  ): ModelicaVariableDecl[] {
     const variables: ModelicaVariableDecl[] = [];
     const seen = new Set<string>();
 
@@ -377,14 +388,21 @@ export class ModelicaAlgorithmAnalyzer {
    * Analyzes a class or function directly from linear CST / CodeGraph.
    */
   static analyzeClassCst(
-    db: any,
-    classId: any,
+    db: CfgDbLike | CfgCstNodeLike | null | undefined,
+    classId: SymbolId | CfgCstNodeLike | null | undefined,
     options?: { functionName?: string | undefined; plantPreconditions?: Map<string, [number, number]> | undefined },
   ): ModelicaFormalProofResult | null {
-    const cst = typeof db?.cstNode === "function" ? db.cstNode(classId) : classId?.type ? classId : null;
+    const dbLike = db as CfgDbLike | null | undefined;
+    const cst: CfgCstNodeLike | null | undefined =
+      typeof dbLike?.cstNode === "function" && typeof classId === "number"
+        ? dbLike.cstNode(classId)
+        : classId && typeof classId === "object" && classId.type
+          ? classId
+          : null;
     if (!cst) return null;
 
-    const classSym = typeof db?.symbol === "function" ? db.symbol(classId) : null;
+    const classSym =
+      typeof dbLike?.symbol === "function" && typeof classId === "number" ? dbLike.symbol(classId) : null;
     const fnName =
       options?.functionName ?? classSym?.name ?? (findCstNodesByType(cst, "identifier")[0]?.text?.trim() || undefined);
 

@@ -1,0 +1,11 @@
+{
+  "id": "sparql-05-requirement-trace-construct",
+  "lang": "sparql",
+  "subFormats": ["rq", "ttl", "owl"],
+  "difficulty": 5,
+  "title": "Cross-Domain Requirement-to-Component Traceability Graph",
+  "description": "Multi-file SPARQL 1.1 CONSTRUCT query synthesizing a verified requirement traceability matrix across separate requirements (.ttl) and system architecture (.owl) ontologies.",
+  "category": "Knowledge Graphs & MBSE",
+  "tags": ["sparql", "construct", "traceability", "requirements", "multi-file"],
+  "activeFile": "trace_construct.rq"
+}

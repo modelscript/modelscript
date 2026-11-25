@@ -33,7 +33,7 @@ test("Universal oEmbed Provider Route (/api/v1/oembed)", async (t) => {
     assert.strictEqual(res.status, 501);
   });
 
-  await t.test("Valid compressed Morsel embed URL returns rich oEmbed payload", async () => {
+  await t.test("Valid compressed Ansatz embed URL returns rich oEmbed payload", async () => {
     const payload: UniversalEmbedPayload = {
       v: 1,
       lang: "modelica",
@@ -43,7 +43,7 @@ test("Universal oEmbed Provider Route (/api/v1/oembed)", async (t) => {
       anchor: { elementId: "R1", kind: "component" },
     };
     const token = compressEmbedPayload(payload);
-    const targetUrl = `https://modelscript.org/embed/playground#m=${token}`;
+    const targetUrl = `https://modelscript.org/embed/editor#m=${token}`;
 
     const res = await request(app)
       .get(`/api/v1/oembed?url=${encodeURIComponent(targetUrl)}&maxwidth=640&maxheight=400`)

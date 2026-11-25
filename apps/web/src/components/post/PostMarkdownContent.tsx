@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { compressMorselPayload } from "@modelscript/editor/workbench/util/permalink";
+import { compressAnsatzPayload } from "@modelscript/editor/workbench/util/permalink";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import React, { useEffect, useRef, useState } from "react";
@@ -774,7 +774,7 @@ export const PostMarkdownContent: React.FC<{
       bq.parentNode?.replaceChild(calloutDiv, bq);
     });
 
-    // 8. Upgrade fenced code blocks with header, 44-language highlighting, Diagram/Code toggle, Copy & Open in Morsel
+    // 8. Upgrade fenced code blocks with header, 44-language highlighting, Diagram/Code toggle, Copy & Open in Ansatz Editor
     const preBlocks = containerRef.current.querySelectorAll("pre");
     preBlocks.forEach((pre) => {
       const codeEl = pre.querySelector("code");
@@ -885,22 +885,22 @@ export const PostMarkdownContent: React.FC<{
       };
       actions.appendChild(copyBtn);
 
-      const playgroundBtn = document.createElement("button");
-      playgroundBtn.type = "button";
-      playgroundBtn.className = "msx-code-btn msx-code-btn-ide";
-      playgroundBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M3 21h18L3 3v18z"/><path d="M7 17h6L7 11v6z"/><line x1="10" y1="21" x2="10" y2="18.5"/><line x1="14" y1="21" x2="14" y2="18.5"/></svg>Open in Ansatz`;
-      playgroundBtn.onclick = (e) => {
+      const ansatzEditorBtn = document.createElement("button");
+      ansatzEditorBtn.type = "button";
+      ansatzEditorBtn.className = "msx-code-btn msx-code-btn-ide";
+      ansatzEditorBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;"><path d="M3 21h18L3 3v18z"/><path d="M7 17h6L7 11v6z"/><line x1="10" y1="21" x2="10" y2="18.5"/><line x1="14" y1="21" x2="14" y2="18.5"/></svg>Open in Ansatz`;
+      ansatzEditorBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const hash = compressMorselPayload({
+        const hash = compressAnsatzPayload({
           v: 1,
-          lang: lang as any,
+          lang: lang as Parameters<typeof compressAnsatzPayload>[0]["lang"],
           code: rawCode,
           title: fileTitle,
         });
         navigate(`/editor#m=${hash}`);
       };
-      actions.appendChild(playgroundBtn);
+      actions.appendChild(ansatzEditorBtn);
 
       header.appendChild(actions);
       pre.appendChild(header);
@@ -927,8 +927,12 @@ export const PostMarkdownContent: React.FC<{
               <Link
                 to={`/@${username}`}
                 style={{ color: "var(--color-accent-cyan)", textDecoration: "none", fontWeight: "bold" }}
-                onMouseOver={(e) => ((e.target as any).style.textDecoration = "underline")}
-                onMouseOut={(e) => ((e.target as any).style.textDecoration = "none")}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.textDecoration = "underline";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.textDecoration = "none";
+                }}
               >
                 {textContent}
               </Link>

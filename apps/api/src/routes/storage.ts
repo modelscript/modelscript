@@ -171,7 +171,9 @@ export function storageRouter(): Router {
         if (isPeExe || isElf || isMachO) {
           try {
             fs.unlinkSync(safeFilePath);
-          } catch {}
+          } catch {
+            // Best-effort removal of rejected upload file
+          }
           res.status(400).json({ error: "Executable binaries (.exe, .elf, Mach-O) are strictly prohibited" });
           return;
         }
@@ -181,7 +183,9 @@ export function storageRouter(): Router {
           if (bytesRead < 4 || buf.toString("ascii", 0, 4) !== "%PDF") {
             try {
               fs.unlinkSync(safeFilePath);
-            } catch {}
+            } catch {
+              // Best-effort removal of rejected upload file
+            }
             res.status(400).json({ error: "Invalid PDF format: missing %PDF header" });
             return;
           }
@@ -199,7 +203,9 @@ export function storageRouter(): Router {
           ) {
             try {
               fs.unlinkSync(safeFilePath);
-            } catch {}
+            } catch {
+              // Best-effort removal of rejected upload file
+            }
             res.status(400).json({ error: "Invalid PNG format: invalid magic header" });
             return;
           }
@@ -212,7 +218,9 @@ export function storageRouter(): Router {
           if (bytesRead < 3 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) {
             try {
               fs.unlinkSync(safeFilePath);
-            } catch {}
+            } catch {
+              // Best-effort removal of rejected upload file
+            }
             res.status(400).json({ error: "Invalid JPEG format: invalid magic header" });
             return;
           }

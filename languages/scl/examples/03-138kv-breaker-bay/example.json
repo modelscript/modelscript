@@ -1,0 +1,11 @@
+{
+  "id": "scl-03-138kv-breaker-bay",
+  "lang": "scl",
+  "subFormats": ["scd", "icd"],
+  "difficulty": 3,
+  "title": "138 kV Circuit Breaker Bay Substation (.scd + .icd)",
+  "description": "Multi-file IEC 61850 substation configuration binding a 138 kV breaker/disconnector primary topology (.scd) to a companion bay controller IED (.icd).",
+  "category": "Substation Automation",
+  "tags": ["scl", "scd", "icd", "substation", "multi-file"],
+  "activeFile": "bay.scd"
+}

@@ -1,0 +1,77 @@
+[
+  {
+    "id": "plscadd-01-wood-distribution-pole",
+    "lang": "plscadd",
+    "subFormats": ["pol"],
+    "difficulty": 1,
+    "title": "Single Wood Distribution Tangent Pole Span",
+    "description": "12.47 kV overhead distribution span strung with 4/0 Penguin ACSR conductor between two Class-3 wood tangent poles verifying NESC ground clearance.",
+    "category": "Transmission Line Structural",
+    "tags": ["plscadd", "wood-pole", "distribution", "sag-tension", "clearance"],
+    "activeFile": "wood_pole.pol",
+    "fileNames": ["wood_pole.pol"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "LINE Dist_12kV_Tangent voltage_kv=12.47 freq=60\nCONDUCTOR Penguin_4_0 weight_n_per_m=4.26 r_ohm_per_km=0.275 gmr_m=0.0044 rated_tension_n=37100\nSTRUCTURE P101 station_m=0 x=0 y=0 z_base=50 height_m=13.5 phase_spacing_m=1.2\nSTRUCTURE P102 station_m=90 x=90 y=0 z_base=50 height_m=13.5 phase_spacing_m=1.2\nSPAN S1 from=P101 to=P102 conductor=Penguin_4_0 tension_n=7500 min_clearance_m=6.0\nTERRAIN 45 0 50.5\n"
+  },
+  {
+    "id": "plscadd-02-steel-hframe-115kv",
+    "lang": "plscadd",
+    "subFormats": ["pol"],
+    "difficulty": 2,
+    "title": "Tubular Steel H-Frame 115 kV Transmission Span",
+    "description": "115 kV sub-transmission line supported on tubular steel H-frame structures with 477 kcmil Hawk ACSR conductor across two consecutive spans over rolling terrain.",
+    "category": "Transmission Line Structural",
+    "tags": ["plscadd", "h-frame", "115kv", "acsr", "transmission"],
+    "activeFile": "hframe_115kv.pol",
+    "fileNames": ["hframe_115kv.pol"],
+    "fileCount": 1,
+    "code": "LINE Line_115kV_HFrame voltage_kv=115 freq=60\nCONDUCTOR Hawk_477 weight_n_per_m=9.58 r_ohm_per_km=0.119 gmr_m=0.0088 rated_tension_n=86900\nSTRUCTURE H201 station_m=0 x=0 y=0 z_base=120 height_m=24.0 phase_spacing_m=3.8\nSTRUCTURE H202 station_m=210 x=210 y=0 z_base=122 height_m=24.0 phase_spacing_m=3.8\nSTRUCTURE H203 station_m=430 x=430 y=0 z_base=121 height_m=24.0 phase_spacing_m=3.8\nSPAN S1 from=H201 to=H202 conductor=Hawk_477 tension_n=21500 min_clearance_m=7.5\nSPAN S2 from=H202 to=H203 conductor=Hawk_477 tension_n=22000 min_clearance_m=7.5\nTERRAIN 105 0 123.0\nTERRAIN 320 0 124.2\n"
+  },
+  {
+    "id": "plscadd-03-lattice-230kv-heavy-ice",
+    "lang": "plscadd",
+    "subFormats": ["pol"],
+    "difficulty": 3,
+    "title": "230 kV Lattice Suspension Tower under NESC Heavy Ice",
+    "description": "230 kV galvanized steel lattice suspension line with 795 kcmil Drake ACSR conductor evaluated for increased unit ice weight and clearance over a highway crossing.",
+    "category": "Transmission Line Structural",
+    "tags": ["plscadd", "lattice-tower", "230kv", "nesc-heavy", "ice-load"],
+    "activeFile": "lattice_230kv.pol",
+    "fileNames": ["lattice_230kv.pol"],
+    "fileCount": 1,
+    "code": "LINE Line_230kV_HeavyIce voltage_kv=230 freq=60\nCONDUCTOR Drake_795_Ice weight_n_per_m=24.5 r_ohm_per_km=0.072 gmr_m=0.0114 rated_tension_n=140000\nSTRUCTURE T301 station_m=0 x=0 y=0 z_base=200 height_m=34.0 phase_spacing_m=6.2\nSTRUCTURE T302 station_m=310 x=310 y=0 z_base=202 height_m=34.0 phase_spacing_m=6.2\nSTRUCTURE T303 station_m=620 x=620 y=0 z_base=200 height_m=34.0 phase_spacing_m=6.2\nSPAN S1 from=T301 to=T302 conductor=Drake_795_Ice tension_n=48000 min_clearance_m=9.0\nSPAN S2 from=T302 to=T303 conductor=Drake_795_Ice tension_n=48000 min_clearance_m=9.0\nTERRAIN 155 0 205.0\nTERRAIN 465 0 204.5\n"
+  },
+  {
+    "id": "plscadd-04-500kv-deadend-wind-load",
+    "lang": "plscadd",
+    "subFormats": ["pol"],
+    "difficulty": 4,
+    "title": "500 kV Dead-End Strain Tower High-Wind Corridor",
+    "description": "500 kV EHV transmission corridor anchored by heavy dead-end strain towers using 1272 kcmil Bittern ACSR conductors across a 420 m river-valley crossing.",
+    "category": "Transmission Line Structural",
+    "tags": ["plscadd", "500kv", "dead-end", "ehv", "wind-load"],
+    "activeFile": "deadend_500kv.pol",
+    "fileNames": ["deadend_500kv.pol"],
+    "fileCount": 1,
+    "code": "LINE Corridor_500kV_EHV voltage_kv=500 freq=60\nCONDUCTOR Bittern_1272 weight_n_per_m=21.0 r_ohm_per_km=0.046 gmr_m=0.0135 rated_tension_n=151700\nSTRUCTURE DE501 station_m=0 x=0 y=0 z_base=310 height_m=46.0 phase_spacing_m=10.5\nSTRUCTURE T502 station_m=380 x=380 y=0 z_base=305 height_m=46.0 phase_spacing_m=10.5\nSTRUCTURE DE503 station_m=800 x=800 y=0 z_base=312 height_m=46.0 phase_spacing_m=10.5\nSPAN S1 from=DE501 to=T502 conductor=Bittern_1272 tension_n=56000 min_clearance_m=12.0\nSPAN S2 from=T502 to=DE503 conductor=Bittern_1272 tension_n=58000 min_clearance_m=12.0\nTERRAIN 190 0 308.0\nTERRAIN 590 0 310.0\n"
+  },
+  {
+    "id": "plscadd-05-corridor-sag-tension-clearance",
+    "lang": "plscadd",
+    "subFormats": ["pol", "csv"],
+    "difficulty": 5,
+    "title": "3-Span 345 kV Transmission Corridor Sag-Tension & Clearance Study",
+    "description": "Multi-file 345 kV overhead transmission corridor pairing a 4-tower, 3-span PLS-CADD line geometry and terrain profile (corridor.pol) with a companion ACSR conductor thermal-sag table (conductor_acsr.csv).",
+    "category": "Transmission Line Structural",
+    "tags": ["plscadd", "345kv", "corridor", "sag-tension", "multi-file"],
+    "activeFile": "corridor.pol",
+    "fileNames": ["corridor.pol", "conductor_acsr.csv"],
+    "fileCount": 2,
+    "code": "LINE Corridor_345kV_NorthSouth voltage_kv=345 freq=60\nCONDUCTOR Cardinal_954 weight_n_per_m=17.9 r_ohm_per_km=0.060 gmr_m=0.0122 rated_tension_n=150300\nSTRUCTURE T401 station_m=0 x=0 y=0 z_base=150 height_m=38.0 phase_spacing_m=7.8\nSTRUCTURE T402 station_m=340 x=340 y=0 z_base=154 height_m=38.0 phase_spacing_m=7.8\nSTRUCTURE T403 station_m=700 x=700 y=0 z_base=148 height_m=40.0 phase_spacing_m=7.8\nSTRUCTURE T404 station_m=1020 x=1020 y=0 z_base=152 height_m=38.0 phase_spacing_m=7.8\nSPAN S1 from=T401 to=T402 conductor=Cardinal_954 tension_n=45000 min_clearance_m=10.0\nSPAN S2 from=T402 to=T403 conductor=Cardinal_954 tension_n=47000 min_clearance_m=10.0\nSPAN S3 from=T403 to=T404 conductor=Cardinal_954 tension_n=45000 min_clearance_m=10.0\nTERRAIN 170 0 155.0\nTERRAIN 520 0 151.0\nTERRAIN 860 0 153.5\n",
+    "files": {
+      "corridor.pol": "LINE Corridor_345kV_NorthSouth voltage_kv=345 freq=60\nCONDUCTOR Cardinal_954 weight_n_per_m=17.9 r_ohm_per_km=0.060 gmr_m=0.0122 rated_tension_n=150300\nSTRUCTURE T401 station_m=0 x=0 y=0 z_base=150 height_m=38.0 phase_spacing_m=7.8\nSTRUCTURE T402 station_m=340 x=340 y=0 z_base=154 height_m=38.0 phase_spacing_m=7.8\nSTRUCTURE T403 station_m=700 x=700 y=0 z_base=148 height_m=40.0 phase_spacing_m=7.8\nSTRUCTURE T404 station_m=1020 x=1020 y=0 z_base=152 height_m=38.0 phase_spacing_m=7.8\nSPAN S1 from=T401 to=T402 conductor=Cardinal_954 tension_n=45000 min_clearance_m=10.0\nSPAN S2 from=T402 to=T403 conductor=Cardinal_954 tension_n=47000 min_clearance_m=10.0\nSPAN S3 from=T403 to=T404 conductor=Cardinal_954 tension_n=45000 min_clearance_m=10.0\nTERRAIN 170 0 155.0\nTERRAIN 520 0 151.0\nTERRAIN 860 0 153.5\n",
+      "conductor_acsr.csv": "conductor_code,kcmil,stranding,od_mm,weight_n_per_m,r_ac_75c_ohm_km,rated_tension_n\nPenguin,211.6,6/1,14.3,4.26,0.275,37100\nHawk,477.0,26/7,21.8,9.58,0.119,86900\nDrake,795.0,26/7,28.1,16.00,0.072,140000\nCardinal,954.0,54/7,30.4,17.90,0.060,150300\nBittern,1272.0,45/7,34.2,21.00,0.046,151700\n"
+    }
+  }
+]

@@ -1,0 +1,11 @@
+{
+  "id": "irig106-02-subcommutated-thermal-frame",
+  "lang": "irig106",
+  "subFormats": ["tmats-ch9"],
+  "difficulty": 2,
+  "title": "Subcommutated Thermal & Pressure Instrumentation Frame",
+  "description": "IRIG-106 TMATS configuration demonstrating major-frame subcommutation (FP/FI) of thermocouple and pressure transducer channels alongside supercommutated pitch rate.",
+  "category": "Flight Test Instrumentation",
+  "tags": ["irig106", "tmats", "subcommutation", "thermocouple"],
+  "activeFile": "subcom_thermal.tmats"
+}

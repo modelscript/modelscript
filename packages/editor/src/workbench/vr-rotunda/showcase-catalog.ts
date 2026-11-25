@@ -1010,8 +1010,8 @@ export const ROTUNDA_SHOWCASE_SCENARIOS: readonly RotundaScenarioPreset[] = [
     shortLabel: "All 10 Models",
     description:
       "Complete 10-assembly multi-domain showcase including the 691-part Pelagos OC-8 Robotic Octopus paired with the canonical polyglot electro-mechanical system board.",
-    recommendedEnvironment: "outdoors",
-    recommendedScaleMode: "tabletop",
+    recommendedEnvironment: "atrium",
+    recommendedScaleMode: "hero",
     recommendedCaeOverlay: "none",
     models: ROTUNDA_SHOWCASE_MODELS,
     createDocument: () => createCanonicalPolyglotDemoBoard(),
@@ -1023,7 +1023,7 @@ export const ROTUNDA_SHOWCASE_SCENARIOS: readonly RotundaScenarioPreset[] = [
     description:
       "Bright studio inspection of the 8-arm Pelagos OC-8 robotic octopus (202 linked segments, 489 wheels, internal 7-piston swashplate pump, 2.68 m/s siphon jet, and autonomous Arm 3 detach/reconnect).",
     recommendedEnvironment: "office",
-    recommendedScaleMode: "tabletop",
+    recommendedScaleMode: "hero",
     recommendedCaeOverlay: "none",
     models: [
       { ...SHOWCASE_OCTOPUS_ROV, sourceTileId: "tile_primary_schematic" },
@@ -1040,7 +1040,7 @@ export const ROTUNDA_SHOWCASE_SCENARIOS: readonly RotundaScenarioPreset[] = [
     description:
       "Open-field flight dynamics and 5 MW wind energy proving ground with live CFD streamlines, thrust & power curves, and airworthiness contracts.",
     recommendedEnvironment: "outdoors",
-    recommendedScaleMode: "tabletop",
+    recommendedScaleMode: "hero",
     recommendedCaeOverlay: "cfd-flow",
     models: [
       { ...SHOWCASE_DRONE, sourceTileId: "tile_primary_cad" },
@@ -1074,7 +1074,7 @@ export const ROTUNDA_SHOWCASE_SCENARIOS: readonly RotundaScenarioPreset[] = [
     description:
       "Sunlit design studio inspecting an 800V liquid-cooled EV pack, thermal field overlay, BMS fast-charge telemetry, and UN38.3 safety contracts.",
     recommendedEnvironment: "office",
-    recommendedScaleMode: "tabletop",
+    recommendedScaleMode: "hero",
     recommendedCaeOverlay: "thermal",
     models: [
       { ...SHOWCASE_EV_BATTERY, sourceTileId: "tile_primary_cad" },
@@ -1105,7 +1105,7 @@ export const ROTUNDA_SHOWCASE_SCENARIOS: readonly RotundaScenarioPreset[] = [
     description:
       "Dark-lab orbital spacecraft twin pairing SysML ADCS & solar power architecture, eclipse thermal cycling, reaction wheel actuator, and launch load verification.",
     recommendedEnvironment: "dark-lab",
-    recommendedScaleMode: "tabletop",
+    recommendedScaleMode: "hero",
     recommendedCaeOverlay: "thermal",
     models: [
       { ...SHOWCASE_SATELLITE, sourceTileId: "tile_primary_cad" },

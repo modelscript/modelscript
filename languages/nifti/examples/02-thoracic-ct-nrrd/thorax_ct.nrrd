@@ -1,0 +1,18 @@
+NRRD0004
+# Clinical Thoracic CT Volume Header (0.75 x 0.75 x 1.5 mm)
+type: int16
+dimension: 3
+space: right-anterior-superior
+sizes: 2 2 2
+space directions: (0.75,0,0) (0,0.75,0) (0,0,1.5)
+kinds: domain domain domain
+endian: little
+encoding: ascii
+space origin: (-192.0, -192.0, -320.0)
+Segment0_ID:=Segment_Lung_Right
+Segment0_Name:=RightLungParenchyma
+Segment0_LabelValue:=1
+Segment0_Color:=0.25 0.75 0.45
+
+1 1 0 1
+1 0 1 1

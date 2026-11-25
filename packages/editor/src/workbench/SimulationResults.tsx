@@ -591,10 +591,10 @@ export function SimulationResults({
   const dispatchTimeScrub = (t: number | null) => {
     if (typeof window === "undefined") return;
     if (t === null || !Number.isFinite(t)) {
-      window.dispatchEvent(new CustomEvent("morsel:time-scrub", { detail: { time: null, values: null } }));
+      window.dispatchEvent(new CustomEvent("ansatz:time-scrub", { detail: { time: null, values: null } }));
       return;
     }
-    window.dispatchEvent(new CustomEvent("morsel:time-scrub", { detail: { time: t, values: getValuesAtTime(t) } }));
+    window.dispatchEvent(new CustomEvent("ansatz:time-scrub", { detail: { time: t, values: getValuesAtTime(t) } }));
   };
 
   // Publish full Float64Array simulation trajectories so Diagram.tsx & UnifiedGraph can drive
@@ -636,7 +636,7 @@ export function SimulationResults({
     if (validTimeCount < 2) return;
 
     window.dispatchEvent(
-      new CustomEvent("morsel:simulation-result", {
+      new CustomEvent("ansatz:simulation-result", {
         detail: { time, signals },
       }),
     );
@@ -958,10 +958,10 @@ export function SimulationResults({
                 if (!file) return;
                 try {
                   const text = await file.text();
-                  (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot =
+                  (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot =
                     JSON.parse(text);
                 } catch {
-                  (window as unknown as { __morselInitialSnapshot?: unknown }).__morselInitialSnapshot = undefined;
+                  (window as unknown as { __ansatzInitialSnapshot?: unknown }).__ansatzInitialSnapshot = undefined;
                 }
               };
               inp.click();

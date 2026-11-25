@@ -8,7 +8,7 @@ import React from "react";
 
 import { extractShortPostSlides, isHglCode, isWaterFlowCode } from "../src/components/post/PostArtifactSlider.js";
 
-describe("Water Utilities Engineering Integration for Ansatz Social", () => {
+describe("Water Utilities Engineering Integration for Ansatz Network", () => {
   describe("1. Language Detection & Post Slide Lifting", () => {
     it("identifies waterflow language identifiers", () => {
       assert.strictEqual(isWaterFlowCode("epanet"), true);

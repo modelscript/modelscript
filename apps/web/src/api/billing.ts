@@ -19,7 +19,7 @@ export interface CreditTransaction {
   balance_after: number;
   type: "initial_grant" | "job_charge" | "top_up" | "refund";
   description: string;
-  metadata?: any;
+  metadata?: Record<string, unknown> | string | null | undefined;
   created_at: string;
 }
 

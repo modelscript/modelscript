@@ -1,13 +1,55 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+export interface WasmFlattenerExports {
+  flattener_envCreate?(parentEnvPtr: number): number;
+  flattener_envBind?(envPtr: number, keyHash: number, exprId: number, isFinal: number, isEach: number): void;
+  flattener_envBindPath?(
+    flattenerPtr: number,
+    envPtr: number,
+    pathId: number,
+    exprId: number,
+    isFinal: number,
+    isEach: number,
+  ): void;
+  flattener_envBindNested?(envPtr: number, keyHash: number, childEnvPtr: number, isFinal: number, isEach: number): void;
+  flattener_envBindRedeclare?(
+    envPtr: number,
+    keyHash: number,
+    newTypeHash: number,
+    valExprId: number,
+    isFinal: number,
+    isEach: number,
+  ): void;
+  flattener_envBindRedeclarePath?(
+    flattenerPtr: number,
+    envPtr: number,
+    pathId: number,
+    newTypeHash: number,
+    valExprId: number,
+    isFinal: number,
+    isEach: number,
+  ): void;
+  flattener_envLookup?(envPtr: number, keyHash: number): number;
+  flattener_envLookupPath?(flattenerPtr: number, envPtr: number, pathId: number): number;
+  flattener_envLookupNested?(envPtr: number, keyHash: number): number;
+  flattener_envLookupNestedPath?(flattenerPtr: number, envPtr: number, pathId: number): number;
+  flattener_envLookupRedeclare?(envPtr: number, keyHash: number): number;
+  flattener_envLookupRedeclarePath?(flattenerPtr: number, envPtr: number, pathId: number): number;
+  flattener_envLookupFlags?(envPtr: number, keyHash: number): number;
+  flattener_envLookupWithEach?(envPtr: number, baseNameHash: number, elementKeyHash: number): number;
+  flattener_envLookupNestedWithEach?(envPtr: number, baseNameHash: number, elementKeyHash: number): number;
+  flattener_envMerge?(envPtr: number, otherEnvPtr: number): void;
+}
+
 export class ModelicaModificationEnv {
-  readonly wasmExports: any;
+  readonly wasmExports: WasmFlattenerExports | undefined;
   readonly envPtr: number;
 
-  constructor(wasmExports: any, parentEnvPtr: number = 0) {
-    this.wasmExports = wasmExports;
+  constructor(wasmExports: WasmFlattenerExports | object | null | undefined, parentEnvPtr: number = 0) {
+    const typedExports = (wasmExports ?? undefined) as WasmFlattenerExports | undefined;
+    this.wasmExports = typedExports;
     this.envPtr =
-      typeof wasmExports?.flattener_envCreate === "function" ? wasmExports.flattener_envCreate(parentEnvPtr) : 0;
+      typeof typedExports?.flattener_envCreate === "function" ? typedExports.flattener_envCreate(parentEnvPtr) : 0;
   }
 
   set(keyHash: number, exprId: number, flag = 0): void {

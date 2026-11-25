@@ -1,0 +1,12 @@
+{
+  "id": "ieee-cdf-01-three-bus-test-case",
+  "lang": "ieee-cdf",
+  "subFormats": ["cdf"],
+  "difficulty": 1,
+  "title": "3-Bus Generator-Load Power Flow Test Case",
+  "description": "Minimal three-bus 138 kV transmission triangle in IEEE Common Data Format with one slack generator, one PV voltage-controlled generator, one PQ load bus, and three pi-model transmission lines.",
+  "category": "Power Flow & Grid Heritage",
+  "tags": ["ieee-cdf", "power-flow", "3-bus", "transmission"],
+  "activeFile": "case3.cdf",
+  "isDefaultStarter": true
+}

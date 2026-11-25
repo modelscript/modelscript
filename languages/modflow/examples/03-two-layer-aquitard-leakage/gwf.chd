@@ -1,0 +1,7 @@
+# Constant-Head Boundaries
+BEGIN CHD6
+  1 1 1 74.0
+  1 8 8 68.0
+  2 1 1 73.0
+  2 8 8 67.0
+END CHD6

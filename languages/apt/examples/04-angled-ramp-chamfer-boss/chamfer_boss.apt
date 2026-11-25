@@ -1,0 +1,54 @@
+$$ Aerospace Actuator Housing: Angled Chamfer Boss and Bearing Seat
+PARTNO ACTUATOR_BOSS_104
+MACHIN / MILL, 3
+UNITS / MM
+INTOL / 0.005
+OUTTOL / 0.005
+CUTTER / 12.0
+SPINDL / 4500, CLW
+FEDRAT / 350.0
+COOLNT / ON
+
+$$ Part geometry: chamfered pentagonal boss and circular seat
+SETPT = POINT / -20.0, -20.0, 40.0
+P1 = POINT / 0.0, 0.0, 0.0
+P2 = POINT / 100.0, 0.0, 0.0
+P3 = POINT / 120.0, 20.0, 0.0
+P4 = POINT / 120.0, 80.0, 0.0
+P5 = POINT / 0.0, 80.0, 0.0
+BC = POINT / 60.0, 40.0, 0.0
+PC1 = POINT / 0.0, 40.0, 0.0
+PC2 = POINT / 120.0, 40.0, 0.0
+
+L1 = LINE / P1, P2
+LCH = LINE / P2, P3
+L2 = LINE / P3, P4
+L3 = LINE / P4, P5
+L4 = LINE / P5, P1
+LCTR = LINE / PC1, PC2
+BORE = CIRCLE / CENTER, BC, RADIUS, 20.0
+PLTOP = PLANE / 0, 0, 1, 0
+PLZ1 = PLANE / 0, 0, 1, -5.0
+
+$$ Rough and finish outer chamfered profile
+FROM / SETPT
+RAPID
+GO / TO, L1, TO, PLZ1, TO, L4
+GORGT / L1, TO, LCH
+GOLFT / LCH, TO, L2
+GOLFT / L2, TO, L3
+GOLFT / L3, TO, L4
+GOLFT / L4, PAST, L1
+
+$$ Retract and interpolate central circular bearing seat
+RAPID
+GOTO / (POINT / 60.0, 40.0, 20.0)
+FEDRAT / 180.0
+GOTO / (POINT / 60.0, 40.0, -5.0)
+GO / TO, BORE, TO, PLZ1
+GOFWD / BORE, ON, LCTR
+RAPID
+GOTO / SETPT
+COOLNT / OFF
+SPINDL / OFF
+FINI

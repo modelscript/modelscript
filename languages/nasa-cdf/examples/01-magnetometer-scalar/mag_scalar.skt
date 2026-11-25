@@ -1,0 +1,45 @@
+! ISTP-Compliant Scalar Magnetometer Total Field Magnitude
+#header
+  CDF NAME: sw_l2_mag_scalar_20260401.cdf
+  DATA ENCODING: NETWORK
+  MAJORITY: ROW_MAJOR
+  FORMAT: SINGLE
+  VERSION: 3.8.0
+
+#GLOBALattributes
+  "Project" 0: CDF_CHAR { "ISTP>International Solar-Terrestrial Physics" }
+  "Source_name" 0: CDF_CHAR { "ACE>Advanced Composition Explorer" }
+  "Discipline" 0: CDF_CHAR { "Space Physics>Interplanetary Studies" }
+  "Data_type" 0: CDF_CHAR { "L2>Level 2 Calibrated Data" }
+  "Descriptor" 0: CDF_CHAR { "MAG>Magnetic Field Investigation" }
+
+#VARIABLEattributes
+  "DEPEND_0"
+  "UNITS"
+  "VALIDMIN"
+  "VALIDMAX"
+  "FILLVAL"
+  "VAR_TYPE"
+
+#variables
+  "EPOCH" CDF_EPOCH 1 0:[] T
+    "VAR_TYPE" CDF_CHAR { "support_data" }
+    "UNITS" CDF_CHAR { "ms" }
+    [0] = "2026-04-01T00:00:00.000Z"
+    [1] = "2026-04-01T00:00:16.000Z"
+    [2] = "2026-04-01T00:00:32.000Z"
+    [3] = "2026-04-01T00:00:48.000Z"
+  .
+  "B_TOTAL" CDF_REAL4 1 0:[] T
+    "DEPEND_0" CDF_CHAR { "EPOCH" }
+    "UNITS" CDF_CHAR { "nT" }
+    "VALIDMIN" CDF_REAL4 { 0.0 }
+    "VALIDMAX" CDF_REAL4 { 500.0 }
+    "FILLVAL" CDF_REAL4 { -1.0e31 }
+    "VAR_TYPE" CDF_CHAR { "data" }
+    [0] = 5.42
+    [1] = 5.58
+    [2] = 5.71
+    [3] = 5.64
+  .
+#end

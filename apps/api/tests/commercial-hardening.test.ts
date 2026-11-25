@@ -165,9 +165,9 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
     assert.equal(db.getUserBalance(disputeUserId), 0);
   });
 
-  it("Pillar 2: stores and retrieves content-addressable morsel snippets and resolves oEmbed & signed embed tokens", async () => {
+  it("Pillar 2: stores and retrieves content-addressable ansatz snippets and resolves oEmbed & signed embed tokens", async () => {
     const modelCode = "model GridInverter\n  parameter Real Vnom = 400.0;\nequation\nend GridInverter;";
-    const createRes = await fetch(`${baseUrl}/api/v1/morsels`, {
+    const createRes = await fetch(`${baseUrl}/api/v1/ansatz-snippets`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -183,10 +183,10 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
     assert.equal(createRes.status, 201);
     const created = (await createRes.json()) as { id: string; embedUrl: string };
     assert.ok(created.id.length >= 12);
-    assert.equal(created.embedUrl, `/embed/playground?morsel=${created.id}`);
+    assert.equal(created.embedUrl, `/embed/editor?ansatz=${created.id}`);
 
     // Deduplication: saving identical dialect+code+view returns the same content-addressed ID
-    const createResDup = await fetch(`${baseUrl}/api/v1/morsels`, {
+    const createResDup = await fetch(`${baseUrl}/api/v1/ansatz-snippets`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -200,21 +200,21 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
     const createdDup = (await createResDup.json()) as { id: string };
     assert.equal(createdDup.id, created.id);
 
-    // Fetch morsel by ID
-    const getRes = await fetch(`${baseUrl}/api/v1/morsels/${created.id}`);
+    // Fetch ansatz by ID
+    const getRes = await fetch(`${baseUrl}/api/v1/ansatz-snippets/${created.id}`);
     assert.equal(getRes.status, 200);
     const fetched = (await getRes.json()) as { code: string; title: string; dialect: string };
     assert.equal(fetched.code, modelCode);
     assert.equal(fetched.title, "Grid Inverter Control");
 
-    // oEmbed resolution for ?morsel=<id>
+    // oEmbed resolution for ?ansatz=<id>
     const oembedRes = await fetch(
-      `${baseUrl}/api/v1/oembed?url=${encodeURIComponent(`https://intranet.corp/embed/playground?morsel=${created.id}`)}`,
+      `${baseUrl}/api/v1/oembed?url=${encodeURIComponent(`https://intranet.corp/embed/editor?ansatz=${created.id}`)}`,
     );
     assert.equal(oembedRes.status, 200);
     const oembedData = (await oembedRes.json()) as { title: string; html: string };
     assert.equal(oembedData.title, "Grid Inverter Control");
-    assert.ok(oembedData.html.includes(`/embed/playground?morsel=${created.id}`));
+    assert.ok(oembedData.html.includes(`/embed/editor?ansatz=${created.id}`));
 
     // Signed intranet embed token generation & origin validation
     const tokenRes = await fetch(`${baseUrl}/api/v1/artifacts/42/embed-token`, {
@@ -247,7 +247,7 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
 
     // Embed route (/api/v1/oembed) must omit X-Frame-Options and allow frame-ancestors
     const embedRes = await fetch(
-      `${baseUrl}/api/v1/oembed?url=${encodeURIComponent("https://intranet.corp/embed/playground")}`,
+      `${baseUrl}/api/v1/oembed?url=${encodeURIComponent("https://intranet.corp/embed/editor")}`,
     );
     assert.equal(embedRes.headers.get("x-frame-options"), null);
     assert.ok(embedRes.headers.get("content-security-policy")?.includes("frame-ancestors *"));
@@ -471,7 +471,7 @@ describe("Commercial Production Hardening (Pillars 1, 2, & 3)", () => {
     assert.equal(bundleRes.status, 200);
     assert.ok(bundleRes.headers.get("content-type")?.includes("application/javascript"));
     const bundleText = await bundleRes.text();
-    assert.ok(bundleText.includes("modelscript-morsel"));
+    assert.ok(bundleText.includes("ansatz-editor"));
     assert.ok(bundleText.includes("modelscript-viewer"));
     assert.ok(bundleText.includes("rehydrateEmbeds"));
 

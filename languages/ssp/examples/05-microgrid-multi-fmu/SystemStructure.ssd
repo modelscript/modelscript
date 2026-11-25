@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"
+                                xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+                                name="MicrogridPlantCoSim"
+                                version="1.0"
+                                description="Islandable microgrid with BESS grid-forming inverter and feeder model">
+  <ssd:System name="MicrogridPlant">
+    <ssd:Connectors>
+      <ssd:Connector name="p_load_kw" kind="input"><ssc:Real unit="kW" /></ssd:Connector>
+      <ssd:Connector name="f_ref_hz" kind="input"><ssc:Real unit="Hz" /></ssd:Connector>
+      <ssd:Connector name="v_ref_pu" kind="input"><ssc:Real /></ssd:Connector>
+      <ssd:Connector name="f_bus_hz" kind="output"><ssc:Real unit="Hz" /></ssd:Connector>
+      <ssd:Connector name="v_bus_pu" kind="output"><ssc:Real /></ssd:Connector>
+      <ssd:Connector name="island_mode" kind="output"><ssc:Boolean /></ssd:Connector>
+    </ssd:Connectors>
+    <ssd:ParameterBindings>
+      <ssd:ParameterBinding source="grid.ssv" />
+      <ssd:ParameterBinding source="bess.ssv" />
+    </ssd:ParameterBindings>
+    <ssd:Elements>
+      <ssd:Component name="BessInverter" type="application/x-fmu-sharedlibrary" source="resources/bess_modelDescription.xml">
+        <ssd:Connectors>
+          <ssd:Connector name="f_meas" kind="input"><ssc:Real unit="Hz" /></ssd:Connector>
+          <ssd:Connector name="v_meas" kind="input"><ssc:Real /></ssd:Connector>
+          <ssd:Connector name="p_bess_kw" kind="output"><ssc:Real unit="kW" /></ssd:Connector>
+          <ssd:Connector name="q_bess_kvar" kind="output"><ssc:Real unit="kvar" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="GridFeeder" type="application/x-fmu-sharedlibrary" source="resources/grid_modelDescription.xml">
+        <ssd:Connectors>
+          <ssd:Connector name="p_load_kw" kind="input"><ssc:Real unit="kW" /></ssd:Connector>
+          <ssd:Connector name="p_bess_kw" kind="input"><ssc:Real unit="kW" /></ssd:Connector>
+          <ssd:Connector name="q_bess_kvar" kind="input"><ssc:Real unit="kvar" /></ssd:Connector>
+          <ssd:Connector name="f_bus_hz" kind="output"><ssc:Real unit="Hz" /></ssd:Connector>
+          <ssd:Connector name="v_bus_pu" kind="output"><ssc:Real /></ssd:Connector>
+          <ssd:Connector name="breaker_open" kind="output"><ssc:Boolean /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+    </ssd:Elements>
+    <ssd:Connections>
+      <ssd:Connection startElement="MicrogridPlant" startConnector="p_load_kw" endElement="GridFeeder" endConnector="p_load_kw" />
+      <ssd:Connection startElement="MicrogridPlant" startConnector="f_ref_hz" endElement="BessInverter" endConnector="f_meas" />
+      <ssd:Connection startElement="MicrogridPlant" startConnector="v_ref_pu" endElement="BessInverter" endConnector="v_meas" />
+      <ssd:Connection startElement="BessInverter" startConnector="p_bess_kw" endElement="GridFeeder" endConnector="p_bess_kw" />
+      <ssd:Connection startElement="BessInverter" startConnector="q_bess_kvar" endElement="GridFeeder" endConnector="q_bess_kvar" />
+      <ssd:Connection startElement="GridFeeder" startConnector="f_bus_hz" endElement="MicrogridPlant" endConnector="f_bus_hz" />
+      <ssd:Connection startElement="GridFeeder" startConnector="v_bus_pu" endElement="MicrogridPlant" endConnector="v_bus_pu" />
+      <ssd:Connection startElement="GridFeeder" startConnector="breaker_open" endElement="MicrogridPlant" endConnector="island_mode" />
+    </ssd:Connections>
+  </ssd:System>
+  <ssd:DefaultExperiment startTime="0.0" stopTime="60.0" />
+</ssd:SystemStructureDescription>

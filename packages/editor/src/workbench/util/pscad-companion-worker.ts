@@ -6,20 +6,20 @@ import {
   type EmtCustomFortranBlock,
 } from "@modelscript/pscad";
 
-export interface MorselCompanionCompileResult {
+export interface AnsatzCompanionCompileResult {
   source?: string | undefined;
   wasmBytes?: Uint8Array | undefined;
   stderr: string;
 }
 
 /**
- * Compiles custom PSCAD AssemblyScript companion code off the main thread in Morsel
+ * Compiles custom PSCAD AssemblyScript companion code off the main thread in Ansatz
  * using a Web Worker when an `ascModuleUrl` is available, falling back cleanly otherwise.
  */
-export async function compilePscadCompanionInMorsel(
+export async function compilePscadCompanionInAnsatz(
   sources: string | Record<string, string>,
   options?: { optimizeLevel?: number; memoryBase?: number; ascModuleUrl?: string },
-): Promise<MorselCompanionCompileResult> {
+): Promise<AnsatzCompanionCompileResult> {
   const defaultAscUrl =
     typeof window !== "undefined" &&
     typeof (import.meta as { env?: Record<string, string> }).env?.VITE_ASC_MODULE_URL === "string"
@@ -35,13 +35,13 @@ export async function compilePscadCompanionInMorsel(
 
 /**
  * Generates a clean-room AssemblyScript `fmi-ls-emt` scaffold from a `P6104`
- * `EmtCustomFortranBlock` and compiles it off the main thread in Morsel.
+ * `EmtCustomFortranBlock` and compiles it off the main thread in Ansatz.
  */
-export async function generateAndCompilePscadCompanionInMorsel(
+export async function generateAndCompilePscadCompanionInAnsatz(
   block: EmtCustomFortranBlock,
   options?: { optimizeLevel?: number; memoryBase?: number; ascModuleUrl?: string },
-): Promise<MorselCompanionCompileResult> {
+): Promise<AnsatzCompanionCompileResult> {
   const source = generateCleanRoomCompanionFromFortran(block);
-  const compiled = await compilePscadCompanionInMorsel(source, options);
+  const compiled = await compilePscadCompanionInAnsatz(source, options);
   return { source, ...compiled };
 }

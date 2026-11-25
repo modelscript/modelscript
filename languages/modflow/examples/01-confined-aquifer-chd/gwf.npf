@@ -1,0 +1,7 @@
+# Node Property Flow Package (Homogeneous Confined Sandstone)
+BEGIN NPF6
+  K 12.0
+  K33 1.2
+  SS 1.0e-5
+  SY 0.18
+END NPF6

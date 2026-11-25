@@ -1,0 +1,11 @@
+{
+  "id": "gpss-04-warehouse-agv",
+  "lang": "gpss",
+  "subFormats": ["gps"],
+  "difficulty": 4,
+  "title": "Automated Warehouse AGV Forklift Dispatch",
+  "description": "Automated distribution center coordinating AGV forklift fleets, battery charging logic switches, and aisle traffic control using GPSS STORAGE, LOGIC, and GATE blocks.",
+  "category": "Logistics & Warehousing",
+  "tags": ["gpss", "agv", "warehouse", "gate", "logic"],
+  "activeFile": "warehouse_agv.gps"
+}

@@ -160,7 +160,9 @@ export const SimulationExperimentBar: React.FC<SimulationExperimentBarProps> = (
         <span>Solver</span>
         <SelectInput
           value={experimentConfig.solver}
-          onChange={(e) => onExperimentConfigChange({ ...experimentConfig, solver: e.target.value as any })}
+          onChange={(e) =>
+            onExperimentConfigChange({ ...experimentConfig, solver: e.target.value as ExperimentConfig["solver"] })
+          }
         >
           <option value="dopri5">DOPRI5 (adaptive)</option>
           <option value="rk4">RK4</option>

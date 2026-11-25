@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:sbol="http://sbols.org/v3#" xml:base="http://modelscript.org/sbol/notgate#">
+  <sbol:Sequence displayId="seq_yfp_tu" encoding="IUPAC_DNA">
+    <sbol:elements>TTGACAAAGAGGAGAAATGGTGAGCAAGGGCGAGGAGCTGTTCACCGGGTAAAGGTTTTTT</sbol:elements>
+  </sbol:Sequence>
+
+  <sbol:Component displayId="pTet" name="TetR-Repressible Promoter" role="SO:0000167"/>
+  <sbol:Component displayId="rbs_std" name="Standard Bacterial RBS" role="SO:0000139"/>
+  <sbol:Component displayId="TetR" name="Input Repressor TetR" role="SO:0000316" initialConcentration="3.0" basalRate="0.05" maxExpressionRate="12.0" degradationRate="1.0"/>
+  <sbol:Component displayId="YFP" name="Output Reporter YFP" role="SO:0000316" initialConcentration="0.2" basalRate="0.05" maxExpressionRate="15.0" degradationRate="0.8"/>
+  <sbol:Component displayId="term_std" name="Standard Terminator" role="SO:0000141"/>
+
+  <sbol:Component displayId="tu_NOT_output" name="NOT Gate Output Unit" role="SO:0000804" hasSequence="seq_yfp_tu">
+    <sbol:SubComponent displayId="sub_pTet" instanceOf="pTet" start="1" end="6"/>
+    <sbol:SubComponent displayId="sub_rbs" instanceOf="rbs_std" start="7" end="16"/>
+    <sbol:SubComponent displayId="sub_YFP" instanceOf="YFP" start="17" end="52"/>
+    <sbol:SubComponent displayId="sub_term" instanceOf="term_std" start="53" end="61"/>
+  </sbol:Component>
+
+  <sbol:Interaction displayId="not_repression" type="SBO:0000169" K="1.0" n="2.5" alpha="15.0">
+    <sbol:Participation participant="TetR" role="SBO:0000020"/>
+    <sbol:Participation participant="YFP" role="SBO:0000642"/>
+  </sbol:Interaction>
+</rdf:RDF>

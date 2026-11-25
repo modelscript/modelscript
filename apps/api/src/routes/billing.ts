@@ -343,7 +343,9 @@ export function billingRouter(database: LibraryDatabase): Router {
       let parsedMeta: Record<string, unknown> = {};
       try {
         if (tx.metadata) parsedMeta = JSON.parse(tx.metadata) as Record<string, unknown>;
-      } catch {}
+      } catch {
+        // Default to empty metadata when stored JSON is malformed
+      }
 
       const invoiceData = {
         invoiceNumber,

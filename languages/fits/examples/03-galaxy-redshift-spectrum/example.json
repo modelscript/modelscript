@@ -1,0 +1,11 @@
+{
+  "id": "fits-03-galaxy-redshift-spectrum",
+  "lang": "fits",
+  "subFormats": ["fits"],
+  "difficulty": 3,
+  "title": "1D Optical Galaxy Redshift Spectrum",
+  "description": "Flux-calibrated 1D optical long-slit spectrum of an emission-line spiral galaxy (z = 0.0425) with linear vacuum-wavelength WCS dispersion (3800 to 7800 Angstrom) and spectral resolution metadata.",
+  "category": "Astronomy & Scientific Imaging",
+  "tags": ["fits", "spectroscopy", "1d-spectrum", "redshift"],
+  "activeFile": "galaxy_spectrum.fits"
+}

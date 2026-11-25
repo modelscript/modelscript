@@ -191,15 +191,23 @@ export function checkNxCyclesAsync(options = {}) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(__filename)) {
-  const { cycles } = checkNxCycles();
+  const { cycles, boundaryViolations } = checkNxCycles();
   console.log(`Cycles detected: ${cycles.length}`);
+  console.log(`Boundary violations detected: ${boundaryViolations.length}`);
   if (cycles.length > 0) {
     for (const c of cycles) {
       console.log("CYCLE:", c.join(" -> "));
     }
+  }
+  if (boundaryViolations.length > 0) {
+    for (const v of boundaryViolations) {
+      console.log("BOUNDARY VIOLATION:", v);
+    }
+  }
+  if (cycles.length > 0 || boundaryViolations.length > 0) {
     process.exit(1);
   } else {
-    console.log("Graph is completely acyclic! 0 cycles.");
+    console.log("Graph is completely acyclic with 0 boundary violations!");
     process.exit(0);
   }
 }

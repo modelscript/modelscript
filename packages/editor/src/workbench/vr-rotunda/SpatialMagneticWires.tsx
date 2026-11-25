@@ -11,7 +11,9 @@ import {
   type DynamicWireTubeBuffer,
   type WorldPortCandidate,
 } from "./magnetic-port-solver.js";
-import { resolveEdgeEndpoints, type SpatialDiagramPort3D } from "./spatial-diagram-state.js";
+import { resolveEdgeEndpoints, type SpatialDiagramPort3D, type SpatialPortDomain } from "./spatial-diagram-state.js";
+import { VerletCableSim } from "./verlet-cable.js";
+import { pulseEventHaptic } from "./xr-handle.js";
 
 export interface ActiveWireDragVisualState {
   readonly sourcePort: SpatialDiagramPort3D;
@@ -37,7 +39,13 @@ export interface SpatialMagneticWiresProps {
   isPlaying: boolean;
   onSelectEdge?: ((edgeId: string) => void) | undefined;
   onDisconnectEdge?: ((edgeId: string) => void) | undefined;
+  /** Called when the user grabs a plugged-in socket ferrule to unplug & re-route the cable live in their hand. */
+  onUnplugEdgeToDrag?:
+    ((edgeId: string, keptPort: SpatialDiagramPort3D, e: ThreeEvent<PointerEvent>) => void) | undefined;
 }
+
+/** Local axis of the live connector plug mesh that points into the target port. */
+const PLUG_AXIS = new THREE.Vector3(0, 1, 0);
 
 /** Creates a stereo-safe floating badge sprite texture showing live magnetic wire lock status. */
 function createWireStatusBadgeTexture(
@@ -119,6 +127,83 @@ function resolvePortInStageSpace(
   return true;
 }
 
+interface DomainCableStyle {
+  readonly radiusScale: number;
+  readonly roughness: number;
+  readonly metalness: number;
+  readonly clearcoat: number;
+  readonly opacity: number;
+  readonly transparent: boolean;
+  readonly defaultColor: string;
+}
+
+function getDomainCableStyle(domain: SpatialPortDomain): DomainCableStyle {
+  switch (domain) {
+    case "electrical":
+    case "power":
+      return {
+        radiusScale: domain === "power" ? 1.18 : 1.0,
+        roughness: 0.24,
+        metalness: 0.55,
+        clearcoat: 0.7,
+        opacity: 1,
+        transparent: false,
+        defaultColor: domain === "power" ? "#f59e0b" : "#38bdf8",
+      };
+    case "fluid":
+      return {
+        radiusScale: 1.32,
+        roughness: 0.14,
+        metalness: 0.06,
+        clearcoat: 0.9,
+        opacity: 0.74,
+        transparent: true,
+        defaultColor: "#0ea5e9",
+      };
+    case "signal":
+    case "systems":
+      return {
+        radiusScale: 0.74,
+        roughness: 0.16,
+        metalness: 0.12,
+        clearcoat: 0.95,
+        opacity: 1,
+        transparent: false,
+        defaultColor: domain === "systems" ? "#22d3ee" : "#a855f7",
+      };
+    case "thermal":
+      return {
+        radiusScale: 1.15,
+        roughness: 0.28,
+        metalness: 0.65,
+        clearcoat: 0.45,
+        opacity: 1,
+        transparent: false,
+        defaultColor: "#e38c5a",
+      };
+    case "mechanical":
+      return {
+        radiusScale: 1.2,
+        roughness: 0.3,
+        metalness: 0.82,
+        clearcoat: 0.3,
+        opacity: 1,
+        transparent: false,
+        defaultColor: "#b9c4cf",
+      };
+    default:
+      return {
+        radiusScale: 1.0,
+        roughness: 0.28,
+        metalness: 0.22,
+        clearcoat: 0.65,
+        opacity: 1,
+        transparent: false,
+        defaultColor: "#3b82f6",
+      };
+  }
+}
+
 interface CommittedWireMeshProps {
   edge: VrDiagramEdgeLike;
   nodeGroupRefs: React.RefObject<Map<string, THREE.Group>>;
@@ -127,9 +212,10 @@ interface CommittedWireMeshProps {
   isPlaying: boolean;
   onSelect?: ((edgeId: string) => void) | undefined;
   onDisconnect?: ((edgeId: string) => void) | undefined;
+  onUnplugToDrag?: ((edgeId: string, keptPort: SpatialDiagramPort3D, e: ThreeEvent<PointerEvent>) => void) | undefined;
 }
 
-/** Single committed 3D PBR insulated cable with live 90Hz endpoint following & simulation energy pulse. */
+/** Single committed 3D PBR insulated cable with domain styling, live 90Hz endpoint following, & unplug-by-grab collars. */
 function CommittedWireMesh({
   edge,
   nodeGroupRefs,
@@ -138,16 +224,18 @@ function CommittedWireMesh({
   isPlaying,
   onSelect,
   onDisconnect,
+  onUnplugToDrag,
 }: CommittedWireMeshProps): React.ReactElement | null {
   const edgeId = edge.id ?? "wire";
   const endpoints = useMemo(() => resolveEdgeEndpoints(edge), [edge]);
   const [hovered, setHovered] = useState(false);
+  const [hoveredEnd, setHoveredEnd] = useState<"start" | "end" | null>(null);
 
   const tube: DynamicWireTubeBuffer = useMemo(() => createDynamicWireTubeBuffer(26, 8), []);
   useEffect(() => () => tube.dispose(), [tube]);
 
-  const ferruleStartRef = useRef<THREE.Mesh | null>(null);
-  const ferruleEndRef = useRef<THREE.Mesh | null>(null);
+  const ferruleStartRef = useRef<THREE.Group | null>(null);
+  const ferruleEndRef = useRef<THREE.Group | null>(null);
   const pulseBeadRef = useRef<THREE.Mesh | null>(null);
   const midHandleRef = useRef<THREE.Group | null>(null);
 
@@ -158,9 +246,19 @@ function CommittedWireMesh({
   const nEnd = useRef(new THREE.Vector3());
   const pulsePos = useRef(new THREE.Vector3());
   const midPos = useRef(new THREE.Vector3());
+  const collarPos = useRef(new THREE.Vector3());
+  const collarTan = useRef(new THREE.Vector3());
+
+  const srcPort = useMemo(() => {
+    if (!endpoints) return undefined;
+    const ports = nodePortsRef.current?.get(endpoints.sourceNodeId);
+    return ports?.find((p) => p.portId === endpoints.sourcePortId) ?? ports?.[0];
+  }, [endpoints, nodePortsRef]);
+
+  const style = useMemo(() => getDomainCableStyle(srcPort?.domain ?? "generic"), [srcPort?.domain]);
 
   const lineAttrs = edge.attrs?.["line"] as { stroke?: string } | undefined;
-  const baseColor = typeof lineAttrs?.stroke === "string" ? lineAttrs.stroke : "#3b82f6";
+  const baseColor = typeof lineAttrs?.stroke === "string" ? lineAttrs.stroke : style.defaultColor;
 
   useFrame((state) => {
     if (!endpoints) return;
@@ -194,10 +292,25 @@ function CommittedWireMesh({
       1.0,
     );
 
-    tube.update(ctrl, selected || hovered ? 0.0044 : 0.0034);
+    const baseRadius = (selected || hovered ? 0.0044 : 0.0034) * style.radiusScale;
+    tube.update(ctrl, baseRadius);
 
-    if (ferruleStartRef.current) ferruleStartRef.current.position.copy(pStart.current);
-    if (ferruleEndRef.current) ferruleEndRef.current.position.copy(pEnd.current);
+    // Position strain-relief plug collars just outside the port grab spheres so users can grab them to unplug/re-route.
+    const collarT = Math.min(0.18, Math.max(0.05, 0.036 / Math.max(0.08, ctrl.chordLength)));
+    if (ferruleStartRef.current) {
+      sampleWireSplineAt(ctrl, collarT, collarPos.current, collarTan.current);
+      ferruleStartRef.current.position.copy(collarPos.current);
+      if (collarTan.current.lengthSq() > 1e-8) {
+        ferruleStartRef.current.quaternion.setFromUnitVectors(PLUG_AXIS, collarTan.current);
+      }
+    }
+    if (ferruleEndRef.current) {
+      sampleWireSplineAt(ctrl, 1 - collarT, collarPos.current, collarTan.current);
+      ferruleEndRef.current.position.copy(collarPos.current);
+      if (collarTan.current.lengthSq() > 1e-8) {
+        ferruleEndRef.current.quaternion.setFromUnitVectors(PLUG_AXIS, collarTan.current);
+      }
+    }
 
     sampleWireSplineAt(ctrl, 0.5, midPos.current);
     if (midHandleRef.current) {
@@ -220,6 +333,19 @@ function CommittedWireMesh({
 
   const wireColor = selected ? "#22d3ee" : hovered ? "#67e8f9" : baseColor;
 
+  const triggerUnplug = (pulledEnd: "start" | "end", e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    const keptNodeId = pulledEnd === "start" ? endpoints.targetNodeId : endpoints.sourceNodeId;
+    const keptPortId = pulledEnd === "start" ? endpoints.targetPortId : endpoints.sourcePortId;
+    const ports = nodePortsRef.current?.get(keptNodeId);
+    const keptPort = ports?.find((p) => p.portId === keptPortId) ?? ports?.[0];
+    if (keptPort && onUnplugToDrag) {
+      onUnplugToDrag(edgeId, keptPort, e);
+    } else {
+      onDisconnect?.(edgeId);
+    }
+  };
+
   return (
     <group name={`spatial-wire-${edgeId}`}>
       <mesh
@@ -227,6 +353,7 @@ function CommittedWireMesh({
         onPointerOver={(e: ThreeEvent<PointerEvent>) => {
           e.stopPropagation();
           setHovered(true);
+          pulseEventHaptic(e, 0.06, 5);
         }}
         onPointerOut={(e: ThreeEvent<PointerEvent>) => {
           e.stopPropagation();
@@ -241,36 +368,60 @@ function CommittedWireMesh({
           onDisconnect?.(edgeId);
         }}
       >
-        <meshPhysicalMaterial
+        <meshStandardMaterial
           color={wireColor}
           emissive={wireColor}
-          emissiveIntensity={selected || hovered ? 0.55 : 0.16}
-          roughness={0.28}
-          metalness={0.18}
-          clearcoat={0.65}
-          clearcoatRoughness={0.18}
+          emissiveIntensity={selected || hovered ? 0.55 : style.defaultColor === "#a855f7" ? 0.28 : 0.14}
+          roughness={style.roughness}
+          metalness={style.metalness}
+          transparent={style.transparent}
+          opacity={style.opacity}
         />
       </mesh>
 
-      {/* Machined Brass/Aluminum Crimp Ferrules at Both Sockets */}
-      <mesh ref={ferruleStartRef}>
-        <sphereGeometry args={[0.0056, 10, 8]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.78} roughness={0.24} />
-      </mesh>
-      <mesh ref={ferruleEndRef}>
-        <sphereGeometry args={[0.0056, 10, 8]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.78} roughness={0.24} />
-      </mesh>
+      {/* Grabbable Machined Plug Collars Near Both Sockets (pull to unplug & re-route live in hand) */}
+      {(["start", "end"] as const).map((endKey) => {
+        const isEndHovered = hoveredEnd === endKey;
+        return (
+          <group key={endKey} ref={endKey === "start" ? ferruleStartRef : ferruleEndRef}>
+            <mesh
+              onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+                e.stopPropagation();
+                setHoveredEnd(endKey);
+                pulseEventHaptic(e, 0.1, 7);
+              }}
+              onPointerOut={(e: ThreeEvent<PointerEvent>) => {
+                e.stopPropagation();
+                setHoveredEnd((prev) => (prev === endKey ? null : prev));
+              }}
+              onPointerDown={(e: ThreeEvent<PointerEvent>) => triggerUnplug(endKey, e)}
+            >
+              <cylinderGeometry args={[0.0068, 0.0068, 0.014, 14]} />
+              <meshStandardMaterial
+                color={isEndHovered ? "#f59e0b" : "#cbd5e1"}
+                emissive={isEndHovered ? "#f59e0b" : "#000000"}
+                emissiveIntensity={isEndHovered ? 0.7 : 0}
+                metalness={0.82}
+                roughness={0.24}
+              />
+            </mesh>
+          </group>
+        );
+      })}
 
       {/* Live Directional Signal / Energy Flow Pulse Bead */}
       <mesh ref={pulseBeadRef} visible={isPlaying}>
-        <sphereGeometry args={[0.0062, 10, 8]} />
+        <sphereGeometry args={[0.0062 * style.radiusScale, 10, 8]} />
         <meshBasicMaterial color="#e0f2fe" toneMapped={false} />
       </mesh>
 
       {/* Disconnect Midpoint Pill (visible when hovered or selected) */}
       <group ref={midHandleRef} visible={selected || hovered}>
         <mesh
+          onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+            e.stopPropagation();
+            pulseEventHaptic(e, 0.08, 6);
+          }}
           onPointerDown={(e: ThreeEvent<PointerEvent>) => {
             e.stopPropagation();
             onDisconnect?.(edgeId);
@@ -291,8 +442,8 @@ function CommittedWireMesh({
 }
 
 /**
- * Renders all committed 3D insulated diagram cables + the live infinite-extending
- * magnetic wire conduit while the user drags from a component port socket.
+ * Renders all committed 3D insulated diagram cables + the live physical Verlet-simulated
+ * magnetic wire conduit while the user drags a plug from a component port socket.
  */
 export function SpatialMagneticWires({
   edges,
@@ -304,11 +455,22 @@ export function SpatialMagneticWires({
   isPlaying,
   onSelectEdge,
   onDisconnectEdge,
+  onUnplugEdgeToDrag,
 }: SpatialMagneticWiresProps): React.ReactElement {
-  const liveTube: DynamicWireTubeBuffer = useMemo(() => createDynamicWireTubeBuffer(32, 10), []);
+  const VERLET_NODES = 25;
+  const liveTube: DynamicWireTubeBuffer = useMemo(() => createDynamicWireTubeBuffer(VERLET_NODES - 1, 10), []);
   useEffect(() => () => liveTube.dispose(), [liveTube]);
+  const liveVerlet = useMemo(() => new VerletCableSim(VERLET_NODES), []);
 
-  const liveTipOrbRef = useRef<THREE.Mesh | null>(null);
+  // Re-seed rope whenever a new wire drag starts
+  const activeSourceKey = activeWireDrag
+    ? `${activeWireDrag.sourcePort.nodeId}:${activeWireDrag.sourcePort.portId}`
+    : null;
+  useEffect(() => {
+    liveVerlet.invalidate();
+  }, [activeSourceKey, liveVerlet]);
+
+  const liveTipOrbRef = useRef<THREE.Group | null>(null);
   const liveMagnetRingRef = useRef<THREE.Mesh | null>(null);
   const liveBadgeRef = useRef<THREE.Sprite | null>(null);
 
@@ -320,6 +482,8 @@ export function SpatialMagneticWires({
   const invStageMat = useRef(new THREE.Matrix4());
   const invStageQuat = useRef(new THREE.Quaternion());
   const stageWorldQuat = useRef(new THREE.Quaternion());
+  const plugDir = useRef(new THREE.Vector3());
+  const tipTanScratch = useRef<[number, number, number]>([0, 1, 0]);
 
   const badgeInfo = useMemo(() => {
     if (!activeWireDrag) return null;
@@ -340,7 +504,7 @@ export function SpatialMagneticWires({
   );
   useEffect(() => () => badgeTexture?.dispose(), [badgeTexture]);
 
-  useFrame((state) => {
+  useFrame((state, rawDelta) => {
     if (!activeWireDrag) return;
     const gMap = nodeGroupRefs.current;
     const pMap = nodePortsRef.current;
@@ -373,20 +537,34 @@ export function SpatialMagneticWires({
       pTipLocal.current.copy(activeWireDrag.tipWorldPosRef.current).applyMatrix4(invStageMat.current);
     }
 
-    const ctrl = computeInfiniteWireControlPoints(
+    // Step physical Verlet rope with gravity sag, hand inertia, and socket strain-relief
+    const ropePositions = liveVerlet.step(
       [pStart.current.x, pStart.current.y, pStart.current.z],
       [nStart.current.x, nStart.current.y, nStart.current.z],
       [pTipLocal.current.x, pTipLocal.current.y, pTipLocal.current.z],
       hasEndNormal ? [nEndLocal.current.x, nEndLocal.current.y, nEndLocal.current.z] : null,
-      0.85,
+      Math.min(rawDelta, 0.05),
     );
 
-    liveTube.update(ctrl, activeWireDrag.snappedTarget ? 0.0046 : 0.0038);
+    const liveStyle = getDomainCableStyle(activeWireDrag.sourcePort.domain);
+    const radius = (activeWireDrag.snappedTarget ? 0.0046 : 0.0038) * liveStyle.radiusScale;
+    liveTube.updateFromPolyline(ropePositions, VERLET_NODES, radius);
 
     if (liveTipOrbRef.current) {
       liveTipOrbRef.current.position.copy(pTipLocal.current);
-      const pulse = 1 + Math.sin(state.clock.elapsedTime * 8) * 0.14;
-      liveTipOrbRef.current.scale.setScalar(activeWireDrag.snappedTarget ? 1.35 * pulse : pulse);
+      // When locked onto a socket, aim the contact pin straight INTO the socket (-nEndLocal);
+      // otherwise align along the live Verlet rope's incoming tangent.
+      if (hasEndNormal) {
+        plugDir.current.copy(nEndLocal.current).negate();
+      } else {
+        const t = liveVerlet.getTipTangent(tipTanScratch.current);
+        plugDir.current.set(t[0], t[1], t[2]);
+      }
+      if (plugDir.current.lengthSq() > 1e-8) {
+        liveTipOrbRef.current.quaternion.setFromUnitVectors(PLUG_AXIS, plugDir.current);
+      }
+      const pulse = 1 + Math.sin(state.clock.elapsedTime * 8) * 0.06;
+      liveTipOrbRef.current.scale.setScalar(activeWireDrag.snappedTarget ? 1.15 : pulse);
     }
 
     if (liveMagnetRingRef.current) {
@@ -402,7 +580,11 @@ export function SpatialMagneticWires({
     }
   });
 
-  const liveColor = activeWireDrag?.snappedTarget ? "#10b981" : activeWireDrag?.rejectedTarget ? "#f59e0b" : "#22d3ee";
+  const liveColor = activeWireDrag?.snappedTarget
+    ? "#10b981"
+    : activeWireDrag?.rejectedTarget
+      ? "#f59e0b"
+      : (activeWireDrag?.sourcePort.color ?? "#22d3ee");
 
   return (
     <group name="spatial-magnetic-wires">
@@ -416,27 +598,46 @@ export function SpatialMagneticWires({
           isPlaying={isPlaying}
           onSelect={onSelectEdge}
           onDisconnect={onDisconnectEdge}
+          onUnplugToDrag={onUnplugEdgeToDrag}
         />
       ))}
 
-      {/* Active Infinite-Extending Magnetic Drag Wire */}
+      {/* Active Physical Verlet-Simulated Magnetic Drag Wire */}
       {activeWireDrag && (
         <group name="spatial-live-extending-wire">
           <mesh geometry={liveTube.geometry}>
             <meshStandardMaterial
               color={liveColor}
               emissive={liveColor}
-              emissiveIntensity={activeWireDrag.snappedTarget ? 1.15 : 0.85}
-              roughness={0.2}
-              metalness={0.15}
+              emissiveIntensity={activeWireDrag.snappedTarget ? 1.05 : 0.72}
+              roughness={0.22}
+              metalness={0.32}
               toneMapped={false}
             />
           </mesh>
 
-          <mesh ref={liveTipOrbRef}>
-            <sphereGeometry args={[0.0085, 14, 12]} />
-            <meshBasicMaterial color={liveColor} toneMapped={false} />
-          </mesh>
+          <group ref={liveTipOrbRef}>
+            {/* Strain-relief boot */}
+            <mesh position={[0, -0.016, 0]}>
+              <cylinderGeometry args={[0.0042, 0.006, 0.012, 14]} />
+              <meshStandardMaterial color="#1e293b" roughness={0.65} metalness={0.05} />
+            </mesh>
+            {/* Machined connector body */}
+            <mesh position={[0, -0.004, 0]}>
+              <cylinderGeometry args={[0.0072, 0.0072, 0.014, 18]} />
+              <meshStandardMaterial color="#d6d9dc" roughness={0.25} metalness={0.92} />
+            </mesh>
+            {/* Domain-colored collar */}
+            <mesh position={[0, 0.0045, 0]}>
+              <cylinderGeometry args={[0.0078, 0.0078, 0.0028, 18]} />
+              <meshStandardMaterial color={liveColor} emissive={liveColor} emissiveIntensity={0.9} toneMapped={false} />
+            </mesh>
+            {/* Contact pin */}
+            <mesh position={[0, 0.0095, 0]}>
+              <cylinderGeometry args={[0.0022, 0.0026, 0.008, 10]} />
+              <meshBasicMaterial color={liveColor} toneMapped={false} />
+            </mesh>
+          </group>
 
           <mesh ref={liveMagnetRingRef} visible={false}>
             <torusGeometry args={[0.022, 0.0024, 10, 28]} />

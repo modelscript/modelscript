@@ -1,0 +1,34 @@
+* 4-Node Stratified Domestic Hot Water Tank with Solar Collector
+VERSION 18
+SIMULATION 0 48 0.5
+TOLERANCES 0.001 0.001
+LIMITS 30 30 30
+
+UNIT 1 TYPE 15 Weather
+PARAMETERS 5
+  18.0 5.5 2880.0 6.5 18.5
+
+UNIT 2 TYPE 1 Collector
+PARAMETERS 5
+  6.0 4.19 0.76 15.0 0.02
+INPUTS 4
+  3,1 0,0 1,1 1,2
+  22.0 240.0 18.0 0.0
+
+UNIT 3 TYPE 4 StratifiedTank
+PARAMETERS 6
+  0.40 4.19 1000.0 1.4 1.6 4
+INPUTS 5
+  2,1 2,2 0,0 0,0 1,1
+  22.0 0.0 15.0 15.0 18.0
+DERIVATIVES 4
+  25.0 25.0 25.0 25.0
+
+UNIT 4 TYPE 25 Printer
+PARAMETERS 4
+  1.0 0.0 48.0 31
+INPUTS 4
+  2,1 3,1 3,3 3,5
+  T_coll T_bot T_top Q_loss
+
+END

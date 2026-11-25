@@ -1,0 +1,18 @@
+' PWR Spent Fuel Irradiation and Cooling Decay Heat
+=origen
+PWR UO2 Irradiation and Post-Shutdown Decay
+case(burn_cool) {
+  lib { file="pwr_u235.f33" }
+  mat {
+    units=atoms
+    iso=[ u235=1.2e21 i135=1.0e15 xe135=0.0 cs137=0.0 ]
+  }
+  time {
+    units=hours
+    t=[ 4 12 24 48 96 ]
+  }
+  flux=[ 3.5e13 3.5e13 3.5e13 0.0 0.0 ]
+  power=[ 38.0 38.0 38.0 0.0 0.0 ]
+  save
+}
+end

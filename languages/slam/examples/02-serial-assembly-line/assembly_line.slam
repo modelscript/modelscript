@@ -1,0 +1,14 @@
+; SLAM II Two-Stage Serial Assembly Line with Finite Inter-Stage Buffer
+GEN, ANALYST, SERIAL_ASSEMBLY, 1/1/1979, 1;
+LIMITS, 2, 2, 150;
+INITIALIZE, 0.0, 480.0;
+NETWORK;
+  CREATE, EXPON(4.0), 0.0, 1;
+  STG1  QUEUE(1), 0, 40;
+        ACTIVITY/1, RNORM(3.2, 0.4), 1.0, STG2;
+  STG2  QUEUE(2), 0, 10;
+        ACTIVITY/2, RNORM(3.5, 0.5), 1.0, EXIT1;
+  EXIT1 COLCT, INT(1), TOTAL_FLOW_TIME;
+        TERMINATE;
+ENDNETWORK;
+FIN;

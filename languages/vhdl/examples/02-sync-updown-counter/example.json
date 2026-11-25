@@ -1,0 +1,11 @@
+{
+  "id": "vhdl-02-sync-updown-counter",
+  "lang": "vhdl",
+  "subFormats": ["vhd"],
+  "difficulty": 2,
+  "title": "Parameterized Synchronous Up/Down Counter",
+  "description": "Generic-width synchronous binary up/down counter with active-high reset, count enable, direction control, and terminal-count flag in synthesizable VHDL.",
+  "category": "Sequential Logic",
+  "tags": ["vhdl", "counter", "sequential", "generic"],
+  "activeFile": "counter.vhd"
+}

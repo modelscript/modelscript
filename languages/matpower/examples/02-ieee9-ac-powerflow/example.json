@@ -1,0 +1,11 @@
+{
+  "id": "matpower-02-ieee9-ac-powerflow",
+  "lang": "matpower",
+  "subFormats": ["m"],
+  "difficulty": 2,
+  "title": "IEEE 9-Bus WSCC AC Power Flow",
+  "description": "Classic WSCC 9-bus 3-generator 230 kV transmission system in MATPOWER v2 format with step-up transformers and polynomial cost functions.",
+  "category": "AC Power Flow",
+  "tags": ["matpower", "ieee9", "wscc", "power-flow"],
+  "activeFile": "case9.m"
+}

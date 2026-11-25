@@ -146,9 +146,84 @@ export class BitsetGraph {
   }
 }
 
-type GPUDevice = any;
-type GPUAdapter = any;
-type GPUComputePipeline = any;
+interface GPUShaderModuleLike {
+  readonly __brand?: "GPUShaderModule";
+}
+
+interface GPUBindGroupLayoutLike {
+  readonly __brand?: "GPUBindGroupLayout";
+}
+
+interface GPUBindGroupLike {
+  readonly __brand?: "GPUBindGroup";
+}
+
+interface GPUBufferLike {
+  mapAsync(mode: number): Promise<void>;
+  getMappedRange(): ArrayBuffer;
+  unmap(): void;
+  destroy(): void;
+}
+
+interface GPUComputePassEncoderLike {
+  setPipeline(pipeline: GPUComputePipeline): void;
+  setBindGroup(index: number, bindGroup: GPUBindGroupLike): void;
+  dispatchWorkgroups(workgroupCountX: number, workgroupCountY?: number, workgroupCountZ?: number): void;
+  end(): void;
+}
+
+interface GPUCommandBufferLike {
+  readonly __brand?: "GPUCommandBuffer";
+}
+
+interface GPUCommandEncoderLike {
+  beginComputePass(): GPUComputePassEncoderLike;
+  copyBufferToBuffer(
+    source: GPUBufferLike,
+    sourceOffset: number,
+    destination: GPUBufferLike,
+    destinationOffset: number,
+    size: number,
+  ): void;
+  finish(): GPUCommandBufferLike;
+}
+
+interface GPUQueueLike {
+  writeBuffer(buffer: GPUBufferLike, bufferOffset: number, data: ArrayBufferView | ArrayBuffer): void;
+  submit(commandBuffers: GPUCommandBufferLike[]): void;
+}
+
+interface GPUComputePipeline {
+  getBindGroupLayout(index: number): GPUBindGroupLayoutLike;
+}
+
+interface GPUDevice {
+  readonly queue: GPUQueueLike;
+  createShaderModule(descriptor: { code: string }): GPUShaderModuleLike;
+  createComputePipeline(descriptor: {
+    layout: "auto" | GPUBindGroupLayoutLike;
+    compute: { module: GPUShaderModuleLike; entryPoint: string };
+  }): GPUComputePipeline;
+  createBuffer(descriptor: { size: number; usage: number }): GPUBufferLike;
+  createBindGroup(descriptor: {
+    layout: GPUBindGroupLayoutLike;
+    entries: { binding: number; resource: { buffer: GPUBufferLike } }[];
+  }): GPUBindGroupLike;
+  createCommandEncoder(): GPUCommandEncoderLike;
+  destroy(): void;
+}
+
+interface GPUAdapter {
+  requestDevice(): Promise<GPUDevice | null>;
+}
+
+interface NavigatorGpuLike {
+  requestAdapter(options?: { powerPreference?: string }): Promise<GPUAdapter | null>;
+}
+
+interface NavigatorWithGpu {
+  gpu?: NavigatorGpuLike;
+}
 
 const GPUBufferUsageFlags = {
   MAP_READ: 0x0001,
@@ -205,10 +280,10 @@ export class WebGPUOntologyReasoner {
   public async init(): Promise<boolean> {
     if (this._isInitialized) return this._device !== null;
 
-    if (typeof navigator !== "undefined" && (navigator as any).gpu) {
+    const navGpu = typeof navigator !== "undefined" ? (navigator as unknown as NavigatorWithGpu).gpu : undefined;
+    if (navGpu) {
       try {
-        const gpu = (navigator as any).gpu;
-        this._adapter = await gpu.requestAdapter({ powerPreference: "high-performance" });
+        this._adapter = await navGpu.requestAdapter({ powerPreference: "high-performance" });
         if (this._adapter) {
           this._device = await this._adapter.requestDevice();
           if (this._device) {

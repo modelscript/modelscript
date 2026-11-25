@@ -1,0 +1,12 @@
+{
+  "id": "usgs-dem-01-sloping-valley-grid",
+  "lang": "usgs-dem",
+  "subFormats": ["free-format"],
+  "difficulty": 1,
+  "title": "Gentle Sloping Valley 3x3 Elevation Grid",
+  "description": "Minimal USGS 7.5-minute DEM with Type A quadrangle header, three 3-sample Type B elevation profiles, and Type C RMSE accuracy statistics.",
+  "category": "Topography",
+  "tags": ["usgs-dem", "elevation", "terrain", "utm"],
+  "activeFile": "boulder_valley.dem",
+  "isDefaultStarter": true
+}

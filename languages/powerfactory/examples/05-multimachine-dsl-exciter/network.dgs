@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PowerFactory version="2024">
+  <DataObject class="ElmSubstat" loc_name="Hydro_Plant_Sub"/>
+  <DataObject class="ElmSubstat" loc_name="Metro_Sub"/>
+  <DataObject class="ElmTerm" loc_name="Gen1_16p5"><uknom>16.5</uknom><fnom>60.0</fnom><substat>Hydro_Plant_Sub</substat></DataObject>
+  <DataObject class="ElmTerm" loc_name="Gen2_16p5"><uknom>16.5</uknom><fnom>60.0</fnom></DataObject>
+  <DataObject class="ElmTerm" loc_name="HV_North_230"><uknom>230.0</uknom><fnom>60.0</fnom><substat>Hydro_Plant_Sub</substat></DataObject>
+  <DataObject class="ElmTerm" loc_name="HV_South_230"><uknom>230.0</uknom><fnom>60.0</fnom><substat>Metro_Sub</substat></DataObject>
+  <DataObject class="ElmTerm" loc_name="HV_East_230"><uknom>230.0</uknom><fnom>60.0</fnom></DataObject>
+  <DataObject class="TypTr2" loc_name="GSU_230_16p5">
+    <strn>250.0</strn><utrn_h>230.0</utrn_h><utrn_l>16.5</utrn_l><ukrr>10.5</ukrr><pkr>380.0</pkr><vecgrp>YNd1</vecgrp>
+  </DataObject>
+  <DataObject class="ElmTr2" loc_name="GSU_1"><bushv>HV_North_230</bushv><buslv>Gen1_16p5</buslv><typ_id>GSU_230_16p5</typ_id></DataObject>
+  <DataObject class="ElmTr2" loc_name="GSU_2"><bushv>HV_East_230</bushv><buslv>Gen2_16p5</buslv><typ_id>GSU_230_16p5</typ_id></DataObject>
+  <DataObject class="TypLne" loc_name="OHL_230_ACSR">
+    <uline>230.0</uline><r1>0.055</r1><x1>0.365</x1><b1>3.15</b1><snom>380.0</snom><inom>0.95</inom>
+  </DataObject>
+  <DataObject class="ElmLne" loc_name="Line_North_South"><bus1>HV_North_230</bus1><bus2>HV_South_230</bus2><dline>85.0</dline><typ_id>OHL_230_ACSR</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="Line_North_East"><bus1>HV_North_230</bus1><bus2>HV_East_230</bus2><dline>65.0</dline><typ_id>OHL_230_ACSR</typ_id></DataObject>
+  <DataObject class="ElmLne" loc_name="Line_East_South"><bus1>HV_East_230</bus1><bus2>HV_South_230</bus2><dline>72.0</dline><typ_id>OHL_230_ACSR</typ_id></DataObject>
+  <DataObject class="TypSym" loc_name="Hydro_220MVA">
+    <snom>220.0</snom><unom>16.5</unom><cosn>0.85</cosn><H>4.5</H>
+  </DataObject>
+  <DataObject class="ElmSym" loc_name="Hydro_Unit1"><bus1>Gen1_16p5</bus1><pgini>180.0</pgini><qgini>35.0</qgini><usetp>1.04</usetp><typ_id>Hydro_220MVA</typ_id></DataObject>
+  <DataObject class="ElmSym" loc_name="Hydro_Unit2"><bus1>Gen2_16p5</bus1><pgini>150.0</pgini><qgini>28.0</qgini><usetp>1.03</usetp><typ_id>Hydro_220MVA</typ_id></DataObject>
+  <DataObject class="ElmLod" loc_name="Metro_Bulk_Load"><bus1>HV_South_230</bus1><plini>320.0</plini><qlini>75.0</qlini></DataObject>
+</PowerFactory>

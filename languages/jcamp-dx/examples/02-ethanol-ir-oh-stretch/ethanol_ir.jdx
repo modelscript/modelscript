@@ -1,0 +1,17 @@
+##TITLE=Ethanol Liquid Film FTIR Absorbance Spectrum
+##JCAMP-DX=4.24
+##DATA TYPE=INFRARED SPECTRUM
+##ORIGIN=Analytical Chemistry Reference Lab
+##OWNER=PUBLIC DOMAIN
+##MOLFORM=C2 H6 O
+##XUNITS=1/CM
+##YUNITS=ABSORBANCE
+##FIRSTX=3600
+##LASTX=2800
+##NPOINTS=17
+##XFACTOR=1
+##YFACTOR=0.01
+$$ Broad hydrogen-bonded O-H stretch (3350 cm-1) and C-H stretch (2970 cm-1)
+##XYDATA=(X++(Y..Y))
+3600 4 12 31 64 98 118 112 88 52 24 14 28 74 96 58 18 6
+##END=

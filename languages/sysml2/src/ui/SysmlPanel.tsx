@@ -177,9 +177,12 @@ export const SysmlPanel: React.FC<LanguagePanelProps> = ({
             {host.exportFile && scanned.requirements.length > 0 && (
               <PanelButton onClick={handleExportCsv}>Export CSV</PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "sysml2", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton
+                variant="primary"
+                onClick={() => host.openInAnsatzEditor?.(code, dialect || "sysml2", title)}
+              >
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

@@ -1,0 +1,12 @@
+{
+  "id": "pslf-01-three-bus-powerflow",
+  "lang": "pslf",
+  "subFormats": ["epc"],
+  "difficulty": 1,
+  "title": "3-Bus Basic Power Flow",
+  "description": "Minimal 3-bus 230 kV GE PSLF EPC power flow model with a swing bus, PV generator, and meshed load substation.",
+  "category": "Power Flow",
+  "tags": ["pslf", "epc", "power-flow", "3-bus"],
+  "activeFile": "case3.epc",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "mps-02-alloy-blending-bounds-lp",
+  "lang": "mps",
+  "subFormats": ["mps", "lp", "bounds"],
+  "difficulty": 2,
+  "title": "Four-Alloy Furnace Blending Problem with Bounds",
+  "description": "Minimum-cost metallurgical alloy blending LP mixing four scrap grades to meet exact 100-ton batch mass, minimum chromium, and maximum carbon limits.",
+  "category": "Process Optimization",
+  "tags": ["mps", "lp", "blending", "bounds"],
+  "activeFile": "alloy_blend.mps"
+}

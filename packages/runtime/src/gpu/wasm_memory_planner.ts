@@ -154,7 +154,22 @@ export function planStaticArenaMemory(
 
   // 5. Greedy Interval Coloring for Transient Scratchpad Slots: [P ... P + S - 1]
   let peakScratchpad = 0;
-  const w = getDefaultWasmExports();
+  const w = getDefaultWasmExports() as {
+    memory: WebAssembly.Memory;
+    alloc?: (size: number) => number;
+    free?: (ptr: number) => void;
+    gpu_greedyIntervalColoring?: (
+      varCount: number,
+      persistentCount: number,
+      birthPtr: number,
+      deathPtr: number,
+      persPtr: number,
+      remPtr: number,
+      outOffPtr: number,
+      workTransPtr: number,
+      workSlotsPtr: number,
+    ) => number;
+  } | null;
   if (
     w &&
     typeof w.gpu_greedyIntervalColoring === "function" &&

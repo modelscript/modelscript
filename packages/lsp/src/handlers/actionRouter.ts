@@ -49,10 +49,27 @@ function findMatchingAction(actions: LanguageAction[], requestedId: string): Lan
   return undefined;
 }
 
-function findMatchingHandler(
-  handlers: Record<string, (...args: any[]) => any> | undefined,
+interface ListedActionInfo {
+  id: string;
+  languageId: string;
+  command: string;
+  title: string;
+  description?: string | undefined;
+  category?: string | undefined;
+  inputs?: LanguageAction["inputs"] | undefined;
+  output?: LanguageAction["output"] | undefined;
+  ui?: LanguageAction["ui"] | undefined;
+}
+
+interface GlobalActionRouterFallback {
+  sharedFs?: { read(path: string): string } | undefined;
+  sharedContext?: unknown;
+}
+
+function findMatchingHandler<T extends (...args: never[]) => unknown>(
+  handlers: Record<string, T> | undefined,
   requestedId: string,
-): ((...args: any[]) => any) | undefined {
+): T | undefined {
   if (!handlers) return undefined;
   if (typeof handlers[requestedId] === "function") return handlers[requestedId];
   if (typeof handlers[`modelscript/${requestedId}`] === "function") return handlers[`modelscript/${requestedId}`];
@@ -94,15 +111,15 @@ export function registerActionRouter(context: LspContext): void {
   // 1. List actions endpoint
   context.connection.onRequest(
     "modelscript/listActions",
-    async (params?: { languageId?: string | undefined; uri?: string | undefined }): Promise<any[]> => {
+    async (params?: { languageId?: string | undefined; uri?: string | undefined }): Promise<ListedActionInfo[]> => {
       const plugins = params?.languageId
         ? [globalLanguageRegistry.getPluginById(params.languageId)].filter(Boolean)
         : params?.uri
           ? [globalLanguageRegistry.getPluginForUri(params.uri)].filter(Boolean)
           : globalLanguageRegistry.getAllPlugins();
 
-      const results: any[] = [];
-      const seenPluginDefs = new Set<any>();
+      const results: ListedActionInfo[] = [];
+      const seenPluginDefs = new Set<unknown>();
       for (const plugin of plugins) {
         if (!plugin) continue;
         if (plugin.languageDef) {
@@ -151,8 +168,8 @@ export function registerActionRouter(context: LspContext): void {
       actionId: string;
       languageId?: string | undefined;
       uri?: string | undefined;
-      inputs?: Record<string, any> | undefined;
-    }): Promise<any> => {
+      inputs?: Record<string, unknown> | undefined;
+    }): Promise<unknown> => {
       console.log(
         `[LSP-WORKER][executeAction] START: actionId=${params.actionId}, uri=${params.uri}, lang=${params.languageId}`,
       );
@@ -184,7 +201,8 @@ export function registerActionRouter(context: LspContext): void {
       const action = findMatchingAction(actions, params.actionId);
       const effectiveActionId = action?.id ?? params.actionId;
 
-      let executeFn = action?.execute;
+      type ActionExecFn = (ctx: ActionExecutionContext, inputs: Record<string, unknown>) => unknown;
+      let executeFn: ActionExecFn | undefined = action?.execute as ActionExecFn | undefined;
       if (typeof executeFn !== "function") {
         executeFn =
           findMatchingHandler(plugin.actionHandlers, effectiveActionId) ??
@@ -215,7 +233,8 @@ export function registerActionRouter(context: LspContext): void {
         );
       }
 
-      let docText = params.inputs?.["documentText"];
+      const globalFallback = globalThis as unknown as GlobalActionRouterFallback;
+      let docText = typeof params.inputs?.["documentText"] === "string" ? params.inputs["documentText"] : undefined;
       if (!docText) {
         let doc = params.uri ? context.documents.get(params.uri) : undefined;
         if (!doc && params.uri && typeof context.documents?.all === "function") {
@@ -236,16 +255,21 @@ export function registerActionRouter(context: LspContext): void {
         docText = doc?.getText();
         if (!docText && params.uri) {
           const normUri = params.uri.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///");
+          const wmDocMgr = (
+            context.workspaceManager as unknown as {
+              documentManager?: { documentTrees?: Map<string, { text?: string }> };
+            }
+          )?.documentManager;
           const cached =
             context.documentManager?.documentTrees?.get(params.uri) ??
             context.documentManager?.documentTrees?.get(normUri) ??
-            (context.workspaceManager as any)?.documentManager?.documentTrees?.get(params.uri);
+            wmDocMgr?.documentTrees?.get(params.uri);
           if (cached?.text) {
             docText = cached.text;
-          } else if ((globalThis as any).sharedFs) {
+          } else if (globalFallback.sharedFs) {
             const fsPath = params.uri.replace(/^[a-z0-9+-]+:\/\/?/, "/");
             try {
-              docText = (globalThis as any).sharedFs.read(fsPath);
+              docText = globalFallback.sharedFs.read(fsPath);
             } catch {
               /* ignore */
             }
@@ -253,15 +277,15 @@ export function registerActionRouter(context: LspContext): void {
         }
       }
 
-      if (!docText && typeof context.documents?.all === "function") {
+      const inputName = typeof params.inputs?.["name"] === "string" ? params.inputs["name"] : undefined;
+      if (!docText && inputName && typeof context.documents?.all === "function") {
         for (const d of context.documents.all()) {
           const text = d.getText();
           if (
-            params.inputs?.["name"] &&
-            (text.includes(`model ${params.inputs["name"]}`) ||
-              text.includes(`class ${params.inputs["name"]}`) ||
-              text.includes(`block ${params.inputs["name"]}`) ||
-              text.includes(params.inputs["name"]))
+            text.includes(`model ${inputName}`) ||
+            text.includes(`class ${inputName}`) ||
+            text.includes(`block ${inputName}`) ||
+            text.includes(inputName)
           ) {
             docText = text;
             if (!params.uri) params.uri = d.uri;
@@ -270,14 +294,38 @@ export function registerActionRouter(context: LspContext): void {
         }
       }
 
+      const collectedProjectFiles: Record<string, string> = {};
+      if (typeof context.documents?.all === "function") {
+        const activeDirPrefix = params.uri ? params.uri.slice(0, params.uri.lastIndexOf("/") + 1) : "";
+        for (const d of context.documents.all()) {
+          if (!activeDirPrefix || d.uri.startsWith(activeDirPrefix)) {
+            const relName = activeDirPrefix
+              ? d.uri.slice(activeDirPrefix.length)
+              : d.uri.replace(/^[a-z0-9+-]+:\/\/\/?/i, "");
+            if (relName) {
+              collectedProjectFiles[relName] = d.getText();
+            }
+          }
+        }
+      }
+      const inputProjectFiles = params.inputs?.["projectFiles"] ?? params.inputs?.["virtualFiles"];
+      if (inputProjectFiles && typeof inputProjectFiles === "object" && !Array.isArray(inputProjectFiles)) {
+        for (const [k, v] of Object.entries(inputProjectFiles as Record<string, unknown>)) {
+          if (typeof v === "string") {
+            collectedProjectFiles[k] = v;
+          }
+        }
+      }
+
       const executionContext: ActionExecutionContext = {
         uri: params.uri,
         languageId: plugin.id,
         documentText: docText,
+        projectFiles: collectedProjectFiles,
         queryEngine:
           plugin.queryEngine ??
-          (context.workspaceManager as any)?.getQueryEngine?.(plugin.id) ??
-          (context.workspaceManager as any)?.globalModelicaQueryEngine,
+          context.workspaceManager?.getQueryEngine?.(plugin.id) ??
+          context.workspaceManager?.globalModelicaQueryEngine,
         workspaceManager: context.workspaceManager,
         parserService: context.parserService,
         validationService: context.validationService,
@@ -285,7 +333,7 @@ export function registerActionRouter(context: LspContext): void {
         documents: context.documents,
         state: context.state,
         sharedContext:
-          context.state?.sharedContext ?? context.parserService?.sharedContext ?? (globalThis as any).sharedContext,
+          context.state?.sharedContext ?? context.parserService?.sharedContext ?? globalFallback.sharedContext,
         connection: context.connection,
         notifyProgress: (msg: string, increment?: number) => {
           context.connection.sendNotification("modelscript/status", {
@@ -327,9 +375,10 @@ export function registerActionRouter(context: LspContext): void {
           return out;
         };
         return toJsonSafe(rawRes);
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
         context.connection.console.error(
-          `[lsp] Error executing action '${params.actionId}' for '${params.uri ?? plugin.id}': ${err?.message ?? err}`,
+          `[lsp] Error executing action '${params.actionId}' for '${params.uri ?? plugin.id}': ${msg}`,
         );
         throw err;
       }

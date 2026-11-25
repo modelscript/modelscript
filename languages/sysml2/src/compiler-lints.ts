@@ -8,7 +8,7 @@
  * These rules are transpiled directly to AssemblyScript and compiled into
  * `sysml2/dist/parser.wasm` via `@modelscript/dsl`'s `buildParser`, executing
  * in sub-millisecond time over the arena-native linear-memory CST (`CodeGraph`)
- * via `facade.getDiagnostics(rootPtr)` (live in LSP and on-demand in Morsel/CLI).
+ * via `facade.getDiagnostics(rootPtr)` (live in LSP and on-demand in Ansatz/CLI).
  */
 
 import type { CodeGraph, CompilerLint, u16, u32 } from "@modelscript/dsl";

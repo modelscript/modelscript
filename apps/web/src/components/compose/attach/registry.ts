@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { fileExtension } from "./engine";
-import type { AnyAttachProfile, AttachEditableView } from "./types";
+import type { AnyAttachProfile, AttachEditableView, AttachProfile } from "./types";
 
 const profiles = new Map<string, AnyAttachProfile>();
 
 /** Register (or replace) a profile. Returns an unregister function, useful in tests. */
-export function registerAttachProfile(profile: AnyAttachProfile): () => void {
-  profiles.set(profile.id, profile);
+export function registerAttachProfile<D>(profile: AttachProfile<D>): () => void {
+  const erased = profile as unknown as AnyAttachProfile;
+  profiles.set(profile.id, erased);
   return () => {
-    if (profiles.get(profile.id) === profile) profiles.delete(profile.id);
+    if (profiles.get(profile.id) === erased) profiles.delete(profile.id);
   };
 }
 

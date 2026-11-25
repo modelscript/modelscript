@@ -1,0 +1,14 @@
+G04 2-Layer USB-C Power Board — Board Profile Outline (26 mm x 20 mm)*
+%TF.FileFunction,Profile,NP*%
+%FSLAX34Y34*%
+%MOMM*%
+%ADD10C,0.150*%
+%LPD*%
+G01*
+D10*
+X0Y0D02*
+X260000Y0D01*
+X260000Y200000D01*
+X0Y200000D01*
+X0Y0D01*
+M02*

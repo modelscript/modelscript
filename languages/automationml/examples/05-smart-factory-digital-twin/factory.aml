@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<CAEXFile FileName="factory.aml" SchemaVersion="2.15">
+  <ExternalReference Path="roles.aml" Alias="Roles" />
+  <ExternalReference Path="interfaces.aml" Alias="Interfaces" />
+  <InstanceHierarchy Name="SmartFactoryDigitalTwin">
+    <Version>4.0.0</Version>
+    <InternalElement Name="AGV_FleetCarrier_01" ID="agv-01">
+      <Attribute Name="maxSpeedMps" AttributeDataType="xs:double" Unit="m/s">
+        <Value>1.5</Value>
+      </Attribute>
+      <Attribute Name="batterySocPct" AttributeDataType="xs:double" Unit="%">
+        <Value>88.0</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>2.4</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="dispatchCmd" ID="agv-01-cmd" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="dockedAtCell" ID="agv-01-dock" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+    <InternalElement Name="AssemblyRobotCell_A" ID="rob-cell-01">
+      <Attribute Name="cycleTimeSec" AttributeDataType="xs:double" Unit="s">
+        <Value>14.2</Value>
+      </Attribute>
+      <Attribute Name="Frame">
+        <Attribute Name="x" AttributeDataType="xs:double"><Value>4.5</Value></Attribute>
+        <Attribute Name="y" AttributeDataType="xs:double"><Value>2.4</Value></Attribute>
+        <Attribute Name="z" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rx" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="ry" AttributeDataType="xs:double"><Value>0.0</Value></Attribute>
+        <Attribute Name="rz" AttributeDataType="xs:double"><Value>180.0</Value></Attribute>
+      </Attribute>
+      <ExternalInterface Name="startAssembly" ID="rob-cell-01-start" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="assemblyDone" ID="rob-cell-01-done" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="kinematicsModel" ID="rob-cell-01-urdf" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/COLLADAInterface" RefURI="robot_kinematics.urdf" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+    <InternalElement Name="FactoryMES_PLC" ID="mes-plc-01">
+      <ExternalInterface Name="agvGo" ID="mes-plc-01-agv" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="agvArrived" ID="mes-plc-01-arr" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <ExternalInterface Name="robotRun" ID="mes-plc-01-rob" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="Out" DataType="BOOL" />
+      <ExternalInterface Name="robotFinished" ID="mes-plc-01-fin" RefBaseClassPath="AutomationMLInterfaceClassLib/AutomationMLBaseInterface/SignalInterface" Direction="In" DataType="BOOL" />
+      <InternalLink Name="AGV_Dispatch" RefPartnerSideA="mes-plc-01:agvGo" RefPartnerSideB="agv-01:dispatchCmd" />
+      <InternalLink Name="AGV_Docked" RefPartnerSideA="agv-01:dockedAtCell" RefPartnerSideB="mes-plc-01:agvArrived" />
+      <InternalLink Name="Cell_Start" RefPartnerSideA="mes-plc-01:robotRun" RefPartnerSideB="rob-cell-01:startAssembly" />
+      <InternalLink Name="Cell_Done" RefPartnerSideA="rob-cell-01:assemblyDone" RefPartnerSideB="mes-plc-01:robotFinished" />
+      <RoleRequirements RefBaseRoleClassPath="AutomationMLBaseRoleClassLib/AutomationMLBaseRole/Resource" />
+    </InternalElement>
+  </InstanceHierarchy>
+</CAEXFile>

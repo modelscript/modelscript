@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { getLanguageInfo, useVisibleMorselLanguages } from "@modelscript/editor/workbench/constants";
+import { getLanguageInfo, useVisibleAnsatzLanguages } from "@modelscript/editor/workbench/constants";
 import {
   AlertIcon,
   ArrowDownIcon,
@@ -61,7 +61,7 @@ export interface ComposeNotebookCellsEditorProps {
   setHashtagQuery: (q: { query: string; index: number } | null) => void;
   setPendingInsertAfterCellId: (id: string | null) => void;
   setShowCodeSnippetModal: (show: boolean) => void;
-  setShowMorselModal: (show: boolean) => void;
+  setShowAnsatzModal: (show: boolean) => void;
   setShowPackageRepoPicker?: ((show: boolean) => void) | undefined;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onPolishCell?: ((cellId: string) => void) | undefined;
@@ -185,12 +185,12 @@ const SLASH_COMMANDS: SlashCommandItem[] = [
     keywords: ["table", "grid", "parameters", "rows"],
   },
   {
-    id: "morsel",
+    id: "ansatz",
     category: "Interactive engineering",
     title: "Interactive Model",
     description: "Embed a live runnable simulation model",
     icon: <PulseIcon size={14} />,
-    keywords: ["model", "morsel", "simulation", "interactive", "circuit", "dae"],
+    keywords: ["model", "ansatz", "simulation", "interactive", "circuit", "dae"],
   },
   {
     id: "chart",
@@ -270,7 +270,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   setHashtagQuery,
   setPendingInsertAfterCellId,
   setShowCodeSnippetModal,
-  setShowMorselModal,
+  setShowAnsatzModal,
   setShowPackageRepoPicker,
   fileInputRef,
   onPolishCell,
@@ -278,7 +278,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
   onEditCodeCellInModal,
   aiBusy,
 }) => {
-  const visibleMorselLanguages = useVisibleMorselLanguages();
+  const visibleAnsatzLanguages = useVisibleAnsatzLanguages();
   const hasComposerAiPolish = useFeatureFlag("composer_ai_polish");
   const hasAiPolishAlias = useFeatureFlag("ai_polish");
   const isAiPolishFeatureEnabled = hasComposerAiPolish || hasAiPolishAlias;
@@ -429,12 +429,12 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
           setPendingInsertAfterCellId(targetCellId);
           setPendingFileOpen(true);
           break;
-        case "morsel":
+        case "ansatz":
           if (cell && cell.type === "markdown" && replaceSlashText) {
             updateMarkdownCell(targetCellId, baseText);
           }
           setPendingInsertAfterCellId(targetCellId);
-          setShowMorselModal(true);
+          setShowAnsatzModal(true);
           break;
         case "package":
           if (cell && cell.type === "markdown" && replaceSlashText) {
@@ -444,7 +444,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
           if (setShowPackageRepoPicker) {
             setShowPackageRepoPicker(true);
           } else {
-            setShowMorselModal(true);
+            setShowAnsatzModal(true);
           }
           break;
       }
@@ -455,7 +455,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
       focusCell,
       addMarkdownCellAfter,
       setPendingInsertAfterCellId,
-      setShowMorselModal,
+      setShowAnsatzModal,
       setShowPackageRepoPicker,
     ],
   );
@@ -586,8 +586,8 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                   const activeCodeBody = mdInfo.codeBody || "";
                   const activeCodeFile = mdInfo.codeFilename || "";
                   const generalMatch = GENERAL_CODE_LANGUAGES.find((g) => g.id === activeCodeLang);
-                  const morselMatch = generalMatch ? null : getLanguageInfo(activeCodeLang);
-                  const ext = generalMatch?.ext || morselMatch?.ext || activeCodeLang;
+                  const ansatzMatch = generalMatch ? null : getLanguageInfo(activeCodeLang);
+                  const ext = generalMatch?.ext || ansatzMatch?.ext || activeCodeLang;
                   const autoName = inferSnippetFilename(activeCodeBody, activeCodeLang, ext);
                   const cellDiagnostics = analyzeSnippetDiagnostics(activeCodeBody, activeCodeLang);
                   const firstError = cellDiagnostics[0];
@@ -636,8 +636,8 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
                               cursor: "pointer",
                             }}
                           >
-                            <optgroup label={`Engineering & Simulation Languages (${visibleMorselLanguages.length})`}>
-                              {visibleMorselLanguages.map((lang) => (
+                            <optgroup label={`Engineering & Simulation Languages (${visibleAnsatzLanguages.length})`}>
+                              {visibleAnsatzLanguages.map((lang) => (
                                 <option key={lang.id} value={lang.id}>
                                   {lang.label || lang.name} (.{lang.ext})
                                 </option>
@@ -1376,7 +1376,7 @@ export const ComposeNotebookCellsEditor: React.FC<ComposeNotebookCellsEditorProp
             onClick={() => {
               const lastId = notebookCells[notebookCells.length - 1]?.id || null;
               setPendingInsertAfterCellId(lastId);
-              setShowMorselModal(true);
+              setShowAnsatzModal(true);
             }}
           >
             <PulseIcon size={12} />

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSimDocument Version="40000">
+  <Model name="elbow_flexion_biceps">
+    <gravity>0 -9.80665 0</gravity>
+    <BodySet>
+      <objects>
+        <Body name="humerus">
+          <mass>1.865</mass>
+          <mass_center>0 -0.180 0</mass_center>
+          <inertia>0.0148 0.0046 0.0132 0 0 0</inertia>
+        </Body>
+        <Body name="forearm">
+          <mass>1.534</mass>
+          <mass_center>0 -0.181 0</mass_center>
+          <inertia>0.0193 0.0016 0.0201 0 0 0</inertia>
+        </Body>
+      </objects>
+    </BodySet>
+    <JointSet>
+      <objects>
+        <WeldJoint name="shoulder_weld">
+          <socket_parent_frame>/ground</socket_parent_frame>
+          <socket_child_frame>/bodyset/humerus</socket_child_frame>
+          <location_in_parent>0 1.40 0</location_in_parent>
+          <orientation_in_parent>0 0 0</orientation_in_parent>
+        </WeldJoint>
+        <PinJoint name="elbow_joint">
+          <socket_parent_frame>/bodyset/humerus</socket_parent_frame>
+          <socket_child_frame>/bodyset/forearm</socket_child_frame>
+          <location_in_parent>0.006 -0.290 0</location_in_parent>
+          <orientation_in_parent>0 0 0</orientation_in_parent>
+          <coordinates>
+            <Coordinate name="elbow_flexion">
+              <motion_type>rotational</motion_type>
+              <default_value>0.5236</default_value>
+              <range>0.0 2.2689</range>
+              <clamped>true</clamped>
+              <locked>false</locked>
+            </Coordinate>
+          </coordinates>
+        </PinJoint>
+      </objects>
+    </JointSet>
+    <ForceSet>
+      <objects>
+        <Thelen2003Muscle name="biceps_brachii">
+          <max_isometric_force>624.3</max_isometric_force>
+          <optimal_fiber_length>0.1157</optimal_fiber_length>
+          <tendon_slack_length>0.2723</tendon_slack_length>
+          <pennation_angle_at_optimal>0.0</pennation_angle_at_optimal>
+          <activation_time_constant>0.010</activation_time_constant>
+          <deactivation_time_constant>0.040</deactivation_time_constant>
+          <max_contraction_velocity>10.0</max_contraction_velocity>
+          <GeometryPath>
+            <PathPointSet>
+              <objects>
+                <PathPoint name="biceps_origin">
+                  <socket_parent_frame>/bodyset/humerus</socket_parent_frame>
+                  <location>0.015 -0.025 0.012</location>
+                </PathPoint>
+                <PathPoint name="biceps_insertion">
+                  <socket_parent_frame>/bodyset/forearm</socket_parent_frame>
+                  <location>0.010 -0.048 0.015</location>
+                </PathPoint>
+              </objects>
+            </PathPointSet>
+          </GeometryPath>
+        </Thelen2003Muscle>
+      </objects>
+    </ForceSet>
+  </Model>
+</OpenSimDocument>

@@ -1,0 +1,11 @@
+{
+  "id": "molfile-02-benzene-aromatic-ring",
+  "lang": "molfile",
+  "subFormats": ["mol"],
+  "difficulty": 2,
+  "title": "Benzene Planar Aromatic Ring (Bond Type 4)",
+  "description": "Regular hexagonal C6H6 benzene ring encoded in MDL V2000 format using aromatic bond order 4 for all six C-C ring bonds and 1.395 Angstrom equilibrium carbon-carbon spacing.",
+  "category": "Cheminformatics & Molecular Structure",
+  "tags": ["molfile", "benzene", "aromatic", "v2000"],
+  "activeFile": "benzene.mol"
+}

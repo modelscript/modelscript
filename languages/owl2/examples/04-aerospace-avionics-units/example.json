@@ -1,0 +1,11 @@
+{
+  "id": "owl2-04-aerospace-avionics-units",
+  "lang": "owl2",
+  "subFormats": ["ofn"],
+  "difficulty": 4,
+  "title": "Aerospace Avionics Ontology with Units Module",
+  "description": "Multi-file OWL 2 ontology pairing an aerospace avionics subsystem taxonomy with a companion SI physical units ontology module.",
+  "category": "Aerospace Ontology",
+  "tags": ["owl2", "avionics", "units", "modular", "multi-file"],
+  "activeFile": "avionics.ofn"
+}

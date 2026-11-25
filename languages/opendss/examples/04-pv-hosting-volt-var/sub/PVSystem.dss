@@ -1,0 +1,4 @@
+! Distributed PV Systems with Irradiance Curve Reference
+New Loadshape.SolarDay npts=24 interval=1 mult=(file=sub/solar_curve.csv)
+New PVSystem.PV_NodeB bus1=NodeB phases=3 kv=12.47 kva=1500 pmpp=1350
+New PVSystem.PV_NodeC bus1=NodeC phases=3 kv=12.47 kva=1200 pmpp=1100

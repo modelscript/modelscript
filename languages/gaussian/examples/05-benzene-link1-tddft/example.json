@@ -1,0 +1,11 @@
+{
+  "id": "gaussian-05-benzene-link1-tddft",
+  "lang": "gaussian",
+  "subFormats": ["gjf"],
+  "difficulty": 5,
+  "title": "Multi-Step Link1 TD-DFT UV-Vis Excited States of Benzene",
+  "description": "Two-step --Link1-- Gaussian workflow performing ground-state DFT optimization of D6h benzene followed by vertical Time-Dependent DFT (TD-B3LYP/6-311+G(d,p)) singlet excitation energies.",
+  "category": "Quantum Chemistry & Electronic Structure",
+  "tags": ["gaussian", "link1", "td-dft", "uv-vis"],
+  "activeFile": "benzene_tddft.gjf"
+}

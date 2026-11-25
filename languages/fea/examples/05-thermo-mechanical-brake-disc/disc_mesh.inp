@@ -1,0 +1,7 @@
+** Brake Rotor Sector Node and Element Sets
+*NSET, NSET=HUB_BOLT_CIRCLE
+1, 4, 5, 8
+*NSET, NSET=RUBBING_RING
+2, 3, 6, 7
+*ELSET, ELSET=ROTOR_SECTOR
+1

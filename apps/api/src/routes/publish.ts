@@ -26,7 +26,9 @@ import { extractManifestFromZip } from "../util/zip.js";
 const uploadDir = process.env["UPLOAD_TEMP_DIR"] || path.join(os.tmpdir(), "modelscript-uploads");
 try {
   fs.mkdirSync(uploadDir, { recursive: true });
-} catch {}
+} catch {
+  // Upload temp directory may already exist
+}
 
 const upload = multer({
   storage: multer.diskStorage({
@@ -140,7 +142,9 @@ export function publishRouter(
           ) {
             candidateOidcToken = rawBearer;
           }
-        } catch {}
+        } catch {
+          // Bearer token is not a JWT or has malformed payload; skip OIDC check
+        }
       }
     }
 
@@ -638,7 +642,9 @@ export function publishRouter(
         if (tempUploadPath && fs.existsSync(tempUploadPath)) {
           try {
             fs.unlinkSync(tempUploadPath);
-          } catch {}
+          } catch {
+            // Best-effort cleanup of temporary upload archive
+          }
         }
       }
     },

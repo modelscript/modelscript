@@ -1,0 +1,12 @@
+{
+  "id": "ran-01-halfwave-dipole-adf",
+  "lang": "ran",
+  "subFormats": ["adf"],
+  "difficulty": 1,
+  "title": "Half-Wave Dipole Omnidirectional Pattern (.adf)",
+  "description": "NSMA WG16 .adf radiation pattern for a 900 MHz omnidirectional half-wave dipole antenna with 2.15 dBi peak gain and symmetric elevation roll-off.",
+  "category": "Antenna Radiation Patterns",
+  "tags": ["ran", "nsma", "adf", "dipole"],
+  "activeFile": "dipole_900mhz.adf",
+  "isDefaultStarter": true
+}

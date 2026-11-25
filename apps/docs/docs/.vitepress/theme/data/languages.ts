@@ -163,7 +163,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".rq, .sparql",
     role: "RDF knowledge-graph & digital-thread semantic queries",
     group: "core",
-    tier: "beta",
+    tier: "alpha",
   },
 
   // ── Geometry & continuum ────────────────────────────────────────────────
@@ -183,7 +183,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".qif",
     role: "ASME Y14.5 / ISO 1101 GD&T metrology & SPC capability",
     group: "geometry",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "scad",
@@ -239,7 +239,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".c",
     role: "Numerical & embedded C integration",
     group: "integration",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "fortran",
@@ -259,7 +259,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xml",
     role: "6-DOF flight dynamics",
     group: "aerospace",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "rocets",
@@ -324,7 +324,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".gtm",
     role: "Engine, powertrain & thermal flow",
     group: "automotive",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "opendrive",
@@ -342,7 +342,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xosc",
     role: "Driving scenarios & RSS safety margins",
     group: "automotive",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "gtfs",
@@ -371,7 +371,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".spck",
     role: "Spatial multibody dynamics",
     group: "rail",
-    tier: "alpha",
+    tier: "beta",
   },
 
   // ── Power systems & grid ────────────────────────────────────────────────
@@ -409,7 +409,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".epc, .dyd",
     role: "WECC bulk transmission power flow & dynamic models",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "cgmes",
@@ -418,7 +418,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".xml, .rdf",
     role: "ENTSO-E IEC 61970 transmission grid exchange & topology",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "opendss",
@@ -454,7 +454,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".tgh, .dat",
     role: "Geothermal reservoir & wellbore flashing thermodynamics",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "matpower",
@@ -472,7 +472,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".cfg, .dat, .cff",
     role: "Digital fault recorder & transient disturbance analysis",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "scl",
@@ -481,7 +481,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".scd, .cid, .ssd, .xml",
     role: "Substation automation, GOOSE & Sampled Values dataflow",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "atp",
@@ -490,7 +490,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".atp, .dat",
     role: "Electromagnetic transient program card decks",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "dnp3",
@@ -508,7 +508,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".olx, .dxt",
     role: "Short-circuit fault currents & TOC protection coordination",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "sel",
@@ -517,7 +517,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".rdb, .rcf, .sel, .txt",
     role: "Schweitzer relay settings, SELogic & 50/51/21 protection",
     group: "power",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "c37118",
@@ -526,7 +526,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".c37118, .pmu",
     role: "Synchrophasor PMU streaming telemetry & wide-area monitoring",
     group: "power",
-    tier: "alpha",
+    tier: "pre-alpha",
   },
   {
     slug: "cyme",
@@ -553,7 +553,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".iec104, .104",
     role: "Substation telecontrol & SCADA protocol telemetry",
     group: "power",
-    tier: "alpha",
+    tier: "pre-alpha",
   },
   {
     slug: "plscadd",
@@ -696,7 +696,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".ibs",
     role: "I/O buffer behavioral models",
     group: "electronics",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "touchstone",
@@ -705,7 +705,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".sNp",
     role: "RF & signal-integrity S-parameters",
     group: "electronics",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "optical",
@@ -781,7 +781,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".idf",
     role: "Building energy & HVAC",
     group: "buildings",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "epanet",
@@ -835,7 +835,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".basin, .hms",
     role: "Precipitation runoff, SCS-CN excess & Muskingum routing",
     group: "buildings",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "waterml",
@@ -844,7 +844,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".waterml, .wml2, .xml",
     role: "Streamflow telemetry & stage-discharge rating curves",
     group: "buildings",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "asm",
@@ -853,7 +853,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".asm, .bsm, .wrrf",
     role: "Biokinetics, Petersen matrix & Takács clarifier settling",
     group: "buildings",
-    tier: "alpha",
+    tier: "beta",
   },
 
   // ── Chemical & process ──────────────────────────────────────────────────
@@ -900,7 +900,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".smi",
     role: "Molecular graph parsing & Joback property estimation",
     group: "process",
-    tier: "alpha",
+    tier: "beta",
   },
 
   // ── Life sciences, healthcare & medical ─────────────────────────────────
@@ -956,7 +956,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".ctl",
     role: "Clinical PK/PD compartmental dosing & exposure",
     group: "life-sciences",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "mlxtran",
@@ -965,7 +965,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".mlxtran",
     role: "Monolix PK/PD longitudinal & compartmental models",
     group: "life-sciences",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "pdb",
@@ -1001,7 +1001,7 @@ const ALL_LANGUAGES: LanguageInfo[] = [
     ext: ".mod",
     role: "NEURON ion-channel & Hodgkin-Huxley membrane kinetics",
     group: "life-sciences",
-    tier: "alpha",
+    tier: "beta",
   },
   {
     slug: "opensim",

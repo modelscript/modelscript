@@ -1,0 +1,11 @@
+{
+  "id": "gerber-05-sensor-pcb-4layer-pack",
+  "lang": "gerber",
+  "subFormats": ["rs-274x", "excellon", "4-layer"],
+  "difficulty": 5,
+  "title": "4-Layer Mixed-Signal Sensor PCB Fabrication Pack",
+  "description": "Complete 4-layer mixed-signal industrial sensor PCB CAM release package with L1 top signal, L2 solid ground, L3 3.3V power, L4 bottom routing, soldermask, outline, and Excellon drill file.",
+  "category": "PCB Fabrication & CAM",
+  "tags": ["gerber", "4-layer", "mixed-signal", "excellon", "multi-file"],
+  "activeFile": "top.gtl"
+}

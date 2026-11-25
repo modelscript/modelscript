@@ -1196,11 +1196,11 @@ Starts the multi-language ModelScript Language Server Protocol (`@modelscript/ls
 
 ---
 
-### `playground`
+### `ansatz`
 
-Launches a local interactive web playground server for live grammar authoring, GLR parse tree visualization, Salsa query inspection, and DAE simulation.
+Launches a local interactive web ansatz server for live grammar authoring, GLR parse tree visualization, Salsa query inspection, and DAE simulation.
 
-<CliCommand name="playground" />
+<CliCommand name="ansatz" />
 
 ---
 

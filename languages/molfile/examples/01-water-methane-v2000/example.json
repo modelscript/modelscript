@@ -1,0 +1,12 @@
+{
+  "id": "molfile-01-water-methane-v2000",
+  "lang": "molfile",
+  "subFormats": ["mol", "sdf"],
+  "difficulty": 1,
+  "title": "Water and Methane V2000 3D Molecular Coordinates",
+  "description": "Two-record MDL V2000 Structure-Data File (SDF) encoding equilibrium 3D tetrahedral methane (CH4) and bent water (H2O) geometries with explicit covalent hydrogens and property tags.",
+  "category": "Cheminformatics & Molecular Structure",
+  "tags": ["molfile", "v2000", "sdf", "3d-coordinates"],
+  "activeFile": "water_methane.sdf",
+  "isDefaultStarter": true
+}

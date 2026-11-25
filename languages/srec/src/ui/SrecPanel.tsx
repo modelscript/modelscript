@@ -144,9 +144,9 @@ export const SrecPanel: React.FC<LanguagePanelProps> = ({
                 Export Intel HEX
               </PanelButton>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "srec", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "srec", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

@@ -10,7 +10,7 @@ import { DEFAULT_FRONTEND_FLAGS, useFeatureFlag } from "../FeatureFlagContext";
 import { useInstanceBranding } from "../InstanceBrandingContext";
 import { useTheme } from "../theme";
 
-const styled: typeof styledImport = (styledImport as any).default ?? styledImport;
+const styled: typeof styledImport = (styledImport as { default?: typeof styledImport }).default ?? styledImport;
 
 export interface ProductTourStep {
   id: string;
@@ -90,10 +90,10 @@ export function getProductTourSteps(flags: ProductTourFlagConfig = DEFAULT_FRONT
     selector: '[data-tour-id="tour-workbenches"]',
     fallbackSelector: "header",
     badge: hasIde ? "Simulation & IDE" : "Simulation & Docs",
-    title: hasIde ? "Zero-Install Playground & IDE" : "Zero-Install Playground & Docs",
+    title: hasIde ? "Zero-Install Ansatz & IDE" : "Zero-Install Ansatz & Docs",
     description: hasIde
-      ? "Launch instant WebAssembly simulations in the Playground or open the full VS Code-powered IDE Workbench for multi-file projects."
-      : "Launch instant in-browser WebAssembly simulations in the Playground and browse the engineering documentation.",
+      ? "Launch instant WebAssembly simulations in the Ansatz or open the full VS Code-powered IDE Workbench for multi-file projects."
+      : "Launch instant in-browser WebAssembly simulations in the Ansatz and browse the engineering documentation.",
     preferredPlacement: "right",
   });
 

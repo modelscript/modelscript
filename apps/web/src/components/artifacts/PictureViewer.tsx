@@ -9,8 +9,16 @@ import Box from "../Box";
 import type { AnySpatialPin, SpatialPin2D } from "./spatial-pin";
 import { useWheelZoom, ZoomHintBadge } from "./useArtifactZoom";
 
+export interface PictureViewerConfig {
+  url?: string | undefined;
+  src?: string | undefined;
+  title?: string | undefined;
+  pins?: SpatialPin2D[] | unknown[] | undefined;
+  [key: string]: unknown;
+}
+
 interface PictureViewerProps {
-  viewConfig: any; // expects { url: string, title?: string, pins?: SpatialPin2D[] }
+  viewConfig?: PictureViewerConfig | null | undefined;
   isFullScreen?: boolean | undefined;
   onPinCreated?: ((pin: AnySpatialPin) => void) | undefined;
 }

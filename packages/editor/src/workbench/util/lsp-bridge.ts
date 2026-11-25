@@ -2,7 +2,7 @@
 
 /**
  * Typed wrappers around every custom `modelscript/*` LSP request that
- * Morsel needs. Each function is a thin async call through the protocol
+ * Ansatz needs. Each function is a thin async call through the protocol
  * connection established by `lsp-worker.ts`.
  */
 
@@ -18,16 +18,16 @@ import {
   type DiagramPort,
 } from "@modelscript/diagram/protocol";
 import pako from "pako";
-import { ALL_MORSEL_LANGUAGES } from "../constants";
+import { ALL_ANSATZ_LANGUAGES } from "../constants";
 import {
   createHttpLspTransport,
   getActiveLspTransport,
   hasActiveLspTransport,
   setActiveLspTransport,
-  type MorselLspTransport,
+  type AnsatzLspTransport,
 } from "./lsp-transport";
 
-export { createHttpLspTransport, setActiveLspTransport, type MorselLspTransport };
+export { createHttpLspTransport, setActiveLspTransport, type AnsatzLspTransport };
 export type { DiagramApplyEditsResult, DiagramData, DiagramEdge, DiagramEditAction, DiagramNode, DiagramPort };
 
 // ────────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ export function setPreferredLspLanguageId(languageId?: string): void {
 
 const EXTENSION_TO_LANGUAGE_ID: Map<string, string> = (() => {
   const map = new Map<string, string>();
-  for (const lang of ALL_MORSEL_LANGUAGES) {
+  for (const lang of ALL_ANSATZ_LANGUAGES) {
     for (const rawExt of lang.extensions) {
       const ext = rawExt.toLowerCase();
       if (!map.has(ext)) {
@@ -64,7 +64,7 @@ function inferLanguageIdFromUri(uri?: string): string | undefined {
   return EXTENSION_TO_LANGUAGE_ID.get(clean.slice(dotIdx));
 }
 
-async function lsp(initialLanguageId?: string): Promise<MorselLspTransport> {
+async function lsp(initialLanguageId?: string): Promise<AnsatzLspTransport> {
   return getActiveLspTransport(initialLanguageId ?? preferredInitialLanguageId);
 }
 
@@ -195,7 +195,7 @@ export function didChangeVisibleRanges(uri: string, ranges: { startLine: number;
 }
 
 // ────────────────────────────────────────────────────────────────────
-// LSP types used in Morsel
+// LSP types used in Ansatz
 // ────────────────────────────────────────────────────────────────────
 
 export interface LspTextEdit {
@@ -648,7 +648,7 @@ export interface ApplyCadEditResult {
   error?: string | undefined;
 }
 
-export async function applyCadEditInMorsel(params: ApplyCadEditParams): Promise<ApplyCadEditResult> {
+export async function applyCadEditInAnsatz(params: ApplyCadEditParams): Promise<ApplyCadEditResult> {
   return (await lsp(params.languageId ?? inferLanguageIdFromUri(params.uri))).sendRequest(
     "modelscript/applyCadEdit",
     params,
@@ -704,22 +704,31 @@ export async function parseCode(code: string): Promise<{
   return (await lsp()).sendRequest("modelscript/parse", { code });
 }
 
-export async function verifyAllInLsp(
+export interface LspDocumentSymbol {
+  name: string;
+  detail?: string;
+  kind?: number;
+  range?: { start: { line: number; character: number }; end: { line: number; character: number } };
+  selectionRange?: { start: { line: number; character: number }; end: { line: number; character: number } };
+  children?: LspDocumentSymbol[];
+}
+
+export async function verifyAllInLsp<T = Record<string, unknown>>(
   params: {
     uri?: string;
     target?: string;
     all?: boolean;
   } = {},
-): Promise<any> {
+): Promise<T> {
   return (await lsp()).sendRequest("modelscript/verifyAll", params);
 }
 
-export async function executeLspAction(
+export async function executeLspAction<T = Record<string, unknown>>(
   actionId: string,
   languageId: string,
   uri: string,
   inputs: Record<string, unknown> = {},
-): Promise<any> {
+): Promise<T> {
   return (await lsp()).sendRequest("modelscript/executeAction", {
     actionId,
     languageId,
@@ -731,8 +740,8 @@ export async function executeLspAction(
 export async function getCodeActionsInLsp(
   uri: string,
   range: { start: { line: number; character: number }; end: { line: number; character: number } },
-  diagnostics: any[] = [],
-): Promise<any[]> {
+  diagnostics: unknown[] = [],
+): Promise<unknown[]> {
   return (await lsp()).sendRequest("textDocument/codeAction", {
     textDocument: { uri },
     range,
@@ -740,7 +749,7 @@ export async function getCodeActionsInLsp(
   });
 }
 
-export async function getDocumentSymbols(uri: string): Promise<any[]> {
+export async function getDocumentSymbols(uri: string): Promise<LspDocumentSymbol[]> {
   return (await lsp()).sendRequest("textDocument/documentSymbol", { textDocument: { uri } });
 }
 
@@ -1184,7 +1193,7 @@ export async function getSemanticDiff(
   });
 }
 
-export interface CompileStepFromSourcesMorselParams {
+export interface CompileStepFromSourcesAnsatzParams {
   scadText: string;
   qifText?: string | undefined;
   scadUri?: string | undefined;
@@ -1195,7 +1204,7 @@ export interface CompileStepFromSourcesMorselParams {
   timeStamp?: string | undefined;
 }
 
-export interface CompileStepFromSourcesMorselResult {
+export interface CompileStepFromSourcesAnsatzResult {
   stepText: string;
   featureAnchors: readonly StepFeatureAnchor[];
   spools: readonly SpoolKinematicsSpec[];
@@ -1204,7 +1213,7 @@ export interface CompileStepFromSourcesMorselResult {
   error?: string | undefined;
 }
 
-export interface StepMeshMorselResult {
+export interface StepMeshAnsatzResult {
   id: number;
   name: string;
   type?: string | undefined;
@@ -1217,19 +1226,19 @@ export interface StepMeshMorselResult {
  * Compile `.scad` (+ optional `.qif`) into an ISO-10303-21 AP242 STEP artifact
  * with embedded provenance (`/* @modelscript-meta {...} *\/`) and GD&T overlay.
  */
-export async function compileStepFromSourcesInMorsel(
-  params: CompileStepFromSourcesMorselParams,
-): Promise<CompileStepFromSourcesMorselResult> {
+export async function compileStepFromSourcesInAnsatz(
+  params: CompileStepFromSourcesAnsatzParams,
+): Promise<CompileStepFromSourcesAnsatzResult> {
   const c = await lsp("scad");
-  return c.sendRequest<CompileStepFromSourcesMorselResult>("modelscript/compileStepFromSources", params);
+  return c.sendRequest<CompileStepFromSourcesAnsatzResult>("modelscript/compileStepFromSources", params);
 }
 
 /**
  * Tessellate an ISO-10303-21 STEP document into labeled triangular meshes via the LSP STEP kernel.
  */
-export async function getStepMeshesInMorsel(uri: string, documentText?: string): Promise<StepMeshMorselResult[]> {
+export async function getStepMeshesInAnsatz(uri: string, documentText?: string): Promise<StepMeshAnsatzResult[]> {
   const c = await lsp("step");
-  const res = await c.sendRequest<StepMeshMorselResult[]>("modelscript/getStepMeshes", {
+  const res = await c.sendRequest<StepMeshAnsatzResult[]>("modelscript/getStepMeshes", {
     uri,
     ...(documentText !== undefined ? { documentText } : {}),
   });
@@ -1240,7 +1249,7 @@ export async function getStepMeshesInMorsel(uri: string, documentText?: string):
 // Digital Thread & Cross-Artifact Verification
 // ────────────────────────────────────────────────────────────────────
 
-export interface MorselThreadGraphNode {
+export interface AnsatzThreadGraphNode {
   domain: string;
   domainIndex: number;
   nodeId: number;
@@ -1252,11 +1261,11 @@ export interface MorselThreadGraphNode {
   properties?: Record<string, unknown> | undefined;
 }
 
-export interface MorselThreadGraphItem {
+export interface AnsatzThreadGraphItem {
   threadId: number | string;
   revision: number;
   status: "synced" | "stale" | "conflict" | "removed";
-  nodes: MorselThreadGraphNode[];
+  nodes: AnsatzThreadGraphNode[];
   diagnostics?: Array<{
     domain: string;
     elementName: string;
@@ -1274,8 +1283,8 @@ export interface MorselThreadGraphItem {
   }>;
 }
 
-export interface MorselThreadGraphResponse {
-  threads: MorselThreadGraphItem[];
+export interface AnsatzThreadGraphResponse {
+  threads: AnsatzThreadGraphItem[];
   domains: string[];
   summary: {
     totalThreads: number;
@@ -1286,19 +1295,19 @@ export interface MorselThreadGraphResponse {
   };
 }
 
-export interface MorselBlastRadiusResult {
+export interface AnsatzBlastRadiusResult {
   impactedThreads: Array<number | string>;
   impactedNodes: Array<{ domain: string; nodeId: number }>;
   totalImpactedCount: number;
 }
 
-export interface MorselReconcileResult {
+export interface AnsatzReconcileResult {
   success: boolean;
   message: string;
   reconciledValue?: number | undefined;
 }
 
-export interface MorselVerifyAllReport {
+export interface AnsatzVerifyAllReport {
   uri?: string | undefined;
   summary?: {
     overallPassed?: boolean;
@@ -1344,23 +1353,23 @@ export interface MorselVerifyAllReport {
   [key: string]: unknown;
 }
 
-export async function getThreadGraph(): Promise<MorselThreadGraphResponse> {
+export async function getThreadGraph(): Promise<AnsatzThreadGraphResponse> {
   const c = await lsp();
-  return c.sendRequest<MorselThreadGraphResponse>("modelscript/getThreadGraph");
+  return c.sendRequest<AnsatzThreadGraphResponse>("modelscript/getThreadGraph");
 }
 
-export async function getBlastRadius(domain: string, nodeId: number): Promise<MorselBlastRadiusResult> {
+export async function getBlastRadius(domain: string, nodeId: number): Promise<AnsatzBlastRadiusResult> {
   const c = await lsp();
-  return c.sendRequest<MorselBlastRadiusResult>("modelscript/getBlastRadius", { domain, nodeId });
+  return c.sendRequest<AnsatzBlastRadiusResult>("modelscript/getBlastRadius", { domain, nodeId });
 }
 
 export async function reconcileThreadSlot(
   slot: number,
   strategy: "physics-simplex" | "source-wins" | "target-wins" | "custom" = "physics-simplex",
   customValue?: number,
-): Promise<MorselReconcileResult> {
+): Promise<AnsatzReconcileResult> {
   const c = await lsp();
-  return c.sendRequest<MorselReconcileResult>("modelscript/reconcileThreadSlot", {
+  return c.sendRequest<AnsatzReconcileResult>("modelscript/reconcileThreadSlot", {
     slot,
     strategy,
     ...(customValue !== undefined ? { customValue } : {}),
@@ -1372,14 +1381,14 @@ export async function runVerification(uri: string): Promise<{ ok: boolean; error
   return c.sendRequest<{ ok: boolean; error?: string | undefined }>("modelscript/runVerification", { uri });
 }
 
-export async function verifyAll(uri: string): Promise<MorselVerifyAllReport> {
+export async function verifyAll(uri: string): Promise<AnsatzVerifyAllReport> {
   const c = await lsp();
-  return c.sendRequest<MorselVerifyAllReport>("modelscript/verifyAll", { uri });
+  return c.sendRequest<AnsatzVerifyAllReport>("modelscript/verifyAll", { uri });
 }
 
-export type MorselOnDemandLintMode = "all" | "formal" | "compiler";
+export type AnsatzOnDemandLintMode = "all" | "formal" | "compiler";
 
-export interface MorselOnDemandLintDiagnostic {
+export interface AnsatzOnDemandLintDiagnostic {
   range: {
     start: { line: number; character: number };
     end: { line: number; character: number };
@@ -1390,10 +1399,10 @@ export interface MorselOnDemandLintDiagnostic {
   message: string;
 }
 
-export interface MorselRunFormalLintsResult {
+export interface AnsatzRunFormalLintsResult {
   ok: boolean;
   uri?: string | undefined;
-  diagnostics: MorselOnDemandLintDiagnostic[];
+  diagnostics: AnsatzOnDemandLintDiagnostic[];
   formalCount: number;
   compilerCount: number;
   durationMs?: number | undefined;
@@ -1406,9 +1415,9 @@ export async function runFormalLints(
     includeFormal?: boolean | undefined;
     includeCompilerLints?: boolean | undefined;
   },
-): Promise<MorselRunFormalLintsResult> {
+): Promise<AnsatzRunFormalLintsResult> {
   const c = await lsp();
-  return c.sendRequest<MorselRunFormalLintsResult>("modelscript/runFormalLints", {
+  return c.sendRequest<AnsatzRunFormalLintsResult>("modelscript/runFormalLints", {
     uri,
     includeFormal: options?.includeFormal ?? true,
     includeCompilerLints: options?.includeCompilerLints ?? true,
@@ -1419,7 +1428,7 @@ export async function runFormalLints(
 // Domain Analysis, Requirements, Actions, REPL & Ontology RPCs
 // ────────────────────────────────────────────────────────────────────
 
-export interface MorselBltAnalysisResult {
+export interface AnsatzBltAnalysisResult {
   variables?: unknown[] | undefined;
   equations?: unknown[] | undefined;
   blocks?: unknown[] | undefined;
@@ -1427,7 +1436,7 @@ export interface MorselBltAnalysisResult {
   [key: string]: unknown;
 }
 
-export interface MorselOptimizeModelResult {
+export interface AnsatzOptimizeModelResult {
   success?: boolean | undefined;
   status?: string | undefined;
   objectiveValue?: number | undefined;
@@ -1437,7 +1446,7 @@ export interface MorselOptimizeModelResult {
   [key: string]: unknown;
 }
 
-export interface MorselMonteCarloResult {
+export interface AnsatzMonteCarloResult {
   success?: boolean | undefined;
   numSamples?: number | undefined;
   statistics?: Record<string, unknown> | undefined;
@@ -1446,7 +1455,7 @@ export interface MorselMonteCarloResult {
   [key: string]: unknown;
 }
 
-export interface MorselTrainSurrogateResult {
+export interface AnsatzTrainSurrogateResult {
   success: boolean;
   metrics?: { trainMSE: number; valMSE: number; r2: number } | undefined;
   inputNames?: string[] | undefined;
@@ -1460,7 +1469,7 @@ export interface MorselTrainSurrogateResult {
   [key: string]: unknown;
 }
 
-export interface MorselRequirementItem {
+export interface AnsatzRequirementItem {
   id?: string | undefined;
   name?: string | undefined;
   text?: string | undefined;
@@ -1469,7 +1478,7 @@ export interface MorselRequirementItem {
   [key: string]: unknown;
 }
 
-export interface MorselRtmMatrixResult {
+export interface AnsatzRtmMatrixResult {
   rowDomain?: string | undefined;
   colDomain?: string | undefined;
   rows: unknown[];
@@ -1479,14 +1488,14 @@ export interface MorselRtmMatrixResult {
   [key: string]: unknown;
 }
 
-export interface MorselContractHierarchyResult {
+export interface AnsatzContractHierarchyResult {
   contracts?: unknown[] | undefined;
   root?: unknown | undefined;
   error?: string | undefined;
   [key: string]: unknown;
 }
 
-export interface MorselLspActionInfo {
+export interface AnsatzLspActionInfo {
   id: string;
   languageId: string;
   command: string;
@@ -1499,7 +1508,7 @@ export interface MorselLspActionInfo {
   [key: string]: unknown;
 }
 
-export interface MorselReplEvaluateResult {
+export interface AnsatzReplEvaluateResult {
   status: "ok" | "error" | "incomplete" | string;
   result?: unknown | undefined;
   output?: string | undefined;
@@ -1507,79 +1516,79 @@ export interface MorselReplEvaluateResult {
   [key: string]: unknown;
 }
 
-export interface MorselOwl2ClassNode {
+export interface AnsatzOwl2ClassNode {
   iri?: string | undefined;
   label?: string | undefined;
-  children?: MorselOwl2ClassNode[] | undefined;
+  children?: AnsatzOwl2ClassNode[] | undefined;
   [key: string]: unknown;
 }
 
-export async function analyzeBltInMorsel(uri: string, className?: string): Promise<MorselBltAnalysisResult | null> {
+export async function analyzeBltInAnsatz(uri: string, className?: string): Promise<AnsatzBltAnalysisResult | null> {
   const c = await lsp(inferLanguageIdFromUri(uri));
-  return c.sendRequest<MorselBltAnalysisResult | null>("modelscript/analyzeBlt", {
+  return c.sendRequest<AnsatzBltAnalysisResult | null>("modelscript/analyzeBlt", {
     uri,
     ...(className !== undefined ? { className } : {}),
   });
 }
 
-export async function optimizeModelInMorsel(params: Record<string, unknown>): Promise<MorselOptimizeModelResult> {
+export async function optimizeModelInAnsatz(params: Record<string, unknown>): Promise<AnsatzOptimizeModelResult> {
   const uri = typeof params.uri === "string" ? params.uri : undefined;
   const c = await lsp(inferLanguageIdFromUri(uri));
-  return c.sendRequest<MorselOptimizeModelResult>("modelscript/optimizeModel", params);
+  return c.sendRequest<AnsatzOptimizeModelResult>("modelscript/optimizeModel", params);
 }
 
-export async function runMonteCarloInMorsel(params: Record<string, unknown>): Promise<MorselMonteCarloResult> {
+export async function runMonteCarloInAnsatz(params: Record<string, unknown>): Promise<AnsatzMonteCarloResult> {
   const uri = typeof params.uri === "string" ? params.uri : undefined;
   const c = await lsp(inferLanguageIdFromUri(uri));
-  return c.sendRequest<MorselMonteCarloResult>("modelscript/montecarlo", params);
+  return c.sendRequest<AnsatzMonteCarloResult>("modelscript/montecarlo", params);
 }
 
-export async function trainSurrogateInMorsel(params: Record<string, unknown>): Promise<MorselTrainSurrogateResult> {
+export async function trainSurrogateInAnsatz(params: Record<string, unknown>): Promise<AnsatzTrainSurrogateResult> {
   const uri = typeof params.uri === "string" ? params.uri : undefined;
   const c = await lsp(inferLanguageIdFromUri(uri));
-  return c.sendRequest<MorselTrainSurrogateResult>("modelscript/trainSurrogate", params);
+  return c.sendRequest<AnsatzTrainSurrogateResult>("modelscript/trainSurrogate", params);
 }
 
-export async function getRequirementsInMorsel(uri?: string): Promise<MorselRequirementItem[]> {
+export async function getRequirementsInAnsatz(uri?: string): Promise<AnsatzRequirementItem[]> {
   const c = await lsp(inferLanguageIdFromUri(uri));
-  const res = await c.sendRequest<MorselRequirementItem[] | null>("modelscript/getRequirements", {
+  const res = await c.sendRequest<AnsatzRequirementItem[] | null>("modelscript/getRequirements", {
     uri: uri ?? "",
   });
   return Array.isArray(res) ? res : [];
 }
 
-export async function getRtmMatrixInMorsel(params?: Record<string, unknown>): Promise<MorselRtmMatrixResult> {
+export async function getRtmMatrixInAnsatz(params?: Record<string, unknown>): Promise<AnsatzRtmMatrixResult> {
   const uri = typeof params?.uri === "string" ? params.uri : undefined;
   const c = await lsp(inferLanguageIdFromUri(uri));
-  return c.sendRequest<MorselRtmMatrixResult>("modelscript/getRtmMatrix", params ?? {});
+  return c.sendRequest<AnsatzRtmMatrixResult>("modelscript/getRtmMatrix", params ?? {});
 }
 
-export async function getContractHierarchyInMorsel(uri?: string): Promise<MorselContractHierarchyResult | null> {
+export async function getContractHierarchyInAnsatz(uri?: string): Promise<AnsatzContractHierarchyResult | null> {
   const c = await lsp(inferLanguageIdFromUri(uri));
-  return c.sendRequest<MorselContractHierarchyResult | null>("modelscript/getContractHierarchy", {
+  return c.sendRequest<AnsatzContractHierarchyResult | null>("modelscript/getContractHierarchy", {
     ...(uri !== undefined ? { uri } : {}),
   });
 }
 
-export async function listLspActionsInMorsel(uri?: string, languageId?: string): Promise<MorselLspActionInfo[]> {
+export async function listLspActionsInAnsatz(uri?: string, languageId?: string): Promise<AnsatzLspActionInfo[]> {
   const c = await lsp(languageId ?? inferLanguageIdFromUri(uri));
-  const res = await c.sendRequest<MorselLspActionInfo[] | null>("modelscript/listActions", {
+  const res = await c.sendRequest<AnsatzLspActionInfo[] | null>("modelscript/listActions", {
     ...(uri !== undefined ? { uri } : {}),
     ...(languageId !== undefined ? { languageId } : {}),
   });
   return Array.isArray(res) ? res : [];
 }
 
-export async function evaluateReplInMorsel(code: string, uri?: string): Promise<MorselReplEvaluateResult> {
+export async function evaluateReplInAnsatz(code: string, uri?: string): Promise<AnsatzReplEvaluateResult> {
   const c = await lsp(inferLanguageIdFromUri(uri));
-  return c.sendRequest<MorselReplEvaluateResult>("modelscript/repl/evaluate", {
+  return c.sendRequest<AnsatzReplEvaluateResult>("modelscript/repl/evaluate", {
     input: code,
     ...(uri !== undefined ? { uri } : {}),
   });
 }
 
-export async function getOwl2ClassHierarchyInMorsel(uri: string): Promise<MorselOwl2ClassNode[]> {
+export async function getOwl2ClassHierarchyInAnsatz(uri: string): Promise<AnsatzOwl2ClassNode[]> {
   const c = await lsp(inferLanguageIdFromUri(uri) ?? "owl2");
-  const res = await c.sendRequest<MorselOwl2ClassNode[] | null>("modelscript/owl2/classHierarchy", { uri });
+  const res = await c.sendRequest<AnsatzOwl2ClassNode[] | null>("modelscript/owl2/classHierarchy", { uri });
   return Array.isArray(res) ? res : [];
 }

@@ -1,0 +1,53 @@
+# WMO BUFR Edition 4 Marine Buoy SST and Wave Telemetry (2 Buoys)
+BUFR EDITION 4 NAME PACIFIC_BUOY_BULLETIN
+TABLE_B
+  0-22-201 name="Sea Surface Temperature" unit="K" scale=2 ref=0 width=16
+  0-22-202 name="Significant Wave Height" unit="m" scale=2 ref=0 width=12
+  0-22-203 name="Dominant Wave Period" unit="s" scale=1 ref=0 width=10
+TABLE_D
+  3-22-001 = [0-01-001, 0-05-001, 0-06-001, 0-10-051, 0-12-101, 0-11-001, 0-11-002, 0-22-201, 0-22-202, 0-22-203] "Marine Buoy Sequence"
+SECTION 0
+  LENGTH = 0
+SECTION 1
+  MASTER_TABLE = 0
+  CENTRE = 7
+  SUBCENTRE = 0
+  CATEGORY = 1
+  VERSION = 38
+  YEAR = 2026
+  MONTH = 8
+  DAY = 22
+  HOUR = 18
+  MINUTE = 0
+  SECOND = 0
+SECTION 3
+  SUBSETS = 2
+  OBSERVED = true
+  COMPRESSED = false
+  DESCRIPTORS:
+    3-22-001
+SECTION 4
+  SUBSET 1:
+    0-01-001 = 46
+    0-05-001 = 37.36000
+    0-06-001 = -122.88000
+    0-10-051 = 101640
+    0-12-101 = 287.45
+    0-11-001 = 315
+    0-11-002 = 9.4
+    0-22-201 = 286.20
+    0-22-202 = 2.45
+    0-22-203 = 11.2
+  SUBSET 2:
+    0-01-001 = 46
+    0-05-001 = 36.79000
+    0-06-001 = -122.47000
+    0-10-051 = 101580
+    0-12-101 = 288.05
+    0-11-001 = 305
+    0-11-002 = 8.1
+    0-22-201 = 287.10
+    0-22-202 = 2.10
+    0-22-203 = 10.5
+SECTION 5
+7777

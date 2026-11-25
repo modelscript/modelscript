@@ -1,0 +1,12 @@
+{
+  "id": "esterel-01-abro-synchronizer",
+  "lang": "esterel",
+  "subFormats": ["strl"],
+  "difficulty": 1,
+  "title": "ABRO Canonical Reactive Synchronizer",
+  "description": "Gérard Berry's canonical synchronous reactive ABRO benchmark waiting concurrently for inputs A and B before emitting O, with strong reset preemption on R.",
+  "category": "Synchronous Reactive Systems",
+  "tags": ["esterel", "abro", "parallel", "preemption"],
+  "activeFile": "abro.strl",
+  "isDefaultStarter": true
+}

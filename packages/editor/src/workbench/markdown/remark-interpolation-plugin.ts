@@ -5,14 +5,14 @@ import { visit } from "unist-util-visit";
 
 export function remarkInterpolation() {
   return (tree: Node) => {
-    visit(tree, "text", (node: any, index: number | undefined, parent: Parent | undefined) => {
+    visit(tree, "text", (node: Node & { value?: string }, index: number | undefined, parent: Parent | undefined) => {
       if (!parent || index === undefined) return;
 
       const regex = /\{\{\s*([\w.]+)\s*\}\}/g;
-      const value = node.value as string;
+      const value = node.value ?? "";
       let match;
       let lastIndex = 0;
-      const newNodes: any[] = [];
+      const newNodes: Array<Node & Record<string, unknown>> = [];
 
       while ((match = regex.exec(value)) !== null) {
         const textBefore = value.substring(lastIndex, match.index);

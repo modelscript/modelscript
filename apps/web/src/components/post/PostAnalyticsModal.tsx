@@ -8,13 +8,13 @@ import { getPostAnalytics } from "../../api";
 import { safeCssImageUrl } from "../../util/url";
 import Box from "../Box";
 import { RenderContent } from "../Post";
-import WorldMap from "../WorldMap";
+import WorldMap, { type LocationStat, type RegionStat } from "../WorldMap";
 import { formatRelativeTime } from "./styles";
 
 export interface PostAnalyticsData {
   view_count?: number;
-  location_stats?: any[];
-  region_stats?: any[];
+  location_stats?: LocationStat[];
+  region_stats?: RegionStat[];
 }
 
 const AnalyticsCard = styled.div`
@@ -71,9 +71,9 @@ function formatNumber(num: number): string {
 }
 
 export interface PostAnalyticsModalProps {
-  postId: number;
+  postId: number | string;
   displayPost: {
-    id: number;
+    id: number | string;
     username: string;
     display_name?: string | null;
     avatar_url?: string | null;

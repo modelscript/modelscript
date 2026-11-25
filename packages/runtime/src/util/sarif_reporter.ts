@@ -35,7 +35,7 @@ export interface SarifResult {
         physicalLocation: SarifPhysicalLocation;
       }[]
     | undefined;
-  properties?: Record<string, any> | undefined;
+  properties?: Record<string, unknown> | undefined;
 }
 
 export interface SarifRule {
@@ -82,7 +82,7 @@ export interface SarifVerificationReportInput {
       name: string;
       passed: boolean;
       certified?: boolean | undefined;
-      details?: any;
+      details?: unknown;
       violations?:
         | {
             id?: string | undefined;
@@ -101,11 +101,20 @@ export interface SarifVerificationReportInput {
                   endColumn?: number | undefined;
                 }
               | undefined;
-            witness?: any;
+            witness?: unknown;
           }[]
         | undefined;
     }
   >;
+}
+
+interface SarifStageDetailsView {
+  verdict?:
+    | {
+        kind?: string | undefined;
+        rigor?: string | undefined;
+      }
+    | undefined;
 }
 
 /**
@@ -240,6 +249,10 @@ export function generateSarifReport(report: SarifVerificationReportInput, toolVe
       const level: "error" | "warning" | "note" =
         v.severity === "warning" ? "warning" : v.severity === "note" ? "note" : "error";
 
+      const stageDetails =
+        typeof stageResult.details === "object" && stageResult.details !== null
+          ? (stageResult.details as SarifStageDetailsView)
+          : undefined;
       const locUri = v.location?.uri || report.target || "workspace";
       const sarifResult: SarifResult = {
         ruleId,
@@ -264,8 +277,8 @@ export function generateSarifReport(report: SarifVerificationReportInput, toolVe
           stage: stageKey,
           stageName: stageResult.name,
           witness: v.witness,
-          verdict: stageResult.details?.verdict?.kind,
-          rigor: stageResult.details?.verdict?.rigor,
+          verdict: stageDetails?.verdict?.kind,
+          rigor: stageDetails?.verdict?.rigor,
           standard: v.standard,
           clauseId: v.clauseId,
           margin: v.margin,

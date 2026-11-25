@@ -1,0 +1,12 @@
+{
+  "id": "kicad-01-resistor-breakout-pcb",
+  "lang": "kicad",
+  "subFormats": ["kicad_pcb"],
+  "difficulty": 1,
+  "title": "2-Pad SMD Resistor Breakout PCB",
+  "description": "Minimal 2-layer KiCad 8 PCB layout with a 0603 SMD resistor, 2-pin power header, FR4 stackup, copper routing, and closed Edge.Cuts board outline.",
+  "category": "ECAD & PCB Layout",
+  "tags": ["kicad", "pcb", "breakout", "smd", "2-layer"],
+  "activeFile": "breakout.kicad_pcb",
+  "isDefaultStarter": true
+}

@@ -14,12 +14,14 @@ import {
   evaluateArenaFunctionCall,
   StmtKind,
   VarType,
+  type ArenaValue,
   type QueryDB,
   type SymbolEntry,
   type SymbolId,
 } from "@modelscript/runtime";
 import { isInnerQuery, isOuterQuery } from "../../queries.js";
 import { getFlatteningState } from "../support/state.js";
+import type { ComponentModArgData, FlattenerCstNode, FlattenerHostLike } from "../types.js";
 import { getArrayCtorElements } from "./binary-ops.js";
 import { copyExprBetweenDaes } from "./cst-utils.js";
 import {
@@ -31,9 +33,27 @@ import {
   isRealExpr,
 } from "./eval.js";
 
+type SymbolWithFqn = SymbolEntry & { _fqn?: string };
+type EquationExprNode = FlattenerCstNode & { isTerminal?: boolean | undefined };
+type FunctionDaeMeta = DAEBuilder & {
+  wasCalled?: boolean;
+  wasInlined?: boolean;
+  isExplicitImpure?: boolean;
+  isBeingFlattened?: boolean;
+  isRecursive?: boolean;
+  symId?: SymbolId;
+  isEarlyInline?: boolean;
+  specializedPrefix?: string;
+};
+type FlattenerHostExt = FlattenerHostLike & {
+  currentFunctionSpecializedPrefix?: string;
+};
+type NameResolverFn = (name: string) => SymbolEntry | null | undefined;
+type ModArgExt = ComponentModArgData & { isRedeclaration?: boolean };
+
 export const SCALAR_VECTORIZABLE_FUNCTIONS = new Map<
   string,
-  { arity: number; fold?: ((...args: number[]) => number) | undefined }
+  { arity: number; fold?: ((...args: number[]) => number | null) | undefined }
 >([
   ["sin", { arity: 1, fold: Math.sin }],
   ["cos", { arity: 1, fold: Math.cos }],
@@ -53,15 +73,16 @@ export const SCALAR_VECTORIZABLE_FUNCTIONS = new Map<
   ["sign", { arity: 1, fold: Math.sign }],
   ["floor", { arity: 1, fold: Math.floor }],
   ["ceil", { arity: 1, fold: Math.ceil }],
-  ["div", { arity: 2, fold: (a, b) => (b !== 0 ? Math.trunc(a / b) : (null as any)) }],
-  ["rem", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.trunc(a / b) * b : (null as any)) }],
-  ["mod", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.floor(a / b) * b : (null as any)) }],
+  ["div", { arity: 2, fold: (a, b) => (b !== 0 ? Math.trunc(a / b) : null) }],
+  ["rem", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.trunc(a / b) * b : null) }],
+  ["mod", { arity: 2, fold: (a, b) => (b !== 0 ? a - Math.floor(a / b) * b : null) }],
 ]);
 
 export function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
   const sym = db.symbol(symId);
   if (!sym) return "";
-  if ((sym as any)._fqn !== undefined) return (sym as any)._fqn;
+  const cached = (sym as SymbolWithFqn)._fqn;
+  if (cached !== undefined) return cached;
   const parts: string[] = [];
   let curr: SymbolEntry | null | undefined = sym;
   while (curr) {
@@ -71,11 +92,11 @@ export function getSymbolQualifiedName(db: QueryDB, symId: SymbolId): string {
     curr = curr.parentId !== null ? db.symbol(curr.parentId) : null;
   }
   const fqn = parts.join(".");
-  (sym as any)._fqn = fqn;
+  (sym as SymbolWithFqn)._fqn = fqn;
   return fqn;
 }
 
-export function isEquationExpr(c: any): boolean {
+export function isEquationExpr(c: EquationExprNode | null | undefined): boolean {
   if (!c) return false;
   const t = c.type;
   if (t === "=" || t === '"="' || t === "comment" || t === "description" || t === ";" || t === '";"') {
@@ -93,7 +114,7 @@ export function isEquationExpr(c: any): boolean {
   );
 }
 
-export function isOuterFunctionSymbol(db: any, sym: any): boolean {
+export function isOuterFunctionSymbol(db: QueryDB | null | undefined, sym: SymbolEntry | null | undefined): boolean {
   if (!sym || !db) return false;
   if (db.query?.("isOuter", sym.id) || isOuterQuery(db, sym)) return true;
   if (sym.parentId) {
@@ -103,12 +124,16 @@ export function isOuterFunctionSymbol(db: any, sym: any): boolean {
   return false;
 }
 
-export function hasMatchingInnerFunction(db: any, flattener: any, name: string): boolean {
+export function hasMatchingInnerFunction(
+  db: QueryDB | null | undefined,
+  flattener: FlattenerHostLike | null | undefined,
+  name: string,
+): boolean {
   if (!db || !name) return false;
   const shortName = name.includes(".") ? name.split(".").pop()! : name;
   const candidates = db.byName(shortName);
   if (!candidates) return false;
-  return candidates.some((c: any) => {
+  return candidates.some((c) => {
     if (c.kind !== "Class" && c.kind !== "Function") return false;
     const hasInner = db.query?.("isInner", c.id) || isInnerQuery(db, c);
     if (!hasInner) return false;
@@ -120,8 +145,8 @@ export function vectorizeFunctionCall(
   fnName: string,
   argExprIds: number[],
   dae: DAEBuilder,
-  flattener?: any,
-  db?: any,
+  flattener?: FlattenerHostLike | null,
+  db?: QueryDB | null,
   resolvedFnDae?: DAEBuilder,
 ): number | null {
   if (
@@ -150,18 +175,18 @@ export function vectorizeFunctionCall(
   }
   const scalarBuiltin = SCALAR_VECTORIZABLE_FUNCTIONS.get(fnName);
   let isScalarFn = Boolean(scalarBuiltin);
-  let fnDae: DAEBuilder | undefined = resolvedFnDae;
-  let pendingSym: any = null;
+  let fnDae: FunctionDaeMeta | undefined = resolvedFnDae as FunctionDaeMeta | undefined;
+  let pendingSym: SymbolEntry | null = null;
   let pendingQualifiedFnName = "";
   let pendingFnBase = "";
   if (!isScalarFn) {
-    const hasArrayArg = argExprIds.some((aid) => (getExprDims(aid, dae, db)?.length ?? 0) > 0);
+    const hasArrayArg = argExprIds.some((aid) => (getExprDims(aid, dae, db ?? undefined)?.length ?? 0) > 0);
     if (!hasArrayArg) return null;
-    if (!fnDae) fnDae = dae.getFunction(fnName);
+    if (!fnDae) fnDae = dae.getFunction(fnName) as FunctionDaeMeta | undefined;
     if (!fnDae && flattener && db) {
       const parts = fnName.split(".");
       const fnBase = parts[parts.length - 1]!;
-      let sym: any = null;
+      let sym: SymbolEntry | null = null;
       let enclosingScopeId: SymbolId | undefined = undefined;
       const currentScopeId =
         flattener.currentClassId ?? getFlatteningState(dae).currentClassId ?? flattener.currentRootClassId;
@@ -170,15 +195,15 @@ export function vectorizeFunctionCall(
         resolvedLookupName = [flattener.currentImports.get(parts[0]!)!, ...parts.slice(1)].join(".");
       }
       if (
-        (dae as any)?.specializedPrefix ||
+        (dae as FunctionDaeMeta)?.specializedPrefix ||
         flattener.currentParentMods?.specializedPkgPrefix ||
-        (flattener as any)?.currentFunctionSpecializedPrefix
+        (flattener as FlattenerHostExt)?.currentFunctionSpecializedPrefix
       ) {
         return null;
       }
       if (parts.length > 1) {
         const hasPkgRedecl = flattener.currentParentMods?.args?.some(
-          (a: any) => !a.isBreak && a.name === parts[0] && (a.isRedeclaration || a.redeclaredTypeSpecifier),
+          (a) => !a.isBreak && a.name === parts[0] && ((a as ModArgExt).isRedeclaration || a.redeclaredTypeSpecifier),
         );
         if (hasPkgRedecl) {
           return null;
@@ -186,17 +211,15 @@ export function vectorizeFunctionCall(
       }
       if (currentScopeId && parts.length > 1) {
         const prefixStr = parts.slice(0, -1).join(".");
-        const prefixSym = (db.query as any)("resolveName", currentScopeId)?.(prefixStr);
+        const prefixSym = db.query<NameResolverFn | null | undefined>("resolveName", currentScopeId)?.(prefixStr);
         if (prefixSym && (prefixSym.kind === "Class" || prefixSym.kind === "Package")) {
           enclosingScopeId = prefixSym.id;
         }
       }
       if (currentScopeId) {
-        const resolver = (
-          resolvedLookupName.includes(".")
-            ? (db.query as any)("resolveName", currentScopeId)
-            : (db.query as any)("resolveSimpleName", currentScopeId)
-        ) as ((n: string) => any) | undefined;
+        const resolver = resolvedLookupName.includes(".")
+          ? db.query<NameResolverFn | null | undefined>("resolveName", currentScopeId)
+          : db.query<NameResolverFn | null | undefined>("resolveSimpleName", currentScopeId);
         const resSym = resolver?.(resolvedLookupName) ?? (resolvedLookupName !== fnName ? resolver?.(fnName) : null);
         if (
           resSym &&
@@ -208,27 +231,29 @@ export function vectorizeFunctionCall(
         }
       }
       if (!sym && resolvedLookupName.includes(".")) {
-        sym = db
-          .byName(fnBase)
-          .find(
-            (e: any) =>
-              (e.kind === "Class" || e.kind === "Function") &&
-              flattener.isFunctionSym?.(e) &&
-              !flattener.isExternalObject?.(e.id) &&
-              !flattener.isRecordSym?.(e) &&
-              getSymbolQualifiedName(db, e.id).endsWith(resolvedLookupName),
-          );
+        sym =
+          db
+            .byName(fnBase)
+            .find(
+              (e) =>
+                (e.kind === "Class" || e.kind === "Function") &&
+                flattener.isFunctionSym?.(e) &&
+                !flattener.isExternalObject?.(e.id) &&
+                !flattener.isRecordSym?.(e) &&
+                getSymbolQualifiedName(db, e.id).endsWith(resolvedLookupName),
+            ) ?? null;
       }
       if (!sym) {
-        sym = db
-          .byName(fnBase)
-          .find(
-            (e: any) =>
-              (e.kind === "Class" || e.kind === "Function") &&
-              flattener.isFunctionSym?.(e) &&
-              !flattener.isExternalObject?.(e.id) &&
-              !flattener.isRecordSym?.(e),
-          );
+        sym =
+          db
+            .byName(fnBase)
+            .find(
+              (e) =>
+                (e.kind === "Class" || e.kind === "Function") &&
+                flattener.isFunctionSym?.(e) &&
+                !flattener.isExternalObject?.(e.id) &&
+                !flattener.isRecordSym?.(e),
+            ) ?? null;
       }
       if (sym && (flattener.failedFunctionIds?.has(sym.id) || flattener.isClassPartial?.(sym.id))) {
         return null;
@@ -237,8 +262,14 @@ export function vectorizeFunctionCall(
         const qualifiedFnName = enclosingScopeId
           ? `${getSymbolQualifiedName(db, enclosingScopeId)}.${fnBase}`
           : getSymbolQualifiedName(db, sym.id);
-        fnDae = flattener.flattenFunction(sym.id, qualifiedFnName, undefined, undefined, enclosingScopeId);
-        if (fnDae && !fnDae.diagnostics.some((d: any) => d.severity === "error")) {
+        fnDae = flattener.flattenFunction(
+          sym.id,
+          qualifiedFnName,
+          undefined,
+          undefined,
+          enclosingScopeId,
+        ) as FunctionDaeMeta;
+        if (fnDae && !fnDae.diagnostics.some((d: { severity?: string }) => d.severity === "error")) {
           pendingSym = sym;
           pendingQualifiedFnName = qualifiedFnName;
           pendingFnBase = parts.length === 1 ? fnBase : "";
@@ -305,10 +336,11 @@ export function vectorizeFunctionCall(
     return null;
   }
 
+  const dbOpt = db ?? undefined;
   const extraDimsPerArg: number[] = [];
   for (let i = 0; i < argExprIds.length; i++) {
     const expShape = inputShapes[i] ?? [];
-    const actDims = getExprDims(argExprIds[i]!, dae, db) ?? [];
+    const actDims = getExprDims(argExprIds[i]!, dae, dbOpt) ?? [];
     const extra = actDims.length - expShape.length;
     if (extra < 0) return null;
     if (extra > 0) {
@@ -338,7 +370,7 @@ export function vectorizeFunctionCall(
       if (dae.getExprKind(id) === ExprKind.ArrayCtor) {
         len = dae.getExprData1(id);
       } else {
-        const dims = getExprDims(id, dae, db);
+        const dims = getExprDims(id, dae, dbOpt);
         if (dims && dims.length > 0 && dims[0]! > 0) {
           len = dims[0]!;
         }
@@ -354,7 +386,7 @@ export function vectorizeFunctionCall(
     if (dae.getExprKind(id) === ExprKind.ArrayCtor) {
       arrLen = dae.getExprData1(id);
     } else {
-      const dims = getExprDims(id, dae, db);
+      const dims = getExprDims(id, dae, dbOpt);
       if (dims && dims.length > 0 && dims[0]! > 0) {
         arrLen = dims[0]!;
       } else {
@@ -429,7 +461,7 @@ export function vectorizeFunctionCall(
     let subHasExtra = false;
     for (let p = 0; p < subArgs.length; p++) {
       const expLen = inputShapes[p]?.length ?? 0;
-      const actLen = (getExprDims(subArgs[p]!, dae, db) ?? []).length;
+      const actLen = (getExprDims(subArgs[p]!, dae, dbOpt) ?? []).length;
       if (actLen > expLen) {
         subHasExtra = true;
         break;
@@ -472,7 +504,7 @@ export function vectorizeFunctionCall(
         }
       }
     } else if (fnDae) {
-      const constVals: any[] = [];
+      const constVals: ArenaValue[] = [];
       let allConst = true;
       for (const sa of subArgs) {
         if (exprContainsNameRef(sa, dae)) {
@@ -481,7 +513,7 @@ export function vectorizeFunctionCall(
         }
         const v = evalDaeExpr(sa, dae);
         if (v !== null && v !== undefined) {
-          constVals.push(v);
+          constVals.push(v as ArenaValue);
         } else {
           allConst = false;
           break;
@@ -495,14 +527,14 @@ export function vectorizeFunctionCall(
             dae,
             fnInternId,
             constVals,
-            db,
+            dbOpt,
             flattener?.currentRootClassId ?? undefined,
           );
           if (outVal !== null && outVal !== undefined) {
-            (fnDae as any).wasCalled = true;
+            fnDae.wasCalled = true;
             for (const f of dae.functions.values()) {
               if (f.name === fnDae.name) {
-                (f as any).wasCalled = true;
+                (f as FunctionDaeMeta).wasCalled = true;
               }
             }
             let firstOutputType: VarType | null = null;
@@ -556,11 +588,11 @@ export function vectorizeFunctionCall(
     }
     if (
       fnDae &&
-      !(fnDae as any).isExplicitImpure &&
-      !(fnDae as any).isBeingFlattened &&
-      !(fnDae as any).isRecursive &&
-      (!(fnDae as any).symId || !flattener?.activeFlatteningFunctionIds?.has((fnDae as any).symId)) &&
-      (fnDae as any).isEarlyInline &&
+      !fnDae.isExplicitImpure &&
+      !fnDae.isBeingFlattened &&
+      !fnDae.isRecursive &&
+      (!fnDae.symId || !flattener?.activeFlatteningFunctionIds?.has(fnDae.symId)) &&
+      fnDae.isEarlyInline &&
       fnDae.stmtCount === 1 &&
       fnDae.getStmtKind(0) === StmtKind.Assignment
     ) {
@@ -579,7 +611,7 @@ export function vectorizeFunctionCall(
       if (rhsExprId >= 0) {
         const inlinedId = copyExprBetweenDaes(fnDae, rhsExprId, dae, subs);
         if (inlinedId >= 0) {
-          (fnDae as any).wasInlined = true;
+          fnDae.wasInlined = true;
           elemResults.push(inlinedId);
           continue;
         }
@@ -590,7 +622,7 @@ export function vectorizeFunctionCall(
         ? fnName
         : resolvedFnDae.name || fnName
       : fnName;
-    if (fnDae) (fnDae as any).wasCalled = true;
+    if (fnDae) fnDae.wasCalled = true;
     elemResults.push(dae.addCallExpr(callFnName, castedArgs));
   }
 

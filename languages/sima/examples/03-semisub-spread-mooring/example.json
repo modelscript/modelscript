@@ -1,0 +1,11 @@
+{
+  "id": "sima-03-semisub-spread-mooring",
+  "lang": "sima",
+  "subFormats": ["sima"],
+  "difficulty": 3,
+  "title": "Semi-Submersible 8-Line Spread Mooring",
+  "description": "Four-column offshore production semi-submersible platform in 350 m water depth with an 8-line clustered spread mooring pattern under North Sea JONSWAP sea state and surface current.",
+  "category": "Offshore Platforms",
+  "tags": ["semi-submersible", "spread-mooring", "jonswap", "dnv"],
+  "activeFile": "semisub_8line.sima"
+}

@@ -1,0 +1,445 @@
+[
+  {
+    "name": "Edge",
+    "kind": "Node",
+    "namePath": "Lustre.Std.Edge",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Boolean Edge Detector",
+      "category": "Edge & Boolean",
+      "domain": "controls",
+      "description": "Emits true whenever the boolean input changes value relative to the previous synchronous tick.",
+      "provenance": "Halbwachs et al., The Synchronous Dataflow Programming Language LUSTRE (Proc. IEEE, 1991)",
+      "aliases": [
+        "AnyEdge",
+        "edge"
+      ],
+      "parameters": [],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 1,
+      "inputs": [
+        {
+          "name": "x",
+          "type": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "type": "bool"
+        }
+      ],
+      "lustreDefinition": "node Edge(x: bool) returns (y: bool); let y = false -> (x <> pre(x)); tel"
+    }
+  },
+  {
+    "name": "RisingEdge",
+    "kind": "Node",
+    "namePath": "Lustre.Std.RisingEdge",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Rising Edge Detector",
+      "category": "Edge & Boolean",
+      "domain": "controls",
+      "description": "Emits true on the exact tick where boolean input transitions from false to true.",
+      "provenance": "Halbwachs et al., LUSTRE (Proc. IEEE, 1991) / SCADE Standard Digital Library",
+      "aliases": [
+        "REdge",
+        "rising_edge",
+        "PosEdge"
+      ],
+      "parameters": [],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 2,
+      "inputs": [
+        {
+          "name": "x",
+          "type": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "type": "bool"
+        }
+      ],
+      "lustreDefinition": "node RisingEdge(x: bool) returns (y: bool); let y = false -> (x and not pre(x)); tel"
+    }
+  },
+  {
+    "name": "FallingEdge",
+    "kind": "Node",
+    "namePath": "Lustre.Std.FallingEdge",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "Falling Edge Detector",
+      "category": "Edge & Boolean",
+      "domain": "controls",
+      "description": "Emits true on the exact tick where boolean input transitions from true to false.",
+      "provenance": "Halbwachs et al., LUSTRE (Proc. IEEE, 1991) / SCADE Standard Digital Library",
+      "aliases": [
+        "FEdge",
+        "falling_edge",
+        "NegEdge"
+      ],
+      "parameters": [],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 3,
+      "inputs": [
+        {
+          "name": "x",
+          "type": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "type": "bool"
+        }
+      ],
+      "lustreDefinition": "node FallingEdge(x: bool) returns (y: bool); let y = false -> (not x and pre(x)); tel"
+    }
+  },
+  {
+    "name": "Counter",
+    "kind": "Node",
+    "namePath": "Lustre.Std.Counter",
+    "exports": [
+      "init",
+      "incr"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Resettable Synchronous Counter",
+      "category": "Counters & Timers",
+      "domain": "controls",
+      "description": "Resettable integer counter initialized to init and incremented by incr on each tick.",
+      "provenance": "Halbwachs et al., LUSTRE (Proc. IEEE, 1991)",
+      "aliases": [
+        "Count",
+        "UpCounter"
+      ],
+      "parameters": [
+        {
+          "key": "init",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial counter value"
+        },
+        {
+          "key": "incr",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Counter increment per tick"
+        }
+      ],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 4,
+      "inputs": [
+        {
+          "name": "init",
+          "type": "int"
+        },
+        {
+          "name": "incr",
+          "type": "int"
+        },
+        {
+          "name": "reset",
+          "type": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "n",
+          "type": "int"
+        }
+      ],
+      "lustreDefinition": "node Counter(init, incr: int; reset: bool) returns (n: int); let n = if reset then init else (init -> pre(n) + incr); tel"
+    }
+  },
+  {
+    "name": "Timer",
+    "kind": "Node",
+    "namePath": "Lustre.Std.Timer",
+    "exports": [
+      "limit"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Synchronous Tick Timer",
+      "category": "Counters & Timers",
+      "domain": "controls",
+      "description": "Counts synchronous ticks since reset and raises expired when elapsed >= limit.",
+      "provenance": "Lustre/SCADE Standard Temporal Operators",
+      "aliases": [
+        "CountdownTimer",
+        "ElapsedTimer"
+      ],
+      "parameters": [
+        {
+          "key": "limit",
+          "type": "integer",
+          "defaultValue": 10,
+          "unit": "ticks",
+          "description": "Timeout threshold in synchronous ticks"
+        }
+      ],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 5,
+      "inputs": [
+        {
+          "name": "reset",
+          "type": "bool"
+        },
+        {
+          "name": "limit",
+          "type": "int"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "expired",
+          "type": "bool"
+        }
+      ],
+      "lustreDefinition": "node Timer(reset: bool; limit: int) returns (expired: bool); var c: int; let c = if reset then 0 else (0 -> pre(c) + 1); expired = c >= limit; tel"
+    }
+  },
+  {
+    "name": "IntegratorEuler",
+    "kind": "Node",
+    "namePath": "Lustre.Std.IntegratorEuler",
+    "exports": [
+      "dt",
+      "y0"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discrete Euler Integrator",
+      "category": "Discrete Control",
+      "domain": "controls",
+      "description": "Forward-Euler synchronous discrete integrator y[k] = y0 -> pre(y) + dt * u.",
+      "provenance": "SCADE / Lustre Discrete-Time Control Library",
+      "aliases": [
+        "DiscreteIntegrator",
+        "EulerIntegrator"
+      ],
+      "parameters": [
+        {
+          "key": "dt",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Sample period"
+        },
+        {
+          "key": "y0",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Initial integrator state"
+        }
+      ],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 6,
+      "inputs": [
+        {
+          "name": "u",
+          "type": "real"
+        },
+        {
+          "name": "dt",
+          "type": "real"
+        },
+        {
+          "name": "y0",
+          "type": "real"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "type": "real"
+        }
+      ],
+      "lustreDefinition": "node IntegratorEuler(u, dt, y0: real) returns (y: real); let y = y0 -> (pre(y) + dt * u); tel"
+    }
+  },
+  {
+    "name": "PIDDiscrete",
+    "kind": "Node",
+    "namePath": "Lustre.Std.PIDDiscrete",
+    "exports": [
+      "kp",
+      "ki",
+      "kd",
+      "outMin",
+      "outMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Discrete PID Controller",
+      "category": "Discrete Control",
+      "domain": "controls",
+      "description": "Discrete-time proportional-integral-derivative controller with anti-windup output clamping.",
+      "provenance": "Åström & Hägglund / SCADE Discrete Control Library",
+      "aliases": [
+        "PID",
+        "DiscretePID"
+      ],
+      "parameters": [
+        {
+          "key": "kp",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Proportional gain"
+        },
+        {
+          "key": "ki",
+          "type": "real",
+          "defaultValue": 0.1,
+          "unit": "1/s",
+          "description": "Integral gain"
+        },
+        {
+          "key": "kd",
+          "type": "real",
+          "defaultValue": 0.01,
+          "unit": "s",
+          "description": "Derivative gain"
+        },
+        {
+          "key": "outMin",
+          "type": "real",
+          "defaultValue": -100,
+          "unit": "1",
+          "description": "Lower output saturation"
+        },
+        {
+          "key": "outMax",
+          "type": "real",
+          "defaultValue": 100,
+          "unit": "1",
+          "description": "Upper output saturation"
+        }
+      ],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 7,
+      "inputs": [
+        {
+          "name": "err",
+          "type": "real"
+        },
+        {
+          "name": "dt",
+          "type": "real"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "u",
+          "type": "real"
+        }
+      ],
+      "lustreDefinition": "node PIDDiscrete(err, dt: real) returns (u: real); var i_acc, d_err: real; let i_acc = 0.0 -> (pre(i_acc) + err * dt); d_err = 0.0 -> ((err - pre(err)) / dt); u = err + 0.1 * i_acc + 0.01 * d_err; tel"
+    }
+  },
+  {
+    "name": "Latch",
+    "kind": "Node",
+    "namePath": "Lustre.Std.Latch",
+    "exports": [
+      "init"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Synchronous SR Latch",
+      "category": "Edge & Boolean",
+      "domain": "controls",
+      "description": "Set-dominant synchronous boolean latch initialized to init.",
+      "provenance": "Halbwachs et al., LUSTRE (Proc. IEEE, 1991)",
+      "aliases": [
+        "SRLatch",
+        "FlipFlop",
+        "Bistable"
+      ],
+      "parameters": [
+        {
+          "key": "init",
+          "type": "boolean",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "Initial latch state (0=false, 1=true)"
+        }
+      ],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 8,
+      "inputs": [
+        {
+          "name": "set",
+          "type": "bool"
+        },
+        {
+          "name": "reset",
+          "type": "bool"
+        },
+        {
+          "name": "init",
+          "type": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "q",
+          "type": "bool"
+        }
+      ],
+      "lustreDefinition": "node Latch(set, reset, init: bool) returns (q: bool); let q = if set then true else if reset then false else (init -> pre(q)); tel"
+    }
+  },
+  {
+    "name": "OnceSince",
+    "kind": "Node",
+    "namePath": "Lustre.Std.OnceSince",
+    "exports": [],
+    "inherits": [],
+    "metadata": {
+      "label": "OnceSince Temporal Observer",
+      "category": "Temporal Logic",
+      "domain": "controls",
+      "description": "Synchronous observer returning true iff A has been true at least once since the last occurrence of B.",
+      "provenance": "Halbwachs, Lagnier & Raymond, Synchronous Observers and the Verification of Reactive Systems (AMAST, 1993)",
+      "aliases": [
+        "once_since",
+        "Since"
+      ],
+      "parameters": [],
+      "wasmKernel": "lustreOpStep",
+      "archetypeId": 9,
+      "inputs": [
+        {
+          "name": "a",
+          "type": "bool"
+        },
+        {
+          "name": "b",
+          "type": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "y",
+          "type": "bool"
+        }
+      ],
+      "lustreDefinition": "node OnceSince(a, b: bool) returns (y: bool); let y = if b then a else (a -> (a or pre(y))); tel"
+    }
+  }
+]

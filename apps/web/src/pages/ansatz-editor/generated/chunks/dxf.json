@@ -1,0 +1,73 @@
+[
+  {
+    "id": "dxf-01-steel-mounting-plate",
+    "lang": "dxf",
+    "subFormats": ["dxf-ascii", "ac1027"],
+    "difficulty": 1,
+    "title": "Dimensioned Steel Mounting Plate",
+    "description": "ASCII DXF mechanical drawing of a 120 mm x 80 mm steel mounting plate with four M8 corner bolt holes and a 30 mm central shaft bore.",
+    "category": "2D Mechanical CAD",
+    "tags": ["dxf", "mechanical", "mounting-plate", "2d-cad"],
+    "activeFile": "mounting_plate.dxf",
+    "fileNames": ["mounting_plate.dxf"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1027\n9\n$INSUNITS\n70\n4\n9\n$MEASUREMENT\n70\n1\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n2\n0\nLAYER\n2\nOUTLINE\n70\n0\n62\n7\n6\nCONTINUOUS\n0\nLAYER\n2\nHOLES\n70\n0\n62\n1\n6\nCONTINUOUS\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nOUTLINE\n10\n0\n20\n0\n30\n0.0\n11\n120\n21\n0\n31\n0.0\n0\nLINE\n8\nOUTLINE\n10\n120\n20\n0\n30\n0.0\n11\n120\n21\n80\n31\n0.0\n0\nLINE\n8\nOUTLINE\n10\n120\n20\n80\n30\n0.0\n11\n0\n21\n80\n31\n0.0\n0\nLINE\n8\nOUTLINE\n10\n0\n20\n80\n30\n0.0\n11\n0\n21\n0\n31\n0.0\n0\nCIRCLE\n8\nHOLES\n10\n15\n20\n15\n30\n0.0\n40\n4.5\n0\nCIRCLE\n8\nHOLES\n10\n105\n20\n15\n30\n0.0\n40\n4.5\n0\nCIRCLE\n8\nHOLES\n10\n105\n20\n65\n30\n0.0\n40\n4.5\n0\nCIRCLE\n8\nHOLES\n10\n15\n20\n65\n30\n0.0\n40\n4.5\n0\nCIRCLE\n8\nHOLES\n10\n60\n20\n40\n30\n0.0\n40\n15.0\n0\nENDSEC\n0\nEOF\n"
+  },
+  {
+    "id": "dxf-02-architectural-floor-plan",
+    "lang": "dxf",
+    "subFormats": ["dxf-ascii", "architectural"],
+    "difficulty": 2,
+    "title": "Architectural Floor Plan Room with Layers",
+    "description": "Multi-layer architectural DXF floor plan defining exterior walls, partition walls, door swing arc, and window glazing on separate CAD layers.",
+    "category": "Architectural CAD",
+    "tags": ["dxf", "architecture", "floor-plan", "layers"],
+    "activeFile": "floor_plan.dxf",
+    "fileNames": ["floor_plan.dxf"],
+    "fileCount": 1,
+    "code": "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1027\n9\n$INSUNITS\n70\n4\n9\n$MEASUREMENT\n70\n1\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n3\n0\nLAYER\n2\nWALLS\n70\n0\n62\n7\n6\nCONTINUOUS\n0\nLAYER\n2\nDOORS\n70\n0\n62\n3\n6\nCONTINUOUS\n0\nLAYER\n2\nWINDOWS\n70\n0\n62\n5\n6\nCONTINUOUS\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nWALLS\n10\n0\n20\n0\n30\n0.0\n11\n1200\n21\n0\n31\n0.0\n0\nLINE\n8\nWALLS\n10\n2100\n20\n0\n30\n0.0\n11\n6000\n21\n0\n31\n0.0\n0\nLINE\n8\nWALLS\n10\n6000\n20\n0\n30\n0.0\n11\n6000\n21\n4000\n31\n0.0\n0\nLINE\n8\nWALLS\n10\n6000\n20\n4000\n30\n0.0\n11\n0\n21\n4000\n31\n0.0\n0\nLINE\n8\nWALLS\n10\n0\n20\n4000\n30\n0.0\n11\n0\n21\n0\n31\n0.0\n0\nLINE\n8\nWALLS\n10\n3600\n20\n0\n30\n0.0\n11\n3600\n21\n2600\n31\n0.0\n0\nLINE\n8\nDOORS\n10\n1200\n20\n0\n30\n0.0\n11\n1200\n21\n900\n31\n0.0\n0\nARC\n8\nDOORS\n10\n1200\n20\n0\n30\n0.0\n40\n900\n50\n0\n51\n90\n0\nLINE\n8\nWINDOWS\n10\n1500\n20\n4000\n30\n0.0\n11\n3000\n21\n4000\n31\n0.0\n0\nLINE\n8\nWINDOWS\n10\n1500\n20\n3920\n30\n0.0\n11\n3000\n21\n3920\n31\n0.0\n0\nENDSEC\n0\nEOF\n"
+  },
+  {
+    "id": "dxf-03-sheetmetal-bracket-polyline",
+    "lang": "dxf",
+    "subFormats": ["dxf-ascii", "sheet-metal"],
+    "difficulty": 3,
+    "title": "Laser-Cut Sheet-Metal Bracket with Polylines and Arcs",
+    "description": "Closed LWPOLYLINE outer laser-cut profile with corner bulge fillets, bend-line annotations, and mounting slots for CNC laser fabrication.",
+    "category": "Sheet-Metal Fabrication",
+    "tags": ["dxf", "lwpolyline", "sheet-metal", "laser-cut"],
+    "activeFile": "sheet_bracket.dxf",
+    "fileNames": ["sheet_bracket.dxf"],
+    "fileCount": 1,
+    "code": "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1027\n9\n$INSUNITS\n70\n4\n9\n$MEASUREMENT\n70\n1\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n3\n0\nLAYER\n2\nCUT_OUTER\n70\n0\n62\n7\n6\nCONTINUOUS\n0\nLAYER\n2\nCUT_HOLES\n70\n0\n62\n1\n6\nCONTINUOUS\n0\nLAYER\n2\nBEND_LINES\n70\n0\n62\n2\n6\nCONTINUOUS\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\nCUT_OUTER\n90\n6\n70\n1\n10\n0.0\n20\n0.0\n10\n140.0\n20\n0.0\n10\n140.0\n20\n45.0\n10\n60.0\n20\n45.0\n10\n60.0\n20\n95.0\n10\n0.0\n20\n95.0\n0\nLINE\n8\nBEND_LINES\n10\n60\n20\n0\n30\n0.0\n11\n60\n21\n45\n31\n0.0\n0\nCIRCLE\n8\nCUT_HOLES\n10\n30\n20\n70\n30\n0.0\n40\n6.5\n0\nCIRCLE\n8\nCUT_HOLES\n10\n30\n20\n22.5\n30\n0.0\n40\n6.5\n0\nCIRCLE\n8\nCUT_HOLES\n10\n115\n20\n22.5\n30\n0.0\n40\n6.5\n0\nARC\n8\nCUT_HOLES\n10\n85\n20\n22.5\n30\n0.0\n40\n5.0\n50\n90\n51\n270\n0\nARC\n8\nCUT_HOLES\n10\n95\n20\n22.5\n30\n0.0\n40\n5.0\n50\n270\n51\n90\n0\nLINE\n8\nCUT_HOLES\n10\n85\n20\n27.5\n30\n0.0\n11\n95\n21\n27.5\n31\n0.0\n0\nLINE\n8\nCUT_HOLES\n10\n85\n20\n17.5\n30\n0.0\n11\n95\n21\n17.5\n31\n0.0\n0\nENDSEC\n0\nEOF\n"
+  },
+  {
+    "id": "dxf-04-gear-wheel-block-insert",
+    "lang": "dxf",
+    "subFormats": ["dxf-ascii", "blocks"],
+    "difficulty": 4,
+    "title": "Mechanical Flange Wheel with Block INSERT Bolt Pattern",
+    "description": "Rotary hub flange DXF defining a reusable M6_BOLT_HOLE BLOCK instanced six times around a 70 mm pitch-circle diameter via INSERT entities.",
+    "category": "2D Mechanical CAD",
+    "tags": ["dxf", "blocks", "insert", "bolt-circle", "flange"],
+    "activeFile": "flange_wheel.dxf",
+    "fileNames": ["flange_wheel.dxf"],
+    "fileCount": 1,
+    "code": "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1027\n9\n$INSUNITS\n70\n4\n9\n$MEASUREMENT\n70\n1\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n3\n0\nLAYER\n2\nOUTLINE\n70\n0\n62\n7\n6\nCONTINUOUS\n0\nLAYER\n2\nHOLES\n70\n0\n62\n1\n6\nCONTINUOUS\n0\nLAYER\n2\nCENTERLINES\n70\n0\n62\n2\n6\nCONTINUOUS\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nBLOCK\n8\n0\n2\nM6_BOLT_HOLE\n70\n0\n10\n0.0\n20\n0.0\n30\n0.0\n0\nCIRCLE\n8\nHOLES\n10\n0.0\n20\n0.0\n30\n0.0\n40\n3.3\n0\nCIRCLE\n8\nCENTERLINES\n10\n0.0\n20\n0.0\n30\n0.0\n40\n5.5\n0\nENDBLK\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nCIRCLE\n8\nOUTLINE\n10\n0\n20\n0\n30\n0.0\n40\n55.0\n0\nCIRCLE\n8\nOUTLINE\n10\n0\n20\n0\n30\n0.0\n40\n18.0\n0\nCIRCLE\n8\nCENTERLINES\n10\n0\n20\n0\n30\n0.0\n40\n35.0\n0\nLINE\n8\nCENTERLINES\n10\n-62\n20\n0\n30\n0.0\n11\n62\n21\n0\n31\n0.0\n0\nLINE\n8\nCENTERLINES\n10\n0\n20\n-62\n30\n0.0\n11\n0\n21\n62\n31\n0.0\n0\nINSERT\n8\nHOLES\n2\nM6_BOLT_HOLE\n10\n35.0\n20\n0.0\n30\n0.0\n0\nINSERT\n8\nHOLES\n2\nM6_BOLT_HOLE\n10\n17.5\n20\n30.3109\n30\n0.0\n0\nINSERT\n8\nHOLES\n2\nM6_BOLT_HOLE\n10\n-17.5\n20\n30.3109\n30\n0.0\n0\nINSERT\n8\nHOLES\n2\nM6_BOLT_HOLE\n10\n-35.0\n20\n0.0\n30\n0.0\n0\nINSERT\n8\nHOLES\n2\nM6_BOLT_HOLE\n10\n-17.5\n20\n-30.3109\n30\n0.0\n0\nINSERT\n8\nHOLES\n2\nM6_BOLT_HOLE\n10\n17.5\n20\n-30.3109\n30\n0.0\n0\nENDSEC\n0\nEOF\n"
+  },
+  {
+    "id": "dxf-05-pid-assembly-titleblock",
+    "lang": "dxf",
+    "subFormats": ["dxf-ascii", "pid", "title-block"],
+    "difficulty": 5,
+    "title": "Multi-Layer P&ID Process Flowsheet with Title Block",
+    "description": "Engineering A3-format P&ID process drawing combining border title block, centrifugal pump vessel, instrumentation loops, and reusable GATE_VALVE block inserts.",
+    "category": "Process Engineering CAD",
+    "tags": ["dxf", "pid", "title-block", "blocks", "layers"],
+    "activeFile": "pid_drawing.dxf",
+    "fileNames": ["pid_drawing.dxf"],
+    "fileCount": 1,
+    "code": "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1027\n9\n$INSUNITS\n70\n4\n9\n$MEASUREMENT\n70\n1\n0\nENDSEC\n0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n4\n0\nLAYER\n2\nBORDER\n70\n0\n62\n7\n6\nCONTINUOUS\n0\nLAYER\n2\nPROCESS\n70\n0\n62\n3\n6\nCONTINUOUS\n0\nLAYER\n2\nINSTRUMENT\n70\n0\n62\n5\n6\nCONTINUOUS\n0\nLAYER\n2\nEQUIPMENT\n70\n0\n62\n4\n6\nCONTINUOUS\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nBLOCKS\n0\nBLOCK\n8\n0\n2\nGATE_VALVE\n70\n0\n10\n0.0\n20\n0.0\n30\n0.0\n0\nLINE\n8\nPROCESS\n10\n-10.0\n20\n-6.0\n30\n0.0\n11\n10.0\n21\n6.0\n31\n0.0\n0\nLINE\n8\nPROCESS\n10\n-10.0\n20\n6.0\n30\n0.0\n11\n10.0\n21\n-6.0\n31\n0.0\n0\nLINE\n8\nPROCESS\n10\n-10.0\n20\n-6.0\n30\n0.0\n11\n-10.0\n21\n6.0\n31\n0.0\n0\nLINE\n8\nPROCESS\n10\n10.0\n20\n-6.0\n30\n0.0\n11\n10.0\n21\n6.0\n31\n0.0\n0\nENDBLK\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLWPOLYLINE\n8\nBORDER\n90\n4\n70\n1\n10\n0.0\n20\n0.0\n10\n420.0\n20\n0.0\n10\n420.0\n20\n297.0\n10\n0.0\n20\n297.0\n0\nLINE\n8\nBORDER\n10\n260\n20\n0\n30\n0.0\n11\n260\n21\n45\n31\n0.0\n0\nLINE\n8\nBORDER\n10\n260\n20\n45\n30\n0.0\n11\n420\n21\n45\n31\n0.0\n0\nLINE\n8\nBORDER\n10\n260\n20\n22\n30\n0.0\n11\n420\n21\n22\n31\n0.0\n0\nLINE\n8\nEQUIPMENT\n10\n50\n20\n100\n30\n0.0\n11\n50\n21\n200\n31\n0.0\n0\nLINE\n8\nEQUIPMENT\n10\n110\n20\n100\n30\n0.0\n11\n110\n21\n200\n31\n0.0\n0\nARC\n8\nEQUIPMENT\n10\n80\n20\n200\n30\n0.0\n40\n30\n50\n0\n51\n180\n0\nARC\n8\nEQUIPMENT\n10\n80\n20\n100\n30\n0.0\n40\n30\n50\n180\n51\n360\n0\nCIRCLE\n8\nEQUIPMENT\n10\n200\n20\n120\n30\n0.0\n40\n18\n0\nLINE\n8\nPROCESS\n10\n110\n20\n120\n30\n0.0\n11\n150\n21\n120\n31\n0.0\n0\nLINE\n8\nPROCESS\n10\n170\n20\n120\n30\n0.0\n11\n182\n21\n120\n31\n0.0\n0\nLINE\n8\nPROCESS\n10\n218\n20\n120\n30\n0.0\n11\n260\n21\n120\n31\n0.0\n0\nLINE\n8\nPROCESS\n10\n280\n20\n120\n30\n0.0\n11\n360\n21\n120\n31\n0.0\n0\nINSERT\n8\nPROCESS\n2\nGATE_VALVE\n10\n160.0\n20\n120.0\n30\n0.0\n0\nINSERT\n8\nPROCESS\n2\nGATE_VALVE\n10\n270.0\n20\n120.0\n30\n0.0\n0\nCIRCLE\n8\nINSTRUMENT\n10\n320\n20\n170\n30\n0.0\n40\n10\n0\nLINE\n8\nINSTRUMENT\n10\n320\n20\n120\n30\n0.0\n11\n320\n21\n160\n31\n0.0\n0\nENDSEC\n0\nEOF\n"
+  }
+]

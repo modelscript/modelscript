@@ -4,7 +4,7 @@
  * Single-language LSP adapter for `@modelscript/modelica`.
  *
  * Automatically discovered by `@modelscript/lsp/core` (`buildLanguagePluginFromModule`)
- * in the lightweight dev playground and standalone Morsel hosts, exposing:
+ * in the lightweight dev ansatz and standalone Ansatz hosts, exposing:
  *   - `getModelicaDiagramData` (`modelscript/getDiagramData`)
  *   - `applyModelicaDiagramEdits` (`modelscript/applyDiagramEdits`)
  *   - `getModelicaComponentProperties` (`modelscript/getComponentProperties`)
@@ -13,6 +13,7 @@
  */
 
 import type { DiagramApplyEditsResult, DiagramData, DiagramEditAction } from "@modelscript/diagram/protocol";
+import type { QueryDB, SymbolEntry } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -112,14 +113,52 @@ function ensureMslFilesForFqnLoaded(ctx: import("./context.js").Context, fqn: st
   }
 }
 
+interface LibraryExtendsRef {
+  classInstance: LibraryClassAdapter;
+}
+
+interface LibraryComponentAdapter {
+  name: string;
+  typeName: string;
+  classInstance: LibraryClassAdapter | null;
+  description: string;
+  declaration: SymbolEntry;
+  readonly cstNode: ReturnType<QueryDB["cstNode"]>;
+  annotation(annName: string): unknown;
+}
+
+interface LibraryClassAdapter {
+  id: number;
+  entry: SymbolEntry;
+  name: string;
+  kind: string;
+  classKind: string;
+  compositeName: string;
+  description: string;
+  isClassInstance: true;
+  readonly cstNode: ReturnType<QueryDB["cstNode"]>;
+  extendsClassInstances: LibraryExtendsRef[];
+  components: LibraryComponentAdapter[];
+  connectEquations: unknown[];
+  annotation(annName: string): unknown;
+}
+
+function getMetadataString(metadata: unknown, key: string): string | undefined {
+  if (metadata && typeof metadata === "object") {
+    const val = (metadata as Record<string, unknown>)[key];
+    if (typeof val === "string") return val;
+  }
+  return undefined;
+}
+
 function querySuffixInContext(ctx: import("./context.js").Context, fqn: string) {
   const parts = fqn.split(".");
   for (let i = 0; i < parts.length; i++) {
     const candidate = parts.slice(i).join(".");
     const res = ctx.query(candidate) as {
       id?: number;
-      db?: any;
-      entry?: any;
+      db?: QueryDB;
+      entry?: SymbolEntry;
       name?: string;
       kind?: string;
       classKind?: string;
@@ -138,10 +177,10 @@ function resolveLibraryClassInstanceSync(
   fqn: string,
   visiting: Set<string>,
   depth = 0,
-): unknown | null {
+): LibraryClassAdapter | null {
   if (!fqn || isPrimitiveModelicaType(fqn) || depth > 8) return null;
   if (resolvedLibraryClassCache.has(fqn)) {
-    return resolvedLibraryClassCache.get(fqn) ?? null;
+    return (resolvedLibraryClassCache.get(fqn) as LibraryClassAdapter | undefined) ?? null;
   }
   if (visiting.has(fqn)) return null;
   visiting.add(fqn);
@@ -157,19 +196,19 @@ function resolveLibraryClassInstanceSync(
     const entry = queried.entry;
     const compositeName = fqn;
     const annCache = new Map<string, unknown>();
-    const children: any[] = typeof db.childrenOf === "function" ? (db.childrenOf(entry.id) ?? []) : [];
+    const children: SymbolEntry[] = typeof db.childrenOf === "function" ? (db.childrenOf(entry.id) ?? []) : [];
 
-    const extendsClassInstances: any[] = [];
-    const components: any[] = [];
+    const extendsClassInstances: LibraryExtendsRef[] = [];
+    const components: LibraryComponentAdapter[] = [];
 
-    const adapter: any = {
+    const adapter: LibraryClassAdapter = {
       id: entry.id,
       entry,
       name: queried.name || fqn.split(".").pop() || fqn,
       kind: queried.kind || "Class",
-      classKind: queried.classKind || (entry.metadata as any)?.classKind || "class",
+      classKind: queried.classKind || getMetadataString(entry.metadata, "classKind") || "class",
       compositeName,
-      description: queried.description ?? (entry.metadata as any)?.description ?? "",
+      description: queried.description ?? getMetadataString(entry.metadata, "description") ?? "",
       isClassInstance: true,
       get cstNode() {
         return typeof db.cstNode === "function" ? db.cstNode(entry.id) : null;
@@ -199,8 +238,8 @@ function resolveLibraryClassInstanceSync(
     for (const child of children) {
       if (child.kind === "Extends") {
         const baseRaw: string =
-          (typeof db.query === "function" ? db.query("typeSpecifier", child.id) : null) ||
-          (child.metadata as any)?.typeSpecifier ||
+          (typeof db.query === "function" ? db.query<string | null>("typeSpecifier", child.id) : null) ||
+          getMetadataString(child.metadata, "typeSpecifier") ||
           child.name ||
           "";
         for (const cand of resolveRelativeModelicaFqn(baseRaw, compositeName)) {
@@ -212,11 +251,11 @@ function resolveLibraryClassInstanceSync(
         }
       } else if (child.kind === "Component" || child.kind === "Variable") {
         const typeSpec: string =
-          (typeof db.query === "function" ? db.query("typeSpecifier", child.id) : null) ||
-          (child.metadata as any)?.typeSpecifier ||
+          (typeof db.query === "function" ? db.query<string | null>("typeSpecifier", child.id) : null) ||
+          getMetadataString(child.metadata, "typeSpecifier") ||
           "";
         if (!typeSpec || isPrimitiveModelicaType(typeSpec)) continue;
-        let compClassInst: unknown = null;
+        let compClassInst: LibraryClassAdapter | null = null;
         for (const cand of resolveRelativeModelicaFqn(typeSpec, compositeName)) {
           compClassInst = resolveLibraryClassInstanceSync(ctx, cand, visiting, depth + 1);
           if (compClassInst) break;
@@ -226,7 +265,7 @@ function resolveLibraryClassInstanceSync(
           name: child.name,
           typeName: typeSpec,
           classInstance: compClassInst,
-          description: (child.metadata as any)?.description ?? "",
+          description: getMetadataString(child.metadata, "description") ?? "",
           declaration: child,
           get cstNode() {
             return typeof db.cstNode === "function" ? db.cstNode(child.id) : null;
@@ -277,14 +316,19 @@ export async function getModelicaDiagramData(
   // Hydrate library componentClassInstance directly from live MSL source files via Context + AnnotationEvaluator
   // so icons, inheritance, interactive connector ports, and parameter text labels render directly from the library.
   if (Array.isArray(ci.components) && ci.components.length > 0) {
-    const unresolvedLibComps = ci.components.filter(
-      (c: any) => !c.classInstance && typeof c.typeName === "string" && !isPrimitiveModelicaType(c.typeName),
+    interface HydratableComponent {
+      classInstance?: unknown;
+      typeName?: string;
+    }
+    const unresolvedLibComps = (ci.components as HydratableComponent[]).filter(
+      (c): c is HydratableComponent & { typeName: string } =>
+        !c.classInstance && typeof c.typeName === "string" && !isPrimitiveModelicaType(c.typeName),
     );
     if (unresolvedLibComps.length > 0) {
       try {
         const ctx = await getModelicaContext(false);
         const visiting = new Set<string>();
-        for (const comp of unresolvedLibComps as any[]) {
+        for (const comp of unresolvedLibComps) {
           const resolved = resolveLibraryClassInstanceSync(ctx, comp.typeName, visiting);
           if (resolved) {
             comp.classInstance = resolved;

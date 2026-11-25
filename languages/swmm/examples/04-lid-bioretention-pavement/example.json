@@ -1,0 +1,11 @@
+{
+  "id": "swmm-04-lid-bioretention-pavement",
+  "lang": "swmm",
+  "subFormats": ["swmm"],
+  "difficulty": 4,
+  "title": "Green Infrastructure LID Bioretention & Permeable Pavement",
+  "description": "Low-Impact Development urban district comparing impervious commercial parking runoff against bioretention cells and permeable pavement subcatchments draining to a box culvert.",
+  "category": "Green Infrastructure",
+  "tags": ["swmm", "lid", "bioretention", "permeable-pavement"],
+  "activeFile": "lid_district.swmm"
+}

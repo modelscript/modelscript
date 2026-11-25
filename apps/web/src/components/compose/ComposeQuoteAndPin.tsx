@@ -11,19 +11,25 @@ import { Avatar } from "../post/styles";
 import ProfileHoverCard from "../ProfileHoverCard";
 import { NestedQuoteWrapper, QuoteWrapper, TimestampButton, formatFullTimestamp, formatRelativeTime } from "./styles";
 
-export interface ComposeQuoteAndPinProps {
-  pendingPin?: SpatialPin | undefined;
-  quotePost?: any;
+export interface NestedQuoteData {
+  username?: string | null | undefined;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  content?: string | null | undefined;
+  created_at?: string | null | undefined;
+  author?: { username?: string | null | undefined } | null | undefined;
 }
 
-export interface NestedQuoteData {
-  username?: string | undefined;
-  display_name?: string | undefined;
-  avatar_url?: string | undefined;
-  content?: string | undefined;
-  created_at?: string | undefined;
-  author?: { username?: string | undefined } | undefined;
-  [key: string]: unknown;
+export interface QuotePostData extends NestedQuoteData {
+  quote_post?: NestedQuoteData | null | undefined;
+  quotePost?: NestedQuoteData | null | undefined;
+  quote_post_id?: number | string | null | undefined;
+  quotePostId?: number | string | null | undefined;
+}
+
+export interface ComposeQuoteAndPinProps {
+  pendingPin?: SpatialPin | undefined;
+  quotePost?: QuotePostData | null | undefined;
 }
 
 export const ComposeQuoteAndPin: React.FC<ComposeQuoteAndPinProps> = ({ pendingPin, quotePost }) => {

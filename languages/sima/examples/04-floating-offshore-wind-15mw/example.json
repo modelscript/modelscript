@@ -1,0 +1,11 @@
+{
+  "id": "sima-04-floating-offshore-wind-15mw",
+  "lang": "sima",
+  "subFormats": ["sima"],
+  "difficulty": 4,
+  "title": "15 MW Floating Offshore Wind Turbine Coupled Wave-Wind",
+  "description": "IEA 15 MW UMaine VolturnUS-S semi-submersible floating offshore wind turbine moored with three 850 m R3 studless chains in 200 m depth under rated wind-wave-current excitation.",
+  "category": "Offshore Wind Energy",
+  "tags": ["fowt", "15mw", "volturnus", "wave-wind"],
+  "activeFile": "fowt_15mw.sima"
+}

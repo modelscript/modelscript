@@ -1,0 +1,11 @@
+{
+  "id": "csv-04-naca0012-wind-tunnel-polar",
+  "lang": "csv",
+  "subFormats": ["tsv"],
+  "difficulty": 4,
+  "title": "NACA 0012 Wind-Tunnel Aerodynamic Polar (TSV)",
+  "description": "Tab-separated multi-channel wind-tunnel angle-of-attack sweep for a NACA 0012 airfoil at Re = 3e6 recording lift, drag, pitching moment, and L/D ratio.",
+  "category": "Aerodynamics",
+  "tags": ["csv", "tsv", "aerodynamics", "naca0012", "wind-tunnel"],
+  "activeFile": "naca0012_polar.tsv"
+}

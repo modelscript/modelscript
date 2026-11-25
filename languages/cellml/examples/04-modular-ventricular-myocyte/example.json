@@ -1,0 +1,11 @@
+{
+  "id": "cellml-04-modular-ventricular-myocyte",
+  "lang": "cellml",
+  "subFormats": ["cellml"],
+  "difficulty": 4,
+  "title": "Modular Ventricular Myocyte Importing Ion Channels",
+  "description": "CellML 1.1 modular cardiac ventricular myocyte importing reusable fast sodium and delayed-rectifier potassium ion channel sub-models via xlink:href.",
+  "category": "Electrophysiology & Systems Biology",
+  "tags": ["cellml", "myocyte", "modular-import", "cardiac", "multi-file"],
+  "activeFile": "myocyte.cellml"
+}

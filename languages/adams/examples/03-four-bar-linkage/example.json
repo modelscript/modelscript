@@ -1,0 +1,11 @@
+{
+  "id": "adams-03-four-bar-linkage",
+  "lang": "adams",
+  "subFormats": ["adm"],
+  "difficulty": 3,
+  "title": "Four-Bar Grashof Linkage with Torque Actuator",
+  "description": "Crank-rocker Grashof four-bar mechanism using non-overconstrained spatial joints (revolute, spherical, universal) with a harmonic drive motion and return spring-damper.",
+  "category": "Multibody Dynamics",
+  "tags": ["four-bar", "grashof", "linkage", "spatial-kinematics"],
+  "activeFile": "four_bar.adm"
+}

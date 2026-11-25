@@ -1,0 +1,11 @@
+{
+  "id": "ibis-04-pcie-gen4-serdes-tx",
+  "lang": "ibis",
+  "subFormats": ["ibs"],
+  "difficulty": 4,
+  "title": "PCIe Gen4 16 GT/s SerDes Transmitter Buffer",
+  "description": "Ultra-low-capacitance 0.85V PCIe Gen4 SerDes differential transmitter and receiver IBIS model with 50 ohm single-ended impedance matching and sub-30ps edge rates.",
+  "category": "SerDes & High-Speed Links",
+  "tags": ["ibis", "pcie-gen4", "serdes", "16gtps"],
+  "activeFile": "pcie_gen4_serdes.ibs"
+}

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B">
+  <Header id="MU_BAY1_ICD" version="1.0" revision="1.0" toolID="Ansatz"/>
+  <IED name="MU_BAY1" desc="IEC 61850-9-2LE Merging Unit" type="SAM600" manufacturer="Hitachi">
+    <AccessPoint name="AP1">
+      <Server>
+        <LDevice inst="MU">
+          <LN0 lnClass="LLN0" lnType="LLN0_Type" inst="">
+            <DataSet name="DS_SV_92LE">
+              <FCDA ldInst="MU" lnClass="TCTR" lnInst="1" doName="AmpSv" daName="instMag.i" fc="MX"/>
+              <FCDA ldInst="MU" lnClass="TVTR" lnInst="1" doName="VolSv" daName="instMag.i" fc="MX"/>
+            </DataSet>
+          </LN0>
+          <LN lnClass="TCTR" inst="1" lnType="TCTR_Type"/>
+          <LN lnClass="TVTR" inst="1" lnType="TVTR_Type"/>
+        </LDevice>
+      </Server>
+    </AccessPoint>
+  </IED>
+</SCL>

@@ -1,0 +1,53 @@
+#usda 1.0
+(
+    defaultPrim = "PendulumRig"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+def Xform "PendulumRig" (
+    kind = "assembly"
+)
+{
+    def Xform "pivot_base" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        bool physics:rigidBodyEnabled = false
+        float physics:mass = 15.0
+        float3 physics:diagonalInertia = (0.5, 0.5, 0.5)
+
+        def Cube "stand"
+        {
+            double size = 0.2
+            double3 xformOp:translate = (0.0, 0.0, 1.5)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def Xform "swing_arm" (
+        prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"]
+    )
+    {
+        bool physics:rigidBodyEnabled = true
+        float physics:mass = 3.2
+        float3 physics:diagonalInertia = (0.35, 0.35, 0.04)
+
+        def Cylinder "rod"
+        {
+            double radius = 0.025
+            double height = 1.0
+            double3 xformOp:translate = (0.0, 0.0, 1.0)
+            uniform token[] xformOpOrder = ["xformOp:translate"]
+        }
+    }
+
+    def PhysicsRevoluteJoint "pivot_joint"
+    {
+        rel physics:body0 = </PendulumRig/pivot_base>
+        rel physics:body1 = </PendulumRig/swing_arm>
+        uniform token physics:axis = "Y"
+        float physics:lowerLimit = -2.8
+        float physics:upperLimit = 2.8
+    }
+}

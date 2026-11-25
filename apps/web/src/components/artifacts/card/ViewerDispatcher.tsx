@@ -75,7 +75,7 @@ const SpatialCanvasArtifactViewer = React.lazy(() => import("../SpatialCanvasArt
 
 export function getViewerExpectedHeight(
   viewType: string | undefined,
-  viewConfig?: any,
+  viewConfig?: import("./types").ArtifactViewConfig | Record<string, unknown> | null,
   isFullScreen?: boolean,
 ): string {
   if (isFullScreen) return "100%";
@@ -119,8 +119,8 @@ export function getViewerExpectedHeight(
       return "460px";
     case "modelica-diagram":
     case "modelica":
-    case "morsel":
-    case "polyglot-morsel":
+    case "ansatz":
+    case "polyglot-ansatz":
     case "modelscript":
     case "msx":
       return "380px";
@@ -167,9 +167,9 @@ export function getViewerExpectedHeight(
 }
 
 export interface ViewerDispatcherProps {
-  artifact: any;
+  artifact: import("./types").ArtifactCardRecord;
   artifactId: number;
-  viewConfig: any;
+  viewConfig: import("./types").ArtifactViewConfig;
   isFullScreen: boolean;
   resolvedThumbnailUrl?: string | undefined;
   resolvedThumbnailUrlLight?: string | undefined;
@@ -189,6 +189,7 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
   onPinCreated,
   onThreadNodeSelected,
 }) => {
+  const asConfig = <T,>(cfg: Record<string, unknown>): T => cfg as unknown as T;
   const viewConfig = React.useMemo(
     () => (rawViewConfig ? { ...rawViewConfig, standalone: false } : { standalone: false }),
     [rawViewConfig],
@@ -231,18 +232,28 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "fmu-package":
       case "fmu-simulator":
       case "fmi":
-        return <FmuViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <FmuViewer
+            viewConfig={asConfig<React.ComponentProps<typeof FmuViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "sysml":
       case "sysml2":
       case "sysml-architecture-viewer":
       case "kerml":
-        return <SysmlViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <SysmlViewer
+            viewConfig={asConfig<React.ComponentProps<typeof SysmlViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "modelica-code":
         return <ModelicaCodeViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "modelica-diagram":
       case "modelica":
-      case "morsel":
-      case "polyglot-morsel":
+      case "ansatz":
+      case "polyglot-ansatz":
         return <ModelicaDiagramViewer artifactId={artifactId} viewConfig={viewConfig} isFullScreen={isFullScreen} />;
       case "modelscript":
       case "msx":
@@ -254,13 +265,31 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
           />
         );
       case "simulation-plot":
-        return <SimulationPlotViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <SimulationPlotViewer
+            viewConfig={asConfig<React.ComponentProps<typeof SimulationPlotViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "las":
       case "well-log":
-        return <SimulationPlotViewer viewConfig={{ ...viewConfig, format: "las" }} isFullScreen={isFullScreen} />;
+        return (
+          <SimulationPlotViewer
+            viewConfig={asConfig<React.ComponentProps<typeof SimulationPlotViewer>["viewConfig"]>({
+              ...viewConfig,
+              format: "las",
+            })}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "vega":
       case "vega-plot":
-        return <VegaViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <VegaViewer
+            viewConfig={asConfig<React.ComponentProps<typeof VegaViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "mermaid":
       case "mermaid-diagram":
         return <MermaidViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
@@ -294,7 +323,13 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "dataset":
       case "dataset-table":
       case "json-table":
-        return <CsvViewer viewConfig={viewConfig} isFullScreen={isFullScreen} thumbnailUrl={resolvedThumbnailUrl} />;
+        return (
+          <CsvViewer
+            viewConfig={asConfig<React.ComponentProps<typeof CsvViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+            thumbnailUrl={resolvedThumbnailUrl}
+          />
+        );
       case "webgpu":
       case "webgpu-simulation":
       case "gpu-simulation":
@@ -378,7 +413,12 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "aas-package":
       case "cyber-physical-system":
       case "hardware-project":
-        return <AasPackageViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <AasPackageViewer
+            viewConfig={asConfig<React.ComponentProps<typeof AasPackageViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "digital-thread":
       case "digital_thread":
       case "thread-explorer":
@@ -403,7 +443,10 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
             height={expectedHeight}
             isFullScreen={isFullScreen}
           >
-            <DigitalTwinDashboardViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />
+            <DigitalTwinDashboardViewer
+              viewConfig={asConfig<React.ComponentProps<typeof DigitalTwinDashboardViewer>["viewConfig"]>(viewConfig)}
+              isFullScreen={isFullScreen}
+            />
           </LazyHeavyViewer>
         );
       case "psout":
@@ -415,22 +458,42 @@ export const ViewerDispatcher: React.FC<ViewerDispatcherProps> = ({
       case "sor":
       case "optical-trace":
       case "optical":
-        return <OtdrTraceViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <OtdrTraceViewer
+            viewConfig={asConfig<React.ComponentProps<typeof OtdrTraceViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "fiber-splice":
       case "splice-matrix":
       case "tia-598":
       case "fiber":
-        return <FiberSpliceMatrixViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <FiberSpliceMatrixViewer
+            viewConfig={asConfig<React.ComponentProps<typeof FiberSpliceMatrixViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "microwave-profile":
       case "fresnel-profile":
       case "ran-microwave":
       case "microwave":
       case "ran":
-        return <MicrowaveProfileViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <MicrowaveProfileViewer
+            viewConfig={asConfig<React.ComponentProps<typeof MicrowaveProfileViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "mpe":
       case "mpe-exclusion":
       case "rf-safety":
-        return <MpeExclusionViewer viewConfig={viewConfig} isFullScreen={isFullScreen} />;
+        return (
+          <MpeExclusionViewer
+            viewConfig={asConfig<React.ComponentProps<typeof MpeExclusionViewer>["viewConfig"]>(viewConfig)}
+            isFullScreen={isFullScreen}
+          />
+        );
       case "ssp":
       case "ssd":
         return (

@@ -1,0 +1,12 @@
+{
+  "id": "modflow-01-confined-aquifer-chd",
+  "lang": "modflow",
+  "subFormats": ["nam", "dis", "npf", "ic", "chd"],
+  "difficulty": 1,
+  "title": "1D Confined Aquifer Constant-Head Flow",
+  "description": "Steady-state MODFLOW 6 single-layer confined sandstone aquifer with constant-head upstream and downstream boundaries demonstrating Darcy linear hydraulic gradient.",
+  "category": "Groundwater Hydrogeology",
+  "tags": ["modflow", "mf6", "confined-aquifer", "chd", "multi-file"],
+  "activeFile": "gwf.dis",
+  "isDefaultStarter": true
+}

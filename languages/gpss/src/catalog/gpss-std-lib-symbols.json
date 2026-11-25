@@ -1,0 +1,784 @@
+[
+  {
+    "name": "GENERATE",
+    "kind": "gpss_block",
+    "namePath": "gpss:GENERATE",
+    "exports": [
+      "mean",
+      "spread",
+      "offset",
+      "limit",
+      "priority"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GENERATE Transaction Source",
+      "category": "Transaction Flow",
+      "domain": "discrete-event",
+      "description": "Creates transactions entering the simulation with mean interarrival time A and spread/modifier B.",
+      "provenance": "Geoffrey Gordon (1961) GPSS / Schriber (1974) Ch. 2",
+      "aliases": [
+        "GEN"
+      ],
+      "parameters": [
+        {
+          "key": "mean",
+          "type": "real",
+          "defaultValue": 18,
+          "unit": "time",
+          "description": "Operand A: Mean interarrival time"
+        },
+        {
+          "key": "spread",
+          "type": "real",
+          "defaultValue": 6,
+          "unit": "time",
+          "description": "Operand B: Half-width uniform spread or modifier"
+        },
+        {
+          "key": "offset",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "time",
+          "description": "Operand C: First arrival offset time"
+        },
+        {
+          "key": "limit",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "count",
+          "description": "Operand D: Maximum transaction count (0 = unlimited)"
+        },
+        {
+          "key": "priority",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "level",
+          "description": "Operand E: Transaction priority level"
+        }
+      ],
+      "wasmKernel": "GENERATE",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "TERMINATE",
+    "kind": "gpss_block",
+    "namePath": "gpss:TERMINATE",
+    "exports": [
+      "decrement"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TERMINATE Transaction Sink",
+      "category": "Transaction Flow",
+      "domain": "discrete-event",
+      "description": "Destroys entering transaction and decrements the simulation termination counter by operand A.",
+      "provenance": "Geoffrey Gordon (1961) GPSS / Schriber (1974) Ch. 2",
+      "aliases": [
+        "TERM"
+      ],
+      "parameters": [
+        {
+          "key": "decrement",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Operand A: Termination counter decrement"
+        }
+      ],
+      "wasmKernel": "TERMINATE",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "SPLIT",
+    "kind": "gpss_block",
+    "namePath": "gpss:SPLIT",
+    "exports": [
+      "copies"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SPLIT Transaction Cloner",
+      "category": "Transaction Flow",
+      "domain": "discrete-event",
+      "description": "Creates A offspring copies of the entering transaction routed to block label B.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "copies",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "count",
+          "description": "Operand A: Number of offspring transactions"
+        }
+      ],
+      "wasmKernel": "SPLIT",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "ASSEMBLE",
+    "kind": "gpss_block",
+    "namePath": "gpss:ASSEMBLE",
+    "exports": [
+      "count"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ASSEMBLE Transaction Synchronizer",
+      "category": "Transaction Flow",
+      "domain": "discrete-event",
+      "description": "Synchronizes and merges A transactions belonging to the same assembly set.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "count",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "count",
+          "description": "Operand A: Number of assembly-set transactions to merge"
+        }
+      ],
+      "wasmKernel": "ASSEMBLE",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "SEIZE",
+    "kind": "gpss_block",
+    "namePath": "gpss:SEIZE",
+    "exports": [
+      "capacity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SEIZE Single-Server Facility",
+      "category": "Facilities & Storages",
+      "domain": "discrete-event",
+      "description": "Acquires exclusive ownership of a single-server facility (capacity 1), blocking if busy.",
+      "provenance": "Geoffrey Gordon (1961) GPSS / Schriber (1974) Ch. 2",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "capacity",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "servers",
+          "description": "Fixed single-server facility capacity"
+        }
+      ],
+      "wasmKernel": "SEIZE",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "RELEASE",
+    "kind": "gpss_block",
+    "namePath": "gpss:RELEASE",
+    "exports": [
+      "capacity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RELEASE Single-Server Facility",
+      "category": "Facilities & Storages",
+      "domain": "discrete-event",
+      "description": "Frees a previously seized single-server facility for the next waiting transaction.",
+      "provenance": "Geoffrey Gordon (1961) GPSS / Schriber (1974) Ch. 2",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "capacity",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "servers",
+          "description": "Released facility capacity"
+        }
+      ],
+      "wasmKernel": "RELEASE",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "ENTER",
+    "kind": "gpss_block",
+    "namePath": "gpss:ENTER",
+    "exports": [
+      "units"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ENTER Multi-Server Storage",
+      "category": "Facilities & Storages",
+      "domain": "discrete-event",
+      "description": "Allocates B units (default 1) of multi-server storage A, blocking if remaining capacity is insufficient.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "units",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Operand B: Storage units requested"
+        }
+      ],
+      "wasmKernel": "ENTER",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "LEAVE",
+    "kind": "gpss_block",
+    "namePath": "gpss:LEAVE",
+    "exports": [
+      "units"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "LEAVE Multi-Server Storage",
+      "category": "Facilities & Storages",
+      "domain": "discrete-event",
+      "description": "Returns B units (default 1) to multi-server storage A.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "units",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Operand B: Storage units released"
+        }
+      ],
+      "wasmKernel": "LEAVE",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "STORAGE",
+    "kind": "gpss_block",
+    "namePath": "gpss:STORAGE",
+    "exports": [
+      "capacity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "STORAGE Capacity Definition",
+      "category": "Facilities & Storages",
+      "domain": "discrete-event",
+      "description": "Declares the total server capacity of a multi-server GPSS storage entity.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "capacity",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "servers",
+          "description": "Total server capacity c > 0"
+        }
+      ],
+      "wasmKernel": "STORAGE",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "ADVANCE",
+    "kind": "gpss_block",
+    "namePath": "gpss:ADVANCE",
+    "exports": [
+      "mean",
+      "spread"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ADVANCE Time Delay",
+      "category": "Queues & Delays",
+      "domain": "discrete-event",
+      "description": "Delays transaction on the Future Events Chain for mean time A with spread/modifier B.",
+      "provenance": "Geoffrey Gordon (1961) GPSS / Schriber (1974) Ch. 2",
+      "aliases": [
+        "ADV"
+      ],
+      "parameters": [
+        {
+          "key": "mean",
+          "type": "real",
+          "defaultValue": 16,
+          "unit": "time",
+          "description": "Operand A: Mean service or transit duration"
+        },
+        {
+          "key": "spread",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "time",
+          "description": "Operand B: Half-width uniform spread or modifier"
+        }
+      ],
+      "wasmKernel": "ADVANCE",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "QUEUE",
+    "kind": "gpss_block",
+    "namePath": "gpss:QUEUE",
+    "exports": [
+      "units"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "QUEUE Waiting-Line Entry",
+      "category": "Queues & Delays",
+      "domain": "discrete-event",
+      "description": "Increments waiting-line statistics for queue A by B units (default 1).",
+      "provenance": "Geoffrey Gordon (1961) GPSS / Schriber (1974) Ch. 2",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "units",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Operand B: Queue occupancy increment"
+        }
+      ],
+      "wasmKernel": "QUEUE",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "DEPART",
+    "kind": "gpss_block",
+    "namePath": "gpss:DEPART",
+    "exports": [
+      "units"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "DEPART Waiting-Line Exit",
+      "category": "Queues & Delays",
+      "domain": "discrete-event",
+      "description": "Decrements waiting-line statistics for queue A by B units (default 1) and records wait time.",
+      "provenance": "Geoffrey Gordon (1961) GPSS / Schriber (1974) Ch. 2",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "units",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Operand B: Queue occupancy decrement"
+        }
+      ],
+      "wasmKernel": "DEPART",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "TRANSFER",
+    "kind": "gpss_block",
+    "namePath": "gpss:TRANSFER",
+    "exports": [
+      "probability"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TRANSFER Routing Block",
+      "category": "Routing & Logic",
+      "domain": "discrete-event",
+      "description": "Routes transaction unconditionally (,B), statistically (p,B,C), or conditionally (BOTH,B,C).",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "probability",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Operand A: Branch probability for statistical transfer"
+        }
+      ],
+      "wasmKernel": "TRANSFER",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "ASSIGN",
+    "kind": "gpss_block",
+    "namePath": "gpss:ASSIGN",
+    "exports": [
+      "value"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "ASSIGN Transaction Parameter",
+      "category": "Routing & Logic",
+      "domain": "discrete-event",
+      "description": "Sets or modifies transaction parameter A to value B.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "value",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Operand B: Assigned numeric value"
+        }
+      ],
+      "wasmKernel": "ASSIGN",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "TEST",
+    "kind": "gpss_block",
+    "namePath": "gpss:TEST",
+    "exports": [
+      "threshold"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TEST Relational Condition",
+      "category": "Routing & Logic",
+      "domain": "discrete-event",
+      "description": "Evaluates relational test (E, NE, G, GE, L, LE) between A and B; blocks or diverts to C if false.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "threshold",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Operand B: Comparison threshold"
+        }
+      ],
+      "wasmKernel": "TEST",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "GATE",
+    "kind": "gpss_block",
+    "namePath": "gpss:GATE",
+    "exports": [
+      "mode"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "GATE Entity State Condition",
+      "category": "Routing & Logic",
+      "domain": "discrete-event",
+      "description": "Tests facility/storage state (NU, U, SNF, SF, SE, SNE); blocks or diverts to B if false.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "mode",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Gate predicate mode"
+        }
+      ],
+      "wasmKernel": "GATE",
+      "archetypeId": 33
+    }
+  },
+  {
+    "name": "TABULATE",
+    "kind": "gpss_block",
+    "namePath": "gpss:TABULATE",
+    "exports": [
+      "weight"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TABULATE Histogram Observation",
+      "category": "Statistics & Functions",
+      "domain": "discrete-event",
+      "description": "Records an observation into frequency distribution TABLE A with weight B.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "weight",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Operand B: Observation weight"
+        }
+      ],
+      "wasmKernel": "TABULATE",
+      "archetypeId": 34
+    }
+  },
+  {
+    "name": "TABLE",
+    "kind": "gpss_block",
+    "namePath": "gpss:TABLE",
+    "exports": [
+      "firstUpperLimit",
+      "width",
+      "classCount"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "TABLE Frequency Distribution",
+      "category": "Statistics & Functions",
+      "domain": "discrete-event",
+      "description": "Defines a histogram table recording sample mean, standard deviation, and frequency classes.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [],
+      "parameters": [
+        {
+          "key": "firstUpperLimit",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1",
+          "description": "Operand B: Upper limit of first frequency class"
+        },
+        {
+          "key": "width",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "1",
+          "description": "Operand C: Class interval width"
+        },
+        {
+          "key": "classCount",
+          "type": "real",
+          "defaultValue": 20,
+          "unit": "count",
+          "description": "Operand D: Total number of frequency classes"
+        }
+      ],
+      "wasmKernel": "TABLE",
+      "archetypeId": 35
+    }
+  },
+  {
+    "name": "FUNCTION",
+    "kind": "gpss_block",
+    "namePath": "gpss:FUNCTION",
+    "exports": [
+      "points"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FUNCTION Piecewise Empirical Curve",
+      "category": "Statistics & Functions",
+      "domain": "discrete-event",
+      "description": "Defines a continuous (C) or discrete (D) piecewise-linear empirical distribution function.",
+      "provenance": "IBM GPSS/360 & GPSS V Reference Manual",
+      "aliases": [
+        "FN$"
+      ],
+      "parameters": [
+        {
+          "key": "points",
+          "type": "real",
+          "defaultValue": 24,
+          "unit": "count",
+          "description": "Number of (x, y) breakpoint pairs"
+        }
+      ],
+      "wasmKernel": "FUNCTION",
+      "archetypeId": 36
+    }
+  },
+  {
+    "name": "Q$",
+    "kind": "gpss_sna",
+    "namePath": "gpss:Q$",
+    "exports": [
+      "length"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Q$ Current Queue Length SNA",
+      "category": "Standard Numerical Attributes",
+      "domain": "discrete-event",
+      "description": "Standard Numerical Attribute returning current number of transactions waiting in queue.",
+      "provenance": "IBM GPSS/360 Standard Numerical Attributes",
+      "aliases": [
+        "Q",
+        "QUEUE_LENGTH"
+      ],
+      "parameters": [
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "transactions",
+          "description": "Current queue contents Q$j"
+        }
+      ],
+      "wasmKernel": "Q$",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "F$",
+    "kind": "gpss_sna",
+    "namePath": "gpss:F$",
+    "exports": [
+      "busy"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "F$ Facility Status SNA",
+      "category": "Standard Numerical Attributes",
+      "domain": "discrete-event",
+      "description": "Standard Numerical Attribute returning 1 if facility is busy (seized) or 0 if idle.",
+      "provenance": "IBM GPSS/360 Standard Numerical Attributes",
+      "aliases": [
+        "F",
+        "FACILITY_STATUS"
+      ],
+      "parameters": [
+        {
+          "key": "busy",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "0..1",
+          "description": "Facility status indicator F$j (0 = idle, 1 = busy)"
+        }
+      ],
+      "wasmKernel": "F$",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "S$",
+    "kind": "gpss_sna",
+    "namePath": "gpss:S$",
+    "exports": [
+      "contents"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "S$ Current Storage Contents SNA",
+      "category": "Standard Numerical Attributes",
+      "domain": "discrete-event",
+      "description": "Standard Numerical Attribute returning current occupied units in multi-server storage.",
+      "provenance": "IBM GPSS/360 Standard Numerical Attributes",
+      "aliases": [
+        "S",
+        "STORAGE_CONTENTS"
+      ],
+      "parameters": [
+        {
+          "key": "contents",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "units",
+          "description": "Current occupied storage units S$j"
+        }
+      ],
+      "wasmKernel": "S$",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "R$",
+    "kind": "gpss_sna",
+    "namePath": "gpss:R$",
+    "exports": [
+      "remaining"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "R$ Remaining Storage Capacity SNA",
+      "category": "Standard Numerical Attributes",
+      "domain": "discrete-event",
+      "description": "Standard Numerical Attribute returning remaining available units (capacity - S$j) in storage.",
+      "provenance": "IBM GPSS/360 Standard Numerical Attributes",
+      "aliases": [
+        "R",
+        "STORAGE_REMAINING"
+      ],
+      "parameters": [
+        {
+          "key": "remaining",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "units",
+          "description": "Remaining free storage capacity R$j"
+        }
+      ],
+      "wasmKernel": "R$",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "FR$",
+    "kind": "gpss_sna",
+    "namePath": "gpss:FR$",
+    "exports": [
+      "utilizationPpt"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "FR$ Facility Utilization SNA",
+      "category": "Standard Numerical Attributes",
+      "domain": "discrete-event",
+      "description": "Standard Numerical Attribute returning time-averaged facility utilization in parts per thousand (0–1000).",
+      "provenance": "IBM GPSS/360 Standard Numerical Attributes",
+      "aliases": [
+        "FR",
+        "FACILITY_UTILIZATION"
+      ],
+      "parameters": [
+        {
+          "key": "utilizationPpt",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "permille",
+          "description": "Facility utilization FR$j (0..1000)"
+        }
+      ],
+      "wasmKernel": "FR$",
+      "archetypeId": 44
+    }
+  },
+  {
+    "name": "SR$",
+    "kind": "gpss_sna",
+    "namePath": "gpss:SR$",
+    "exports": [
+      "utilizationPpt"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "SR$ Storage Utilization SNA",
+      "category": "Standard Numerical Attributes",
+      "domain": "discrete-event",
+      "description": "Standard Numerical Attribute returning time-averaged storage utilization in parts per thousand (0–1000).",
+      "provenance": "IBM GPSS/360 Standard Numerical Attributes",
+      "aliases": [
+        "SR",
+        "STORAGE_UTILIZATION"
+      ],
+      "parameters": [
+        {
+          "key": "utilizationPpt",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "permille",
+          "description": "Storage utilization SR$j (0..1000)"
+        }
+      ],
+      "wasmKernel": "SR$",
+      "archetypeId": 45
+    }
+  }
+]

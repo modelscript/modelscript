@@ -1,0 +1,77 @@
+[
+  {
+    "id": "easy5-01-spring-mass-damper",
+    "lang": "easy5",
+    "subFormats": ["ez5"],
+    "difficulty": 1,
+    "title": "Second-Order Spring-Mass-Damper Oscillator",
+    "description": "Closed-loop second-order mechanical spring-mass-damper system with dual velocity and displacement integrators, spring stiffness and viscous damping feedback gains, and all component ports wired.",
+    "category": "Mechanical Control Systems",
+    "tags": ["easy5", "spring-mass-damper", "second-order", "integrator"],
+    "activeFile": "spring_mass_damper.ez5",
+    "fileNames": ["spring_mass_damper.ez5"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "MODEL: SpringMassDamper\nTITLE: \"Second-Order Mechanical Spring-Mass-Damper System\"\n\nCOMPONENTS:\n  UG01 TYPE=GP/UG TITLE=\"Step Force Source\" X=100 Y=200\n    PORTS: OUT=output\n    XP: F_STEP=10.0\n    FORTRAN:\n      OUT = 10.0\n    ENDFORTRAN\n\n  SJ01 TYPE=GP/SJ TITLE=\"Force Summing Junction\" X=250 Y=200\n    XP: SGN1=1.0, SGN2=-1.0, SGN3=-1.0, K1=1.0, K2=1.0, K3=1.0\n\n  GA01 TYPE=GP/GA TITLE=\"Inverse Mass 1/m\" X=400 Y=200\n    XP: K=0.5\n\n  IN01 TYPE=GP/IN TITLE=\"Velocity Integrator\" X=550 Y=200\n    XP: GAIN=1.0, UL=100.0, LL=-100.0\n    S0: S1=0.0\n\n  IN02 TYPE=GP/IN TITLE=\"Displacement Integrator\" X=700 Y=200\n    XP: GAIN=1.0, UL=100.0, LL=-100.0\n    S0: S1=0.0\n\n  GA02 TYPE=GP/GA TITLE=\"Viscous Damping c\" X=550 Y=350\n    XP: K=1.2\n\n  GA03 TYPE=GP/GA TITLE=\"Spring Stiffness k\" X=700 Y=450\n    XP: K=16.0\n\nCONNECTIONS:\n  UG01.OUT -> SJ01.IN1\n  SJ01.OUT -> GA01.IN\n  GA01.OUT -> IN01.IN\n  IN01.OUT -> IN02.IN\n  IN01.OUT -> GA02.IN\n  GA02.OUT -> SJ01.IN2\n  IN02.OUT -> GA03.IN\n  GA03.OUT -> SJ01.IN3\n"
+  },
+  {
+    "id": "easy5-02-hydraulic-servo-actuator",
+    "lang": "easy5",
+    "subFormats": ["ez5"],
+    "difficulty": 2,
+    "title": "Hydraulic Actuator Servo Valve Position Loop",
+    "description": "Closed-loop aerospace hydraulic servo actuator featuring a position error summing junction, lead-lag phase compensator, servo valve flow limiter, and piston displacement integrator.",
+    "category": "Hydraulic Flight Control",
+    "tags": ["easy5", "hydraulic", "servo-valve", "lead-lag"],
+    "activeFile": "hydraulic_servo.ez5",
+    "fileNames": ["hydraulic_servo.ez5"],
+    "fileCount": 1,
+    "code": "MODEL: HydraulicServoActuator\nTITLE: \"Hydraulic Actuator Servo Valve Position Control Loop\"\n\nCOMPONENTS:\n  UG01 TYPE=GP/UG TITLE=\"Position Command\" X=100 Y=200\n    PORTS: OUT=output\n    XP: POS_CMD=0.05\n    FORTRAN:\n      OUT = 0.05\n    ENDFORTRAN\n\n  SJ01 TYPE=GP/SJ TITLE=\"Position Error Sum\" X=250 Y=200\n    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0\n\n  LA01 TYPE=GP/LA TITLE=\"Servo Lead-Lag Compensator\" X=420 Y=200\n    XP: TAU1=0.04, TAU2=0.015, GAIN=3.2\n    S0: S1=0.0\n\n  LM01 TYPE=GP/LM TITLE=\"Spool Valve Flow Limiter\" X=590 Y=200\n    XP: UL=0.8, LL=-0.8\n\n  IN01 TYPE=GP/IN TITLE=\"Hydraulic Piston Integrator\" X=760 Y=200\n    XP: GAIN=8.5, UL=0.15, LL=-0.15\n    S0: S1=0.0\n\nCONNECTIONS:\n  UG01.OUT -> SJ01.IN1\n  SJ01.OUT -> LA01.IN\n  LA01.OUT -> LM01.IN\n  LM01.OUT -> IN01.IN\n  IN01.OUT -> SJ01.IN2\n"
+  },
+  {
+    "id": "easy5-03-electro-hydrostatic-actuator",
+    "lang": "easy5",
+    "subFormats": ["ez5"],
+    "difficulty": 3,
+    "title": "Electro-Hydrostatic Flight Control Actuator (EHA)",
+    "description": "More-electric aircraft Electro-Hydrostatic Actuator (EHA) modeling a brushless motor-pump dynamic transfer function, pressure relief saturation, hydraulic cylinder integration, and LVDT position feedback.",
+    "category": "Aerospace Actuation",
+    "tags": ["easy5", "eha", "flight-control", "transfer-function"],
+    "activeFile": "eha_actuator.ez5",
+    "fileNames": ["eha_actuator.ez5"],
+    "fileCount": 1,
+    "code": "MODEL: ElectroHydrostaticActuator\nTITLE: \"Primary Flight Control Electro-Hydrostatic Actuator (EHA)\"\n\nCOMPONENTS:\n  UG01 TYPE=GP/UG TITLE=\"Aileron Deflection Command\" X=80 Y=200\n    PORTS: OUT=output\n    XP: CMD_RAD=0.12\n    FORTRAN:\n      OUT = 0.12\n    ENDFORTRAN\n\n  SJ01 TYPE=GP/SJ TITLE=\"Position Error Junction\" X=230 Y=200\n    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0\n\n  GA01 TYPE=GP/GA TITLE=\"Proportional Controller\" X=380 Y=200\n    XP: K=18.0\n\n  LM01 TYPE=GP/LM TITLE=\"Motor Speed Saturation\" X=520 Y=200\n    XP: UL=12.0, LL=-12.0\n\n  TF01 TYPE=GP/TF TITLE=\"Motor-Pump Dynamics\" X=680 Y=200\n    XP: NUM=[1.0], DEN=[0.004, 0.12, 1.0]\n    S0: S1=0.0, S2=0.0\n\n  IN01 TYPE=GP/IN TITLE=\"Actuator Cylinder Displacement\" X=850 Y=200\n    XP: GAIN=2.4, UL=0.25, LL=-0.25\n    S0: S1=0.0\n\n  TF02 TYPE=GP/TF TITLE=\"LVDT Sensor Filter\" X=520 Y=360\n    XP: NUM=[1.0], DEN=[0.005, 1.0]\n    S0: S1=0.0\n\nCONNECTIONS:\n  UG01.OUT -> SJ01.IN1\n  SJ01.OUT -> GA01.IN\n  GA01.OUT -> LM01.IN\n  LM01.OUT -> TF01.IN\n  TF01.OUT -> IN01.IN\n  IN01.OUT -> TF02.IN\n  TF02.OUT -> SJ01.IN2\n"
+  },
+  {
+    "id": "easy5-04-aircraft-ecs-bleed-air",
+    "lang": "easy5",
+    "subFormats": ["ez5"],
+    "difficulty": 4,
+    "title": "Aircraft Environmental Control System Bleed Air Loop",
+    "description": "Transport aircraft cabin temperature and pressure Environmental Control System (ECS) with dual-loop PI trim valve regulation, air-cycle pack thermal lag, duct transport delay, and cabin thermal capacitance.",
+    "category": "Aerospace Thermal Systems",
+    "tags": ["easy5", "ecs", "bleed-air", "thermal-control"],
+    "activeFile": "ecs_bleed_air.ez5",
+    "fileNames": ["ecs_bleed_air.ez5"],
+    "fileCount": 1,
+    "code": "MODEL: AircraftEcsBleedAir\nTITLE: \"Aircraft Cabin ECS Bleed-Air Temperature Control Loop\"\n\nCOMPONENTS:\n  UG01 TYPE=GP/UG TITLE=\"Cabin Temp Setpoint (C)\" X=80 Y=200\n    PORTS: OUT=output\n    XP: T_SET=22.0\n    FORTRAN:\n      OUT = 22.0\n    ENDFORTRAN\n\n  SJ01 TYPE=GP/SJ TITLE=\"Temperature Error\" X=230 Y=200\n    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0\n\n  LA01 TYPE=GP/LA TITLE=\"Trim Valve PI Compensator\" X=380 Y=200\n    XP: TAU1=2.5, TAU2=0.4, GAIN=0.8\n    S0: S1=0.0\n\n  LM01 TYPE=GP/LM TITLE=\"Trim Air Valve Stroke\" X=540 Y=200\n    XP: UL=1.0, LL=0.0\n\n  TF01 TYPE=GP/TF TITLE=\"Air-Cycle Pack Heat Exchanger\" X=700 Y=200\n    XP: NUM=[35.0], DEN=[8.0, 1.0]\n    S0: S1=20.0\n\n  TD01 TYPE=GP/TD TITLE=\"Distribution Duct Transport Lag\" X=860 Y=200\n    XP: DELAY=1.5\n\n  TF02 TYPE=GP/TF TITLE=\"Cabin Thermal Volume\" X=1020 Y=200\n    XP: NUM=[1.0], DEN=[45.0, 1.0]\n    S0: S1=20.0\n\nCONNECTIONS:\n  UG01.OUT -> SJ01.IN1\n  SJ01.OUT -> LA01.IN\n  LA01.OUT -> LM01.IN\n  LM01.OUT -> TF01.IN\n  TF01.OUT -> TD01.IN\n  TD01.OUT -> TF02.IN\n  TF02.OUT -> SJ01.IN2\n"
+  },
+  {
+    "id": "easy5-05-gas-turbine-fcu",
+    "lang": "easy5",
+    "subFormats": ["ez5", "ezd"],
+    "difficulty": 5,
+    "title": "Gas Turbine Fuel Control Unit with Schedule Table",
+    "description": "Aero-engine gas turbine FADEC Fuel Control Unit (FCU) coupling N2 spool speed regulation, acceleration fuel-limit clamping, combustor thermal lag, rotor inertia integration, and a companion acceleration schedule table.",
+    "category": "Propulsion Control",
+    "tags": ["easy5", "gas-turbine", "fadec", "fuel-control", "multi-file"],
+    "activeFile": "fcu_control.ez5",
+    "fileNames": ["fcu_control.ez5", "fuel_schedule.ezd"],
+    "fileCount": 2,
+    "code": "MODEL: GasTurbineFcu\nTITLE: \"Gas Turbine FADEC N2 Spool Speed Fuel Control Unit\"\n\nCOMPONENTS:\n  UG01 TYPE=GP/UG TITLE=\"Throttle N2 Reference (%)\" X=80 Y=200\n    PORTS: OUT=output\n    XP: N2_REF=92.0\n    FORTRAN:\n      OUT = 92.0\n    ENDFORTRAN\n\n  SJ01 TYPE=GP/SJ TITLE=\"N2 Speed Error\" X=230 Y=200\n    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0\n\n  LA01 TYPE=GP/LA TITLE=\"FADEC Lead-Lag Governor\" X=390 Y=200\n    XP: TAU1=0.65, TAU2=0.12, GAIN=0.045\n    S0: S1=0.0\n\n  LM01 TYPE=GP/LM TITLE=\"Accel/Decel Fuel Flow Limiter\" X=550 Y=200\n    XP: UL=1.45, LL=0.12\n\n  TF01 TYPE=GP/TF TITLE=\"Fuel Metering Valve & Combustor\" X=720 Y=200\n    XP: NUM=[1.0], DEN=[0.08, 1.0]\n    S0: S1=0.25\n\n  TF02 TYPE=GP/TF TITLE=\"High-Pressure Spool Rotor Dynamics\" X=900 Y=200\n    XP: NUM=[85.0], DEN=[1.8, 1.0]\n    S0: S1=62.0\n\n  TF03 TYPE=GP/TF TITLE=\"Tachometer Speed Sensor\" X=550 Y=360\n    XP: NUM=[1.0], DEN=[0.02, 1.0]\n    S0: S1=62.0\n\nCONNECTIONS:\n  UG01.OUT -> SJ01.IN1\n  SJ01.OUT -> LA01.IN\n  LA01.OUT -> LM01.IN\n  LM01.OUT -> TF01.IN\n  TF01.OUT -> TF02.IN\n  TF02.OUT -> TF03.IN\n  TF03.OUT -> SJ01.IN2\n",
+    "files": {
+      "fcu_control.ez5": "MODEL: GasTurbineFcu\nTITLE: \"Gas Turbine FADEC N2 Spool Speed Fuel Control Unit\"\n\nCOMPONENTS:\n  UG01 TYPE=GP/UG TITLE=\"Throttle N2 Reference (%)\" X=80 Y=200\n    PORTS: OUT=output\n    XP: N2_REF=92.0\n    FORTRAN:\n      OUT = 92.0\n    ENDFORTRAN\n\n  SJ01 TYPE=GP/SJ TITLE=\"N2 Speed Error\" X=230 Y=200\n    XP: SGN1=1.0, SGN2=-1.0, K1=1.0, K2=1.0\n\n  LA01 TYPE=GP/LA TITLE=\"FADEC Lead-Lag Governor\" X=390 Y=200\n    XP: TAU1=0.65, TAU2=0.12, GAIN=0.045\n    S0: S1=0.0\n\n  LM01 TYPE=GP/LM TITLE=\"Accel/Decel Fuel Flow Limiter\" X=550 Y=200\n    XP: UL=1.45, LL=0.12\n\n  TF01 TYPE=GP/TF TITLE=\"Fuel Metering Valve & Combustor\" X=720 Y=200\n    XP: NUM=[1.0], DEN=[0.08, 1.0]\n    S0: S1=0.25\n\n  TF02 TYPE=GP/TF TITLE=\"High-Pressure Spool Rotor Dynamics\" X=900 Y=200\n    XP: NUM=[85.0], DEN=[1.8, 1.0]\n    S0: S1=62.0\n\n  TF03 TYPE=GP/TF TITLE=\"Tachometer Speed Sensor\" X=550 Y=360\n    XP: NUM=[1.0], DEN=[0.02, 1.0]\n    S0: S1=62.0\n\nCONNECTIONS:\n  UG01.OUT -> SJ01.IN1\n  SJ01.OUT -> LA01.IN\n  LA01.OUT -> LM01.IN\n  LM01.OUT -> TF01.IN\n  TF01.OUT -> TF02.IN\n  TF02.OUT -> TF03.IN\n  TF03.OUT -> SJ01.IN2\n",
+      "fuel_schedule.ezd": "TABLE: ACCEL_FUEL_SCHEDULE\nDIMENSION: 1\nX: 60.0, 70.0, 80.0, 90.0, 100.0\nDATA: 0.28, 0.45, 0.78, 1.18, 1.45\n"
+    }
+  }
+]

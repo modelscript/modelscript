@@ -1,0 +1,29 @@
+#usda 1.0
+(
+    defaultPrim = "ActuatorCell"
+    metersPerUnit = 1.0
+    upAxis = "Z"
+)
+
+def Xform "ActuatorCell" (
+    kind = "assembly"
+)
+{
+    def Xform "stator_housing"
+    {
+        def Cylinder "outer_shell"
+        {
+            double radius = 0.14
+            double height = 0.35
+        }
+    }
+
+    def Xform "rotor_shaft"
+    {
+        def Cylinder "shaft_core"
+        {
+            double radius = 0.04
+            double height = 0.55
+        }
+    }
+}

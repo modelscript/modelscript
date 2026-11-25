@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { computeSemanticDiff, type SemanticEdit } from "@modelscript/dsl";
+import { computeSemanticDiff, type QueryDB, type SemanticEdit } from "@modelscript/dsl";
 import type { SymbolEntry } from "@modelscript/runtime";
 
 export interface VerifiedBaseline {
@@ -8,7 +8,7 @@ export interface VerifiedBaseline {
   uri: string;
   snapshotHash: string;
   timestamp: number;
-  metadata?: Record<string, any> | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 /**
@@ -65,7 +65,7 @@ export class SuspectTracker {
     symbolName: string,
     oldEntry: SymbolEntry | null,
     newEntry: SymbolEntry | null,
-    db: any,
+    db: QueryDB,
   ): SemanticEdit | null {
     if (!oldEntry || !newEntry) {
       if (!newEntry && oldEntry) {

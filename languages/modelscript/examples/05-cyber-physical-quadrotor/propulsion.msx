@@ -1,0 +1,18 @@
+import { QuadParams } from "./types.msx";
+
+function totalRotorThrust(p: QuadParams, rotorRpm: f64): f64 {
+  let clampedRpm: f64 = rotorRpm;
+  if (clampedRpm < 0.0) {
+    clampedRpm = 0.0;
+  }
+  if (clampedRpm > p.maxRotorRpm) {
+    clampedRpm = p.maxRotorRpm;
+  }
+  return 4.0 * p.thrustCoeff * clampedRpm * clampedRpm;
+}
+
+function verticalAcceleration(p: QuadParams, rotorRpm: f64, vz: f64): f64 {
+  let thrust: f64 = totalRotorThrust(p, rotorRpm);
+  let drag: f64 = p.dragCoeff * vz;
+  return (thrust - p.massKg * p.gravity - drag) / p.massKg;
+}

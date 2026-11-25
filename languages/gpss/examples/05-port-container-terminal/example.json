@@ -1,0 +1,11 @@
+{
+  "id": "gpss-05-port-container-terminal",
+  "lang": "gpss",
+  "subFormats": ["gps"],
+  "difficulty": 5,
+  "title": "Multi-Stage Port Container Terminal Crane-Truck Simulation",
+  "description": "End-to-end maritime container terminal modeling vessel berthing, quay crane unloading, customs inspection branching via probabilistic TRANSFER, and yard drayage truck dispatch.",
+  "category": "Maritime & Intermodal Logistics",
+  "tags": ["gpss", "port", "container", "transfer", "multi-stage"],
+  "activeFile": "port_terminal.gps"
+}

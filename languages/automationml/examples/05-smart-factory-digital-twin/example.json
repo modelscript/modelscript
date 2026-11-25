@@ -1,0 +1,11 @@
+{
+  "id": "automationml-05-smart-factory-digital-twin",
+  "lang": "automationml",
+  "subFormats": ["aml", "caex", "urdf"],
+  "difficulty": 5,
+  "title": "Smart Factory Virtual Commissioning Digital Twin (AML + Roles + Interfaces + URDF)",
+  "description": "Multi-file IEC 62714 AutomationML smart-factory digital twin integrating an AGV material mover, 6-DOF robot workcell, optical quality station, and supervisory PLC with external RoleClassLib (roles.aml), InterfaceClassLib (interfaces.aml), and kinematic URDF model (robot_kinematics.urdf).",
+  "category": "Virtual Commissioning & Digital Twin",
+  "tags": ["automationml", "caex", "digital-twin", "urdf", "smart-factory", "multi-file"],
+  "activeFile": "factory.aml"
+}

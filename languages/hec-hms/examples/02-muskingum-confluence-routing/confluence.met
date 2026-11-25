@@ -1,0 +1,14 @@
+Meteorology: Storm_50yr
+  Unit System: Metric
+  Precipitation Method: Frequency Storm
+End:
+
+Subbasin: North Fork Headwaters
+  Gage: NorthGage
+  Depth: 132.0
+End:
+
+Subbasin: South Creek Tributary
+  Gage: SouthGage
+  Depth: 128.0
+End:

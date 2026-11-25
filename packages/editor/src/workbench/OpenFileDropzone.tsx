@@ -6,11 +6,11 @@ import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import type { Translations } from "./util/i18n";
 
-import { MORSEL_LANGUAGES } from "./constants";
+import { ANSATZ_LANGUAGES } from "./constants";
 import { fmuBytesToModelica, sspBytesToModelica } from "./util/archive-parser";
 
 const ALL_ACCEPTED_EXTENSIONS = Array.from(
-  new Set([...MORSEL_LANGUAGES.flatMap((lang) => lang.extensions.map((ext) => `.${ext}`)), ".ssp", ".fmu", ".txt"]),
+  new Set([...ANSATZ_LANGUAGES.flatMap((lang) => lang.extensions.map((ext) => `.${ext}`)), ".ssp", ".fmu", ".txt"]),
 );
 
 interface OpenFileDropzoneProps {

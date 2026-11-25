@@ -1,0 +1,12 @@
+{
+  "id": "cyme-01-single-phase-lateral",
+  "lang": "cyme",
+  "subFormats": ["sxst"],
+  "difficulty": 1,
+  "title": "Single-Phase 12.47 kV Residential Lateral Feeder",
+  "description": "Minimal CYME SXST distribution model of a single-phase 7.2 kV L-N overhead lateral feeding a residential spot load from a substation source.",
+  "category": "Distribution Power Systems",
+  "tags": ["cyme", "sxst", "distribution", "lateral", "12.47kv"],
+  "activeFile": "lateral_1ph.sxst",
+  "isDefaultStarter": true
+}

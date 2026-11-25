@@ -1,0 +1,12 @@
+{
+  "id": "apt-01-point-to-point-drilling",
+  "lang": "apt",
+  "subFormats": ["apt"],
+  "difficulty": 1,
+  "title": "Point-to-Point Bolt-Circle Drilling Pattern",
+  "description": "Four-hole mounting flange drilling sequence using APT point-to-point FROM, RAPID, and GOTO motion statements with spindle speed, coolant, and plunge feed rate control.",
+  "category": "CAD/CAM & CNC",
+  "tags": ["apt", "cnc", "drilling", "point-to-point"],
+  "activeFile": "drilling_pattern.apt",
+  "isDefaultStarter": true
+}

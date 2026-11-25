@@ -1,0 +1,17 @@
+##TITLE=Caffeine 70 eV Electron-Ionization Mass Spectrum
+##JCAMP-DX=5.00
+##DATA TYPE=MASS SPECTRUM
+##ORIGIN=NIST/EPA/NIH Mass Spectral Reference
+##OWNER=PUBLIC DOMAIN
+##MOLFORM=C8 H10 N4 O2
+##XUNITS=M/Z
+##YUNITS=RELATIVE ABUNDANCE
+##FIRSTX=42
+##LASTX=195
+##NPOINTS=10
+##XFACTOR=1
+##YFACTOR=1
+$$ Molecular ion M+ at m/z 194 (100%), M-CH3NCO at m/z 109 (66%), imidazole ring at m/z 82
+##PEAK TABLE=(XY..XY)
+42, 18.5; 55, 34.2; 67, 29.8; 82, 39.4; 109, 66.1; 137, 12.4; 165, 6.8; 193, 9.2; 194, 100.0; 195, 10.6
+##END=

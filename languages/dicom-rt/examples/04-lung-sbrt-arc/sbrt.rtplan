@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DicomRtPlan
+  planId="LUNG-SBRT-04"
+  planLabel="Lung_SBRT_54Gy_3Fx"
+  patientId="PT-41205"
+  frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.404"
+  structFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.404"
+  doseFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.404"
+  prescribedDoseGy="54.0"
+  fractions="3"
+>
+  <StructureSet frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.404">
+    <ROI roiNumber="1" name="GTV_RUL_Lesion" interpretedType="GTV" volumeCc="12.4" color="255,0,0">
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-12,-12,0; 12,-12,0; 12,12,0; -12,12,0" />
+    </ROI>
+    <ROI roiNumber="2" name="PTV_Lung_54" interpretedType="PTV" volumeCc="28.6" color="255,100,40">
+      <Contour z="-10.0" geometricType="CLOSED_PLANAR" points="-16,-16,-10; 16,-16,-10; 16,16,-10; -16,16,-10" />
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-18,-18,0; 18,-18,0; 18,18,0; -18,18,0" />
+      <Contour z="10.0" geometricType="CLOSED_PLANAR" points="-16,-16,10; 16,-16,10; 16,16,10; -16,16,10" />
+    </ROI>
+    <ROI roiNumber="3" name="SpinalCord" interpretedType="ORGAN" volumeCc="42.0" maxDoseLimitGy="18.0" meanDoseLimitGy="8.0" color="40,180,255">
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-8,-78,0; 8,-78,0; 8,-62,0; -8,-62,0" />
+    </ROI>
+    <ROI roiNumber="4" name="IpsilateralLung" interpretedType="ORGAN" volumeCc="1450.0" maxDoseLimitGy="62.0" meanDoseLimitGy="12.0" color="80,220,120">
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-65,-85,0; 65,-85,0; 65,85,0; -65,85,0" />
+    </ROI>
+  </StructureSet>
+  <BeamSequence>
+    <Beam beamNumber="1" name="VMAT_Arc1_CW" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="2150.0" doseRateMuPerMin="1400.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="181.0" collimatorAngleDeg="30.0" couchAngleDeg="0.0" jawX_mm="-30,30" jawY_mm="-30,30">
+        <MLCLeafPair pairIndex="1" bankA_mm="-18.0" bankB_mm="18.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-20.0" bankB_mm="20.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="0.5" gantryAngleDeg="270.0" collimatorAngleDeg="30.0" couchAngleDeg="0.0" jawX_mm="-30,30" jawY_mm="-30,30">
+        <MLCLeafPair pairIndex="1" bankA_mm="-16.0" bankB_mm="16.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-18.0" bankB_mm="18.0" />
+      </ControlPoint>
+      <ControlPoint index="2" cumulativeMetersetWeight="1.0" gantryAngleDeg="0.0" collimatorAngleDeg="30.0" couchAngleDeg="0.0" jawX_mm="-30,30" jawY_mm="-30,30">
+        <MLCLeafPair pairIndex="1" bankA_mm="-18.0" bankB_mm="18.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-20.0" bankB_mm="20.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="2" name="VMAT_Arc2_CCW" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="2150.0" doseRateMuPerMin="1400.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="0.0" collimatorAngleDeg="330.0" couchAngleDeg="0.0" jawX_mm="-30,30" jawY_mm="-30,30">
+        <MLCLeafPair pairIndex="1" bankA_mm="-18.0" bankB_mm="18.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-20.0" bankB_mm="20.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="0.5" gantryAngleDeg="270.0" collimatorAngleDeg="330.0" couchAngleDeg="0.0" jawX_mm="-30,30" jawY_mm="-30,30">
+        <MLCLeafPair pairIndex="1" bankA_mm="-15.0" bankB_mm="15.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-17.0" bankB_mm="17.0" />
+      </ControlPoint>
+      <ControlPoint index="2" cumulativeMetersetWeight="1.0" gantryAngleDeg="181.0" collimatorAngleDeg="330.0" couchAngleDeg="0.0" jawX_mm="-30,30" jawY_mm="-30,30">
+        <MLCLeafPair pairIndex="1" bankA_mm="-18.0" bankB_mm="18.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-20.0" bankB_mm="20.0" />
+      </ControlPoint>
+    </Beam>
+  </BeamSequence>
+  <DoseDistribution frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.404">
+    <DVH roiNumber="1" roiName="GTV_RUL_Lesion" d98Gy="56.0" d95Gy="57.2" d50Gy="60.5" d2Gy="63.8" meanDoseGy="60.2" maxDoseGy="64.5" minDoseGy="54.8" v20GyPercent="100.0" />
+    <DVH roiNumber="2" roiName="PTV_Lung_54" d98Gy="52.4" d95Gy="54.2" d50Gy="58.6" d2Gy="63.5" meanDoseGy="58.1" maxDoseGy="64.5" minDoseGy="50.2" v20GyPercent="100.0" />
+    <DVH roiNumber="3" roiName="SpinalCord" d98Gy="0.8" d95Gy="1.1" d50Gy="3.2" d2Gy="11.4" meanDoseGy="3.8" maxDoseGy="12.6" minDoseGy="0.4" v20GyPercent="0.0" />
+    <DVH roiNumber="4" roiName="IpsilateralLung" d98Gy="0.5" d95Gy="0.9" d50Gy="4.8" d2Gy="48.0" meanDoseGy="6.4" maxDoseGy="60.2" minDoseGy="0.2" v20GyPercent="7.8" />
+  </DoseDistribution>
+</DicomRtPlan>

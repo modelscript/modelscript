@@ -1,0 +1,11 @@
+{
+  "id": "landgem-04-multi-cell-nmoc-compliance",
+  "lang": "landgem",
+  "subFormats": ["landgem"],
+  "difficulty": 4,
+  "title": "Multi-Cell Phased Closure & NMOC Emissions Compliance",
+  "description": "Two-phase municipal landfill complex with a closed legacy cell and an active bioreactor cell evaluating NSPS NMOC regulatory compliance and thermophilic sludge co-digestion.",
+  "category": "Environmental Compliance",
+  "tags": ["landgem", "nmoc", "bioreactor-cell", "nsps-compliance"],
+  "activeFile": "multi_cell_nmoc.landgem"
+}

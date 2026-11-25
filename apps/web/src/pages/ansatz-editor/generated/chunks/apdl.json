@@ -1,0 +1,78 @@
+[
+  {
+    "id": "apdl-01-cantilever-beam-static",
+    "lang": "apdl",
+    "subFormats": ["apdl"],
+    "difficulty": 1,
+    "title": "Cantilever Steel Beam Static Deflection",
+    "description": "Linear static bending analysis of a 2-meter structural steel cantilever beam modeled with BEAM188 elements, rectangular section properties, clamped root support, and vertical tip load.",
+    "category": "Structural & Thermal FEA",
+    "tags": ["apdl", "beam188", "static", "cantilever"],
+    "activeFile": "cantilever_beam.apdl",
+    "fileNames": ["cantilever_beam.apdl"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "! Cantilever Steel Beam Static Bending Analysis\n/TITLE, Cantilever Beam Static Deflection (BEAM188)\n/UNITS, SI\n/PREP7\n\nL = 2.0\nW = 0.05\nH = 0.10\nP = 2500.0\n\nET, 1, BEAM188\nMP, EX, 1, 210e9\nMP, PRXY, 1, 0.30\nMP, DENS, 1, 7850.0\nSECTYPE, 1, BEAM, RECT\nSECDATA, W, H\n\nN, 1, 0.0, 0.0, 0.0\nN, 2, 0.5, 0.0, 0.0\nN, 3, 1.0, 0.0, 0.0\nN, 4, 1.5, 0.0, 0.0\nN, 5, L, 0.0, 0.0\n\nTYPE, 1\nMAT, 1\nE, 1, 2\nE, 2, 3\nE, 3, 4\nE, 4, 5\nFINISH\n\n/SOLU\nANTYPE, STATIC\nD, 1, ALL, 0.0\nF, 5, FY, -P\nSOLVE\nFINISH\n"
+  },
+  {
+    "id": "apdl-02-parametric-truss-bridge",
+    "lang": "apdl",
+    "subFormats": ["apdl"],
+    "difficulty": 2,
+    "title": "Parametric 2D Warren Truss Bridge",
+    "description": "Parametric 2D structural steel truss bridge built with APDL *DO loops and LINK180 spar elements, pinned-roller bridge abutment supports, and mid-span deck point loads.",
+    "category": "Structural & Thermal FEA",
+    "tags": ["apdl", "truss", "link180", "parametric"],
+    "activeFile": "truss_bridge.apdl",
+    "fileNames": ["truss_bridge.apdl"],
+    "fileCount": 1,
+    "code": "! Parametric 2D Warren Truss Bridge with *DO Loops\n/TITLE, Parametric 2D Warren Truss Bridge\n/UNITS, SI\n/PREP7\n\nNBAY = 4\nBAYL = 3.0\nTRUS_H = 2.5\nAREA_TRUSS = 0.0025\n\nET, 1, LINK180\nMP, EX, 1, 200e9\nMP, PRXY, 1, 0.29\nMP, DENS, 1, 7850.0\nSECTYPE, 1, LINK\nSECDATA, AREA_TRUSS\n\n! Bottom chord nodes 1..5\n*DO, I, 1, NBAY + 1, 1\n  N, I, (I - 1) * BAYL, 0.0, 0.0\n*ENDDO\n\n! Top chord nodes 11..14\n*DO, J, 1, NBAY, 1\n  N, 10 + J, (J - 0.5) * BAYL, TRUS_H, 0.0\n*ENDDO\n\nTYPE, 1\nMAT, 1\n! Bottom chord elements\n*DO, K, 1, NBAY, 1\n  E, K, K + 1\n*ENDDO\n! Top chord elements\n*DO, M, 1, NBAY - 1, 1\n  E, 10 + M, 11 + M\n*ENDDO\n! Diagonal web members\n*DO, D1, 1, NBAY, 1\n  E, D1, 10 + D1\n  E, 10 + D1, D1 + 1\n*ENDDO\nFINISH\n\n/SOLU\nANTYPE, STATIC\nD, 1, UX, 0.0\nD, 1, UY, 0.0\nD, 5, UY, 0.0\nF, 2, FY, -45000.0\nF, 3, FY, -60000.0\nF, 4, FY, -45000.0\nSOLVE\nFINISH\n"
+  },
+  {
+    "id": "apdl-03-plate-modal-frequencies",
+    "lang": "apdl",
+    "subFormats": ["apdl"],
+    "difficulty": 3,
+    "title": "Clamped Aluminum Plate Modal Natural Frequencies",
+    "description": "Free-vibration modal eigenvalue analysis (ANTYPE, MODAL) of a thin 6061-T6 aluminum cantilevered plate discretized with SHELL181 elements to extract fundamental bending and torsional modes.",
+    "category": "Structural & Thermal FEA",
+    "tags": ["apdl", "modal", "shell181", "vibration"],
+    "activeFile": "plate_modal.apdl",
+    "fileNames": ["plate_modal.apdl"],
+    "fileCount": 1,
+    "code": "! Clamped 6061-T6 Aluminum Plate Modal Frequency Extraction\n/TITLE, Cantilever Plate Natural Frequencies (SHELL181)\n/UNITS, SI\n/PREP7\n\nTHK = 0.005\nDX = 0.25\nDY = 0.25\n\nET, 1, SHELL181\nMP, EX, 1, 69e9\nMP, PRXY, 1, 0.33\nMP, DENS, 1, 2700.0\nSECTYPE, 1, SHELL\nSECDATA, THK, 1\n\n! 3x3 node grid (2x2 shell elements)\nN, 1, 0.0, 0.0, 0.0\nN, 2, DX, 0.0, 0.0\nN, 3, 2 * DX, 0.0, 0.0\nN, 4, 0.0, DY, 0.0\nN, 5, DX, DY, 0.0\nN, 6, 2 * DX, DY, 0.0\nN, 7, 0.0, 2 * DY, 0.0\nN, 8, DX, 2 * DY, 0.0\nN, 9, 2 * DX, 2 * DY, 0.0\n\nTYPE, 1\nMAT, 1\nE, 1, 2, 5, 4\nE, 2, 3, 6, 5\nE, 4, 5, 8, 7\nE, 5, 6, 9, 8\nFINISH\n\n/SOLU\nANTYPE, MODAL\nMODOPT, LANB, 6\nD, 1, ALL, 0.0\nD, 4, ALL, 0.0\nD, 7, ALL, 0.0\nSOLVE\nFINISH\n"
+  },
+  {
+    "id": "apdl-04-finned-heatsink-thermal",
+    "lang": "apdl",
+    "subFormats": ["apdl"],
+    "difficulty": 4,
+    "title": "Steady-State Finned Aluminum Heatsink Conduction",
+    "description": "Two-dimensional steady-state thermal conduction analysis of an extruded 6063 aluminum electronics heatsink using PLANE55 thermal elements, base temperature boundary, and convective fin tip cooling.",
+    "category": "Structural & Thermal FEA",
+    "tags": ["apdl", "thermal", "plane55", "heatsink"],
+    "activeFile": "heatsink_thermal.apdl",
+    "fileNames": ["heatsink_thermal.apdl"],
+    "fileCount": 1,
+    "code": "! Steady-State 2D Thermal Conduction in Finned Aluminum Heatsink\n/TITLE, Finned Electronics Heatsink Steady-State Thermal Analysis\n/UNITS, SI\n/PREP7\n\nK_AL = 200.0\nT_BASE = 85.0\nT_AMB = 25.0\nQ_LOAD = 45.0\n\nET, 1, PLANE55\nMP, KXX, 1, K_AL\nMP, DENS, 1, 2700.0\nMP, C, 1, 900.0\n\n! Base plate nodes (y = 0 and y = 0.01)\nN, 1, 0.00, 0.00, 0.0\nN, 2, 0.02, 0.00, 0.0\nN, 3, 0.04, 0.00, 0.0\nN, 4, 0.00, 0.01, 0.0\nN, 5, 0.02, 0.01, 0.0\nN, 6, 0.04, 0.01, 0.0\n! Vertical cooling fin nodes (y = 0.04 and y = 0.07)\nN, 7, 0.00, 0.04, 0.0\nN, 8, 0.02, 0.04, 0.0\nN, 9, 0.00, 0.07, 0.0\nN, 10, 0.02, 0.07, 0.0\n\nTYPE, 1\nMAT, 1\nE, 1, 2, 5, 4\nE, 2, 3, 6, 5\nE, 4, 5, 8, 7\nE, 7, 8, 10, 9\nFINISH\n\n/SOLU\nANTYPE, STATIC\nD, 1, TEMP, T_BASE\nD, 2, TEMP, T_BASE\nD, 3, TEMP, T_BASE\nD, 9, TEMP, T_AMB\nD, 10, TEMP, T_AMB\nF, 6, HEAT, -Q_LOAD\nSOLVE\nFINISH\n"
+  },
+  {
+    "id": "apdl-05-coupled-pressure-vessel",
+    "lang": "apdl",
+    "subFormats": ["apdl", "mac"],
+    "difficulty": 5,
+    "title": "Coupled Thermo-Structural Pressure Vessel with Macros",
+    "description": "Multi-file APDL workflow for an ASME SA-516 carbon-steel cylindrical pressure vessel under internal pressure and thermal gradient, pairing the master analysis deck with modular geometry and stress post-processing macros.",
+    "category": "Structural & Thermal FEA",
+    "tags": ["apdl", "pressure-vessel", "macro", "multi-file"],
+    "activeFile": "vessel.apdl",
+    "fileNames": ["vessel.apdl", "mesh_macro.mac", "post_stress.mac"],
+    "fileCount": 3,
+    "code": "! Coupled Thermo-Structural Cylindrical Pressure Vessel Analysis\n! Companion macros: mesh_macro.mac and post_stress.mac\n/TITLE, ASME SA-516 Pressure Vessel Thermo-Structural Analysis\n/UNITS, SI\n/PREP7\n\nR_IN = 0.50\nWALL_T = 0.025\nP_INT = 4.5e6\nDT_WALL = 60.0\n\nET, 1, PLANE182\nMP, EX, 1, 200e9\nMP, PRXY, 1, 0.30\nMP, DENS, 1, 7850.0\nMP, ALPX, 1, 1.2e-5\n\n! Axisymmetric wall cross-section mesh (2x2 quads)\nN, 1, R_IN, 0.0, 0.0\nN, 2, R_IN + 0.5 * WALL_T, 0.0, 0.0\nN, 3, R_IN + WALL_T, 0.0, 0.0\nN, 4, R_IN, 0.25, 0.0\nN, 5, R_IN + 0.5 * WALL_T, 0.25, 0.0\nN, 6, R_IN + WALL_T, 0.25, 0.0\nN, 7, R_IN, 0.50, 0.0\nN, 8, R_IN + 0.5 * WALL_T, 0.50, 0.0\nN, 9, R_IN + WALL_T, 0.50, 0.0\n\nTYPE, 1\nMAT, 1\nE, 1, 2, 5, 4\nE, 2, 3, 6, 5\nE, 4, 5, 8, 7\nE, 5, 6, 9, 8\nFINISH\n\n/SOLU\nANTYPE, STATIC\nD, 1, UY, 0.0\nD, 2, UY, 0.0\nD, 3, UY, 0.0\nD, 3, UX, 0.0\nF, 1, FX, P_INT * 0.125\nF, 4, FX, P_INT * 0.250\nF, 7, FX, P_INT * 0.125\nSOLVE\nFINISH\n",
+    "files": {
+      "vessel.apdl": "! Coupled Thermo-Structural Cylindrical Pressure Vessel Analysis\n! Companion macros: mesh_macro.mac and post_stress.mac\n/TITLE, ASME SA-516 Pressure Vessel Thermo-Structural Analysis\n/UNITS, SI\n/PREP7\n\nR_IN = 0.50\nWALL_T = 0.025\nP_INT = 4.5e6\nDT_WALL = 60.0\n\nET, 1, PLANE182\nMP, EX, 1, 200e9\nMP, PRXY, 1, 0.30\nMP, DENS, 1, 7850.0\nMP, ALPX, 1, 1.2e-5\n\n! Axisymmetric wall cross-section mesh (2x2 quads)\nN, 1, R_IN, 0.0, 0.0\nN, 2, R_IN + 0.5 * WALL_T, 0.0, 0.0\nN, 3, R_IN + WALL_T, 0.0, 0.0\nN, 4, R_IN, 0.25, 0.0\nN, 5, R_IN + 0.5 * WALL_T, 0.25, 0.0\nN, 6, R_IN + WALL_T, 0.25, 0.0\nN, 7, R_IN, 0.50, 0.0\nN, 8, R_IN + 0.5 * WALL_T, 0.50, 0.0\nN, 9, R_IN + WALL_T, 0.50, 0.0\n\nTYPE, 1\nMAT, 1\nE, 1, 2, 5, 4\nE, 2, 3, 6, 5\nE, 4, 5, 8, 7\nE, 5, 6, 9, 8\nFINISH\n\n/SOLU\nANTYPE, STATIC\nD, 1, UY, 0.0\nD, 2, UY, 0.0\nD, 3, UY, 0.0\nD, 3, UX, 0.0\nF, 1, FX, P_INT * 0.125\nF, 4, FX, P_INT * 0.250\nF, 7, FX, P_INT * 0.125\nSOLVE\nFINISH\n",
+      "mesh_macro.mac": "! Companion Parametric Mesh Generation Macro for Pressure Vessel\n/PREP7\nR_IN = 0.50\nWALL_T = 0.025\n*DO, IY, 1, 3, 1\n  Y_POS = (IY - 1) * 0.25\n  N, (IY - 1) * 3 + 1, R_IN, Y_POS, 0.0\n  N, (IY - 1) * 3 + 2, R_IN + 0.5 * WALL_T, Y_POS, 0.0\n  N, (IY - 1) * 3 + 3, R_IN + WALL_T, Y_POS, 0.0\n*ENDDO\nFINISH\n",
+      "post_stress.mac": "! Companion Post-Processing Macro: Hoop & Von Mises Stress Summary\n/POST1\nSET, LAST\nPRNSOL, U, COMP\nPRNSOL, S, PRIN\nFINISH\n"
+    }
+  }
+]

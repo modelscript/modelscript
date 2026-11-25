@@ -143,7 +143,7 @@ export interface AdminAuditLog {
   resource_type?: string | undefined;
   resource_id?: string | undefined;
   ip_address?: string | undefined;
-  details?: any;
+  details?: Record<string, unknown> | string | null | undefined;
   prev_hash?: string | null | undefined;
   entry_hash?: string | null | undefined;
   created_at: string;
@@ -556,8 +556,7 @@ export const importAdminFederationDomains = async (payload: {
   mode?: "merge" | "replace" | undefined;
   csv?: string | undefined;
   domains?:
-    | Array<{ domain: string; tier: "allow" | "silence" | "suspend"; reason?: string | null | undefined }>
-    | undefined;
+    Array<{ domain: string; tier: "allow" | "silence" | "suspend"; reason?: string | null | undefined }> | undefined;
 }): Promise<{
   success: boolean;
   importedCount: number;
@@ -699,7 +698,7 @@ export const getAdminAuditLogs = async (
   total?: number | undefined;
   totalCount?: number | undefined;
 }> => {
-  const params: Record<string, any> = { limit, offset, action };
+  const params: Record<string, string | number | undefined> = { limit, offset, action };
   if (resourceType !== undefined) {
     params.resourceType = resourceType;
   }
@@ -1411,12 +1410,7 @@ export const sendAdminTestEmail = async (
 };
 
 export type AdminEmailTemplateId =
-  | "verification"
-  | "password_reset"
-  | "invite"
-  | "security_alert"
-  | "social_notification"
-  | "digest";
+  "verification" | "password_reset" | "invite" | "security_alert" | "social_notification" | "digest";
 
 export interface AdminEmailTemplateDefinition {
   id: AdminEmailTemplateId;
@@ -1589,7 +1583,7 @@ export const downloadAdminSupportBundle = async (): Promise<Record<string, unkno
 };
 
 export const fetchAdminPrometheusMetrics = async (): Promise<string> => {
-  const { data } = await api.get("/admin/metrics", { responseType: "text" as any });
+  const { data } = await api.get<string>("/admin/metrics", { responseType: "text" });
   return typeof data === "string" ? data : JSON.stringify(data);
 };
 

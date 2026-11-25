@@ -94,7 +94,26 @@ function skipAlgorithmSectionPrefix(algText: string): number {
   return 0;
 }
 
-function hasCstSyntaxError(node: any): boolean {
+export interface CfgCstNodeLike {
+  type?: string | undefined;
+  text?: string | undefined;
+  isError?: boolean | undefined;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  startOffset?: number | undefined;
+  endOffset?: number | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  endPosition?: { row: number; column: number } | undefined;
+  children?: readonly CfgCstNodeLike[] | undefined;
+}
+
+export interface CfgDbLike {
+  cstNode?: ((id: number) => CfgCstNodeLike | null | undefined) | undefined;
+  symbol?: ((id: number) => { name?: string | undefined } | null | undefined) | undefined;
+  rootNode?: CfgCstNodeLike | null | undefined;
+}
+
+function hasCstSyntaxError(node: CfgCstNodeLike | null | undefined): boolean {
   if (!node) return false;
   if (node.isError || node.type === "ERROR") return true;
   if (Array.isArray(node.children)) {
@@ -325,14 +344,14 @@ export class ModelicaCFGLowerer {
    * falling back to a deterministic keyword scanner when running without a registered parser.
    */
   static parseStatements(algText: string, defaultStartByte: number = 0): ModelicaStatement[] {
-    const parser = UnifiedWorkspace.getGlobalParser(".mo") as { parse?: (s: string) => any } | undefined;
+    const parser = UnifiedWorkspace.getGlobalParser(".mo");
     if (parser && typeof parser.parse === "function" && algText.trim().length > 0) {
       const algPrefixLen = skipAlgorithmSectionPrefix(algText);
       const needsHeader = algPrefixLen === 0;
       const wrapperPrefix = needsHeader ? "model _CfgTmp\nalgorithm\n" : "model _CfgTmp\n";
       try {
         const tree = parser.parse(`${wrapperPrefix}${algText}\nend _CfgTmp;`);
-        const root = tree?.rootNode ?? tree;
+        const root = (tree?.rootNode ?? tree) as CfgCstNodeLike | null | undefined;
         if (root && !hasCstSyntaxError(root)) {
           const algNode = findCstNodesByType(root, "algorithm_section")[0];
           if (algNode) {
@@ -522,7 +541,10 @@ export class ModelicaCFGLowerer {
   /**
    * Lowers structured ModelicaStatement nodes directly from an algorithm_section CST node.
    */
-  static extractStatementsFromCst(algNode: any, defaultStartByte: number = 0): ModelicaStatement[] {
+  static extractStatementsFromCst(
+    algNode: CfgCstNodeLike | null | undefined,
+    defaultStartByte: number = 0,
+  ): ModelicaStatement[] {
     if (!algNode) return [];
     if (!algNode.children || algNode.children.length === 0) {
       if (algNode.text) {
@@ -549,16 +571,17 @@ export class ModelicaCFGLowerer {
     return statements;
   }
 
-  private static extractSingleStatementFromCst(stmtNode: any): ModelicaStatement | null {
+  private static extractSingleStatementFromCst(stmtNode: CfgCstNodeLike | null | undefined): ModelicaStatement | null {
     if (!stmtNode) return null;
     const rawText = stmtNode.text || "";
     const startOffset = stmtNode.startIndex ?? 0;
     const endOffset = stmtNode.endIndex ?? startOffset + rawText.length;
 
-    const findChild = (node: any, t: string) => node.children?.find((c: any) => normCstType(c.type) === t);
-    const findDescendants = (node: any, t: string) => {
-      const res: any[] = [];
-      const walk = (n: any) => {
+    const findChild = (node: CfgCstNodeLike, t: string): CfgCstNodeLike | undefined =>
+      node.children?.find((c) => normCstType(c.type) === t);
+    const findDescendants = (node: CfgCstNodeLike, t: string): CfgCstNodeLike[] => {
+      const res: CfgCstNodeLike[] = [];
+      const walk = (n: CfgCstNodeLike | null | undefined) => {
         if (!n) return;
         if (normCstType(n.type) === t) res.push(n);
         if (n.children) {
@@ -656,9 +679,9 @@ export class ModelicaCFGLowerer {
         : findDescendants(forNode, "forindex").concat(findDescendants(forNode, "for_index"));
 
       if (indexNodes.length > 0) {
-        const idNode = findDescendants(indexNodes[0], "identifier")[0];
+        const idNode = findDescendants(indexNodes[0]!, "identifier")[0];
         loopVar = idNode?.text?.trim() || "";
-        const exprNode = findDescendants(indexNodes[0], "expression")[0];
+        const exprNode = findDescendants(indexNodes[0]!, "expression")[0];
         rangeText = exprNode?.text?.trim() || "";
       } else {
         const idNode = findDescendants(forNode, "identifier")[0];
@@ -683,7 +706,7 @@ export class ModelicaCFGLowerer {
       }
 
       const loopBody: ModelicaStatement[] = [];
-      const childStmts = (forNode.children || []).filter((c: any) => normCstType(c.type) === "statement");
+      const childStmts = (forNode.children || []).filter((c) => normCstType(c.type) === "statement");
       for (const ch of childStmts) {
         const s = this.extractSingleStatementFromCst(ch);
         if (s) loopBody.push(s);
@@ -718,7 +741,7 @@ export class ModelicaCFGLowerer {
       const exprNodes = findDescendants(whileNode, "expression");
       const condExpr = exprNodes[0]?.text?.trim() || "";
       const whileBody: ModelicaStatement[] = [];
-      const childStmts = (whileNode.children || []).filter((c: any) => normCstType(c.type) === "statement");
+      const childStmts = (whileNode.children || []).filter((c) => normCstType(c.type) === "statement");
       for (const ch of childStmts) {
         const s = this.extractSingleStatementFromCst(ch);
         if (s) whileBody.push(s);
@@ -750,7 +773,7 @@ export class ModelicaCFGLowerer {
       const exprNodes = findDescendants(whenNode, "expression");
       const condExpr = exprNodes[0]?.text?.trim() || "";
       const whenBody: ModelicaStatement[] = [];
-      const childStmts = (whenNode.children || []).filter((c: any) => normCstType(c.type) === "statement");
+      const childStmts = (whenNode.children || []).filter((c) => normCstType(c.type) === "statement");
       for (const ch of childStmts) {
         const s = this.extractSingleStatementFromCst(ch);
         if (s) whenBody.push(s);
@@ -828,11 +851,18 @@ export class ModelicaCFGLowerer {
   /**
    * Lowers algorithmic sections of a class directly from linear CST / CodeGraph.
    */
-  static lowerAlgorithmFromCst(db: any, classId: any): GenericCFG {
+  static lowerAlgorithmFromCst(
+    db: CfgDbLike | CfgCstNodeLike | null | undefined,
+    classId: number | CfgCstNodeLike | null | undefined,
+  ): GenericCFG {
     if (!db || classId === undefined || classId === null) {
       return new GenericCFG();
     }
-    const cst = typeof db.cstNode === "function" ? db.cstNode(classId) : (db.rootNode ?? db);
+    const dbLike = db as CfgDbLike;
+    const cst =
+      typeof dbLike.cstNode === "function" && typeof classId === "number"
+        ? dbLike.cstNode(classId)
+        : (dbLike.rootNode ?? (db as CfgCstNodeLike));
     if (!cst) {
       return new GenericCFG();
     }
@@ -842,7 +872,7 @@ export class ModelicaCFGLowerer {
   /**
    * Lowers algorithmic sections directly from a class_definition CST node.
    */
-  static lowerAlgorithmFromClassCst(classCst: any): GenericCFG {
+  static lowerAlgorithmFromClassCst(classCst: CfgCstNodeLike | null | undefined): GenericCFG {
     const algSections = findCstNodesByType(classCst, "algorithm_section");
     if (algSections.length === 0) {
       return new GenericCFG();
@@ -860,7 +890,7 @@ export class ModelicaCFGLowerer {
   /**
    * Lowers an algorithm_section CST node directly into a GenericCFG.
    */
-  static lowerCst(algNode: any, defaultStartByte: number = 0): GenericCFG {
+  static lowerCst(algNode: CfgCstNodeLike | null | undefined, defaultStartByte: number = 0): GenericCFG {
     const stmts = ModelicaCFGLowerer.extractStatementsFromCst(algNode, defaultStartByte);
     return new ModelicaCFGLowerer().lower(stmts);
   }
@@ -1092,14 +1122,17 @@ function normCstType(t: string | undefined): string {
   return out;
 }
 
-export function findCstNodesByType(root: any, typeName: string): any[] {
-  const results: any[] = [];
+export function findCstNodesByType<T extends CfgCstNodeLike = CfgCstNodeLike>(
+  root: T | null | undefined,
+  typeName: string,
+): T[] {
+  const results: T[] = [];
   const target = normCstType(typeName);
 
-  function walk(node: any) {
+  function walk(node: CfgCstNodeLike | null | undefined) {
     if (!node) return;
     if (normCstType(node.type) === target) {
-      results.push(node);
+      results.push(node as T);
     }
     if (node.children) {
       for (const child of node.children) {

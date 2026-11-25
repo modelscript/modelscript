@@ -9,12 +9,23 @@
 // camelCase aliases.
 
 import {
+  type IndexerHook as DslIndexerHook,
   extractIndexerHooks,
   extractQueryHooksMap,
   extractRefHooks,
+  type RefHookInfo,
   type WorkspaceIndexingHooks,
 } from "@modelscript/dsl";
-import { QueryEngine, WorkspaceIndex } from "@modelscript/runtime";
+import {
+  type CSTTree,
+  type ExpressionEvaluator,
+  type IndexerHook,
+  type QueryCacheStore,
+  QueryEngine,
+  type QueryHooks,
+  type SymbolIndex,
+  WorkspaceIndex,
+} from "@modelscript/runtime";
 
 import csvLangDef, { csvWorkspaceHooks } from "@modelscript/csv/language";
 import lasLangDef, { lasWorkspaceHooks } from "@modelscript/las/language";
@@ -33,14 +44,30 @@ const lasQueryHooks = extractQueryHooksMap(lasLangDef);
 import { modelicaEvaluator } from "./expression-evaluator.js";
 import { modelicaQueryHooks } from "./queries.js";
 
-const baseIndexerHooks = [
-  ...(INDEXER_HOOKS ?? (globalThis as any).__indexerHooksFallback ?? []),
+interface FactoryGlobalFallbacks {
+  __indexerHooksFallback?: DslIndexerHook[] | undefined;
+  __queryHooksFallback?: Map<string, QueryHooks> | Record<string, QueryHooks> | undefined;
+  __refHooksFallback?: RefHookInfo[] | undefined;
+  __evaluatorFallback?: ExpressionEvaluator | undefined;
+}
+
+const globalFallbacks = globalThis as unknown as FactoryGlobalFallbacks;
+
+const baseIndexerHooks: IndexerHook[] = [
+  ...(INDEXER_HOOKS ?? globalFallbacks.__indexerHooksFallback ?? []),
   ...(csvIndexerHooks ?? []),
   ...(lasIndexerHooks ?? []),
-];
-const queryHooks = QUERY_HOOKS ?? (globalThis as any).__queryHooksFallback;
-const refHooks = REF_HOOKS ?? (globalThis as any).__refHooksFallback;
-const evaluator = modelicaEvaluator ?? (globalThis as any).__evaluatorFallback;
+].map((h) => ({
+  ruleName: h.ruleName,
+  kind: h.kind,
+  namePath: h.namePath,
+  exportPaths: h.exportPaths ?? [],
+  inheritPaths: h.inheritPaths ?? [],
+  metadataFieldPaths: h.metadataFieldPaths ?? {},
+}));
+const queryHooks = QUERY_HOOKS ?? globalFallbacks.__queryHooksFallback;
+const refHooks: RefHookInfo[] | undefined = REF_HOOKS ?? globalFallbacks.__refHooksFallback;
+const evaluator: ExpressionEvaluator = modelicaEvaluator ?? globalFallbacks.__evaluatorFallback;
 
 // Helper to normalize rule names (PascalCase <-> snake_case)
 function toSnakeCase(str: string): string {
@@ -59,51 +86,51 @@ function toSnakeCase(str: string): string {
 }
 
 // Merge Modelica and CSV query hooks
-const mergedQueryHooks = new Map<string, any>();
+const mergedQueryHooks = new Map<string, QueryHooks>();
 for (const [k, v] of modelicaQueryHooks.entries()) {
-  mergedQueryHooks.set(k, v);
-  mergedQueryHooks.set(toSnakeCase(k), v);
+  mergedQueryHooks.set(k, v as QueryHooks);
+  mergedQueryHooks.set(toSnakeCase(k), v as QueryHooks);
 }
 if (queryHooks instanceof Map) {
   for (const [k, v] of queryHooks.entries()) {
-    mergedQueryHooks.set(k, v);
-    mergedQueryHooks.set(toSnakeCase(k), v);
+    mergedQueryHooks.set(k, v as QueryHooks);
+    mergedQueryHooks.set(toSnakeCase(k), v as QueryHooks);
   }
 } else if (queryHooks) {
   for (const [k, v] of Object.entries(queryHooks)) {
-    mergedQueryHooks.set(k, v);
-    mergedQueryHooks.set(toSnakeCase(k), v);
+    mergedQueryHooks.set(k, v as QueryHooks);
+    mergedQueryHooks.set(toSnakeCase(k), v as QueryHooks);
   }
 }
 if (csvQueryHooks instanceof Map) {
   for (const [k, v] of csvQueryHooks.entries()) {
-    mergedQueryHooks.set(k, v);
-    mergedQueryHooks.set(toSnakeCase(k), v);
+    mergedQueryHooks.set(k, v as QueryHooks);
+    mergedQueryHooks.set(toSnakeCase(k), v as QueryHooks);
   }
 } else if (csvQueryHooks) {
   for (const [k, v] of Object.entries(csvQueryHooks)) {
-    mergedQueryHooks.set(k, v);
-    mergedQueryHooks.set(toSnakeCase(k), v);
+    mergedQueryHooks.set(k, v as QueryHooks);
+    mergedQueryHooks.set(toSnakeCase(k), v as QueryHooks);
   }
 }
 if (lasQueryHooks instanceof Map) {
   for (const [k, v] of lasQueryHooks.entries()) {
-    mergedQueryHooks.set(k, v);
-    mergedQueryHooks.set(toSnakeCase(k), v);
+    mergedQueryHooks.set(k, v as QueryHooks);
+    mergedQueryHooks.set(toSnakeCase(k), v as QueryHooks);
   }
 } else if (lasQueryHooks) {
   for (const [k, v] of Object.entries(lasQueryHooks)) {
-    mergedQueryHooks.set(k, v);
-    mergedQueryHooks.set(toSnakeCase(k), v);
+    mergedQueryHooks.set(k, v as QueryHooks);
+    mergedQueryHooks.set(toSnakeCase(k), v as QueryHooks);
   }
 }
 
 // Convert refHooks into indexerHooks so reference nodes get indexed too.
 // The resolver needs reference entries in the index to detect unresolved refs.
-const defRuleNames = new Set(baseIndexerHooks.map((h: any) => h.ruleName));
-const refAsIndexerHooks = (refHooks ?? [])
-  .filter((rh: any) => !defRuleNames.has(rh.ruleName))
-  .map((rh: any) => ({
+const defRuleNames = new Set(baseIndexerHooks.map((h: IndexerHook) => h.ruleName));
+const refAsIndexerHooks: IndexerHook[] = (refHooks ?? [])
+  .filter((rh: RefHookInfo) => !defRuleNames.has(rh.ruleName))
+  .map((rh: RefHookInfo) => ({
     ruleName: rh.ruleName,
     kind: "Reference",
     namePath: rh.namePath,
@@ -112,7 +139,7 @@ const refAsIndexerHooks = (refHooks ?? [])
     metadataFieldPaths: {},
   }));
 
-const msimIndexerHook: any = {
+const msimIndexerHook: IndexerHook = {
   ruleName: "virtual_msim_record",
   kind: "Class",
   namePath: "name",
@@ -123,7 +150,7 @@ const msimIndexerHook: any = {
   },
 };
 
-const msimPropertyHook: any = {
+const msimPropertyHook: IndexerHook = {
   ruleName: "virtual_msim_property",
   kind: "Component",
   namePath: "name",
@@ -135,7 +162,7 @@ const msimPropertyHook: any = {
   },
 };
 
-const wasmModelicaIndexerHooks: any[] = [
+const wasmModelicaIndexerHooks: IndexerHook[] = [
   {
     ruleName: "class_definition",
     kind: "Class",
@@ -238,7 +265,7 @@ const wasmModelicaIndexerHooks: any[] = [
   },
 ];
 
-const allIndexerHooks = [
+const allIndexerHooks: IndexerHook[] = [
   ...baseIndexerHooks,
   ...wasmModelicaIndexerHooks,
   ...refAsIndexerHooks,
@@ -270,13 +297,16 @@ export function createModelicaWorkspaceIndex(): WorkspaceIndex {
  * Creates a configured QueryEngine for a given SymbolIndex.
  */
 export function createModelicaQueryEngine(
-  index: any,
-  tree?: any,
-  cacheStore?: any,
+  index: SymbolIndex | WorkspaceIndex | { getIndex: (opts?: { eager?: boolean }) => SymbolIndex },
+  tree?: CSTTree,
+  cacheStore?: QueryCacheStore,
   maxMemos?: number,
-  extraHooks?: Map<string, any>,
+  extraHooks?: Map<string, QueryHooks>,
 ): QueryEngine {
-  const symbolIndex = typeof index?.getIndex === "function" ? index.getIndex({ eager: true }) : index;
+  const symbolIndex: SymbolIndex =
+    "getIndex" in index && typeof index.getIndex === "function"
+      ? index.getIndex({ eager: true })
+      : (index as SymbolIndex);
   injectPredefinedTypes(symbolIndex);
 
   const finalHooks = new Map(mergedQueryHooks);

@@ -1,0 +1,11 @@
+{
+  "id": "lustre-05-flight-control-voter",
+  "lang": "lustre",
+  "subFormats": ["lus"],
+  "difficulty": 5,
+  "title": "Dual-Channel Flight Control Voter with Observer Contracts",
+  "description": "Multi-file redundant flight-control command voter with discrepancy persistence fault detection, failover switching (voter_sys.lus), and formal synchronous observer contracts (contracts.lus).",
+  "category": "Safety-Critical Avionics",
+  "tags": ["lustre", "voter", "redundancy", "observer", "multi-file"],
+  "activeFile": "voter_sys.lus"
+}

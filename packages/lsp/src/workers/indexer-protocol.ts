@@ -12,11 +12,11 @@ export interface IndexerBatchRequest {
   /** Unique numeric identifier for correlating the batch response. */
   batchId: number;
   /** Base URL or filesystem path to the server distribution directory for loading WASM binaries. */
-  serverDistBase: string; // Needed to load tree-sitter WASM
+  serverDistBase: string; // Needed to load WASM parsers
   /** Optional map of language IDs to custom `parser.wasm` URLs. */
   wasmUrls?: Record<string, string> | undefined;
   /** Optional serialized indexer hooks for custom DSL symbol extraction. */
-  hooks?: any[] | undefined;
+  hooks?: unknown[] | undefined;
   /** Array of source files to parse and index in this batch. */
   files: {
     /** Document URI of the file being indexed. */

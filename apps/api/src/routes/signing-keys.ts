@@ -469,7 +469,9 @@ export function createPostEvidenceRouter(database: LibraryDatabase): Router {
     try {
       payload = JSON.parse(evidence.payload_json);
       proof = JSON.parse(evidence.proof_json);
-    } catch {}
+    } catch {
+      // Fallback to empty objects if stored evidence JSON is malformed
+    }
 
     const key = evidence.key_id ? database.getSigningKeyById(evidence.key_id) : null;
 

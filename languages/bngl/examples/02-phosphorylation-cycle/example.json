@@ -1,0 +1,11 @@
+{
+  "id": "bngl-02-phosphorylation-cycle",
+  "lang": "bngl",
+  "subFormats": ["bngl"],
+  "difficulty": 2,
+  "title": "Enzymatic Phosphorylation-Dephosphorylation Cycle",
+  "description": "Goldbeter-Koshland covalent modification switch modeled with explicit kinase and phosphatase binding rules and substrate site state transitions (~U to ~P).",
+  "category": "Rule-Based Systems Biology",
+  "tags": ["bngl", "phosphorylation", "kinase", "switch"],
+  "activeFile": "phos_cycle.bngl"
+}

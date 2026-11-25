@@ -1,0 +1,11 @@
+{
+  "id": "opendss-04-pv-hosting-volt-var",
+  "lang": "opendss",
+  "subFormats": ["dss", "csv"],
+  "difficulty": 4,
+  "title": "24-Hour PV Hosting Capacity & Volt-VAR Control",
+  "description": "Distribution feeder with distributed solar PV installations redirected from a companion module and a 24-hour normalized solar irradiance CSV profile.",
+  "category": "DER & Hosting Capacity",
+  "tags": ["opendss", "pvsystem", "volt-var", "qsts", "multi-file"],
+  "activeFile": "Master.dss"
+}

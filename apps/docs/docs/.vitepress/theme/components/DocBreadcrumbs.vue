@@ -14,7 +14,7 @@ interface Crumb {
 
 const SECTION_MAP: Record<string, { label: string; link: string }> = {
   guide: { label: "Guide", link: "/guide/introduction" },
-  ansatz: { label: "Ansatz Platform", link: "/ansatz/overview" },
+  ansatz: { label: "Ansatz Network", link: "/ansatz/overview" },
   architecture: { label: "Architecture", link: "/architecture/overview" },
   algorithms: { label: "Algorithms", link: "/algorithms/overview" },
   cli: { label: "CLI Reference", link: "/cli/overview" },

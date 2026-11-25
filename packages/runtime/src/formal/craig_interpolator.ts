@@ -333,7 +333,23 @@ export class CraigInterpolator {
     const numCols = m + numRows;
 
     // Fast path: Accelerated WebAssembly Simplex Engine
-    const wasm: any = getDefaultWasmExports();
+    const wasm = getDefaultWasmExports() as {
+      memory: WebAssembly.Memory;
+      __new?: (size: number, id: number) => number;
+      __pin?: (ptr: number) => number;
+      __unpin?: (ptr: number) => void;
+      atomicChunkAlloc?: (size: number) => number;
+      atomicChunkFree?: (ptr: number) => void;
+      arena_alloc?: (size: number) => number;
+      arena_free?: (ptr: number) => void;
+      simplex_create?: (rows: number, cols: number) => number;
+      simplex_destroy?: (ptr: number) => void;
+      simplex_initFarkas?: (ptr: number, m: number, n: number) => void;
+      simplex_setEntry?: (ptr: number, row: number, col: number, val: number) => void;
+      simplex_solveTwoPhaseFarkas?: (ptr: number, m: number, n: number, dPtr: number) => number;
+      simplex_getOptimalValue?: (ptr: number) => number;
+      simplex_getMultipliers?: (ptr: number, outPtr: number, m: number) => void;
+    } | null;
     if (
       wasm &&
       typeof wasm.simplex_create === "function" &&
@@ -352,12 +368,13 @@ export class CraigInterpolator {
             for (let i = 0; i < m; i++) {
               const coeff = allConstraints[i]!.coeffs.get(v) ?? 0;
               if (coeff !== 0) {
-                wasm.simplex_setEntry(sPtr, j, i, coeff);
+                wasm.simplex_setEntry?.(sPtr, j, i, coeff);
               }
             }
           }
 
-          const mem = wasm.memory as WebAssembly.Memory;
+          const mem = wasm.memory;
+          const newFn = wasm.__new;
           const allocBytes = (bytes: number): { ptr: number; free: () => void } => {
             if (typeof wasm.atomicChunkAlloc === "function") {
               const p = wasm.atomicChunkAlloc(bytes) >>> 0;
@@ -367,7 +384,7 @@ export class CraigInterpolator {
               const p = wasm.arena_alloc(bytes) >>> 0;
               return { ptr: p, free: () => p && (wasm.arena_free?.(p) ?? wasm.atomicChunkFree?.(p)) };
             }
-            const p = wasm.__new(bytes, 0) >>> 0;
+            const p = newFn(bytes, 0) >>> 0;
             if (p && typeof wasm.__pin === "function") wasm.__pin(p);
             return { ptr: p, free: () => p && wasm.__unpin?.(p) };
           };

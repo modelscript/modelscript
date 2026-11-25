@@ -1,0 +1,12 @@
+{
+  "id": "pdb-05-protein-ligand-complex",
+  "lang": "pdb",
+  "subFormats": ["pdb", "smiles"],
+  "difficulty": 5,
+  "title": "Protein-Ligand Active Site Complex with Binding Assay",
+  "description": "Kinase DFG-motif active-site polypeptide bound to a small-molecule inhibitor (HETATM LIG) paired with companion ligand SMILES and ITC binding affinity data.",
+  "category": "Structure-Based Drug Design",
+  "tags": ["pdb", "protein-ligand", "docking", "binding-affinity", "multi-file"],
+  "activeFile": "complex.pdb",
+  "fileOrder": ["complex.pdb", "ligand.smi", "binding_affinity.csv"]
+}

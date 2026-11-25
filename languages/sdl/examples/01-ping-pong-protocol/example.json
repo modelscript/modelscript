@@ -1,0 +1,12 @@
+{
+  "id": "sdl-01-ping-pong-protocol",
+  "lang": "sdl",
+  "subFormats": ["sdl"],
+  "difficulty": 1,
+  "title": "Ping-Pong Request-Response Protocol",
+  "description": "Two-block CCITT SDL-88 request-response protocol with bidirectional channel, signal routes, retransmission timer, and responder echo process.",
+  "category": "Communication Protocols",
+  "tags": ["sdl", "ping-pong", "protocol", "timer"],
+  "activeFile": "ping_pong.sdl",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "ieee-cdf-04-ieee-30-bus-midwest",
+  "lang": "ieee-cdf",
+  "subFormats": ["cdf"],
+  "difficulty": 4,
+  "title": "IEEE 30-Bus Midwest Regional Transmission Benchmark",
+  "description": "30-bus, 41-branch IEEE Midwest regional transmission benchmark with six generator/condenser voltage-controlled buses, four tap-changing inter-voltage transformers (132/33 kV), and two shunt capacitor banks.",
+  "category": "Power Flow & Grid Heritage",
+  "tags": ["ieee-cdf", "ieee-30", "regional-grid", "power-flow"],
+  "activeFile": "ieee30.cdf"
+}

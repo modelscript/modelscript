@@ -1,0 +1,313 @@
+/* Ansatz utility classes (replaces full @primer/css reset to avoid global html/body font overrides) */
+.d-flex {
+  display: flex !important;
+}
+.flex-row {
+  flex-direction: row !important;
+}
+.flex-column {
+  flex-direction: column !important;
+}
+.flex-1 {
+  flex: 1 !important;
+}
+.flex-items-center {
+  align-items: center !important;
+}
+.flex-justify-between {
+  justify-content: space-between !important;
+}
+.flex-justify-center {
+  justify-content: center !important;
+}
+.flex-justify-end {
+  justify-content: flex-end !important;
+}
+.height-full {
+  height: 100% !important;
+}
+.overflow-auto {
+  overflow: auto !important;
+}
+.overflow-hidden {
+  overflow: hidden !important;
+}
+.cursor-pointer {
+  cursor: pointer !important;
+}
+.p-2 {
+  padding: 8px !important;
+}
+.p-3 {
+  padding: 16px !important;
+}
+.p-4 {
+  padding: 24px !important;
+}
+.px-3 {
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+.py-2 {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+.mr-1 {
+  margin-right: 4px !important;
+}
+.mb-2 {
+  margin-bottom: 8px !important;
+}
+.border-left {
+  border-left: 1px solid var(--borderColor-default, var(--color-border-default)) !important;
+}
+.border-right {
+  border-right: 1px solid var(--borderColor-default, var(--color-border-default)) !important;
+}
+.border-bottom {
+  border-bottom: 1px solid var(--borderColor-default, var(--color-border-default)) !important;
+}
+.border-top {
+  border-top: 1px solid var(--borderColor-default, var(--color-border-default)) !important;
+}
+.border-0 {
+  border: 0 !important;
+}
+.bg-canvas-subtle {
+  background-color: var(--bgColor-muted, var(--color-canvas-subtle)) !important;
+}
+.f4 {
+  font-size: 16px !important;
+}
+.f6 {
+  font-size: 12px !important;
+}
+.text-bold {
+  font-weight: 600 !important;
+}
+.text-italic {
+  font-style: italic !important;
+}
+.text-center {
+  text-align: center !important;
+}
+.color-fg-muted {
+  color: var(--fgColor-muted, var(--color-fg-muted)) !important;
+}
+
+/* Ansatz application specific rules */
+.modelica-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+  overflow: hidden !important;
+}
+
+.modelica-icon svg,
+.modelica-icon img {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+  overflow: hidden !important;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.modelica-icon svg path:not([fill]),
+.modelica-icon svg polyline:not([fill]),
+.modelica-icon svg line:not([fill]) {
+  fill: none;
+}
+
+.modelica-icon svg text {
+  stroke: none;
+}
+
+#__primerPortalRoot__ div {
+  z-index: 2000 !important;
+}
+
+.markdown-body ul {
+  padding-left: 1.5em !important;
+  list-style-type: disc !important;
+  margin-bottom: 1em;
+}
+
+.markdown-body ol {
+  padding-left: 1.5em !important;
+  list-style-type: decimal !important;
+  margin-bottom: 1em;
+}
+
+.markdown-body li {
+  margin-bottom: 0.5em;
+}
+
+@keyframes rotate-spinner {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+svg[class*="Spinner"] {
+  animation: rotate-spinner 1s linear infinite !important;
+}
+
+@keyframes tree-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.ms-spinner,
+.spinner-spin {
+  animation: rotate-spinner 1s linear infinite !important;
+  transform-origin: center;
+}
+
+@keyframes drop-placeholder-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+
+@keyframes drop-placeholder-bounce {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  65% {
+    transform: scale(0.92);
+  }
+  85% {
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes drop-placeholder-appear {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1.18);
+  }
+  65% {
+    transform: scale(0.92);
+  }
+  85% {
+    transform: scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.ansatz-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+  user-select: none;
+}
+
+.ansatz-menu-item:hover,
+.ansatz-menu-item:focus-visible {
+  background-color: var(--ms-surface-hover, rgba(125, 125, 125, 0.12)) !important;
+}
+
+.ansatz-toolbar-btn {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 3px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ms-text-2, var(--color-fg-muted));
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.ansatz-toolbar-btn:hover,
+.ansatz-toolbar-btn:focus-visible {
+  background-color: var(--ms-surface-hover, rgba(125, 125, 125, 0.12)) !important;
+  color: var(--ms-text-1, var(--color-fg-default)) !important;
+}
+
+.ansatz-toolbar-btn-text {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ms-text-1, var(--color-fg-default));
+  cursor: pointer;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  transition: background-color 0.12s ease;
+}
+
+.ansatz-toolbar-btn-text:hover,
+.ansatz-toolbar-btn-text:focus-visible {
+  background-color: var(--ms-surface-hover, rgba(125, 125, 125, 0.12)) !important;
+}
+
+.ms-modal-tile {
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    box-shadow 0.14s ease,
+    transform 0.14s ease;
+}
+
+.ms-modal-tile:hover,
+.ms-modal-tile:focus-visible {
+  border-color: var(--ms-brand, #0891b2) !important;
+  background-color: var(--ms-bg-soft, var(--ms-bg-elv)) !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--ms-brand, #0891b2) 35%, transparent),
+    var(--ms-shadow-card, 0 8px 24px -12px rgba(15, 23, 42, 0.16)) !important;
+  transform: translateY(-1px);
+  outline: none;
+}

@@ -230,11 +230,20 @@ export function usePackageData(
   const contentHash = libraryDetail?.contentHash ?? currentManifest?.dist?.shasum ?? null;
   const packageSignature = libraryDetail?.signature ?? null;
   const packageOwner = libraryDetail?.author ?? (name?.startsWith("@") ? name.split("/")[0]?.slice(1) : null);
-  const oidcRepository = (libraryDetail as any)?.oidcRepository ?? null;
-  const oidcWorkflow = (libraryDetail as any)?.oidcWorkflowRef ?? null;
-  const oidcIssuer = (libraryDetail as any)?.oidcIssuer ?? null;
-  const vulnerabilityCount = (libraryDetail as any)?.vulnerabilitiesCount ?? 0;
-  const vulnerabilities = (libraryDetail as any)?.vulnerabilities ?? [];
+  const detailExt = libraryDetail as
+    | (NonNullable<typeof libraryDetail> & {
+        oidcRepository?: string | null | undefined;
+        oidcWorkflowRef?: string | null | undefined;
+        oidcIssuer?: string | null | undefined;
+        vulnerabilitiesCount?: number | undefined;
+        vulnerabilities?: Array<{ id: string; severity?: string; summary?: string }> | undefined;
+      })
+    | null;
+  const oidcRepository = detailExt?.oidcRepository ?? null;
+  const oidcWorkflow = detailExt?.oidcWorkflowRef ?? null;
+  const oidcIssuer = detailExt?.oidcIssuer ?? null;
+  const vulnerabilityCount = detailExt?.vulnerabilitiesCount ?? 0;
+  const vulnerabilities = detailExt?.vulnerabilities ?? [];
 
   const canManage = useMemo(() => {
     if (!user) return false;

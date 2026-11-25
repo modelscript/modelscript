@@ -1,0 +1,11 @@
+{
+  "id": "nmea0183-04-marine-autopilot-sensors",
+  "lang": "nmea0183",
+  "subFormats": ["nmea0183"],
+  "difficulty": 4,
+  "title": "Marine Autopilot Heading, Wind & Bathymetry Bus",
+  "description": "Multi-talker NMEA 0183 vessel bridge bus fusing GPS position ($GP), fluxgate compass heading ($HCHDG), apparent wind speed/angle ($IIMWV), and depth below transducer ($SDDBT).",
+  "category": "Marine Instrumentation",
+  "tags": ["nmea0183", "hdg", "mwv", "dbt", "autopilot"],
+  "activeFile": "bridge_sensors.nmea"
+}

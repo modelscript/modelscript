@@ -1,0 +1,11 @@
+{
+  "id": "srec-03-m68000-24bit-s28",
+  "lang": "srec",
+  "subFormats": ["s28"],
+  "difficulty": 3,
+  "title": "Motorola 68000 24-Bit Flash Image (S28)",
+  "description": "24-bit addressed Motorola S28 image for an M68000 system mapped at 0x008000 containing initial SSP/PC vectors, runtime loop, S5 count, and S8 start address.",
+  "category": "Embedded Systems",
+  "tags": ["srec", "s28", "m68000", "24-bit", "flash"],
+  "activeFile": "m68k_rom.srec"
+}

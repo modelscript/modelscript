@@ -1,0 +1,11 @@
+{
+  "id": "hec2-02-m1-backwater-weir",
+  "lang": "hec2",
+  "subFormats": ["hc2"],
+  "difficulty": 2,
+  "title": "Mild-Slope M1 Backwater Curve Upstream of Dam Weir",
+  "description": "Subcritical gradually varied flow M1 backwater profile computed upstream from a known high tailwater stage behind a control weir across four rectangular channel stations.",
+  "category": "Open-Channel Hydraulics",
+  "tags": ["hec2", "m1-backwater", "subcritical", "gvf"],
+  "activeFile": "m1_backwater.hc2"
+}

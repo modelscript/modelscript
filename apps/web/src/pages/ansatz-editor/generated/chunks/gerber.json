@@ -1,0 +1,87 @@
+[
+  {
+    "id": "gerber-01-breakout-trace-2pad",
+    "lang": "gerber",
+    "subFormats": ["rs-274x"],
+    "difficulty": 1,
+    "title": "Single-Layer Breakout Trace and Two-Pad Footprint",
+    "description": "Minimal RS-274X Gerber top copper layer connecting two through-hole pads (1.6 mm pad, 0.8 mm drill) with a 0.30 mm signal trace.",
+    "category": "PCB Fabrication & CAM",
+    "tags": ["gerber", "rs-274x", "pcb", "breakout"],
+    "activeFile": "simple.gbr",
+    "fileNames": ["simple.gbr"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "G04 Single-Layer 2-Pad Breakout Copper Trace*\n%TF.FileFunction,Copper,L1,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,0.300*%\n%ADD11C,1.600X0.800*%\n%LPD*%\nG01*\nD10*\nX25400Y25400D02*\nX127000Y25400D01*\nD11*\nX25400Y25400D03*\nX127000Y25400D03*\nM02*\n"
+  },
+  {
+    "id": "gerber-02-timer555-copper-layer",
+    "lang": "gerber",
+    "subFormats": ["rs-274x"],
+    "difficulty": 2,
+    "title": "555 Timer Oscillator Copper Layer",
+    "description": "RS-274X top copper routing for an astable NE555 DIP-8 timer oscillator with timing resistor pads, decoupling capacitor pads, and ground pour.",
+    "category": "PCB Fabrication & CAM",
+    "tags": ["gerber", "rs-274x", "555-timer", "dip8"],
+    "activeFile": "timer555.gbr",
+    "fileNames": ["timer555.gbr"],
+    "fileCount": 1,
+    "code": "G04 NE555 Astable Oscillator Top Copper Layer*\n%TF.FileFunction,Copper,L1,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,0.300*%\n%ADD11C,0.500*%\n%ADD12C,1.600X0.800*%\n%ADD13R,1.600X1.600*%\n%LPD*%\nG01*\nG04 DIP-8 IC Pads (2.54 mm pitch, 7.62 mm row spacing)*\nD13*\nX100000Y100000D03*\nD12*\nX100000Y125400D03*\nX100000Y150800D03*\nX100000Y176200D03*\nX176200Y100000D03*\nX176200Y125400D03*\nX176200Y150800D03*\nX176200Y176200D03*\nG04 Timing Resistor and Capacitor Pads*\nX250000Y125400D03*\nX250000Y176200D03*\nG04 Signal Routing Traces*\nD10*\nX100000Y125400D02*\nX138100Y125400D01*\nX138100Y150800D01*\nX176200Y150800D01*\nX176200Y176200D02*\nX250000Y176200D01*\nG04 Power Rail Trace*\nD11*\nX176200Y100000D02*\nX250000Y100000D01*\nX250000Y125400D01*\nM02*\n"
+  },
+  {
+    "id": "gerber-03-microstrip-diffpair",
+    "lang": "gerber",
+    "subFormats": ["rs-274x", "high-speed"],
+    "difficulty": 3,
+    "title": "Controlled-Impedance 50-Ohm Microstrip Differential Pair",
+    "description": "High-speed RS-274X top copper layer routing a length-matched 100-ohm differential microstrip pair with 45-degree mitered bends and SMA launch pads.",
+    "category": "High-Speed RF PCB",
+    "tags": ["gerber", "microstrip", "differential-pair", "rf"],
+    "activeFile": "diffpair.gbr",
+    "fileNames": ["diffpair.gbr"],
+    "fileCount": 1,
+    "code": "G04 Controlled-Impedance Differential Microstrip Pair (0.200 mm trace, 0.200 mm gap)*\n%TF.FileFunction,Copper,L1,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%TA.AperFunction,Conductor*%\n%ADD10C,0.200*%\n%ADD11R,1.200X0.800*%\n%ADD12C,1.000X0.400*%\n%LPD*%\nG01*\nG04 Differential Pair Positive Trace (D+)*\nD10*\nX20000Y52000D02*\nX100000Y52000D01*\nX120000Y72000D01*\nX220000Y72000D01*\nX240000Y52000D01*\nX320000Y52000D01*\nG04 Differential Pair Negative Trace (D-)*\nX20000Y48000D02*\nX98000Y48000D01*\nX118000Y68000D01*\nX222000Y68000D01*\nX242000Y48000D01*\nX320000Y48000D01*\nG04 SMD Launch Pads*\nD11*\nX20000Y52000D03*\nX20000Y48000D03*\nX320000Y52000D03*\nX320000Y48000D03*\nG04 Ground Stitching Vias Flanking Differential Pair*\nD12*\nX60000Y65000D03*\nX60000Y35000D03*\nX170000Y85000D03*\nX170000Y55000D03*\nX280000Y65000D03*\nX280000Y35000D03*\nM02*\n"
+  },
+  {
+    "id": "gerber-04-usbc-power-board-2layer",
+    "lang": "gerber",
+    "subFormats": ["rs-274x", "multi-layer"],
+    "difficulty": 4,
+    "title": "2-Layer USB-C Power Delivery Breakout Board",
+    "description": "Two-layer PCB Gerber set (top copper, bottom ground copper, and board outline) for a 5V/3A USB-C power breakout with VBUS copper pour and CC pull-down resistors.",
+    "category": "PCB Fabrication & CAM",
+    "tags": ["gerber", "usb-c", "2-layer", "multi-file"],
+    "activeFile": "top.gtl",
+    "fileNames": ["top.gtl", "bottom.gbl", "outline.gko"],
+    "fileCount": 3,
+    "code": "G04 2-Layer USB-C Power Board — Top Copper (L1)*\n%TF.FileFunction,Copper,L1,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,0.250*%\n%ADD11C,0.800*%\n%ADD12R,1.400X0.800*%\n%ADD13C,2.200X1.000*%\n%LPD*%\nG01*\nG04 VBUS Copper Pour Region*\nG36*\nX50000Y40000D02*\nX180000Y40000D01*\nX180000Y110000D01*\nX50000Y110000D01*\nX50000Y40000D01*\nG37*\nG04 CC1 and CC2 5.1k Pull-Down Resistor Pads*\nD12*\nX60000Y130000D03*\nX85000Y130000D03*\nX60000Y155000D03*\nX85000Y155000D03*\nG04 CC Signal Traces*\nD10*\nX30000Y130000D02*\nX60000Y130000D01*\nX30000Y155000D02*\nX60000Y155000D01*\nG04 Power Output Header Pads*\nD13*\nX220000Y60000D03*\nX220000Y140000D03*\nG04 High-Current VBUS Trace*\nD11*\nX180000Y60000D02*\nX220000Y60000D01*\nM02*\n",
+    "files": {
+      "top.gtl": "G04 2-Layer USB-C Power Board — Top Copper (L1)*\n%TF.FileFunction,Copper,L1,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,0.250*%\n%ADD11C,0.800*%\n%ADD12R,1.400X0.800*%\n%ADD13C,2.200X1.000*%\n%LPD*%\nG01*\nG04 VBUS Copper Pour Region*\nG36*\nX50000Y40000D02*\nX180000Y40000D01*\nX180000Y110000D01*\nX50000Y110000D01*\nX50000Y40000D01*\nG37*\nG04 CC1 and CC2 5.1k Pull-Down Resistor Pads*\nD12*\nX60000Y130000D03*\nX85000Y130000D03*\nX60000Y155000D03*\nX85000Y155000D03*\nG04 CC Signal Traces*\nD10*\nX30000Y130000D02*\nX60000Y130000D01*\nX30000Y155000D02*\nX60000Y155000D01*\nG04 Power Output Header Pads*\nD13*\nX220000Y60000D03*\nX220000Y140000D03*\nG04 High-Current VBUS Trace*\nD11*\nX180000Y60000D02*\nX220000Y60000D01*\nM02*\n",
+      "bottom.gbl": "G04 2-Layer USB-C Power Board — Bottom Ground Plane (L2)*\n%TF.FileFunction,Copper,L2,Bot*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,2.200X1.000*%\n%LPD*%\nG01*\nG36*\nX15000Y15000D02*\nX245000Y15000D01*\nX245000Y185000D01*\nX15000Y185000D01*\nX15000Y15000D01*\nG37*\nD10*\nX220000Y60000D03*\nX220000Y140000D03*\nM02*\n",
+      "outline.gko": "G04 2-Layer USB-C Power Board — Board Profile Outline (26 mm x 20 mm)*\n%TF.FileFunction,Profile,NP*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,0.150*%\n%LPD*%\nG01*\nD10*\nX0Y0D02*\nX260000Y0D01*\nX260000Y200000D01*\nX0Y200000D01*\nX0Y0D01*\nM02*\n"
+    }
+  },
+  {
+    "id": "gerber-05-sensor-pcb-4layer-pack",
+    "lang": "gerber",
+    "subFormats": ["rs-274x", "excellon", "4-layer"],
+    "difficulty": 5,
+    "title": "4-Layer Mixed-Signal Sensor PCB Fabrication Pack",
+    "description": "Complete 4-layer mixed-signal industrial sensor PCB CAM release package with L1 top signal, L2 solid ground, L3 3.3V power, L4 bottom routing, soldermask, outline, and Excellon drill file.",
+    "category": "PCB Fabrication & CAM",
+    "tags": ["gerber", "4-layer", "mixed-signal", "excellon", "multi-file"],
+    "activeFile": "top.gtl",
+    "fileNames": ["top.gtl", "bottom.gbl", "drill.drl", "gnd.g2l", "mask.gts", "outline.gko", "pwr.g3l"],
+    "fileCount": 7,
+    "code": "G04 4-Layer Mixed-Signal Sensor PCB — L1 Top Signal Copper*\n%TF.FileFunction,Copper,L1,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%AMTHERM*7,0,0,2.0,1.2,0.3,45*%\n%ADD10C,0.200*%\n%ADD11C,0.500*%\n%ADD12R,1.200X0.600*%\n%ADD13C,1.600X0.800*%\n%ADD14THERM*%\n%LPD*%\nG75*\nG01*\nG04 MCU QFN-style Perimeter Pads*\nD12*\nX150000Y120000D03*\nX150000Y135000D03*\nX150000Y150000D03*\nX220000Y120000D03*\nX220000Y135000D03*\nX220000Y150000D03*\nG04 Analog Front-End Routing with 90-Degree Arc Fillet*\nD10*\nX50000Y120000D02*\nX130000Y120000D01*\nG03X150000Y140000I0J20000D01*\nG01*\nX150000Y150000D01*\nG04 Mounting Hole and Thermal Relief*\nD13*\nX40000Y40000D03*\nX360000Y40000D03*\nX360000Y260000D03*\nX40000Y260000D03*\nD14*\nX200000Y220000D03*\nM02*\n",
+    "files": {
+      "top.gtl": "G04 4-Layer Mixed-Signal Sensor PCB — L1 Top Signal Copper*\n%TF.FileFunction,Copper,L1,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%AMTHERM*7,0,0,2.0,1.2,0.3,45*%\n%ADD10C,0.200*%\n%ADD11C,0.500*%\n%ADD12R,1.200X0.600*%\n%ADD13C,1.600X0.800*%\n%ADD14THERM*%\n%LPD*%\nG75*\nG01*\nG04 MCU QFN-style Perimeter Pads*\nD12*\nX150000Y120000D03*\nX150000Y135000D03*\nX150000Y150000D03*\nX220000Y120000D03*\nX220000Y135000D03*\nX220000Y150000D03*\nG04 Analog Front-End Routing with 90-Degree Arc Fillet*\nD10*\nX50000Y120000D02*\nX130000Y120000D01*\nG03X150000Y140000I0J20000D01*\nG01*\nX150000Y150000D01*\nG04 Mounting Hole and Thermal Relief*\nD13*\nX40000Y40000D03*\nX360000Y40000D03*\nX360000Y260000D03*\nX40000Y260000D03*\nD14*\nX200000Y220000D03*\nM02*\n",
+      "bottom.gbl": "G04 4-Layer Mixed-Signal Sensor PCB — L4 Bottom Signal Copper*\n%TF.FileFunction,Copper,L4,Bot*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,0.250*%\n%ADD11C,1.600X0.800*%\n%LPD*%\nG01*\nD10*\nX220000Y120000D02*\nX320000Y120000D01*\nD11*\nX320000Y120000D03*\nM02*\n",
+      "drill.drl": "M48\n; Excellon NC Drill File — 4-Layer Mixed-Signal Sensor PCB\nMETRIC,TZ\nT1C0.800\nT2C3.200\n%\nT1\nX200000Y220000\nX320000Y120000\nT2\nX40000Y40000\nX360000Y40000\nX360000Y260000\nX40000Y260000\nM30\n",
+      "gnd.g2l": "G04 4-Layer Mixed-Signal Sensor PCB — L2 Solid Ground Plane*\n%TF.FileFunction,Copper,L2,Inr*%\n%FSLAX34Y34*%\n%MOMM*%\n%LPD*%\nG01*\nG36*\nX10000Y10000D02*\nX390000Y10000D01*\nX390000Y290000D01*\nX10000Y290000D01*\nX10000Y10000D01*\nG37*\nM02*\n",
+      "mask.gts": "G04 4-Layer Mixed-Signal Sensor PCB — Top Soldermask Openings*\n%TF.FileFunction,Soldermask,Top*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,1.800*%\n%LPD*%\nG01*\nD10*\nX40000Y40000D03*\nX360000Y40000D03*\nX360000Y260000D03*\nX40000Y260000D03*\nM02*\n",
+      "outline.gko": "G04 4-Layer Mixed-Signal Sensor PCB — Board Outline (40 mm x 30 mm)*\n%TF.FileFunction,Profile,NP*%\n%FSLAX34Y34*%\n%MOMM*%\n%ADD10C,0.150*%\n%LPD*%\nG01*\nD10*\nX0Y0D02*\nX400000Y0D01*\nX400000Y300000D01*\nX0Y300000D01*\nX0Y0D01*\nM02*\n",
+      "pwr.g3l": "G04 4-Layer Mixed-Signal Sensor PCB — L3 Split 3.3V Analog/Digital Power Plane*\n%TF.FileFunction,Copper,L3,Inr*%\n%FSLAX34Y34*%\n%MOMM*%\n%LPD*%\nG01*\nG36*\nX15000Y15000D02*\nX190000Y15000D01*\nX190000Y285000D01*\nX15000Y285000D01*\nX15000Y15000D01*\nG37*\nG36*\nX210000Y15000D02*\nX385000Y15000D01*\nX385000Y285000D01*\nX210000Y285000D01*\nX210000Y15000D01*\nG37*\nM02*\n"
+    }
+  }
+]

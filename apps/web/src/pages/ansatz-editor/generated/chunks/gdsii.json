@@ -1,0 +1,73 @@
+[
+  {
+    "id": "gdsii-01-metal1-contact-pad",
+    "lang": "gdsii",
+    "subFormats": ["gds"],
+    "difficulty": 1,
+    "title": "Single Metal-1 Rectangular Contact Pad",
+    "description": "DRC-clean ASCII GDSII stream defining a Metal-1 interconnect landing pad with centered contact cut and pin label on a 1 nm database grid.",
+    "category": "IC Mask Primitives",
+    "tags": ["gdsii", "metal1", "contact", "drc-clean"],
+    "activeFile": "contact_pad.gds",
+    "fileNames": ["contact_pad.gds"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "# GDSII ASCII Stream: DRC-Clean Metal-1 Contact Landing Pad\nHEADER 600\nBGNLIB\nLIBNAME CONTACT_PAD_LIB\nUNITS 1e-3 1e-9\n\nBGNSTR\nSTRNAME M1_CONTACT_PAD\n  BOUNDARY\n  LAYER 5\n  DATATYPE 0\n  XY 0: 0  600: 0  600: 600  0: 600  0: 0\n  ENDEL\n  BOUNDARY\n  LAYER 4\n  DATATYPE 0\n  XY 180: 180  420: 180  420: 420  180: 420  180: 180\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 300: 300\n  STRING \"PAD_A\"\n  ENDEL\nENDSTR\nENDLIB\n"
+  },
+  {
+    "id": "gdsii-02-cmos-inverter-cell",
+    "lang": "gdsii",
+    "subFormats": ["gds"],
+    "difficulty": 2,
+    "title": "CMOS Inverter Standard Cell",
+    "description": "DRC-clean static CMOS inverter standard cell in ASCII GDSII with N-Well, PMOS/NMOS active diffusion regions, shared polysilicon gate, VDD/GND Metal-1 rails, and contacts.",
+    "category": "Standard Cell Layout",
+    "tags": ["gdsii", "cmos", "inverter", "standard-cell"],
+    "activeFile": "cmos_inverter.gds",
+    "fileNames": ["cmos_inverter.gds"],
+    "fileCount": 1,
+    "code": "# GDSII ASCII Stream: CMOS Inverter Standard Cell (N-Well, Active, Poly, Contact, M1)\nHEADER 600\nBGNLIB\nLIBNAME STDCELL_INV_LIB\nUNITS 1e-3 1e-9\n\nBGNSTR\nSTRNAME INV_X1\n  # N-Well for PMOS region (Layer 1)\n  BOUNDARY\n  LAYER 1\n  DATATYPE 0\n  XY 0: 1600  2400: 1600  2400: 3400  0: 3400  0: 1600\n  ENDEL\n  # PMOS Active diffusion (Layer 2)\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 300: 2000  2100: 2000  2100: 2700  300: 2700  300: 2000\n  ENDEL\n  # NMOS Active diffusion (Layer 2)\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 300: 600  2100: 600  2100: 1200  300: 1200  300: 600\n  ENDEL\n  # Shared Polysilicon Gate (Layer 3)\n  BOUNDARY\n  LAYER 3\n  DATATYPE 0\n  XY 1050: 400  1350: 400  1350: 2900  1050: 2900  1050: 400\n  ENDEL\n  # Contacts (Layer 4)\n  BOUNDARY\n  LAYER 4\n  DATATYPE 0\n  XY 500: 2230  740: 2230  740: 2470  500: 2470  500: 2230\n  ENDEL\n  BOUNDARY\n  LAYER 4\n  DATATYPE 0\n  XY 1660: 2230  1900: 2230  1900: 2470  1660: 2470  1660: 2230\n  ENDEL\n  BOUNDARY\n  LAYER 4\n  DATATYPE 0\n  XY 500: 780  740: 780  740: 1020  500: 1020  500: 780\n  ENDEL\n  BOUNDARY\n  LAYER 4\n  DATATYPE 0\n  XY 1660: 780  1900: 780  1900: 1020  1660: 1020  1660: 780\n  ENDEL\n  # Metal-1 VDD and GND Power Rails (Layer 5)\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 400\n  XY 0: 3200  2400: 3200\n  ENDEL\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 400\n  XY 0: 200  2400: 200\n  ENDEL\n  # Metal-1 Drain Output Strap (Layer 5)\n  BOUNDARY\n  LAYER 5\n  DATATYPE 0\n  XY 1600: 700  1960: 700  1960: 2600  1600: 2600  1600: 700\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 1200: 3200\n  STRING \"VDD\"\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 1200: 200\n  STRING \"GND\"\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 1780: 1650\n  STRING \"Y\"\n  ENDEL\nENDSTR\nENDLIB\n"
+  },
+  {
+    "id": "gdsii-03-nand2-via-array",
+    "lang": "gdsii",
+    "subFormats": ["gds"],
+    "difficulty": 3,
+    "title": "2-Input NAND Gate with Via Array",
+    "description": "Hierarchical GDSII 2-input CMOS NAND standard cell instantiating a reusable contact/via subcell via SREF placements for dual poly gates and parallel PMOS/series NMOS straps.",
+    "category": "Hierarchical Standard Cells",
+    "tags": ["gdsii", "nand2", "sref", "via", "hierarchy"],
+    "activeFile": "nand2_cell.gds",
+    "fileNames": ["nand2_cell.gds"],
+    "fileCount": 1,
+    "code": "# GDSII ASCII Stream: Hierarchical 2-Input CMOS NAND Gate with SREF Contact Cell\nHEADER 600\nBGNLIB\nLIBNAME NAND2_HIER_LIB\nUNITS 1e-3 1e-9\n\nBGNSTR\nSTRNAME CONTACT_STD\n  BOUNDARY\n  LAYER 4\n  DATATYPE 0\n  XY 0: 0  240: 0  240: 240  0: 240  0: 0\n  ENDEL\nENDSTR\n\nBGNSTR\nSTRNAME NAND2_X1\n  # N-Well\n  BOUNDARY\n  LAYER 1\n  DATATYPE 0\n  XY 0: 1800  3600: 1800  3600: 3600  0: 3600  0: 1800\n  ENDEL\n  # PMOS Active\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 300: 2100  3300: 2100  3300: 2800  300: 2800  300: 2100\n  ENDEL\n  # NMOS Active\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 300: 600  3300: 600  3300: 1200  300: 1200  300: 600\n  ENDEL\n  # Poly Gate A and Poly Gate B\n  BOUNDARY\n  LAYER 3\n  DATATYPE 0\n  XY 1000: 400  1300: 400  1300: 3000  1000: 3000  1000: 400\n  ENDEL\n  BOUNDARY\n  LAYER 3\n  DATATYPE 0\n  XY 2100: 400  2400: 400  2400: 3000  2100: 3000  2100: 400\n  ENDEL\n  # Reusable SREF Contact Placements\n  SREF\n  SNAME CONTACT_STD\n  XY 500: 2330\n  ENDEL\n  SREF\n  SNAME CONTACT_STD\n  XY 1580: 2330\n  ENDEL\n  SREF\n  SNAME CONTACT_STD\n  XY 2760: 2330\n  ENDEL\n  SREF\n  SNAME CONTACT_STD\n  XY 500: 780\n  ENDEL\n  SREF\n  SNAME CONTACT_STD\n  XY 2760: 780\n  ENDEL\n  # Metal-1 Power Rails and Output Net\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 400\n  XY 0: 3400  3600: 3400\n  ENDEL\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 400\n  XY 0: 200  3600: 200\n  ENDEL\n  BOUNDARY\n  LAYER 5\n  DATATYPE 0\n  XY 2680: 700  3080: 700  3080: 2700  2680: 2700  2680: 700\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 1800: 3400\n  STRING \"VDD\"\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 1800: 200\n  STRING \"GND\"\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 2880: 1700\n  STRING \"ZN\"\n  ENDEL\nENDSTR\nENDLIB\n"
+  },
+  {
+    "id": "gdsii-04-sram-6t-bitcell",
+    "lang": "gdsii",
+    "subFormats": ["gds"],
+    "difficulty": 4,
+    "title": "6T SRAM Bitcell Layout with Symmetry",
+    "description": "Symmetric 6-transistor static RAM bitcell in ASCII GDSII using mirrored SREF half-cell instantiation (STRANS reflection), cross-coupled poly gates, and AREF bitline contact arrays.",
+    "category": "Memory Layout",
+    "tags": ["gdsii", "sram", "6t-bitcell", "strans", "aref"],
+    "activeFile": "sram_6t.gds",
+    "fileNames": ["sram_6t.gds"],
+    "fileCount": 1,
+    "code": "# GDSII ASCII Stream: Symmetric 6T SRAM Bitcell with SREF Mirroring & AREF Contacts\nHEADER 600\nBGNLIB\nLIBNAME SRAM_6T_LIB\nUNITS 1e-3 1e-9\n\nBGNSTR\nSTRNAME BIT_CONTACT\n  BOUNDARY\n  LAYER 4\n  DATATYPE 0\n  XY 0: 0  240: 0  240: 240  0: 240  0: 0\n  ENDEL\nENDSTR\n\nBGNSTR\nSTRNAME SRAM_HALF\n  # Half-cell Active Diffusion\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 200: 400  1600: 400  1600: 1100  200: 1100  200: 400\n  ENDEL\n  # Cross-coupled Inverter Poly Gate\n  BOUNDARY\n  LAYER 3\n  DATATYPE 0\n  XY 750: 200  1050: 200  1050: 1400  750: 1400  750: 200\n  ENDEL\n  # Array of 2 Source/Drain Contacts\n  AREF\n  SNAME BIT_CONTACT\n  COLROW 2 1\n  XY 350: 630  1950: 630  350: 1230\n  ENDEL\nENDSTR\n\nBGNSTR\nSTRNAME SRAM_6T_BITCELL\n  # Shared Center N-Well\n  BOUNDARY\n  LAYER 1\n  DATATYPE 0\n  XY 0: 1500  4200: 1500  4200: 3100  0: 3100  0: 1500\n  ENDEL\n  # Left Half-Cell\n  SREF\n  SNAME SRAM_HALF\n  XY 200: 200\n  ENDEL\n  # Mirrored Right Half-Cell\n  SREF\n  SNAME SRAM_HALF\n  STRANS 1000000000000000\n  MAG 1.0\n  ANGLE 0.0\n  XY 2200: 3000\n  ENDEL\n  # Wordline (Metal-1)\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 320\n  XY 0: 3400  4200: 3400\n  ENDEL\n  # Bitline BL and BLB (Metal-2, Layer 7)\n  PATH\n  LAYER 7\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 360\n  XY 500: 0  500: 3600\n  ENDEL\n  PATH\n  LAYER 7\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 360\n  XY 3700: 0  3700: 3600\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 2100: 3400\n  STRING \"WL\"\n  ENDEL\n  TEXT\n  LAYER 7\n  TEXTTYPE 0\n  XY 500: 1800\n  STRING \"BL\"\n  ENDEL\n  TEXT\n  LAYER 7\n  TEXTTYPE 0\n  XY 3700: 1800\n  STRING \"BLB\"\n  ENDEL\nENDSTR\nENDLIB\n"
+  },
+  {
+    "id": "gdsii-05-sram-4x4-subarray",
+    "lang": "gdsii",
+    "subFormats": ["gds"],
+    "difficulty": 5,
+    "title": "4x4 SRAM Sub-Array with Wordline and Bitline Routing",
+    "description": "Hierarchical 4x4 SRAM memory sub-array macro in ASCII GDSII tiling a 6T bitcell via AREF, encircled by substrate guard rings, horizontal wordline buses, and vertical bitline columns.",
+    "category": "Memory Macro Layout",
+    "tags": ["gdsii", "sram-array", "aref", "guard-ring", "routing"],
+    "activeFile": "sram_4x4.gds",
+    "fileNames": ["sram_4x4.gds"],
+    "fileCount": 1,
+    "code": "# GDSII ASCII Stream: 4x4 SRAM Sub-Array Macro with Wordline/Bitline Routing & Guard Rings\nHEADER 600\nBGNLIB\nLIBNAME SRAM_4X4_MACRO\nUNITS 1e-3 1e-9\n\nBGNSTR\nSTRNAME VIA12_CELL\n  BOUNDARY\n  LAYER 6\n  DATATYPE 0\n  XY 0: 0  260: 0  260: 260  0: 260  0: 0\n  ENDEL\nENDSTR\n\nBGNSTR\nSTRNAME BITCELL_UNIT\n  BOUNDARY\n  LAYER 1\n  DATATYPE 0\n  XY 0: 600  2000: 600  2000: 1800  0: 1800  0: 600\n  ENDEL\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 300: 800  1700: 800  1700: 1500  300: 1500  300: 800\n  ENDEL\n  BOUNDARY\n  LAYER 3\n  DATATYPE 0\n  XY 850: 400  1150: 400  1150: 1900  850: 1900  850: 400\n  ENDEL\n  SREF\n  SNAME VIA12_CELL\n  XY 870: 1020\n  ENDEL\nENDSTR\n\nBGNSTR\nSTRNAME SRAM_4X4_TOP\n  # Perimeter P-Substrate Guard Ring (Active Layer 2)\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 0: 0  10400: 0  10400: 600  0: 600  0: 0\n  ENDEL\n  BOUNDARY\n  LAYER 2\n  DATATYPE 0\n  XY 0: 10600  10400: 10600  10400: 11200  0: 11200  0: 10600\n  ENDEL\n  # 4x4 Tiled Bitcell Core Array\n  AREF\n  SNAME BITCELL_UNIT\n  COLROW 4 4\n  XY 1200: 1200  9200: 1200  1200: 9200\n  ENDEL\n  # 4 Horizontal Wordlines (Metal-1, Layer 5)\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 320\n  XY 600: 2200  9800: 2200\n  ENDEL\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 320\n  XY 600: 4200  9800: 4200\n  ENDEL\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 320\n  XY 600: 6200  9800: 6200\n  ENDEL\n  PATH\n  LAYER 5\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 320\n  XY 600: 8200  9800: 8200\n  ENDEL\n  # 4 Vertical Bitlines (Metal-2, Layer 7)\n  PATH\n  LAYER 7\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 360\n  XY 2200: 800  2200: 10400\n  ENDEL\n  PATH\n  LAYER 7\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 360\n  XY 4200: 800  4200: 10400\n  ENDEL\n  PATH\n  LAYER 7\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 360\n  XY 6200: 800  6200: 10400\n  ENDEL\n  PATH\n  LAYER 7\n  DATATYPE 0\n  PATHTYPE 2\n  WIDTH 360\n  XY 8200: 800  8200: 10400\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 800: 2200\n  STRING \"WL0\"\n  ENDEL\n  TEXT\n  LAYER 5\n  TEXTTYPE 0\n  XY 800: 8200\n  STRING \"WL3\"\n  ENDEL\n  TEXT\n  LAYER 7\n  TEXTTYPE 0\n  XY 2200: 10000\n  STRING \"BL0\"\n  ENDEL\n  TEXT\n  LAYER 7\n  TEXTTYPE 0\n  XY 8200: 10000\n  STRING \"BL3\"\n  ENDEL\nENDSTR\nENDLIB\n"
+  }
+]

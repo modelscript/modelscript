@@ -25,7 +25,7 @@ export const hdf4Language = language({
         shortTitle: "HDF4",
         selector: ["*.hdf", "*.h4", "*.hdf4", "*.eos"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/Hdf4Panel.tsx",
         artifactViewTypes: ["hdf4", "hdf", "h4"],
       },

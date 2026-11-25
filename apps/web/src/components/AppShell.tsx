@@ -30,7 +30,7 @@ import { useAuth } from "../AuthContext";
 import { useTheme } from "../theme";
 import DevModeBar from "./DevModeBar";
 import ErrorBoundary from "./ErrorBoundary";
-import { MorselIcon } from "./icons";
+import { AnsatzIcon } from "./icons";
 import RightPanel from "./RightPanel";
 import { scrollToTop } from "./ScrollToTop";
 import Sidebar from "./Sidebar";
@@ -480,12 +480,12 @@ const AppShell: React.FC = () => {
 
   const isDev = import.meta.env.DEV;
 
-  // Standalone full-bleed layout for /editor, /playground, /sketch, and /morsel (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
+  // Standalone full-bleed layout for /editor, /editor, /sketch, and /ansatz (renders its own navbar & viewport, but shares ComposeContext & ComposeModal)
   const isStandaloneRoute =
     location.pathname.startsWith("/editor") ||
-    location.pathname.startsWith("/playground") ||
+    location.pathname.startsWith("/editor") ||
     location.pathname.startsWith("/sketch") ||
-    location.pathname.startsWith("/morsel");
+    location.pathname.startsWith("/ansatz");
 
   // Check if current route is part of the Spaces environment (Spaces explore, Chat, Orgs, or Space detail)
   const isSpaceRoute = React.useMemo(() => {
@@ -581,9 +581,9 @@ const AppShell: React.FC = () => {
 
       if (
         location.pathname.startsWith("/editor") ||
-        location.pathname.startsWith("/playground") ||
+        location.pathname.startsWith("/editor") ||
         location.pathname.startsWith("/sketch") ||
-        location.pathname.startsWith("/morsel") ||
+        location.pathname.startsWith("/ansatz") ||
         location.pathname.startsWith("/ide") ||
         location.pathname.startsWith("/studio")
       ) {
@@ -916,7 +916,7 @@ const AppShell: React.FC = () => {
                     </>
                   )}
                   <Link to="/editor" onClick={() => handleMoreLinkClick("/editor")}>
-                    <MorselIcon size={20} /> Ansatz
+                    <AnsatzIcon size={20} /> Ansatz
                   </Link>
                   {hasPackages && (
                     <Link to="/packages" onClick={() => handleMoreLinkClick("/packages")}>

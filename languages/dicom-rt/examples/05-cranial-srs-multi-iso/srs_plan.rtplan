@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DicomRtPlan
+  planId="CRANIAL-SRS-05"
+  planLabel="Cranial_SRS_20Gy_1Fx"
+  patientId="PT-50932"
+  frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.505"
+  structFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.505"
+  doseFrameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.505"
+  prescribedDoseGy="20.0"
+  fractions="1"
+>
+  <StructureSet frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.505">
+    <ROI roiNumber="1" name="PTV_Met1_Frontal" interpretedType="PTV" volumeCc="4.2" color="255,30,30">
+      <Contour z="-5.0" geometricType="CLOSED_PLANAR" points="-8,-8,-5; 8,-8,-5; 8,8,-5; -8,8,-5" />
+      <Contour z="0.0" geometricType="CLOSED_PLANAR" points="-10,-10,0; 10,-10,0; 10,10,0; -10,10,0" />
+      <Contour z="5.0" geometricType="CLOSED_PLANAR" points="-8,-8,5; 8,-8,5; 8,8,5; -8,8,5" />
+    </ROI>
+    <ROI roiNumber="2" name="PTV_Met2_Parietal" interpretedType="PTV" volumeCc="3.1" color="255,110,30">
+      <Contour z="15.0" geometricType="CLOSED_PLANAR" points="22,-8,15; 36,-8,15; 36,8,15; 22,8,15" />
+    </ROI>
+    <ROI roiNumber="3" name="Brainstem" interpretedType="ORGAN" volumeCc="26.5" maxDoseLimitGy="12.5" meanDoseLimitGy="5.0" color="40,160,255">
+      <Contour z="-25.0" geometricType="CLOSED_PLANAR" points="-12,-30,-25; 12,-30,-25; 12,-10,-25; -12,-10,-25" />
+    </ROI>
+    <ROI roiNumber="4" name="OpticChiasm" interpretedType="ORGAN" volumeCc="1.2" maxDoseLimitGy="8.0" meanDoseLimitGy="4.0" color="255,230,50">
+      <Contour z="-18.0" geometricType="CLOSED_PLANAR" points="-6,12,-18; 6,12,-18; 6,20,-18; -6,20,-18" />
+    </ROI>
+  </StructureSet>
+  <BeamSequence>
+    <Beam beamNumber="1" name="Iso1_Arc_Coplanar" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="1850.0" doseRateMuPerMin="1400.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="181.0" collimatorAngleDeg="45.0" couchAngleDeg="0.0" jawX_mm="-18,18" jawY_mm="-18,18">
+        <MLCLeafPair pairIndex="1" bankA_mm="-10.0" bankB_mm="10.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-11.0" bankB_mm="11.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="0.5" gantryAngleDeg="0.0" collimatorAngleDeg="45.0" couchAngleDeg="0.0" jawX_mm="-18,18" jawY_mm="-18,18">
+        <MLCLeafPair pairIndex="1" bankA_mm="-9.0" bankB_mm="9.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-10.0" bankB_mm="10.0" />
+      </ControlPoint>
+      <ControlPoint index="2" cumulativeMetersetWeight="1.0" gantryAngleDeg="179.0" collimatorAngleDeg="45.0" couchAngleDeg="0.0" jawX_mm="-18,18" jawY_mm="-18,18">
+        <MLCLeafPair pairIndex="1" bankA_mm="-10.0" bankB_mm="10.0" />
+        <MLCLeafPair pairIndex="2" bankA_mm="-11.0" bankB_mm="11.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="2" name="Iso1_Arc_Vertex" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="1420.0" doseRateMuPerMin="1400.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="330.0" collimatorAngleDeg="15.0" couchAngleDeg="10.0" jawX_mm="-18,18" jawY_mm="-18,18">
+        <MLCLeafPair pairIndex="1" bankA_mm="-10.0" bankB_mm="10.0" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="30.0" collimatorAngleDeg="15.0" couchAngleDeg="10.0" jawX_mm="-18,18" jawY_mm="-18,18">
+        <MLCLeafPair pairIndex="1" bankA_mm="-9.0" bankB_mm="9.0" />
+      </ControlPoint>
+    </Beam>
+    <Beam beamNumber="3" name="Iso2_Arc_Parietal" modality="PHOTON" treatmentDeliveryType="TREATMENT" energyMeV="6.0" metersetMu="1640.0" doseRateMuPerMin="1400.0">
+      <ControlPoint index="0" cumulativeMetersetWeight="0.0" gantryAngleDeg="181.0" collimatorAngleDeg="315.0" couchAngleDeg="0.0" jawX_mm="-16,16" jawY_mm="-16,16">
+        <MLCLeafPair pairIndex="1" bankA_mm="-8.5" bankB_mm="8.5" />
+      </ControlPoint>
+      <ControlPoint index="1" cumulativeMetersetWeight="1.0" gantryAngleDeg="179.0" collimatorAngleDeg="315.0" couchAngleDeg="0.0" jawX_mm="-16,16" jawY_mm="-16,16">
+        <MLCLeafPair pairIndex="1" bankA_mm="-8.0" bankB_mm="8.0" />
+      </ControlPoint>
+    </Beam>
+  </BeamSequence>
+  <DoseDistribution frameOfReferenceUid="1.2.840.10008.5.1.4.1.1.481.3.505">
+    <DVH roiNumber="1" roiName="PTV_Met1_Frontal" d98Gy="19.8" d95Gy="20.4" d50Gy="22.8" d2Gy="24.6" meanDoseGy="22.6" maxDoseGy="25.0" minDoseGy="19.1" v20GyPercent="96.5" />
+    <DVH roiNumber="2" roiName="PTV_Met2_Parietal" d98Gy="19.6" d95Gy="20.2" d50Gy="22.4" d2Gy="24.2" meanDoseGy="22.3" maxDoseGy="24.8" minDoseGy="18.9" v20GyPercent="95.8" />
+    <DVH roiNumber="3" roiName="Brainstem" d98Gy="0.4" d95Gy="0.6" d50Gy="2.1" d2Gy="7.8" meanDoseGy="2.6" maxDoseGy="9.2" minDoseGy="0.2" v20GyPercent="0.0" />
+    <DVH roiNumber="4" roiName="OpticChiasm" d98Gy="0.5" d95Gy="0.7" d50Gy="1.8" d2Gy="5.4" meanDoseGy="2.1" maxDoseGy="6.1" minDoseGy="0.3" v20GyPercent="0.0" />
+  </DoseDistribution>
+</DicomRtPlan>

@@ -1,0 +1,51 @@
+[IBIS Ver] 6.1
+[File Name] pcie_gen4_serdes.ibs
+[File Rev] 1.0
+[Date] November 24, 2026
+
+[Component] PCIE4_SERDES_PHY
+[Manufacturer] Ansatz Photonics SerDes
+[Package]
+R_pkg        0.0450       0.0280       0.0720
+L_pkg        0.650nH      0.380nH      0.980nH
+C_pkg        0.320pF      0.200pF      0.480pF
+
+[Pin] signal_name model_name R_pin L_pin C_pin
+1     AVDD085     POWER
+2     AVSS        GND
+3     PETP0       SERDES_16G_TX
+4     PETN0       SERDES_16G_TX
+5     PERP0       SERDES_16G_RX
+6     PERN0       SERDES_16G_RX
+
+[Model] SERDES_16G_TX
+Model_type Output
+Polarity Non-Inverting
+C_comp 0.35pF 0.25pF 0.48pF
+[Voltage Range] 0.85V 0.80V 0.90V
+
+[Pulldown]
+-0.850      -0.0220      -0.0170      -0.0280
+ 0.000       0.0000       0.0000       0.0000
+ 0.425       0.0085       0.0072       0.0098
+ 0.850       0.0170       0.0145       0.0196
+
+[Pullup]
+-0.850      -0.0215      -0.0168      -0.0275
+ 0.000       0.0000       0.0000       0.0000
+ 0.425       0.0084       0.0071       0.0096
+ 0.850       0.0168       0.0143       0.0193
+
+[Ramp]
+dV/dt_r 0.40V/0.024ns 0.32V/0.032ns 0.48V/0.018ns
+dV/dt_f 0.40V/0.024ns 0.32V/0.032ns 0.48V/0.018ns
+R_load 50
+
+[Model] SERDES_16G_RX
+Model_type Input
+C_comp 0.30pF 0.22pF 0.42pF
+[Voltage Range] 0.85V 0.80V 0.90V
+Vinl = 0.35V
+Vinh = 0.50V
+
+[End]

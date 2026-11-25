@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 //
 // Server-side diagram data builder for the VS Code webview.
-// Mirrors morsel's renderDiagram() + x6.ts but produces serializable JSON
+// Mirrors ansatz's renderDiagram() + x6.ts but produces serializable JSON
 // that the webview can feed to an X6 Graph.
 
 import {
@@ -29,6 +29,7 @@ import {
   type IGraphicItem,
   type IIcon,
   type ILine,
+  type IPlacement,
   type IPoint,
   type IPolygon,
   type IRectangle,
@@ -37,7 +38,7 @@ import {
   type ModelicaComponentInstance,
 } from "./index.js";
 
-import { Cst } from "../../src-gen/bindings.js";
+import { Cst, type SyntaxNode } from "../../src-gen/bindings.js";
 import {
   collapseAsciiWhitespace,
   containsWholeWordOutsideStrings,
@@ -261,20 +262,135 @@ import { AnnotationEvaluator, evaluateIconWasm, renderInheritedIconSvgWasm } fro
 /** Yield control back to the event loop so the WebWorker can process incoming LSP messages. */
 const yieldToEventLoop = () => new Promise<void>((r) => setTimeout(r, 0));
 
-function formatPropertyValue(expr: any): string | undefined {
+interface DataSyntaxNode {
+  type?: string | undefined;
+  typeId?: number | undefined;
+  text?: string | undefined;
+  name?: string | undefined;
+  value?: unknown;
+  startIndex?: number | undefined;
+  endIndex?: number | undefined;
+  parent?: DataSyntaxNode | null | undefined;
+  children?: DataSyntaxNode[] | undefined;
+  tree?: { sourceCode?: string | undefined } | undefined;
+}
+
+interface DataConnectEquationLike {
+  lhs?: string | undefined;
+  rhs?: string | undefined;
+  componentReference1?:
+    | {
+        parts?:
+          Array<{ identifier?: { text?: string | undefined } | undefined; text?: string | undefined }> | undefined;
+      }
+    | undefined;
+  componentReference2?:
+    | {
+        parts?:
+          Array<{ identifier?: { text?: string | undefined } | undefined; text?: string | undefined }> | undefined;
+      }
+    | undefined;
+  annotation?: ((key: string) => unknown) | undefined;
+}
+
+interface DataSymbolMetadataLike {
+  typeSpecifier?: string | undefined;
+  classKind?: string | undefined;
+  classPrefixes?: string[] | undefined;
+  typePrefixes?: string[] | undefined;
+  isProtected?: boolean | undefined;
+  isOuter?: boolean | undefined;
+  variability?: string | undefined;
+  iconSvg?: string | undefined;
+  defaultValue?: unknown;
+  description?: string | undefined;
+  unit?: unknown;
+}
+
+interface DataSymbolEntryLike {
+  id: number;
+  name: string;
+  kind?: string | undefined;
+  classKind?: string | undefined;
+  resourceId?: string | undefined;
+  fullName?: string | undefined;
+  isProtected?: boolean | undefined;
+  isOuter?: boolean | undefined;
+  visibility?: string | undefined;
+  variability?: string | undefined;
+  metadata?: DataSymbolMetadataLike | undefined;
+}
+
+interface DataResourceContextLike {
+  resolveURI?: ((uri: string) => string | null | undefined) | undefined;
+  fs?:
+    | {
+        readBinary?: ((path: string) => Uint8Array | null | undefined) | undefined;
+        extname?: ((path: string) => string) | undefined;
+      }
+    | undefined;
+}
+
+interface DataQueryDbLike {
+  childrenOf?: ((id: number) => DataSymbolEntryLike[] | undefined) | undefined;
+  query?: ((name: string, id: number) => unknown) | undefined;
+  symbol?: ((id: number) => DataSymbolEntryLike | null | undefined) | undefined;
+  cstNode?: ((id: number) => DataSyntaxNode | null | undefined) | undefined;
+  context?: DataResourceContextLike | undefined;
+}
+
+interface DataModificationArgLike {
+  expression?: unknown;
+  classModification?:
+    { getModificationArgument?: ((name: string) => DataModificationArgLike | undefined) | undefined } | undefined;
+}
+
+interface DataModificationLike {
+  expression?: unknown;
+  getModificationArgument?: ((name: string) => DataModificationArgLike | undefined) | undefined;
+}
+
+interface DataElementLike {
+  id?: number | undefined;
+  name?: string | undefined;
+  kind?: string | undefined;
+  isComponentInstance?: boolean | undefined;
+  variability?: string | undefined;
+  description?: string | undefined;
+  defaultValue?: unknown;
+  unit?: unknown;
+  declaration?: DataSymbolEntryLike | undefined;
+  entry?: DataSymbolEntryLike | undefined;
+  classInstance?:
+    | (ModelicaClassInstance & {
+        modification?: DataModificationLike | undefined;
+        enumLiterals?: Array<string | { name?: string | undefined }> | undefined;
+      })
+    | null
+    | undefined;
+  modification?: DataModificationLike | undefined;
+  cstNode?: DataSyntaxNode | undefined;
+  abstractSyntaxNode?: DataSyntaxNode | undefined;
+  db?: DataQueryDbLike | undefined;
+  annotation?: ((key?: string, ...args: unknown[]) => unknown) | undefined;
+}
+
+function asDataSyntaxNode(node: DataSyntaxNode | null | undefined): SyntaxNode | null | undefined {
+  return node as SyntaxNode | null | undefined;
+}
+
+function formatPropertyValue(expr: unknown): string | undefined {
   if (expr == null) return undefined;
   if (typeof expr === "string" || typeof expr === "number" || typeof expr === "boolean") {
     return String(expr);
   }
   if (typeof expr === "object") {
-    if ("text" in expr && typeof expr.text === "string") return expr.text;
-    if (
-      "value" in expr &&
-      (typeof expr.value === "string" || typeof expr.value === "number" || typeof expr.value === "boolean")
-    ) {
-      return String(expr.value);
+    const obj = expr as { text?: unknown; value?: unknown; toJSON?: unknown };
+    if (typeof obj.text === "string") return obj.text;
+    if (typeof obj.value === "string" || typeof obj.value === "number" || typeof obj.value === "boolean") {
+      return String(obj.value);
     }
-    const json = typeof expr.toJSON === "function" ? expr.toJSON() : expr.toJSON;
+    const json = typeof obj.toJSON === "function" ? (obj.toJSON as () => unknown)() : obj.toJSON;
     if (json != null && typeof json !== "object") {
       return String(json);
     }
@@ -282,13 +398,16 @@ function formatPropertyValue(expr: any): string | undefined {
   return undefined;
 }
 
-function collectAllComponents(ci: ModelicaClassInstance, visited = new Set<any>()): ModelicaComponentInstance[] {
+function collectAllComponents(
+  ci: ModelicaClassInstance,
+  visited = new Set<ModelicaClassInstance>(),
+): ModelicaComponentInstance[] {
   if (!ci || visited.has(ci)) return [];
   visited.add(ci);
   const byName = new Map<string, ModelicaComponentInstance>();
   const extendsList = ci.extendsClassInstances ?? [];
   for (const ext of extendsList) {
-    const base = (ext as any)?.classInstance ?? ext;
+    const base = ext?.classInstance ?? ext;
     if (base && typeof base === "object") {
       for (const comp of collectAllComponents(base, visited)) {
         if (comp.name) byName.set(comp.name, comp);
@@ -303,19 +422,23 @@ function collectAllComponents(ci: ModelicaClassInstance, visited = new Set<any>(
   return Array.from(byName.values());
 }
 
-function collectAllConnectEquations(ci: ModelicaClassInstance, visited = new Set<any>()): any[] {
+function collectAllConnectEquations(
+  ci: ModelicaClassInstance,
+  visited = new Set<ModelicaClassInstance>(),
+): DataConnectEquationLike[] {
   if (!ci || visited.has(ci)) return [];
   visited.add(ci);
-  const result: any[] = [];
+  const result: DataConnectEquationLike[] = [];
   const extendsList = ci.extendsClassInstances ?? [];
   for (const ext of extendsList) {
-    const base = (ext as any)?.classInstance ?? ext;
+    const base = ext?.classInstance ?? ext;
     if (base && typeof base === "object") {
       result.push(...collectAllConnectEquations(base, visited));
     }
   }
-  if (ci["connectEquations"]) {
-    result.push(...ci["connectEquations"]);
+  const rawConnects = ci["connectEquations"];
+  if (Array.isArray(rawConnects)) {
+    result.push(...(rawConnects as DataConnectEquationLike[]));
   }
   return result;
 }
@@ -376,8 +499,13 @@ export function inferModelicaDomainColor(
     const compName = parts.length > 1 ? parts[0] : "";
     let compTypeName = "";
     if (classInstance && compName) {
-      const comp = (classInstance.components || []).find((c: any) => c.name === compName);
-      compTypeName = (comp?.["typeName"] || comp?.["className"] || comp?.name || "").toLowerCase();
+      const comp = (classInstance.components || []).find((c) => c.name === compName);
+      const rawType =
+        (typeof comp?.typeName === "string" ? comp.typeName : undefined) ||
+        (typeof comp?.["className"] === "string" ? comp["className"] : undefined) ||
+        comp?.name ||
+        "";
+      compTypeName = rawType.toLowerCase();
     }
     const combined = `${port} ${compTypeName}`;
 
@@ -458,28 +586,26 @@ export async function buildDiagramData(
       ? classInstance.components.map((c: { name?: string }) => String(c?.name ?? "")).filter(Boolean)
       : [],
   );
-  const components: any[] = classInstance ? collectAllComponents(classInstance) : [];
+  const components: ModelicaComponentInstance[] = classInstance ? collectAllComponents(classInstance) : [];
   if (components.length === 0 && classInstance?.db && classInstance.id !== undefined) {
-    const db = classInstance.db;
+    const db = classInstance.db as DataQueryDbLike;
     const children = db.childrenOf ? (db.childrenOf(classInstance.id) ?? []) : [];
     for (const child of children) {
       if (child.kind === "Component" || child.kind === "Variable") {
-        const childClassId = db.query ? db.query("classInstance", child.id) : null;
-        const childClassEntry = childClassId ? db.symbol(childClassId) : null;
+        const childClassId = db.query ? (db.query("classInstance", child.id) as number | null | undefined) : null;
+        const childClassEntry = childClassId != null && db.symbol ? db.symbol(childClassId) : null;
         components.push({
           name: child.name,
           annotation: () => null,
           classInstance: childClassEntry
             ? {
-                id: childClassId,
+                id: childClassId ?? undefined,
                 db,
                 entry: childClassEntry,
                 name: childClassEntry.name,
                 compositeName:
-                  (child.metadata as any)?.typeSpecifier ||
-                  (childClassEntry.metadata as any)?.typeSpecifier ||
-                  childClassEntry.name,
-                classKind: (childClassEntry.metadata as any)?.classKind ?? (childClassEntry as any).classKind,
+                  child.metadata?.typeSpecifier || childClassEntry.metadata?.typeSpecifier || childClassEntry.name,
+                classKind: childClassEntry.metadata?.classKind ?? childClassEntry.classKind,
                 annotation: () => null,
                 components: [],
                 extendsClassInstances: [],
@@ -501,7 +627,7 @@ export async function buildDiagramData(
   let lastYield = performance.now();
   // Build nodes for each component
   for (let _ci = 0; _ci < components.length; _ci++) {
-    const component = components[_ci];
+    const component = components[_ci]!;
     if (!component.name) continue;
 
     // Yield cooperatively to the event loop when work budget is exceeded (20ms)
@@ -511,22 +637,26 @@ export async function buildDiagramData(
       lastYield = performance.now();
     }
 
-    const placement = typeof component?.annotation === "function" ? component.annotation("Placement") : null;
+    const placement =
+      typeof component?.annotation === "function" ? (component.annotation("Placement") as IPlacement | null) : null;
+    const compDecl = component.declaration as DataSymbolEntryLike | undefined;
+    const compEntry = component["entry"] as DataSymbolEntryLike | undefined;
+    const compClassEntry = component.classInstance?.["entry"] as DataSymbolEntryLike | undefined;
     if (isIconMode) {
       const compCi = component.classInstance;
-      const compKind = compCi?.classKind ?? compCi?.entry?.metadata?.classKind;
-      const compPrefix = compCi?.entry?.metadata?.classPrefixes;
+      const compKind = compCi?.classKind ?? compClassEntry?.metadata?.classKind;
+      const compPrefix = compClassEntry?.metadata?.classPrefixes;
       const isConnector =
         compKind === ModelicaClassKind.CONNECTOR ||
         compKind === ModelicaClassKind.EXPANDABLE_CONNECTOR ||
         Boolean(compPrefix?.includes("connector"));
       const isProtected = Boolean(
-        component.isProtected ||
-        component.declaration?.isProtected ||
-        component.declaration?.metadata?.isProtected ||
-        component.entry?.metadata?.isProtected ||
-        component.visibility === "protected" ||
-        component.declaration?.visibility === "protected",
+        component["isProtected"] ||
+        compDecl?.isProtected ||
+        compDecl?.metadata?.isProtected ||
+        compEntry?.metadata?.isProtected ||
+        component["visibility"] === "protected" ||
+        compDecl?.visibility === "protected",
       );
       if (!isConnector || isProtected) {
         continue;
@@ -550,10 +680,11 @@ export async function buildDiagramData(
     if (!componentTransform && placement && !placement.iconTransformation) {
       const icon =
         typeof componentClassInstance?.annotation === "function"
-          ? (componentClassInstance.annotation("Icon") as IIcon)
+          ? (componentClassInstance.annotation("Icon") as IIcon | null)
           : null;
       componentTransform = computeTransform(
         placement.transformation ?? {
+          "@type": "Transformation",
           extent: [
             [-10, -10],
             [10, 10],
@@ -577,18 +708,18 @@ export async function buildDiagramData(
         continue;
       }
 
-      const kind = componentClassInstance?.classKind ?? componentClassInstance?.entry?.metadata?.classKind;
-      const classPrefix = componentClassInstance?.entry?.metadata?.classPrefixes;
+      const kind = componentClassInstance?.classKind ?? compClassEntry?.metadata?.classKind;
+      const classPrefix = compClassEntry?.metadata?.classPrefixes;
       const isOuter =
-        Boolean(component.isOuter) ||
-        Boolean((component.declaration as any)?.isOuter) ||
-        Boolean((component.entry?.metadata as any)?.isOuter) ||
+        Boolean(component["isOuter"]) ||
+        Boolean(compDecl?.isOuter) ||
+        Boolean(compEntry?.metadata?.isOuter) ||
         component.name === "system";
       const isParam =
-        component.variability === ModelicaVariability.PARAMETER ||
-        (component.declaration as any)?.variability === "parameter" ||
-        (component.entry?.metadata as any)?.variability === "parameter" ||
-        (component.entry?.metadata as any)?.typePrefixes?.includes("parameter");
+        component["variability"] === ModelicaVariability.PARAMETER ||
+        compDecl?.variability === "parameter" ||
+        compEntry?.metadata?.variability === "parameter" ||
+        compEntry?.metadata?.typePrefixes?.includes("parameter");
       const isExcludedKind =
         kind === ModelicaClassKind.TYPE ||
         kind === ModelicaClassKind.FUNCTION ||
@@ -600,7 +731,7 @@ export async function buildDiagramData(
         Boolean(classPrefix?.includes("type")) ||
         Boolean(classPrefix?.includes("function")) ||
         Boolean(classPrefix?.includes("record"));
-      const resolvedTypeName = componentClassInstance?.name ?? (component as { typeName?: string }).typeName;
+      const resolvedTypeName = componentClassInstance?.name ?? component.typeName;
       const isPrimitive = Boolean(
         resolvedTypeName &&
         [
@@ -652,7 +783,7 @@ export async function buildDiagramData(
     const flipY = componentTransform.scaleY < 0;
     const needsMarkupMutation = flipX || flipY || componentTransform.rotate !== 0;
 
-    let componentMarkup: any;
+    let componentMarkup: X6Markup;
     if (isUnresolved) {
       componentMarkup = {
         tagName: "g",
@@ -683,7 +814,7 @@ export async function buildDiagramData(
               "font-weight": "bold",
               stroke: "none",
             },
-            children: component.name ?? "?",
+            textContent: component.name ?? "?",
           },
         ],
       };
@@ -719,8 +850,8 @@ export async function buildDiagramData(
 
     // Multi-instance array cascading stacked icons (e.g. Resistor R[5])
     const isArrayComponent =
-      (component.dimensions && component.dimensions.length > 0) ||
-      (Array.isArray(component.arraySubscripts) && component.arraySubscripts.length > 0) ||
+      (Array.isArray(component["dimensions"]) && component["dimensions"].length > 0) ||
+      (Array.isArray(component["arraySubscripts"]) && component["arraySubscripts"].length > 0) ||
       hasTrailingNumericArraySubscript(component.name ?? "");
     if (isArrayComponent) {
       componentMarkup = {
@@ -780,10 +911,8 @@ export async function buildDiagramData(
         return brIdx >= 0 ? rawSeg.slice(0, brIdx).trim() : rawSeg.trim();
       };
       for (const eq of connectEquations) {
-        const p1 =
-          eq.lhs ?? eq.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
-        const p2 =
-          eq.rhs ?? eq.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "").join(".");
+        const p1 = eq.lhs ?? eq.componentReference1?.parts?.map((c) => c.identifier?.text ?? c.text ?? "").join(".");
+        const p2 = eq.rhs ?? eq.componentReference2?.parts?.map((c) => c.identifier?.text ?? c.text ?? "").join(".");
         const line: ILine | null = typeof eq.annotation === "function" ? (eq.annotation("Line") as ILine | null) : null;
         const linePoints = line?.points;
         const port1 = extractPortSegment(typeof p1 === "string" ? p1 : undefined);
@@ -852,7 +981,10 @@ export async function buildDiagramData(
       if (!portTemplates) {
         portTemplates = [];
         for (const connector of collectAllComponents(componentClassInstance)) {
-          const connPlacement = typeof connector?.annotation === "function" ? connector.annotation("Placement") : null;
+          const connPlacement =
+            typeof connector?.annotation === "function"
+              ? (connector.annotation("Placement") as IPlacement | null)
+              : null;
           if (!connPlacement) continue;
           if (
             connPlacement.iconVisible === false ||
@@ -979,11 +1111,11 @@ export async function buildDiagramData(
         });
       }
 
-      const compClassPrefixes = (componentClassInstance.entry?.metadata as any)?.classPrefixes as string[] | undefined;
+      const compClassPrefixes = compClassEntry?.metadata?.classPrefixes;
       const isExpandableConnector =
         componentClassInstance.classKind === ModelicaClassKind.EXPANDABLE_CONNECTOR ||
         Boolean(compClassPrefixes?.includes("expandable")) ||
-        Boolean((componentClassInstance as any).isExpandable);
+        Boolean(componentClassInstance["isExpandable"]);
       if (isExpandableConnector) {
         const declaredPortIds = new Set(ports.map((p) => p.id).filter(Boolean));
         appendSynthesizedConnectPorts(declaredPortIds);
@@ -999,9 +1131,9 @@ export async function buildDiagramData(
     // loaded on-demand when the user clicks a node.
     const resolvedClassName =
       componentClassInstance?.compositeName ||
-      (component as any).declaration?.metadata?.typeSpecifier ||
-      (component as any).typeName ||
-      (component as any).typeSpecifier ||
+      compDecl?.metadata?.typeSpecifier ||
+      component.typeName ||
+      component.typeSpecifier ||
       componentClassInstance?.name ||
       "Unknown";
 
@@ -1012,10 +1144,13 @@ export async function buildDiagramData(
       description: component.description ?? (isUnresolved ? "Unresolved component type" : ""),
       parameters: [],
     };
-    if ((componentClassInstance as any)?.entry?.metadata?.iconSvg) {
-      properties.iconSvg = (componentClassInstance as any).entry.metadata.iconSvg;
-    } else if ((componentClassInstance as any)?.iconSvg) {
-      properties.iconSvg = (componentClassInstance as any).iconSvg;
+    const metaIconSvg = compClassEntry?.metadata?.iconSvg;
+    const directIconSvg =
+      typeof componentClassInstance?.["iconSvg"] === "string" ? componentClassInstance["iconSvg"] : undefined;
+    if (metaIconSvg) {
+      properties.iconSvg = metaIconSvg;
+    } else if (directIconSvg) {
+      properties.iconSvg = directIconSvg;
     }
 
     nodes.push({
@@ -1046,6 +1181,10 @@ export async function buildDiagramData(
   }
 
   // Precompute world port centers and declared port sets so vector-port subscripts (e.g. set1.u[1], gain.y[1]) bind to X6 ports
+  const getPortItems = (node: DiagramNode | undefined): DiagramPort[] | undefined => {
+    if (!node?.ports) return undefined;
+    return Array.isArray(node.ports) ? node.ports : node.ports.items;
+  };
   const portWorldMap = new Map<string, { x: number; y: number }>();
   const nodePortIdsMap = new Map<string, Set<string>>();
   for (const node of nodes) {
@@ -1054,7 +1193,7 @@ export async function buildDiagramData(
     const nw = node.width ?? 0;
     const nh = node.height ?? 0;
     const angleDeg = node.angle ?? 0;
-    const portItems = Array.isArray(node.ports) ? node.ports : (node.ports as any)?.items;
+    const portItems = getPortItems(node);
     if (!portItems) continue;
     const idSet = new Set<string>();
     for (const p of portItems) {
@@ -1112,8 +1251,8 @@ export async function buildDiagramData(
   const allCompNames = new Set(components.map((c) => c.name));
 
   for (const connectEquation of connectEquations) {
-    let c1 = connectEquation.componentReference1?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "");
-    let c2 = connectEquation.componentReference2?.parts?.map((c: any) => c.identifier?.text ?? c.text ?? "");
+    let c1 = connectEquation.componentReference1?.parts?.map((c) => c.identifier?.text ?? c.text ?? "");
+    let c2 = connectEquation.componentReference2?.parts?.map((c) => c.identifier?.text ?? c.text ?? "");
     if ((!c1 || c1.length === 0) && connectEquation.lhs) {
       c1 = typeof connectEquation.lhs === "string" ? splitComponentRef(connectEquation.lhs) : undefined;
     }
@@ -1121,14 +1260,16 @@ export async function buildDiagramData(
       c2 = typeof connectEquation.rhs === "string" ? splitComponentRef(connectEquation.rhs) : undefined;
     }
     if (!c1 || !c2 || c1.length === 0 || c2.length === 0) continue;
-    const baseC1 = c1[0].indexOf("[") >= 0 ? c1[0].slice(0, c1[0].indexOf("[")).trim() : c1[0].trim();
-    const baseC2 = c2[0].indexOf("[") >= 0 ? c2[0].slice(0, c2[0].indexOf("[")).trim() : c2[0].trim();
+    const c1Head = c1[0]!;
+    const c2Head = c2[0]!;
+    const baseC1 = c1Head.indexOf("[") >= 0 ? c1Head.slice(0, c1Head.indexOf("[")).trim() : c1Head.trim();
+    const baseC2 = c2Head.indexOf("[") >= 0 ? c2Head.slice(0, c2Head.indexOf("[")).trim() : c2Head.trim();
     const isC1Valid = nodeIds.has(baseC1) || allCompNames.has(baseC1) || c1.length === 1;
     const isC2Valid = nodeIds.has(baseC2) || allCompNames.has(baseC2) || c2.length === 1;
     if (!isC1Valid || !isC2Valid) continue;
 
     const line: ILine | null =
-      typeof connectEquation.annotation === "function" ? connectEquation.annotation("Line") : null;
+      typeof connectEquation.annotation === "function" ? (connectEquation.annotation("Line") as ILine | null) : null;
     let strokeColor = `rgb(${line?.color?.[0] ?? 0}, ${line?.color?.[1] ?? 0}, ${line?.color?.[2] ?? 255})`;
     if (!line?.color) {
       const srcName = c1 ? c1.join(".") : "";
@@ -1167,10 +1308,10 @@ export async function buildDiagramData(
     const isC1TopLevelNode = c1.length === 1 && nodeIds.has(baseC1);
     const isC2TopLevelNode = c2.length === 1 && nodeIds.has(baseC2);
     const srcCell = c1.length > 1 ? baseC1 : isC1TopLevelNode ? baseC1 : "";
-    const rawSrcPort = c1.length > 1 ? (c1[1] ?? "") : isC1TopLevelNode ? "" : c1[0];
+    const rawSrcPort = c1.length > 1 ? (c1[1] ?? "") : isC1TopLevelNode ? "" : c1Head;
     const srcPort = resolveNodePortId(srcCell, rawSrcPort);
     const tgtCell = c2.length > 1 ? baseC2 : isC2TopLevelNode ? baseC2 : "";
-    const rawTgtPort = c2.length > 1 ? (c2[1] ?? "") : isC2TopLevelNode ? "" : c2[0];
+    const rawTgtPort = c2.length > 1 ? (c2[1] ?? "") : isC2TopLevelNode ? "" : c2Head;
     const tgtPort = resolveNodePortId(tgtCell, rawTgtPort);
 
     edges.push({
@@ -1283,8 +1424,12 @@ export async function buildDiagramData(
       let maxX = 20;
       let minY = -20;
       let maxY = 20;
-      const gExtent = (g as any).extent as [[number, number], [number, number]] | undefined;
-      const gPoints = (g as any).points as Array<[number, number]> | undefined;
+      const gShape = g as IGraphicItem & {
+        extent?: [[number, number], [number, number]] | undefined;
+        points?: Array<[number, number]> | undefined;
+      };
+      const gExtent = gShape.extent;
+      const gPoints = gShape.points;
       if (Array.isArray(gExtent) && gExtent.length >= 2) {
         minX = Math.min(gExtent[0][0], gExtent[1][0]);
         maxX = Math.max(gExtent[0][0], gExtent[1][0]);
@@ -1296,8 +1441,8 @@ export async function buildDiagramData(
         minY = Math.min(...gPoints.map((p) => p[1]));
         maxY = Math.max(...gPoints.map((p) => p[1]));
       }
-      const origX = Array.isArray((g as any).origin) ? Number((g as any).origin[0]) || 0 : 0;
-      const origY = Array.isArray((g as any).origin) ? Number((g as any).origin[1]) || 0 : 0;
+      const origX = Array.isArray(g.origin) ? Number(g.origin[0]) || 0 : 0;
+      const origY = Array.isArray(g.origin) ? Number(g.origin[1]) || 0 : 0;
       const nodeW = Math.max(4, maxX - minX);
       const nodeH = Math.max(4, maxY - minY);
       const nodeX = minX + origX;
@@ -1317,7 +1462,7 @@ export async function buildDiagramData(
         y: nodeY,
         width: nodeW,
         height: nodeH,
-        angle: typeof (g as any).rotation === "number" ? -(g as any).rotation : 0,
+        angle: typeof g.rotation === "number" ? -g.rotation : 0,
         opacity: 1,
         zIndex: gi + 1,
         markup: {
@@ -1362,8 +1507,9 @@ export async function buildDiagramData(
     const ny = node.y ?? 0;
     const width = node.width ?? 0;
     const height = node.height ?? 0;
-    const flipX = Boolean(node.data?.["flipX"] || (node as any).flipX);
-    const flipY = Boolean(node.data?.["flipY"] || (node as any).flipY);
+    const nodeWithFlip = node as DiagramNode & { flipX?: boolean; flipY?: boolean };
+    const flipX = Boolean(node.data?.["flipX"] || nodeWithFlip.flipX);
+    const flipY = Boolean(node.data?.["flipY"] || nodeWithFlip.flipY);
     const lx = flipX ? width - px : px;
     const ly = flipY ? height - py : py;
 
@@ -1386,7 +1532,7 @@ export async function buildDiagramData(
   const validEdgePaths: EdgePath[] = [];
   const knownPortPoints: { x: number; y: number }[] = [];
   for (const node of nodes) {
-    const portItems = Array.isArray(node.ports) ? node.ports : (node.ports as any)?.items;
+    const portItems = getPortItems(node);
     if (portItems) {
       for (const p of portItems) {
         if (p.args && typeof p.args.x === "number" && typeof p.args.y === "number") {
@@ -1435,22 +1581,23 @@ export async function buildDiagramData(
 
   for (const edge of edges) {
     const srcNode = nodes.find((n) => n.id === edge.source.cell);
-    const srcPortItems = Array.isArray(srcNode?.ports) ? srcNode.ports : (srcNode?.ports as any)?.items;
-    const srcPort = srcPortItems?.find((p: any) => p.id === edge.source.port);
+    const srcPortItems = getPortItems(srcNode);
+    const srcPort = srcPortItems?.find((p) => p.id === edge.source.port);
     const srcPt =
       srcNode && srcPort?.args && typeof srcPort.args.x === "number" && typeof srcPort.args.y === "number"
         ? resolveWorldPortPoint(srcNode, srcPort.args.x, srcPort.args.y)
         : null;
 
     const tgtNode = nodes.find((n) => n.id === edge.target.cell);
-    const tgtPortItems = Array.isArray(tgtNode?.ports) ? tgtNode.ports : (tgtNode?.ports as any)?.items;
-    const tgtPort = tgtPortItems?.find((p: any) => p.id === edge.target.port);
+    const tgtPortItems = getPortItems(tgtNode);
+    const tgtPort = tgtPortItems?.find((p) => p.id === edge.target.port);
     const tgtPt =
       tgtNode && tgtPort?.args && typeof tgtPort.args.x === "number" && typeof tgtPort.args.y === "number"
         ? resolveWorldPortPoint(tgtNode, tgtPort.args.x, tgtPort.args.y)
         : null;
 
-    const explicitPts = (edge as any).data?.points as { x: number; y: number }[] | undefined;
+    const edgeData = edge.data as { points?: { x: number; y: number }[] | undefined } | undefined;
+    const explicitPts = edgeData?.points;
     const p0 = explicitPts && explicitPts.length >= 2 ? explicitPts[0]! : null;
     const pN = explicitPts && explicitPts.length >= 2 ? explicitPts[explicitPts.length - 1]! : null;
     const healSrc = srcPt ?? p0;
@@ -1554,7 +1701,7 @@ export async function buildDiagramData(
   };
 }
 
-// ── X6 Markup rendering (ported from morsel's x6.ts, DOM-free) ──
+// ── X6 Markup rendering (ported from ansatz's x6.ts, DOM-free) ──
 
 function renderDiagramX6(classInstance: ModelicaClassInstance, precomputedDiagram?: IDiagram | null): X6Markup | null {
   const defs: X6Markup[] = [];
@@ -1571,7 +1718,7 @@ function renderDiagramX6(classInstance: ModelicaClassInstance, precomputedDiagra
       ci === classInstance && precomputedDiagram !== undefined
         ? precomputedDiagram
         : typeof ci?.annotation === "function"
-          ? ci.annotation("Diagram")
+          ? (ci.annotation("Diagram") as IDiagram | null)
           : null;
     if (diagram?.graphics) {
       for (const graphicItem of diagram.graphics) {
@@ -1587,7 +1734,7 @@ function renderDiagramX6(classInstance: ModelicaClassInstance, precomputedDiagra
     precomputedDiagram !== undefined
       ? precomputedDiagram
       : typeof classInstance?.annotation === "function"
-        ? classInstance.annotation("Diagram")
+        ? (classInstance.annotation("Diagram") as IDiagram | null)
         : null;
   const [x1, y1] = convertPoint(diagram?.coordinateSystem?.extent?.[0], [-100, -100]);
   const [x2, y2] = convertPoint(diagram?.coordinateSystem?.extent?.[1], [100, 100]);
@@ -1629,7 +1776,7 @@ export const MODELICA_PACKAGE_FALLBACK_INSTANCE: ModelicaClassInstance = {
   components: [],
   extendsClassInstances: [],
   connectEquations: [],
-  annotation: (annName: string) => {
+  annotation: (annName?: string) => {
     if (annName === "Icon") {
       return {
         "@type": "Icon",
@@ -1667,7 +1814,7 @@ export const MODELICA_PACKAGE_FALLBACK_INSTANCE: ModelicaClassInstance = {
     }
     return null;
   },
-} as any;
+};
 
 const ownOnlyCtxCache = new WeakMap<object, unknown>();
 const STATIC_OWN_ONLY_CTX = Object.freeze({ ownOnly: true });
@@ -1870,15 +2017,15 @@ export function renderIconX6(
     }
   }
 
-  const hasExtends = extendsList.some((e: any) => e.classInstance) || renderedBaseIcon;
+  const hasExtends = extendsList.some((e) => e.classInstance) || renderedBaseIcon;
 
   const hasAnnotationFn = typeof classInstance.annotation === "function";
   let icon: IIcon | null = null;
   if (hasAnnotationFn) {
     if (hasExtends) {
-      icon = classInstance.annotation?.("Icon", getOwnOnlyCtx(effectiveComponent));
+      icon = (classInstance.annotation?.("Icon", getOwnOnlyCtx(effectiveComponent)) as IIcon | null) ?? null;
     } else {
-      icon = classInstance.annotation?.("Icon", effectiveComponent);
+      icon = (classInstance.annotation?.("Icon", effectiveComponent) as IIcon | null) ?? null;
     }
   }
   const coordSys = icon?.coordinateSystem ?? undefined;
@@ -1907,7 +2054,8 @@ export function renderIconX6(
 
   if (ports && group.children) {
     for (const component of classInstance?.components ?? []) {
-      const compPlacement = typeof component?.annotation === "function" ? component.annotation("Placement") : null;
+      const compPlacement =
+        typeof component?.annotation === "function" ? (component.annotation("Placement") as IPlacement | null) : null;
       const condition = evaluateCondition(
         component,
         componentInstance ? { componentInstance, classInstance } : classInstance,
@@ -2213,13 +2361,17 @@ export function evalMacroCondition(
   return negate ? !truthy : truthy;
 }
 
-function findArgsInCst(node: any): any[] {
-  const results: any[] = [];
+function findArgsInCst(node: DataSyntaxNode | null | undefined): DataSyntaxNode[] {
+  const results: DataSyntaxNode[] = [];
   if (!node) return results;
-  if (Cst.AnnotationClause.is(node) || node.type === "annotation_clause" || node.type === "AnnotationClause") {
+  if (
+    Cst.AnnotationClause.is(asDataSyntaxNode(node)) ||
+    node.type === "annotation_clause" ||
+    node.type === "AnnotationClause"
+  ) {
     return results;
   }
-  if (Cst.Argument.is(node) || node.type === "argument" || node.typeId === 134) {
+  if (Cst.Argument.is(asDataSyntaxNode(node)) || node.type === "argument" || node.typeId === 134) {
     results.push(node);
     return results;
   }
@@ -2229,9 +2381,10 @@ function findArgsInCst(node: any): any[] {
   return results;
 }
 
-function findElemModInCst(node: any): any {
+function findElemModInCst(node: DataSyntaxNode | null | undefined): DataSyntaxNode | null {
   if (!node) return null;
-  if (Cst.ElementModification.is(node) || node.type === "element_modification" || node.typeId === 136) return node;
+  if (Cst.ElementModification.is(asDataSyntaxNode(node)) || node.type === "element_modification" || node.typeId === 136)
+    return node;
   for (const ch of node.children || []) {
     const found = findElemModInCst(ch);
     if (found) return found;
@@ -2239,9 +2392,9 @@ function findElemModInCst(node: any): any {
   return null;
 }
 
-function findNameInCst(node: any): any {
+function findNameInCst(node: DataSyntaxNode | null | undefined): DataSyntaxNode | null {
   if (!node) return null;
-  if (Cst.Identifier.is(node) || node.type === "identifier" || node.type === "name") return node;
+  if (Cst.Identifier.is(asDataSyntaxNode(node)) || node.type === "identifier" || node.type === "name") return node;
   for (const ch of node.children || []) {
     const found = findNameInCst(ch);
     if (found) return found;
@@ -2249,9 +2402,10 @@ function findNameInCst(node: any): any {
   return null;
 }
 
-function findClassModInCst(node: any): any {
+function findClassModInCst(node: DataSyntaxNode | null | undefined): DataSyntaxNode | null {
   if (!node) return null;
-  if (Cst.ClassModification.is(node) || node.type === "class_modification" || node.typeId === 132) return node;
+  if (Cst.ClassModification.is(asDataSyntaxNode(node)) || node.type === "class_modification" || node.typeId === 132)
+    return node;
   for (const ch of node.children || []) {
     const found = findClassModInCst(ch);
     if (found) return found;
@@ -2259,13 +2413,17 @@ function findClassModInCst(node: any): any {
   return null;
 }
 
-function findDeclarationsInCst(node: any): any[] {
-  const results: any[] = [];
+function findDeclarationsInCst(node: DataSyntaxNode | null | undefined): DataSyntaxNode[] {
+  const results: DataSyntaxNode[] = [];
   if (!node) return results;
-  if (Cst.AnnotationClause.is(node) || node.type === "annotation_clause" || node.type === "AnnotationClause") {
+  if (
+    Cst.AnnotationClause.is(asDataSyntaxNode(node)) ||
+    node.type === "annotation_clause" ||
+    node.type === "AnnotationClause"
+  ) {
     return results;
   }
-  if (Cst.Declaration.is(node) || node.type === "declaration") {
+  if (Cst.Declaration.is(asDataSyntaxNode(node)) || node.type === "declaration") {
     results.push(node);
     return results;
   }
@@ -2355,28 +2513,36 @@ export function stripAnnotationsAndComments(text: string): string {
   return out;
 }
 
-export function extractCstModifierValue(cstNode: any, paramName: string): string | undefined {
-  if (!cstNode || !paramName) return undefined;
-  if (typeof cstNode.tree?.sourceCode === "string") {
-    const src: string = cstNode.tree.sourceCode;
-    const sIdx = cstNode.startIndex ?? 0;
-    const eIdx = cstNode.endIndex ?? src.length;
+export function extractCstModifierValue(cstNode: unknown, paramName: string): string | undefined {
+  const node = cstNode as DataSyntaxNode | null | undefined;
+  if (!node || !paramName) return undefined;
+  if (typeof node.tree?.sourceCode === "string") {
+    const src: string = node.tree.sourceCode;
+    const sIdx = node.startIndex ?? 0;
+    const eIdx = node.endIndex ?? src.length;
     const pos = src.indexOf(paramName, sIdx);
     if (pos === -1 || pos >= eIdx) return undefined;
   }
 
   // 1. Direct declaration binding: e.g. parameter Real R = 100
   const decls =
-    Cst.Declaration.is(cstNode) || cstNode.type === "declaration" ? [cstNode] : findDeclarationsInCst(cstNode);
+    Cst.Declaration.is(asDataSyntaxNode(node)) || node.type === "declaration" ? [node] : findDeclarationsInCst(node);
   for (const decl of decls) {
-    const nameNode = (Cst.Declaration.is(decl) ? (Cst.Declaration as any).name?.(decl) : null) ?? findNameInCst(decl);
-    const identifier = nameNode?.text?.trim() ?? nameNode?.name ?? nameNode?.value;
+    const nameNode =
+      (Cst.Declaration.is(asDataSyntaxNode(decl)) ? Cst.Declaration.name(asDataSyntaxNode(decl)) : null) ??
+      findNameInCst(decl);
+    const nameNodeData = nameNode as DataSyntaxNode | null;
+    const identifier =
+      nameNodeData?.text?.trim() ??
+      nameNodeData?.name ??
+      (typeof nameNodeData?.value === "string" ? nameNodeData.value : undefined);
     if (identifier === paramName) {
       const valModNode =
-        (Cst.Declaration.is(decl) ? (Cst.Declaration as any).modification?.(decl) : null) ??
-        (decl.children || []).find((c: any) => Cst.Modification.is(c) || c.type === "modification");
+        (Cst.Declaration.is(asDataSyntaxNode(decl)) ? Cst.Declaration.modification(asDataSyntaxNode(decl)) : null) ??
+        (decl.children || []).find((c) => Cst.Modification.is(asDataSyntaxNode(c)) || c.type === "modification");
       if (valModNode) {
-        const text = valModNode.text?.trim() ?? valModNode.value;
+        const rawVal = (valModNode as DataSyntaxNode).value;
+        const text = valModNode.text?.trim() ?? (typeof rawVal === "string" ? rawVal : undefined);
         if (text?.startsWith("=")) {
           return stripLeadingEquals(text);
         }
@@ -2388,20 +2554,29 @@ export function extractCstModifierValue(cstNode: any, paramName: string): string
   }
 
   // 2. Class modification arguments: e.g. Resistor R(R = 100)
-  const args = findArgsInCst(cstNode);
+  const args = findArgsInCst(node);
   for (const arg of args) {
     const elemMod = findElemModInCst(arg);
     if (!elemMod) continue;
 
     const nameNode =
-      (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.name(elemMod) : null) ?? findNameInCst(elemMod);
-    const identifier = nameNode?.text?.trim() ?? nameNode?.name ?? nameNode?.value;
+      (Cst.ElementModification.is(asDataSyntaxNode(elemMod))
+        ? Cst.ElementModification.name(asDataSyntaxNode(elemMod))
+        : null) ?? findNameInCst(elemMod);
+    const nameNodeData = nameNode as DataSyntaxNode | null;
+    const identifier =
+      nameNodeData?.text?.trim() ??
+      nameNodeData?.name ??
+      (typeof nameNodeData?.value === "string" ? nameNodeData.value : undefined);
     if (identifier === paramName) {
       const valModNode =
-        (Cst.ElementModification.is(elemMod) ? Cst.ElementModification.modification(elemMod) : null) ??
-        (elemMod.children || []).find((c: any) => Cst.Modification.is(c) || c.type === "modification");
+        (Cst.ElementModification.is(asDataSyntaxNode(elemMod))
+          ? Cst.ElementModification.modification(asDataSyntaxNode(elemMod))
+          : null) ??
+        (elemMod.children || []).find((c) => Cst.Modification.is(asDataSyntaxNode(c)) || c.type === "modification");
       if (valModNode) {
-        const text = valModNode.text?.trim() ?? valModNode.value;
+        const rawVal = (valModNode as DataSyntaxNode).value;
+        const text = valModNode.text?.trim() ?? (typeof rawVal === "string" ? rawVal : undefined);
         if (text?.startsWith("=")) {
           return stripLeadingEquals(text);
         }
@@ -2413,24 +2588,25 @@ export function extractCstModifierValue(cstNode: any, paramName: string): string
 }
 
 export function extractCstNestedModifierValue(
-  cstNode: any,
+  cstNode: unknown,
   paramName: string,
   subParamName: string,
 ): string | undefined {
-  if (!cstNode || !paramName) return undefined;
-  if (typeof cstNode.tree?.sourceCode === "string") {
-    const src: string = cstNode.tree.sourceCode;
-    const sIdx = cstNode.startIndex ?? 0;
-    const eIdx = cstNode.endIndex ?? src.length;
+  const node = cstNode as DataSyntaxNode | null | undefined;
+  if (!node || !paramName) return undefined;
+  if (typeof node.tree?.sourceCode === "string") {
+    const src: string = node.tree.sourceCode;
+    const sIdx = node.startIndex ?? 0;
+    const eIdx = node.endIndex ?? src.length;
     const pos = src.indexOf(paramName, sIdx);
     if (pos === -1 || pos >= eIdx) return undefined;
   }
   // 1. Direct dotted notation: e.g. V.start = 5
-  const dotted = extractCstModifierValue(cstNode, `${paramName}.${subParamName}`);
+  const dotted = extractCstModifierValue(node, `${paramName}.${subParamName}`);
   if (dotted) return dotted;
 
   // 2. Nested class modification: e.g. V(start = 5)
-  const args = findArgsInCst(cstNode);
+  const args = findArgsInCst(node);
   for (const arg of args) {
     const elemMod = findElemModInCst(arg);
     if (!elemMod) continue;
@@ -2583,20 +2759,8 @@ export function evaluateMacroExpression(
   let compVal: string | undefined;
   const compNode = componentInstance as
     | {
-        cstNode?: {
-          tree?: { sourceCode?: string };
-          startIndex?: number;
-          endIndex?: number;
-          text?: string;
-          children?: any[];
-        };
-        abstractSyntaxNode?: {
-          tree?: { sourceCode?: string };
-          startIndex?: number;
-          endIndex?: number;
-          text?: string;
-          children?: any[];
-        };
+        cstNode?: DataSyntaxNode;
+        abstractSyntaxNode?: DataSyntaxNode;
         modification?: { getModificationArgument?: (n: string) => { expression?: unknown } };
         text?: string;
       }
@@ -2606,7 +2770,7 @@ export function evaluateMacroExpression(
     compVal = extractCstModifierValue(compCst, name);
     if (!compVal) {
       const nonAnnChildren = (compCst.children || []).filter(
-        (c: any) => c.type !== "annotation_clause" && c.type !== "AnnotationClause",
+        (c) => c.type !== "annotation_clause" && c.type !== "AnnotationClause",
       );
       for (const ch of nonAnnChildren) {
         compVal = extractCstModifierValue(ch, name);
@@ -2638,8 +2802,8 @@ export function evaluateMacroExpression(
     }
   }
 
-  const namedElement =
-    typeof classInstance?.["resolveName"] === "function" ? classInstance["resolveName"](name.split(".")) : null;
+  const resolveNameFn = classInstance?.["resolveName"] as ((parts: string[]) => unknown) | undefined;
+  const namedElement = typeof resolveNameFn === "function" ? resolveNameFn.call(classInstance, name.split(".")) : null;
 
   // 2. Check if the class provides a default value for this parameter
   let elemVal: string | undefined;
@@ -2710,7 +2874,7 @@ function renderTextX6(
   const height = computeHeight(graphicItem.extent);
 
   // Text substitution — matches core svg.ts renderText() with advanced conditional macro evaluation
-  const rawText = graphicItem.string ?? (graphicItem as any).textString ?? "";
+  const rawText = graphicItem.string ?? graphicItem.textString ?? "";
   let textContent: string;
   if (!rawText.includes("%")) {
     textContent = rawText;
@@ -2719,7 +2883,7 @@ function renderTextX6(
   } else {
     const nameText = componentInstance?.name ?? "";
     const classText = classInstance?.name ?? "";
-    const commentText = componentInstance?.["description"] ?? classInstance?.["description"] ?? "";
+    const commentText = componentInstance?.description ?? classInstance?.description ?? "";
     textContent = expandModelicaTextMacros(rawText, nameText, classText, commentText, (expr) =>
       evaluateMacroExpression(expr, classInstance, componentInstance),
     );
@@ -2757,7 +2921,7 @@ function renderTextX6(
     }
   }
   const fontName = graphicItem.fontName ?? "sans-serif";
-  const textColor = convertColor(graphicItem.lineColor ?? (graphicItem as any).textColor, "rgb(0,0,0)");
+  const textColor = convertColor(graphicItem.lineColor ?? graphicItem.textColor, "rgb(0,0,0)");
 
   let textAnchor = "middle";
   if (graphicItem.horizontalAlignment === TextAlignment.LEFT) textAnchor = "start";
@@ -2773,9 +2937,7 @@ function renderTextX6(
 
   const fontStyle = graphicItem.textStyle?.find((e: TextStyle) => e === TextStyle.ITALIC) ? "italic" : "normal";
   const fontWeight = graphicItem.textStyle?.find((e: TextStyle) => e === TextStyle.BOLD) ? "bold" : "normal";
-  const textDecoration = graphicItem.textStyle?.find(
-    (e: TextStyle) => e === TextStyle.UNDER_LINE || (e as any) === "UnderLine",
-  )
+  const textDecoration = graphicItem.textStyle?.find((e: TextStyle) => e === TextStyle.UNDER_LINE)
     ? "underline"
     : "none";
 
@@ -2800,7 +2962,7 @@ function renderTextX6(
   };
 }
 
-// ── Shape styling helpers (matching morsel's x6.ts) ──
+// ── Shape styling helpers (matching ansatz's x6.ts) ──
 
 function renderFilledShapeX6(shape: X6Markup, filledShape: IFilledShape, defs: X6Markup[]): void {
   applyFillX6(shape, filledShape, defs);
@@ -2957,6 +3119,8 @@ function applyLineStyleX6(shape: X6Markup, graphicItem: IFilledShape | ILine): v
 // ── Pattern/gradient helpers ──
 
 let defsCounter = 0;
+const defsIdMap = new WeakMap<X6Markup[], number>();
+const defsIdSetMap = new WeakMap<X6Markup[], Set<string | number>>();
 
 function getStableId(prefix: string, params: unknown, defs: X6Markup[]): string {
   const str = JSON.stringify(params);
@@ -2967,10 +3131,10 @@ function getStableId(prefix: string, params: unknown, defs: X6Markup[]): string 
     hash |= 0;
   }
 
-  let defsId = (defs as any).__defsId;
+  let defsId = defsIdMap.get(defs);
   if (!defsId) {
     defsId = ++defsCounter;
-    Object.defineProperty(defs, "__defsId", { value: defsId, enumerable: false });
+    defsIdMap.set(defs, defsId);
   }
 
   return `${prefix}-${Math.abs(hash).toString(36)}-${defsId}`;
@@ -2982,10 +3146,10 @@ function addDefIfMissing(defs: X6Markup[], def: X6Markup) {
     defs.push(def);
     return;
   }
-  let idSet: Set<string | number> = (defs as any).__idSet;
+  let idSet = defsIdSetMap.get(defs);
   if (!idSet) {
     idSet = new Set(defs.map((d) => d.attrs?.["id"]).filter((v): v is string | number => v !== undefined && v !== ""));
-    Object.defineProperty(defs, "__idSet", { value: idSet, enumerable: false, writable: true });
+    defsIdSetMap.set(defs, idSet);
   }
   if (!idSet.has(id)) {
     idSet.add(id);
@@ -3438,6 +3602,39 @@ function stripHtmlEnvelope(html: string): string {
 
 const bitmapDataUriCache = new Map<string, string | null>();
 
+interface NodeFsLike {
+  existsSync: (p: string) => boolean;
+  readFileSync: (p: string) => { toString: (encoding: string) => string };
+  readdirSync: (p: string, opts: { withFileTypes: true }) => Array<{ name: string; isDirectory: () => boolean }>;
+}
+
+interface NodePathLike {
+  dirname: (p: string) => string;
+  basename: (p: string) => string;
+  join: (...parts: string[]) => string;
+}
+
+interface NodeProcessLike {
+  getBuiltinModule?: ((id: string) => unknown) | undefined;
+  cwd?: (() => string) | undefined;
+  env?: Record<string, string | undefined> | undefined;
+}
+
+interface DialogAnnotationLike {
+  tab?: unknown;
+  group?: unknown;
+  enable?: unknown;
+  colorSelector?: unknown;
+  loadSelector?: unknown;
+  saveSelector?: unknown;
+  showStartAttribute?: unknown;
+}
+
+interface ChoicesAnnotationLike {
+  choice?: unknown;
+  choices?: unknown;
+}
+
 /**
  * Resolves a `modelica://` URI into a base64 data URI for bitmaps/images.
  */
@@ -3452,7 +3649,7 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
     !normalizedUri.startsWith("http://") &&
     !normalizedUri.startsWith("https://")
   ) {
-    const rawLib = (classInstance as any)?.compositeName || classInstance?.name || "";
+    const rawLib = classInstance?.compositeName || classInstance?.name || "";
     const libName = rawLib.split(".")[0];
     if (libName) {
       const cleanRel = uri.startsWith("./") ? uri.slice(2) : uri.startsWith("/") ? uri.slice(1) : uri;
@@ -3474,7 +3671,8 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
   const relativePath = afterScheme.slice(slashIdx + 1);
 
   // 1. Try classInstance.context or classInstance.db?.context
-  const ctx = (classInstance as any)?.context ?? (classInstance as any)?.db?.context;
+  const db = classInstance?.db as DataQueryDbLike | undefined;
+  const ctx = (classInstance?.["context"] as DataResourceContextLike | undefined) ?? db?.context;
   let resolved: string | null = null;
   if (typeof ctx?.resolveURI === "function") {
     resolved = ctx.resolveURI(normalizedUri) ?? null;
@@ -3500,11 +3698,12 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
 
   // 2. Node.js environment resolution fallback (works dynamically without static fs imports)
   try {
-    let nodeFs: any = null;
-    let nodePath: any = null;
-    if (typeof (globalThis as any).process?.getBuiltinModule === "function") {
-      nodeFs = (globalThis as any).process.getBuiltinModule("node:fs");
-      nodePath = (globalThis as any).process.getBuiltinModule("node:path");
+    let nodeFs: NodeFsLike | null = null;
+    let nodePath: NodePathLike | null = null;
+    const nodeProc = (globalThis as { process?: NodeProcessLike }).process;
+    if (typeof nodeProc?.getBuiltinModule === "function") {
+      nodeFs = (nodeProc.getBuiltinModule("node:fs") as NodeFsLike | undefined) ?? null;
+      nodePath = (nodeProc.getBuiltinModule("node:path") as NodePathLike | undefined) ?? null;
     }
     if (nodeFs && nodePath) {
       const candidates: string[] = [];
@@ -3512,8 +3711,8 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
         candidates.push(resolved);
       }
 
-      if (classInstance?.id && classInstance.db?.symbol) {
-        const sym = classInstance.db.symbol(classInstance.id);
+      if (classInstance?.id && db?.symbol) {
+        const sym = db.symbol(classInstance.id);
         if (sym?.resourceId) {
           let dir = nodePath.dirname(sym.resourceId);
           while (dir && dir !== nodePath.dirname(dir)) {
@@ -3527,7 +3726,7 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
         }
       }
 
-      const cwd = (globalThis as any).process?.cwd?.();
+      const cwd = nodeProc?.cwd?.();
       const roots: string[] = [];
       if (cwd) {
         roots.push(cwd);
@@ -3596,7 +3795,7 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
         candidates.push(nodePath.join(root, "languages", "modelica", "assets", nodePath.basename(relativePath)));
         candidates.push(nodePath.join(root, "languages", "modelica", "assets", "icon-light.png"));
       }
-      const home = (globalThis as any).process?.env?.HOME;
+      const home = nodeProc?.env?.["HOME"];
       if (home) {
         candidates.push(
           nodePath.join(home, ".openmodelica", "libraries", `${libraryName} 4.0.0+maint.om`, relativePath),
@@ -3622,7 +3821,7 @@ export function resolveModelicaBitmapUri(uri: string, classInstance?: ModelicaCl
   return null;
 }
 
-function processHtml(html: string | undefined, context: any): string | undefined {
+function processHtml(html: string | undefined, context: DataResourceContextLike | undefined): string | undefined {
   if (!html) return html;
   const stripped = stripHtmlEnvelope(html);
   if (!context) return stripped;
@@ -3689,20 +3888,22 @@ function processHtml(html: string | undefined, context: any): string | undefined
       out += tag;
     } else {
       const fullUri = tag.slice(srcValStart, srcValEnd);
-      const resolvedPath = context.resolveURI(fullUri);
+      const resolvedPath = context.resolveURI?.(fullUri);
       let replacement: string | null = null;
-      if (resolvedPath) {
+      if (resolvedPath && context.fs?.readBinary && context.fs?.extname) {
         try {
           const binary = context.fs.readBinary(resolvedPath);
-          const chunks: string[] = [];
-          const chunkSize = 8192;
-          for (let i = 0; i < binary.length; i += chunkSize) {
-            chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
+          if (binary) {
+            const chunks: string[] = [];
+            const chunkSize = 8192;
+            for (let i = 0; i < binary.length; i += chunkSize) {
+              chunks.push(String.fromCharCode(...binary.subarray(i, i + chunkSize)));
+            }
+            const base64 = btoa(chunks.join(""));
+            const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
+            const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
+            replacement = tag.slice(0, srcValStart) + `data:${mimeType};base64,${base64}` + tag.slice(srcValEnd);
           }
-          const base64 = btoa(chunks.join(""));
-          const ext = context.fs.extname(resolvedPath).toLowerCase().substring(1);
-          const mimeType = ext === "svg" ? "image/svg+xml" : `image/${ext}`;
-          replacement = tag.slice(0, srcValStart) + `data:${mimeType};base64,${base64}` + tag.slice(srcValEnd);
         } catch (e) {
           console.warn(`Failed to read image ${fullUri}:`, e);
         }
@@ -3741,7 +3942,7 @@ export function buildComponentProperties(
   classInstance: ModelicaClassInstance,
   componentName: string,
 ): ComponentPropertyData | null {
-  const component = classInstance?.components?.find((c: any) => c.name === componentName);
+  const component = classInstance?.components?.find((c) => c.name === componentName);
   if (!component) return null;
 
   const componentClassInstance = component.classInstance;
@@ -3752,9 +3953,9 @@ export function buildComponentProperties(
   // Extract parameters and build structured tabs & groups
   const parameters: ComponentPropertyData["parameters"] = [];
   const tabMap = new Map<string, Map<string, PropertyFieldConfig[]>>();
-  const values: Record<string, any> = {
+  const values: Record<string, unknown> = {
     name: component.name ?? "",
-    description: component["description"] ?? "",
+    description: component.description ?? "",
   };
 
   const getOrCreateGroup = (tabName: string, groupName: string): PropertyFieldConfig[] => {
@@ -3769,11 +3970,11 @@ export function buildComponentProperties(
   };
 
   // Collect candidate elements across elements (tests), inherited components, and direct components
-  const candidateElements: any[] = [];
+  const candidateElements: DataElementLike[] = [];
   const visitedNames = new Set<string>();
 
   if (Array.isArray(componentClassInstance["elements"])) {
-    for (const el of componentClassInstance["elements"]) {
+    for (const el of componentClassInstance["elements"] as DataElementLike[]) {
       if (el && el.name && !visitedNames.has(el.name)) {
         visitedNames.add(el.name);
         candidateElements.push(el);
@@ -3785,7 +3986,7 @@ export function buildComponentProperties(
   for (const comp of inheritedComponents) {
     if (comp && comp.name && !visitedNames.has(comp.name)) {
       visitedNames.add(comp.name);
-      candidateElements.push(comp);
+      candidateElements.push(comp as DataElementLike);
     }
   }
 
@@ -3793,10 +3994,14 @@ export function buildComponentProperties(
     for (const comp of componentClassInstance.components) {
       if (comp && comp.name && !visitedNames.has(comp.name)) {
         visitedNames.add(comp.name);
-        candidateElements.push(comp);
+        candidateElements.push(comp as DataElementLike);
       }
     }
   }
+
+  const compClassDb = componentClassInstance.db as DataQueryDbLike | undefined;
+  const compMod = component["modification"] as DataModificationLike | undefined;
+  const compDirectCst = (component["cstNode"] ?? component["abstractSyntaxNode"]) as DataSyntaxNode | undefined;
 
   for (const element of candidateElements) {
     const isComp =
@@ -3806,23 +4011,24 @@ export function buildComponentProperties(
       element.kind === "Variable" ||
       element.declaration?.kind === "Variable";
 
-    let variability = element.variability;
+    let variability: unknown = element.variability;
     if (!variability && element.declaration?.metadata?.variability) {
       variability = element.declaration.metadata.variability;
     }
-    if (!variability && element.declaration?.id != null && componentClassInstance.db?.query) {
+    if (!variability && element.declaration?.id != null && compClassDb?.query) {
       try {
-        variability = componentClassInstance.db.query("variability", element.declaration.id);
+        variability = compClassDb.query("variability", element.declaration.id);
       } catch {}
     }
     if (!variability) {
-      let node = element.cstNode ?? element.abstractSyntaxNode;
+      const node = element.cstNode ?? element.abstractSyntaxNode;
       let p = node?.parent;
       while (p && !variability) {
-        if (Cst.ComponentClause.is(p)) {
+        if (Cst.ComponentClause.is(asDataSyntaxNode(p))) {
           const tp =
-            (Cst.ComponentClause.is(p) ? Cst.ComponentClause.typePrefix(p) : null) ??
-            p.children?.find((c: any) => Cst.TypePrefix.is(c));
+            (Cst.ComponentClause.is(asDataSyntaxNode(p))
+              ? Cst.ComponentClause.typePrefix(asDataSyntaxNode(p))
+              : null) ?? p.children?.find((c) => Cst.TypePrefix.is(asDataSyntaxNode(c)));
           if (tp?.text?.includes("parameter")) variability = ModelicaVariability.PARAMETER;
           else if (tp?.text?.includes("constant")) variability = ModelicaVariability.CONSTANT;
           break;
@@ -3843,16 +4049,15 @@ export function buildComponentProperties(
     if (isComp && isParameter) {
       // 1. Caller override (e.g. R(R = 100))
       let value: string | undefined = undefined;
-      const compArgExpr = (component["modification"] as any)?.getModificationArgument?.(element.name ?? "")?.expression;
+      const compArgExpr = compMod?.getModificationArgument?.(element.name ?? "")?.expression;
       if (compArgExpr != null) {
         value = formatPropertyValue(compArgExpr);
       }
       if (!value) {
-        const compCst = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
-        value = extractCstModifierValue(compCst, element.name ?? "");
+        value = extractCstModifierValue(compDirectCst, element.name ?? "");
       }
-      if (!value && component["cstNode"]) {
-        const compCstText = stripAnnotationsAndComments(component["cstNode"].text ?? "");
+      if (!value && compDirectCst) {
+        const compCstText = stripAnnotationsAndComments(compDirectCst.text ?? "");
         const extracted = extractNamedModAssignmentFallback(compCstText, element.name ?? "", true);
         if (extracted) {
           value = extracted;
@@ -3861,24 +4066,24 @@ export function buildComponentProperties(
 
       // 2. Element's own default or start attribute
       if (!value) {
-        const elemExpr = (element.modification as any)?.expression;
+        const elemExpr = element.modification?.expression;
         if (elemExpr != null) {
           value = formatPropertyValue(elemExpr);
         }
       }
       if (!value) {
-        const elemStartMod = (element.modification as any)?.getModificationArgument?.("start")?.expression;
+        const elemStartMod = element.modification?.getModificationArgument?.("start")?.expression;
         if (elemStartMod != null) {
           value = formatPropertyValue(elemStartMod);
         }
       }
       if (!value) {
-        const elemCst = (element as any)?.cstNode ?? (element as any)?.abstractSyntaxNode;
+        const elemCst = element.cstNode ?? element.abstractSyntaxNode;
         value = extractCstModifierValue(elemCst, "start") ?? extractCstModifierValue(elemCst, element.name ?? "");
       }
       if (!value && element.cstNode) {
         const valModNode = (element.cstNode.children || []).find(
-          (c: any) => Cst.Modification.is(c) || c.type === "modification",
+          (c) => Cst.Modification.is(asDataSyntaxNode(c)) || c.type === "modification",
         );
         if (valModNode) {
           const modText = valModNode.text?.trim();
@@ -3900,8 +4105,7 @@ export function buildComponentProperties(
         }
       }
       if (!value) {
-        const metaDefault =
-          element.declaration?.metadata?.defaultValue ?? (element as { defaultValue?: unknown }).defaultValue;
+        const metaDefault = element.declaration?.metadata?.defaultValue ?? element.defaultValue;
         if (metaDefault !== undefined && metaDefault !== null && String(metaDefault) !== "") {
           value = String(metaDefault);
         }
@@ -3932,10 +4136,10 @@ export function buildComponentProperties(
         value === "false";
 
       // Extract Dialog(...) annotation
-      let dialogAnn: any = null;
+      let dialogAnn: DialogAnnotationLike | null = null;
       if (typeof element.annotation === "function") {
         try {
-          dialogAnn = element.annotation("Dialog");
+          dialogAnn = element.annotation("Dialog") as DialogAnnotationLike | null;
         } catch {
           // ignore
         }
@@ -3943,10 +4147,10 @@ export function buildComponentProperties(
       const compCst =
         element.cstNode ??
         element.abstractSyntaxNode ??
-        (element.id && (element as any).db?.cstNode ? (element as any).db.cstNode(element.id) : null);
+        (element.id && element.db?.cstNode ? element.db.cstNode(element.id) : null);
       if (!dialogAnn && compCst) {
         try {
-          dialogAnn = evaluator.evaluate(compCst, "Dialog");
+          dialogAnn = evaluator.evaluate(compCst, "Dialog") as DialogAnnotationLike | null;
         } catch {
           // ignore
         }
@@ -3967,20 +4171,22 @@ export function buildComponentProperties(
       let choices: string[] | undefined = undefined;
       const enumLits = element.classInstance?.enumLiterals;
       if (Array.isArray(enumLits) && enumLits.length > 0) {
-        choices = enumLits.map((lit: any) => lit.name ?? String(lit));
+        choices = enumLits.map((lit) =>
+          typeof lit === "object" && lit !== null ? (lit.name ?? String(lit)) : String(lit),
+        );
       }
 
-      let choicesAnn: any = null;
+      let choicesAnn: ChoicesAnnotationLike | null = null;
       if (typeof element.annotation === "function") {
         try {
-          choicesAnn = element.annotation("choices");
+          choicesAnn = element.annotation("choices") as ChoicesAnnotationLike | null;
         } catch {
           // ignore
         }
       }
       if (!choicesAnn && compCst) {
         try {
-          choicesAnn = evaluator.evaluate(compCst, "choices");
+          choicesAnn = evaluator.evaluate(compCst, "choices") as ChoicesAnnotationLike | null;
         } catch {
           // ignore
         }
@@ -3988,9 +4194,13 @@ export function buildComponentProperties(
       if (choicesAnn && typeof choicesAnn === "object") {
         const rawChoices = choicesAnn.choice || choicesAnn.choices;
         if (Array.isArray(rawChoices)) {
-          choices = rawChoices.map((c: any) =>
-            typeof c === "object" && c !== null ? String(c.value ?? c.name ?? c) : String(c),
-          );
+          choices = rawChoices.map((c: unknown) => {
+            if (typeof c === "object" && c !== null) {
+              const obj = c as { value?: unknown; name?: unknown };
+              return String(obj.value ?? obj.name ?? c);
+            }
+            return String(c);
+          });
         } else if (rawChoices !== undefined) {
           choices = [String(rawChoices)];
         }
@@ -4061,20 +4271,19 @@ export function buildComponentProperties(
 
       if (dialogAnn && typeof dialogAnn === "object" && dialogAnn.showStartAttribute) {
         const startMod =
-          (element.classInstance?.modification as any)?.getModificationArgument?.("start") ??
-          (element.modification as any)?.getModificationArgument?.("start");
-        const compStartArg = (component["modification"] as any)
+          element.classInstance?.modification?.getModificationArgument?.("start") ??
+          element.modification?.getModificationArgument?.("start");
+        const compStartArg = compMod
           ?.getModificationArgument?.(element.name ?? "")
           ?.classModification?.getModificationArgument?.("start");
         let startVal = formatPropertyValue(compStartArg?.expression) ?? formatPropertyValue(startMod?.expression);
 
         if (!startVal) {
-          const compCst = (component as any)?.cstNode ?? (component as any)?.abstractSyntaxNode;
-          const nestedStart = extractCstNestedModifierValue(compCst, element.name ?? "", "start");
+          const nestedStart = extractCstNestedModifierValue(compDirectCst, element.name ?? "", "start");
           if (nestedStart) {
             startVal = nestedStart;
           } else {
-            const elemCst = (element as any)?.cstNode ?? (element as any)?.abstractSyntaxNode;
+            const elemCst = element.cstNode ?? element.abstractSyntaxNode;
             const elemStart = extractCstModifierValue(elemCst, "start");
             if (elemStart) {
               startVal = elemStart;
@@ -4108,7 +4317,7 @@ export function buildComponentProperties(
         } | null)
       : null;
 
-  const context = (classInstance as any).context;
+  const context = classInstance["context"] as DataResourceContextLike | undefined;
   const docInfo = processHtml(docAnnotation?.info, context);
   const docRevisions = processHtml(docAnnotation?.revisions, context);
   if (docInfo) values["docInfo"] = docInfo;
@@ -4181,10 +4390,10 @@ export function buildComponentProperties(
   };
 
   return {
-    classKind: componentClassInstance["classKind"],
-    className: (componentClassInstance["compositeName"] as string | undefined) || componentClassInstance.name || "",
+    classKind: componentClassInstance.classKind ?? "unknown",
+    className: componentClassInstance.compositeName || componentClassInstance.name || "",
     name: component.name ?? "",
-    description: component["description"] ?? "",
+    description: component.description ?? "",
     parameters,
     docInfo,
     docRevisions,

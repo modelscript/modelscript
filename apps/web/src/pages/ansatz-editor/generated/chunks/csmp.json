@@ -1,0 +1,73 @@
+[
+  {
+    "id": "csmp-01-rc-charging",
+    "lang": "csmp",
+    "subFormats": ["csmp"],
+    "difficulty": 1,
+    "title": "First-Order RC Charging Circuit",
+    "description": "Step charging response of a series resistor-capacitor network modeled with IBM CSMP/360 INTGRL and RKSFX fixed-step integration.",
+    "category": "Electrical Circuits",
+    "tags": ["csmp", "rc-circuit", "first-order", "intgrl"],
+    "activeFile": "rc_charging.csmp",
+    "fileNames": ["rc_charging.csmp"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "* IBM System/360 CSMP First-Order RC Charging Circuit\nTITLE FIRST-ORDER RC CHARGING CIRCUIT\nINITIAL\n  PARAM R = 1000.0, C = 0.001, VIN = 5.0\n  INCON VC0 = 0.0\n  TAU = R * C\nDYNAMIC\nSORT\n  VCDOT = (VIN - VC) / TAU\n  VC = INTGRL(VC0, VCDOT)\n  ICURR = (VIN - VC) / R\nTERMINAL\n  VFINAL = VC\nTIMER FINTIM = 5.0, DELT = 0.01, PRDEL = 0.5, OUTDEL = 0.5\nMETHOD RKSFX\nPRINT VC, ICURR\nEND\nSTOP\n"
+  },
+  {
+    "id": "csmp-02-harmonic-oscillator",
+    "lang": "csmp",
+    "subFormats": ["csmp"],
+    "difficulty": 2,
+    "title": "Damped Harmonic Oscillator",
+    "description": "Second-order linear spring-mass-damper mechanical oscillator using paired INTGRL integrators and a NOSORT energy balance calculation.",
+    "category": "Mechanical Dynamics",
+    "tags": ["csmp", "oscillator", "intgrl", "nosort"],
+    "activeFile": "harmonic_oscillator.csmp",
+    "fileNames": ["harmonic_oscillator.csmp"],
+    "fileCount": 1,
+    "code": "* IBM System/360 CSMP Damped Harmonic Oscillator\nTITLE DAMPED HARMONIC OSCILLATOR\nINITIAL\n  PARAM M = 1.5, C = 0.45, K = 12.0\n  INCON X0 = 0.25, V0 = 0.0\n  WN = SQRT(K / M)\nDYNAMIC\nSORT\n  XDD = (-C * XD - K * X) / M\n  XD = INTGRL(V0, XDD)\n  X = INTGRL(X0, XD)\nNOSORT\n  ENERGY = 0.5 * M * XD**2 + 0.5 * K * X**2\nTERMINAL\n  FINAL_E = ENERGY\nTIMER FINTIM = 10.0, DELT = 0.01, PRDEL = 0.5, OUTDEL = 0.5\nMETHOD RKSFX\nPRINT X, XD, ENERGY\nPRTPLT X(XD)\nEND\nSTOP\n"
+  },
+  {
+    "id": "csmp-03-spacecraft-thruster",
+    "lang": "csmp",
+    "subFormats": ["csmp"],
+    "difficulty": 3,
+    "title": "Relay-Controlled Spacecraft Attitude Thruster",
+    "description": "Single-axis rigid spacecraft attitude control using cold-gas reaction thrusters with dead-space and hysteresis switching nonlinearities.",
+    "category": "Aerospace Control",
+    "tags": ["csmp", "spacecraft", "deadsp", "hyst", "attitude"],
+    "activeFile": "spacecraft_thruster.csmp",
+    "fileNames": ["spacecraft_thruster.csmp"],
+    "fileCount": 1,
+    "code": "* Single-Axis Spacecraft Attitude Control with Deadspace Relay Thrusters\nTITLE SPACECRAFT ATTITUDE THRUSTER RELAY CONTROL\nINITIAL\n  PARAM INERTIA = 120.0, THRUST = 1.8, KRATE = 4.0, DBAND = 0.02\n  INCON THETA0 = 0.35, OMEGA0 = 0.0\nDYNAMIC\nSORT\n  ERR = -THETA - KRATE * OMEGA\n  DEAD_ERR = DEADSP(-DBAND, DBAND, ERR)\n  TORQUE = THRUST * LIMIT(-1.0, 1.0, DEAD_ERR * 100.0)\n  ALPHA = TORQUE / INERTIA\n  OMEGA = INTGRL(OMEGA0, ALPHA)\n  THETA = INTGRL(THETA0, OMEGA)\n  FUEL = INTGRL(0.0, ABS(TORQUE))\nTERMINAL\n  TOTAL_IMPULSE = FUEL\nTIMER FINTIM = 40.0, DELT = 0.05, PRDEL = 2.0, OUTDEL = 2.0\nMETHOD RKSFX\nPRINT THETA, OMEGA, TORQUE, FUEL\nEND\nSTOP\n"
+  },
+  {
+    "id": "csmp-04-nonlinear-pendulum",
+    "lang": "csmp",
+    "subFormats": ["csmp"],
+    "difficulty": 4,
+    "title": "Nonlinear Pendulum Phase-Plane Dynamics",
+    "description": "Large-angle nonlinear gravity pendulum with viscous pivot friction and external periodic torque forcing, illustrating phase-plane trajectories.",
+    "category": "Nonlinear Dynamics",
+    "tags": ["csmp", "pendulum", "nonlinear", "phase-plane"],
+    "activeFile": "nonlinear_pendulum.csmp",
+    "fileNames": ["nonlinear_pendulum.csmp"],
+    "fileCount": 1,
+    "code": "* Large-Angle Forced Nonlinear Pendulum Phase-Plane Study\nTITLE NONLINEAR PENDULUM PHASE-PLANE DYNAMICS\nINITIAL\n  CONST GRAV = 9.80665\n  PARAM LENGTH = 1.2, MASS = 2.0, DAMP = 0.15, FAMP = 1.4, WDRIVE = 2.4\n  INCON PHI0 = 2.1, PHID0 = 0.0\n  GL = GRAV / LENGTH\nDYNAMIC\nSORT\n  FORCING = (FAMP / (MASS * LENGTH**2)) * SIN(WDRIVE * TIME)\n  PHIDD = -GL * SIN(PHI) - (DAMP / MASS) * PHID + FORCING\n  PHID = INTGRL(PHID0, PHIDD)\n  PHI = INTGRL(PHI0, PHID)\nNOSORT\n  POT_E = MASS * GRAV * LENGTH * (1.0 - COS(PHI))\n  KIN_E = 0.5 * MASS * (LENGTH * PHID)**2\n  TOT_E = POT_E + KIN_E\nTERMINAL\n  FINAL_PHI = PHI\nTIMER FINTIM = 20.0, DELT = 0.01, PRDEL = 1.0, OUTDEL = 1.0\nMETHOD RKSFX\nPRINT PHI, PHID, TOT_E\nPRTPLT PHI(PHID)\nEND\nSTOP\n"
+  },
+  {
+    "id": "csmp-05-hydraulic-servo",
+    "lang": "csmp",
+    "subFormats": ["csmp"],
+    "difficulty": 5,
+    "title": "Multi-Stage Hydraulic Servomechanism with AFGEN Valve Curve",
+    "description": "Closed-loop electro-hydraulic position servomechanism combining a reusable MACRO spool-valve stage, AFGEN nonlinear orifice flow table, and PROCEDURE saturation clamping.",
+    "category": "Fluid Power & Controls",
+    "tags": ["csmp", "hydraulic", "afgen", "macro", "procedure"],
+    "activeFile": "hydraulic_servo.csmp",
+    "fileNames": ["hydraulic_servo.csmp"],
+    "fileCount": 1,
+    "code": "* Multi-Stage Electro-Hydraulic Servomechanism with Nonlinear Valve Table\nTITLE HYDRAULIC SERVOMECHANISM WITH AFGEN VALVE CURVE\nFUNCTION VALVEC = (-1.0, -0.85), (-0.5, -0.55), (-0.1, -0.05), (0.0, 0.0), (0.1, 0.05), (0.5, 0.55), (1.0, 0.85)\nMACRO YOUT = LAGBLK(UIN, TAU, Y0)\n  YOUT = INTGRL(Y0, (UIN - YOUT) / TAU)\nENDMAC\nINITIAL\n  PARAM KP = 4.5, TAUV = 0.04, AREA = 0.0025, MASS = 18.0, VISC = 45.0, BETA = 1.2E9, VOL = 0.001\n  PARAM XREF = 0.08, QMAX = 0.0012\n  INCON X0 = 0.0, V0 = 0.0, P0 = 0.0\nDYNAMIC\nSORT\n  POSERR = XREF - XPOS\nPROCEDURE UVALVE = CLAMP(POSERR, KP)\n  UVALVE = LIMIT(-1.0, 1.0, KP * POSERR)\nENDPRO\n  XSPOOL = LAGBLK(UVALVE, TAUV, 0.0)\n  QFLOW = QMAX * AFGEN(VALVEC, XSPOOL)\n  PDOT = (BETA / VOL) * (QFLOW - AREA * VEL)\n  PRESS = INTGRL(P0, PDOT)\n  ACCEL = (AREA * PRESS - VISC * VEL) / MASS\n  VEL = INTGRL(V0, ACCEL)\n  XPOS = INTGRL(X0, VEL)\nTERMINAL\n  FINAL_ERR = XREF - XPOS\nTIMER FINTIM = 3.0, DELT = 0.002, PRDEL = 0.2, OUTDEL = 0.2\nMETHOD RKSFX\nPRINT XPOS, VEL, PRESS, XSPOOL\nEND\nSTOP\n"
+  }
+]

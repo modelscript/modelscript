@@ -135,7 +135,7 @@ graph LR
         OLGA["SLB OLGA / Aspen HYSYS"]
     end
 
-    subgraph "Ansatz Platform Architecture"
+    subgraph "Ansatz Network Architecture"
         Studio["Ansatz Studio (/studio)"]
         Editor["Ansatz (/editor)"]
         Registry["Package Registry (/packages)"]

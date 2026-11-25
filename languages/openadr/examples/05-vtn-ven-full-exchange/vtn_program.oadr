@@ -1,0 +1,25 @@
+program "Regional_Grid_Flex_2026" {
+  event "DR_METRO_PEAK_05" {
+    status: "active"
+    signalType: "setpoint"
+    targetVenId: "VEN-METRO-AGGREGATOR-01"
+
+    interval {
+      start: "2026-08-18T16:00:00Z"
+      durationSeconds: 3600
+      payload: 500.0
+    }
+
+    interval {
+      start: "2026-08-18T17:00:00Z"
+      durationSeconds: 3600
+      payload: 750.0
+    }
+
+    interval {
+      start: "2026-08-18T18:00:00Z"
+      durationSeconds: 3600
+      payload: 400.0
+    }
+  }
+}

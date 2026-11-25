@@ -1,0 +1,11 @@
+{
+  "id": "obj-05-architectural-pavilion",
+  "lang": "obj",
+  "subFormats": ["wavefront-obj", "wavefront-mtl"],
+  "difficulty": 5,
+  "title": "Architectural Pavilion with Concrete Plinth, Columns & Glass Roof",
+  "description": "Multi-object architectural pavilion Wavefront OBJ combining a concrete plinth, two structural steel columns, and a translucent glazed canopy referencing a 3-material MTL library.",
+  "category": "Architectural Visualization",
+  "tags": ["obj", "mtl", "architecture", "glass", "multi-object", "multi-file"],
+  "activeFile": "pavilion.obj"
+}

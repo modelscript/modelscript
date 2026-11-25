@@ -1,0 +1,11 @@
+{
+  "id": "oscal-04-ot-scada-ssp-baseline",
+  "lang": "oscal",
+  "subFormats": ["oscal.json"],
+  "difficulty": 4,
+  "title": "NIST SP 800-82 OT SCADA System Security Plan",
+  "description": "Multi-file OT SCADA System Security Plan implementing all baseline controls from its companion OT profile and catalog with verified component UUID bindings.",
+  "category": "OT/ICS Cybersecurity",
+  "tags": ["oscal", "ssp", "scada", "nist-800-82", "multi-file"],
+  "activeFile": "ssp.oscal.json"
+}

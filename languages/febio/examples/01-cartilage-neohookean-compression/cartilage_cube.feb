@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<febio_spec version="4.0">
+  <Module type="solid"/>
+  <Control>
+    <analysis>STATIC</analysis>
+    <time_steps>10</time_steps>
+    <step_size>0.1</step_size>
+  </Control>
+  <Material>
+    <material id="1" name="ArticularCartilage" type="neo-Hookean">
+      <E>1.2</E>
+      <v>0.42</v>
+      <density>1.10</density>
+    </material>
+  </Material>
+  <Mesh>
+    <Nodes name="CartilageNodes">
+      <node id="1">0.0, 0.0, 0.0</node>
+      <node id="2">1.0, 0.0, 0.0</node>
+      <node id="3">1.0, 1.0, 0.0</node>
+      <node id="4">0.0, 1.0, 0.0</node>
+      <node id="5">0.0, 0.0, 1.0</node>
+      <node id="6">1.0, 0.0, 1.0</node>
+      <node id="7">1.0, 1.0, 1.0</node>
+      <node id="8">0.0, 1.0, 1.0</node>
+    </Nodes>
+    <Elements type="hex8" name="CartilageDomain">
+      <elem id="1">1, 2, 3, 4, 5, 6, 7, 8</elem>
+    </Elements>
+    <NodeSet name="BottomFace">
+      <node id="1"/>
+      <node id="2"/>
+      <node id="3"/>
+      <node id="4"/>
+    </NodeSet>
+    <NodeSet name="TopFace">
+      <node id="5"/>
+      <node id="6"/>
+      <node id="7"/>
+      <node id="8"/>
+    </NodeSet>
+  </Mesh>
+  <MeshDomains>
+    <SolidDomain name="CartilageDomain" mat="1"/>
+  </MeshDomains>
+  <Boundary>
+    <bc name="FixBottom" type="zero displacement" node_set="BottomFace">
+      <x_dof>1</x_dof>
+      <y_dof>1</y_dof>
+      <z_dof>1</z_dof>
+    </bc>
+    <bc name="CompressTop" type="prescribed displacement" node_set="TopFace">
+      <dof>z</dof>
+      <value>-0.15</value>
+    </bc>
+  </Boundary>
+</febio_spec>

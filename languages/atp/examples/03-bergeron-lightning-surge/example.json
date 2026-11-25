@@ -1,0 +1,11 @@
+{
+  "id": "atp-03-bergeron-lightning-surge",
+  "lang": "atp",
+  "subFormats": ["atp"],
+  "difficulty": 3,
+  "title": "Distributed Transmission Line Lightning Surge",
+  "description": "Multi-section pi-cascade representation of a 230 kV overhead transmission corridor subjected to a double-exponential lightning impulse and tower footing ground resistance.",
+  "category": "Power Systems EMT",
+  "tags": ["atp", "lightning", "traveling-wave", "230kv", "surge"],
+  "activeFile": "lightning_surge.atp"
+}

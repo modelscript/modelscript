@@ -1,0 +1,11 @@
+{
+  "id": "cgmes-02-three-bus-microgrid",
+  "lang": "cgmes",
+  "subFormats": ["cgmes", "xml"],
+  "difficulty": 2,
+  "title": "3-Bus MicroGrid Solved State (EQ + TP + SSH + SV)",
+  "description": "Complete 4-profile CGMES bundle representing a 3-bus 220 kV loop with synchronous generation, city load, capacitor bank, steady-state hypothesis, and solved bus voltages.",
+  "category": "CIM / CGMES Profiles",
+  "tags": ["cgmes", "eq", "tp", "ssh", "sv", "multi-file"],
+  "activeFile": "EQ.xml"
+}

@@ -36,6 +36,7 @@ import {
 import { parseModelicaParameters } from "../util/modelica-params";
 
 const VALID_ROTUNDA_ENVIRONMENTS: readonly RotundaEnvironmentId[] = [
+  "atrium",
   "outdoors",
   "warehouse",
   "office",
@@ -103,7 +104,7 @@ function resolveCanvasSessionState(params: {
     (!isHandoffActive && params.scenarioEnvironmentOverride ? params.scenarioEnvironmentOverride : null) ??
     explicitEnvParam ??
     (!isHandoffActive && activeScenario ? activeScenario.recommendedEnvironment : null) ??
-    "outdoors";
+    "atrium";
   const activeBoardId =
     params.boardId ||
     params.vrHandoffBoard?.id ||

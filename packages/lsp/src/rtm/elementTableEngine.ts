@@ -25,7 +25,7 @@ export interface TableColumnDefinition {
 export interface ElementsTablePayload {
   metaclass: string;
   columns: TableColumnDefinition[];
-  rows: Record<string, any>[];
+  rows: Record<string, unknown>[];
   totalCount: number;
   tabularPayload?: CompiledTabularPayload | undefined;
 }
@@ -263,7 +263,7 @@ export class ElementTableEngine {
    */
   static buildElementsTable(index: SymbolIndex, metaclass: string, uriFilter?: string): ElementsTablePayload {
     const columns = this.getColumnDefinitions(metaclass);
-    const rows: Record<string, any>[] = [];
+    const rows: Record<string, unknown>[] = [];
 
     for (const entry of index.symbols.values()) {
       if (uriFilter && entry.resourceId && entry.resourceId !== uriFilter) continue;
@@ -273,7 +273,7 @@ export class ElementTableEngine {
       const shortName = qName.split(".").pop() ?? qName;
       const meta = entry.metadata ?? {};
 
-      const row: Record<string, any> = {
+      const row: Record<string, unknown> = {
         id: entry.id,
         name: shortName,
         qualifiedName: qName,
@@ -303,7 +303,7 @@ export class ElementTableEngine {
     }
 
     // Sort rows alphabetically by qualifiedName
-    rows.sort((a, b) => a["qualifiedName"].localeCompare(b["qualifiedName"]));
+    rows.sort((a, b) => String(a["qualifiedName"] ?? "").localeCompare(String(b["qualifiedName"] ?? "")));
 
     return {
       metaclass,

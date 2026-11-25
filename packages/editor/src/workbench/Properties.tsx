@@ -72,7 +72,13 @@ interface PropertiesWidgetProps {
   multiSelectedProperties?: ComponentProperties[] | undefined;
   onBulkParameterChange?: ((componentNames: string[], paramName: string, value: string) => void) | undefined;
   isLoading?: boolean | undefined;
-  context?: any;
+  context?:
+    | {
+        resolveURI(uri: string): string | null;
+        fs: { readBinary(path: string): Uint8Array; extname(path: string): string };
+      }
+    | null
+    | undefined;
   width?: number | undefined;
   onNameChange?: ((name: string) => void) | undefined;
   onDescriptionChange?: ((description: string) => void) | undefined;
@@ -186,7 +192,7 @@ function ExpandedFormulaEditor({
   onChange: (val: string) => void;
   onClose?: () => void;
   unit?: string | undefined;
-  contextValues?: Record<string, any> | undefined;
+  contextValues?: Record<string, unknown> | undefined;
 }) {
   const evalResult = useMemo(() => {
     return tryEvaluateFormula(value, contextValues);
@@ -319,7 +325,7 @@ function ParameterRow({
   parameter: PropertyData;
   colorMode?: string | undefined;
   onParameterChange?: ((name: string, value: string) => void) | undefined;
-  contextValues?: Record<string, any> | undefined;
+  contextValues?: Record<string, unknown> | undefined;
   density?: "comfortable" | "compact" | undefined;
 }) {
   const { value, unit, isBoolean } = parameter;
@@ -662,9 +668,9 @@ function SchemaFieldRow({
   onResolveConflict,
   density = "comfortable",
 }: {
-  field: any;
-  currentValue: any;
-  contextValues: Record<string, any>;
+  field: PropertyFieldConfig;
+  currentValue: unknown;
+  contextValues: Record<string, unknown>;
   conflict?: PropertyConflict | null | undefined;
   onParameterChange?: ((name: string, value: string) => void) | undefined;
   onResolveConflict?: ((resolution: "keep_local" | "accept_remote") => void) | undefined;
@@ -1507,7 +1513,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const activeTab = visibleTabs.find((t: any) => t.id === activeTabId) || visibleTabs[0];
+  const activeTab = visibleTabs.find((t) => t.id === activeTabId) || visibleTabs[0];
 
   return (
     <div
@@ -1801,7 +1807,7 @@ export default function PropertiesWidget(props: PropertiesWidgetProps) {
               overflowX: "auto",
             }}
           >
-            {visibleTabs.map((t: any) => {
+            {visibleTabs.map((t) => {
               const isActive = t.id === activeTab?.id;
               return (
                 <button

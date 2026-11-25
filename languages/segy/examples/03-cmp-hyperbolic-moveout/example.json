@@ -1,0 +1,11 @@
+{
+  "id": "segy-03-cmp-hyperbolic-moveout",
+  "lang": "segy",
+  "subFormats": ["sgy"],
+  "difficulty": 3,
+  "title": "Common-Midpoint (CMP) Hyperbolic Moveout Gather",
+  "description": "Pre-stack Common-Midpoint (CMP) 24-fold seismic gather header documenting source-receiver offsets from 100 m to 2400 m, RMS velocity profile for Normal Moveout (NMO) correction, and stretch mute limits.",
+  "category": "Seismic & Subsurface Geophysics",
+  "tags": ["segy", "cmp-gather", "nmo", "velocity-analysis"],
+  "activeFile": "cmp_nmo.sgy"
+}

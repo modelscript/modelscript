@@ -24,41 +24,111 @@ export class ScriptScope {
   }
 }
 
+export interface ScriptAstPart {
+  identifier?: { text?: string | undefined } | undefined;
+  text?: string | undefined;
+}
+
+export interface ScriptForIndexNode {
+  identifier?: { text?: string | undefined } | undefined;
+  name?: string | undefined;
+  expression?: ScriptAstNode | undefined;
+  children?: readonly ScriptAstNode[] | undefined;
+}
+
+export interface ScriptElseIfClause {
+  condition?: ScriptAstNode | undefined;
+  statements?: readonly ScriptAstNode[] | undefined;
+}
+
+export interface ScriptAstNode {
+  type?: string | undefined;
+  text?: string | undefined;
+  children?: readonly ScriptAstNode[] | undefined;
+  childForFieldName?: ((name: string) => ScriptAstNode | null | undefined) | undefined;
+  identifier?: { text?: string | undefined } | undefined;
+  name?: string | { text?: string | undefined } | undefined;
+  statements?: readonly ScriptAstNode[] | undefined;
+  classDefinitions?: readonly ScriptAstNode[] | undefined;
+  componentClauses?: readonly ScriptAstNode[] | undefined;
+  componentDeclarations?: readonly ScriptAstNode[] | undefined;
+  declaration?: ScriptAstNode | undefined;
+  modification?:
+    | {
+        modificationExpression?: { expression?: ScriptAstNode | undefined } | undefined;
+        expression?: ScriptAstNode | undefined;
+      }
+    | undefined;
+  functionCallArguments?:
+    | {
+        arguments?: readonly (ScriptAstNode & { expression?: ScriptAstNode | undefined })[] | undefined;
+        namedArguments?:
+          | readonly {
+              identifier?: { text?: string | undefined } | undefined;
+              name?: string | undefined;
+              argument?: { expression?: ScriptAstNode | undefined } | undefined;
+              expression?: ScriptAstNode | undefined;
+            }[]
+          | undefined;
+      }
+    | undefined;
+  arguments?: readonly (ScriptAstNode & { expression?: ScriptAstNode | undefined })[] | undefined;
+  namedArguments?:
+    | readonly {
+        identifier?: { text?: string | undefined } | undefined;
+        name?: string | undefined;
+        argument?: { expression?: ScriptAstNode | undefined } | undefined;
+        expression?: ScriptAstNode | undefined;
+      }[]
+    | undefined;
+  target?: ScriptAstNode | undefined;
+  source?: ScriptAstNode | undefined;
+  parts?: readonly (ScriptAstPart | string)[] | undefined;
+  functionReference?: ScriptAstNode | undefined;
+  condition?: ScriptAstNode | undefined;
+  elseIfStatementClauses?: readonly ScriptElseIfClause[] | undefined;
+  elseStatements?: readonly ScriptAstNode[] | undefined;
+  forIndexes?: readonly ScriptForIndexNode[] | undefined;
+  expression?: ScriptAstNode | undefined;
+}
+
+export interface ArenaScriptContext {
+  load?: ((input: string, resourceId?: string) => unknown) | undefined;
+  fs?: { read: (p: string) => string; stat?: ((p: string) => unknown) | undefined } | undefined;
+  loadFromModelicaPath?: ((pkgName: string) => Promise<unknown>) | undefined;
+}
+
 export class ArenaScriptInterpreter {
   public scope = new ScriptScope();
   private output: string[] = [];
 
   constructor(
     private queryEngine: QueryEngine,
-    private context?: {
-      load?: ((input: string, resourceId?: string) => any) | undefined;
-      fs?: { read: (p: string) => string; stat?: ((p: string) => any) | undefined } | undefined;
-      loadFromModelicaPath?: ((pkgName: string) => Promise<any>) | undefined;
-    },
+    private context?: ArenaScriptContext,
   ) {}
 
-  private getClassName(classDef: any): string | null {
+  private getClassName(classDef: ScriptAstNode): string | null {
     if (classDef.identifier?.text) return classDef.identifier.text;
-    if (classDef.name?.text) return classDef.name.text;
+    if (typeof classDef.name === "object" && classDef.name?.text) return classDef.name.text;
     if (typeof classDef.name === "string") return classDef.name;
-    const spec = classDef.children?.find((c: any) => c.type === "class_specifier");
+    const spec = classDef.children?.find((c) => c.type === "class_specifier");
     if (spec) {
-      const longSpec = spec.children?.find((c: any) => c.type === "long_class_specifier") || spec;
-      const id = longSpec.children?.find((c: any) => c.type === "identifier");
+      const longSpec = spec.children?.find((c) => c.type === "long_class_specifier") || spec;
+      const id = longSpec.children?.find((c) => c.type === "identifier");
       if (id?.text) return id.text;
     }
     return null;
   }
 
-  private extractStatements(root: any): any[] {
-    const directStmts =
-      root.statements ??
-      root.children?.filter((c: any) => c.type?.includes("statement") || c.childForFieldName?.("statement") != null) ??
-      [];
+  private extractStatements(root: ScriptAstNode): ScriptAstNode[] {
+    const directStmts: ScriptAstNode[] = root.statements
+      ? [...root.statements]
+      : (root.children?.filter((c) => c.type?.includes("statement") || c.childForFieldName?.("statement") != null) ??
+        []);
     if (directStmts.length > 0) return directStmts;
 
-    const stmts: any[] = [];
-    function findStmts(n: any) {
+    const stmts: ScriptAstNode[] = [];
+    function findStmts(n: ScriptAstNode | null | undefined) {
       if (!n) return;
       if (
         n.type === "statement" ||
@@ -78,9 +148,12 @@ export class ArenaScriptInterpreter {
     return stmts;
   }
 
-  private extractCallArguments(callNode: any): { positional: any[]; named: Map<string, any> } {
-    const positional: any[] = [];
-    const named = new Map<string, any>();
+  private extractCallArguments(callNode: ScriptAstNode): {
+    positional: ScriptAstNode[];
+    named: Map<string, ScriptAstNode>;
+  } {
+    const positional: ScriptAstNode[] = [];
+    const named = new Map<string, ScriptAstNode>();
 
     // 1. Direct properties (mock AST / older treesitter)
     const legacyArgs = callNode.functionCallArguments?.arguments ?? callNode.arguments;
@@ -93,7 +166,7 @@ export class ArenaScriptInterpreter {
     if (Array.isArray(legacyNamed)) {
       for (const na of legacyNamed) {
         const name = na.identifier?.text ?? na.name;
-        if (name) named.set(name, na.argument?.expression ?? na.expression ?? na);
+        if (name) named.set(name, na.argument?.expression ?? na.expression ?? (na as ScriptAstNode));
       }
     }
     if (positional.length > 0 || named.size > 0) {
@@ -101,14 +174,14 @@ export class ArenaScriptInterpreter {
     }
 
     // 2. Native WASM CST traversal
-    const callArgsNode = callNode.children?.find((c: any) => c.type === "function_call_args") ?? callNode;
-    function walkArgs(node: any) {
+    const callArgsNode = callNode.children?.find((c) => c.type === "function_call_args") ?? callNode;
+    function walkArgs(node: ScriptAstNode | null | undefined) {
       if (!node) return;
       if (node.type === "named_argument") {
-        const idNode = node.children?.find((c: any) => c.type === "identifier");
+        const idNode = node.children?.find((c) => c.type === "identifier");
         const name = idNode?.text;
         const exprNode =
-          node.children?.find((c: any) => c.type === "function_argument" || c.type === "expression") ??
+          node.children?.find((c) => c.type === "function_argument" || c.type === "expression") ??
           node.children?.[node.children.length - 1];
         if (name && exprNode) {
           named.set(name, exprNode);
@@ -116,7 +189,7 @@ export class ArenaScriptInterpreter {
         return;
       }
       if (node.type === "function_argument") {
-        const expr = node.children?.find((c: any) => c.type === "expression") ?? node;
+        const expr = node.children?.find((c) => c.type === "expression") ?? node;
         positional.push(expr);
         return;
       }
@@ -130,16 +203,17 @@ export class ArenaScriptInterpreter {
 
   execute(treeRoot: SyntaxNode): { output: string; error?: string | undefined } {
     this.output = [];
-    const root =
-      (treeRoot as any).type === "program" && (treeRoot as any).children?.length > 0
-        ? (treeRoot as any).children[0]
-        : (treeRoot as any);
+    const rawRoot = treeRoot as unknown as ScriptAstNode | null | undefined;
+    const root: ScriptAstNode | undefined =
+      rawRoot?.type === "program" && rawRoot.children && rawRoot.children.length > 0
+        ? rawRoot.children[0]
+        : (rawRoot ?? undefined);
     if (!root) return { output: "" };
 
     try {
       const classDefs =
         root.classDefinitions ??
-        root.children?.filter((c: any) => c.type === "class_definition" || c.type === "ClassDefinition") ??
+        root.children?.filter((c) => c.type === "class_definition" || c.type === "ClassDefinition") ??
         [];
       for (const classDef of classDefs) {
         const name = this.getClassName(classDef);
@@ -150,14 +224,14 @@ export class ArenaScriptInterpreter {
 
       const componentClauses =
         root.componentClauses ??
-        root.children?.filter((c: any) => c.type === "component_clause" || c.type === "ComponentClause") ??
+        root.children?.filter((c) => c.type === "component_clause" || c.type === "ComponentClause") ??
         [];
       for (const componentClause of componentClauses) {
-        const decls: any[] = [];
+        const decls: ScriptAstNode[] = [];
         if (componentClause.componentDeclarations) {
           decls.push(...componentClause.componentDeclarations);
         } else {
-          const findDecls = (node: any) => {
+          const findDecls = (node: ScriptAstNode | null | undefined) => {
             if (!node) return;
             if (node.type === "component_declaration" || node.type === "ComponentDeclaration") {
               decls.push(node);
@@ -186,31 +260,31 @@ export class ArenaScriptInterpreter {
         for (const decl of decls) {
           const d =
             decl.declaration ??
-            decl.children?.find?.((c: any) => c.type === "declaration" || c.type === "Declaration") ??
+            decl.children?.find?.((c) => c.type === "declaration" || c.type === "Declaration") ??
             decl.childForFieldName?.("declaration") ??
             decl;
           const identNode =
             d.identifier ??
-            d.children?.find?.((c: any) => c.type === "identifier" || c.type === "name") ??
+            d.children?.find?.((c) => c.type === "identifier" || c.type === "name") ??
             d.childForFieldName?.("identifier");
-          const name = identNode?.text ?? d.name?.text ?? d.name;
+          const name = identNode?.text ?? (typeof d.name === "object" ? d.name?.text : d.name);
           if (!name) continue;
           let initialValue: unknown = null;
-          let expr: any =
+          let expr: ScriptAstNode | null | undefined =
             d.modification?.modificationExpression?.expression ??
             d.modification?.expression ??
             d.childForFieldName?.("modification")?.childForFieldName?.("expression");
 
           if (!expr) {
-            const modNode = d.children?.find?.((c: any) => c.type === "modification" || c.type === "Modification");
+            const modNode = d.children?.find?.((c) => c.type === "modification" || c.type === "Modification");
             if (modNode) {
               const modExpr = modNode.children?.find?.(
-                (c: any) => c.type === "modification_expression" || c.type === "expression",
+                (c) => c.type === "modification_expression" || c.type === "expression",
               );
               expr =
-                modExpr?.children?.find?.((c: any) => c.type === "expression") ??
+                modExpr?.children?.find?.((c) => c.type === "expression") ??
                 modExpr ??
-                modNode.children?.find?.((c: any) => c.type !== "=" && c.type !== "(" && c.type !== ")");
+                modNode.children?.find?.((c) => c.type !== "=" && c.type !== "(" && c.type !== ")");
             }
           }
           if (expr) {
@@ -244,12 +318,12 @@ export class ArenaScriptInterpreter {
     this.output.push(msg);
   }
 
-  private executeStatement(stmt: any, scope: ScriptScope): void {
+  private executeStatement(stmt: ScriptAstNode, scope: ScriptScope): void {
     let s = stmt;
     while (s && (s.type === "statement" || s.type === "statement_or_procedure")) {
       const child =
         s.children?.find(
-          (c: any) =>
+          (c) =>
             c.type === "function_call" ||
             c.type === "assignment_statement" ||
             c.type === "procedure_call_statement" ||
@@ -267,9 +341,13 @@ export class ArenaScriptInterpreter {
       s.type === "assignment_statement"
     ) {
       const target = s.target ?? s.childForFieldName?.("target") ?? s.children?.[0];
-      const targetName = target?.parts?.[0]?.identifier?.text ?? target?.parts?.[0]?.text ?? target?.text;
+      const firstTargetPart = target?.parts?.[0];
+      const targetName =
+        (typeof firstTargetPart === "object"
+          ? (firstTargetPart.identifier?.text ?? firstTargetPart.text)
+          : firstTargetPart) ?? target?.text;
       if (!targetName) return;
-      const source = s.source ?? s.childForFieldName?.("source") ?? s.children?.[s.children?.length - 1];
+      const source = s.source ?? s.childForFieldName?.("source") ?? s.children?.[s.children.length - 1];
       const value = source ? evaluateCSTExpression(source, scope) : null;
 
       const existing = scope.variables.get(targetName) as { modification?: unknown; value?: unknown } | undefined;
@@ -290,9 +368,13 @@ export class ArenaScriptInterpreter {
     const funcRef =
       s.functionReference ??
       s.childForFieldName?.("functionReference") ??
-      s.children?.find((c: any) => c.type === "component_reference");
+      s.children?.find((c) => c.type === "component_reference");
     if (funcRef || s.type === "procedure_call_statement" || s.type === "function_call") {
-      const funcName = funcRef?.parts?.[0]?.identifier?.text ?? funcRef?.parts?.[0]?.text ?? funcRef?.text ?? s.name;
+      const firstFuncPart = funcRef?.parts?.[0];
+      const funcName =
+        (typeof firstFuncPart === "object" ? (firstFuncPart.identifier?.text ?? firstFuncPart.text) : firstFuncPart) ??
+        funcRef?.text ??
+        (typeof s.name === "string" ? s.name : s.name?.text);
       if (!funcName) return;
 
       if (funcName === "print") {
@@ -409,20 +491,20 @@ export class ArenaScriptInterpreter {
       }
 
       // Native CST linear children traversal
-      const children: any[] = s.children ?? [];
+      const children: readonly ScriptAstNode[] = s.children ?? [];
       let currentSection: "cond" | "then" | "elseif_cond" | "elseif_then" | "else" = "cond";
-      let condExpr: any = null;
+      let condExpr: ScriptAstNode | null = null;
       let branchMatched = false;
 
       for (let i = 0; i < children.length; i++) {
-        const ch = children[i];
+        const ch = children[i]!;
         const text = ch.text?.trim() ?? "";
         if (text === "if") {
           currentSection = "cond";
           condExpr = null;
         } else if (text === "then") {
           const condVal = condExpr ? evaluateCSTExpression(condExpr, scope) : null;
-          const isTrue = condVal === true || (condVal && (condVal as any).value === true);
+          const isTrue = condVal === true || (condVal && (condVal as { value?: unknown }).value === true);
           if (!branchMatched && isTrue) {
             branchMatched = true;
             currentSection = "then";
@@ -459,10 +541,12 @@ export class ArenaScriptInterpreter {
         for (const forIndex of s.forIndexes ?? []) {
           const iterName = forIndex.identifier?.text ?? forIndex.name;
           const iterExpr = forIndex.expression ? evaluateCSTExpression(forIndex.expression, scope) : null;
-          if (!iterName || !Array.isArray((iterExpr as { elements?: unknown[] | undefined })?.elements ?? iterExpr))
-            continue;
-          const elements = (iterExpr as { elements?: unknown[] | undefined }).elements ?? iterExpr;
-          for (const val of elements) {
+          const rawElements =
+            iterExpr && typeof iterExpr === "object" && "elements" in iterExpr
+              ? (iterExpr as { elements?: unknown }).elements
+              : iterExpr;
+          if (!iterName || !Array.isArray(rawElements)) continue;
+          for (const val of rawElements) {
             scope.variables.set(iterName, {
               name: iterName,
               isComponentInstance: true,
@@ -477,10 +561,10 @@ export class ArenaScriptInterpreter {
       }
 
       // Native CST traversal
-      const forIndicesNode = s.children?.find((c: any) => c.type === "for_indices" || c.type === "ForIndices");
-      const indexNodes: any[] = [];
+      const forIndicesNode = s.children?.find((c) => c.type === "for_indices" || c.type === "ForIndices");
+      const indexNodes: ScriptAstNode[] = [];
       if (forIndicesNode) {
-        const findIndices = (n: any) => {
+        const findIndices = (n: ScriptAstNode) => {
           if (n.type === "for_index" || n.type === "ForIndex") {
             indexNodes.push(n);
             return;
@@ -489,12 +573,12 @@ export class ArenaScriptInterpreter {
         };
         findIndices(forIndicesNode);
       } else {
-        const direct = s.children?.filter((c: any) => c.type === "for_index");
+        const direct = s.children?.filter((c) => c.type === "for_index");
         if (direct?.length) indexNodes.push(...direct);
       }
 
       // Collect statements after "loop"
-      const bodyStmts: any[] = [];
+      const bodyStmts: ScriptAstNode[] = [];
       let inLoop = false;
       for (const ch of s.children || []) {
         const text = ch.text?.trim() ?? "";
@@ -508,21 +592,26 @@ export class ArenaScriptInterpreter {
       }
 
       for (const idxNode of indexNodes) {
-        const ident = idxNode.children?.find((c: any) => c.type === "identifier") ?? idxNode.identifier;
+        const ident = idxNode.children?.find((c) => c.type === "identifier") ?? idxNode.identifier;
         const iterName = ident?.text;
-        const expr = idxNode.children?.find((c: any) => c.type === "expression") ?? idxNode.expression;
-        const iterExpr = expr ? evaluateCSTExpression(expr, scope) : null;
+        const expr = idxNode.children?.find((c) => c.type === "expression") ?? idxNode.expression;
+        const iterExpr: unknown = expr ? evaluateCSTExpression(expr, scope) : null;
         if (!iterName || !iterExpr) continue;
 
-        let elements: any[] = [];
+        let elements: unknown[] = [];
         if (Array.isArray(iterExpr)) {
           elements = iterExpr;
-        } else if (Array.isArray((iterExpr as any).elements)) {
-          elements = (iterExpr as any).elements;
-        } else if (typeof iterExpr === "object" && "start" in (iterExpr as any) && "stop" in (iterExpr as any)) {
-          const start = Number((iterExpr as any).start);
-          const stop = Number((iterExpr as any).stop);
-          const step = Number((iterExpr as any).step ?? 1);
+        } else if (
+          typeof iterExpr === "object" &&
+          "elements" in iterExpr &&
+          Array.isArray((iterExpr as { elements: unknown[] }).elements)
+        ) {
+          elements = (iterExpr as { elements: unknown[] }).elements;
+        } else if (typeof iterExpr === "object" && "start" in iterExpr && "stop" in iterExpr) {
+          const rangeObj = iterExpr as { start: unknown; stop: unknown; step?: unknown };
+          const start = Number(rangeObj.start);
+          const stop = Number(rangeObj.stop);
+          const step = Number(rangeObj.step ?? 1);
           for (let v = start; v <= stop; v += step) elements.push(v);
         }
 
@@ -541,14 +630,16 @@ export class ArenaScriptInterpreter {
     }
   }
 
-  private handleSimulate(node: any, scope: ScriptScope) {
+  private handleSimulate(node: ScriptAstNode, scope: ScriptScope) {
     const { positional, named } = this.extractCallArguments(node);
     const firstArg = positional[0];
     if (!firstArg) throw new Error("simulate() requires a model name");
 
     let modelName = "";
     if (firstArg.parts) {
-      modelName = firstArg.parts.map((p: any) => p.identifier?.text ?? p.text ?? p).join(".");
+      modelName = firstArg.parts
+        .map((p) => (typeof p === "string" ? p : (p.identifier?.text ?? p.text ?? String(p))))
+        .join(".");
     } else if (firstArg.text) {
       modelName = firstArg.text.trim();
     }
@@ -599,16 +690,20 @@ export class ArenaScriptInterpreter {
     this.print(`States: ${result.states.join(", ")}`);
   }
 
-  private handleCalibrate(node: any, scope: ScriptScope) {
+  private handleCalibrate(node: ScriptAstNode, scope: ScriptScope) {
     const { positional, named } = this.extractCallArguments(node);
     const firstArg = positional[0];
     if (!firstArg) throw new Error("calibrate() requires a model name");
 
     let modelName = "";
     if (firstArg.parts) {
-      modelName = firstArg.parts.map((p: any) => p.identifier?.text ?? p.text ?? p).join(".");
+      modelName = firstArg.parts
+        .map((p) => (typeof p === "string" ? p : (p.identifier?.text ?? p.text ?? String(p))))
+        .join(".");
     } else if (firstArg.expression?.parts) {
-      modelName = firstArg.expression.parts.map((p: any) => p.identifier?.text ?? p.text ?? p).join(".");
+      modelName = firstArg.expression.parts
+        .map((p) => (typeof p === "string" ? p : (p.identifier?.text ?? p.text ?? String(p))))
+        .join(".");
     } else if (firstArg.text) {
       modelName = firstArg.text.trim();
     } else if (firstArg.expression?.text) {
@@ -691,11 +786,12 @@ export class ArenaScriptInterpreter {
         if (fs.existsSync(measurementFile)) {
           const rawContent = fs.readFileSync(measurementFile, "utf-8").trim();
           if (rawContent.startsWith("{") || rawContent.startsWith("[")) {
-            const parsedJson = JSON.parse(rawContent);
+            const parsedJson: unknown = JSON.parse(rawContent);
             if (parsedJson && typeof parsedJson === "object" && !Array.isArray(parsedJson)) {
-              for (const [k, v] of Object.entries(parsedJson as Record<string, any>)) {
-                if (v && Array.isArray(v.t) && Array.isArray(v.y)) {
-                  measurements.set(k, { t: v.t.map(Number), y: v.y.map(Number) });
+              for (const [k, v] of Object.entries(parsedJson as Record<string, unknown>)) {
+                const series = v as { t?: unknown; y?: unknown } | null | undefined;
+                if (series && Array.isArray(series.t) && Array.isArray(series.y)) {
+                  measurements.set(k, { t: series.t.map(Number), y: series.y.map(Number) });
                   loadedFromDisk = true;
                 }
               }

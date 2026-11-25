@@ -2,7 +2,9 @@
 
 import { Link } from "react-router-dom";
 import styledImport from "styled-components";
+import type { ArtifactViewRecord } from "../../api/artifacts";
 import { parseUtcDate } from "../../util/date";
+import { safeJsonParse } from "../../util/json";
 import { safeCssImageUrl } from "../../util/url";
 
 const styled: typeof styledImport =
@@ -40,7 +42,7 @@ export const PostWrapper = styled.div<{
   }
 `;
 
-export const Avatar = styled.div<{ $url?: string | undefined }>`
+export const Avatar = styled.div<{ $url?: string | null | undefined }>`
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -394,8 +396,90 @@ export const MenuButton = styled.button`
   }
 `;
 
+export interface PostRecord {
+  id: number | string;
+  id_str?: string | undefined;
+  post_id?: number | string | undefined;
+  author_id?: number | undefined;
+  username: string;
+  display_name?: string | null | undefined;
+  avatar_url?: string | null | undefined;
+  account_type?: string | null | undefined;
+  signing_verified?: boolean | number | undefined;
+  author_username?: string | null | undefined;
+  author_display_name?: string | null | undefined;
+  author?:
+    | {
+        username?: string | null | undefined;
+        display_name?: string | null | undefined;
+        avatar_url?: string | null | undefined;
+      }
+    | null
+    | undefined;
+  content: string;
+  title?: string | null | undefined;
+  url?: string | null | undefined;
+  ap_id?: string | null | undefined;
+  created_at: string;
+  updated_at?: string | null | undefined;
+  like_count?: number | undefined;
+  likes_count?: number | undefined;
+  reply_count?: number | undefined;
+  replies_count?: number | undefined;
+  repost_count?: number | undefined;
+  reposts_count?: number | undefined;
+  bookmark_count?: number | undefined;
+  view_count?: number | undefined;
+  views_count?: number | undefined;
+  liked?: boolean | undefined;
+  reposted?: boolean | undefined;
+  bookmarked?: boolean | undefined;
+  is_pinned?: boolean | undefined;
+  pinned?: boolean | undefined;
+  is_sensitive?: boolean | undefined;
+  content_warning?: string | null | undefined;
+  artifact_id?: number | string | null | undefined;
+  artifact_view_id?: number | string | null | undefined;
+  artifact_type?: string | null | undefined;
+  artifact_title?: string | null | undefined;
+  artifact_config?: Record<string, unknown> | string | null | undefined;
+  artifact_view?: ArtifactViewRecord | null | undefined;
+  artifact_views?: Record<string | number, ArtifactViewRecord> | null | undefined;
+  forked_from_post_id?: number | string | null | undefined;
+  forked_from_artifact_id?: number | string | null | undefined;
+  reply_to_id?: number | string | null | undefined;
+  repost_of_id?: number | string | null | undefined;
+  repost_post?: PostRecord | null | undefined;
+  quote_of_id?: number | string | null | undefined;
+  quote_post_id?: number | string | null | undefined;
+  quotePostId?: number | string | null | undefined;
+  quote_post?: PostRecord | null | undefined;
+  quotePost?: PostRecord | null | undefined;
+  signature?: string | null | undefined;
+  client_signature?: string | null | undefined;
+  key_id_string?: string | null | undefined;
+  public_key?: string | JsonWebKey | null | undefined;
+  publicKey?: string | JsonWebKey | null | undefined;
+  author_public_key?: string | JsonWebKey | null | undefined;
+  authorPublicKey?: string | JsonWebKey | null | undefined;
+  signed_payload?: string | null | undefined;
+  signedPayload?: string | null | undefined;
+  metadata?: Record<string, unknown> | string | null | undefined;
+}
+
+export function parsePostMetadata(metadata: unknown): Record<string, unknown> {
+  if (!metadata) return {};
+  if (typeof metadata === "string") {
+    return safeJsonParse<Record<string, unknown>>(metadata, {});
+  }
+  if (typeof metadata === "object" && !Array.isArray(metadata)) {
+    return metadata as Record<string, unknown>;
+  }
+  return {};
+}
+
 export interface PostProps {
-  post: any;
+  post: PostRecord;
   isDetail?: boolean | undefined;
   isThread?: boolean | undefined;
   isPinned?: boolean | undefined;

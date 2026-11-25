@@ -1,0 +1,11 @@
+{
+  "id": "easy5-04-aircraft-ecs-bleed-air",
+  "lang": "easy5",
+  "subFormats": ["ez5"],
+  "difficulty": 4,
+  "title": "Aircraft Environmental Control System Bleed Air Loop",
+  "description": "Transport aircraft cabin temperature and pressure Environmental Control System (ECS) with dual-loop PI trim valve regulation, air-cycle pack thermal lag, duct transport delay, and cabin thermal capacitance.",
+  "category": "Aerospace Thermal Systems",
+  "tags": ["easy5", "ecs", "bleed-air", "thermal-control"],
+  "activeFile": "ecs_bleed_air.ez5"
+}

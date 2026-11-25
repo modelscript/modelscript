@@ -146,9 +146,9 @@ export const GribPanel: React.FC<LanguagePanelProps> = ({
                 </PanelButton>
               </>
             )}
-            {mode === "artifact" && host.openInMorsel && code && (
-              <PanelButton variant="primary" onClick={() => host.openInMorsel?.(code, dialect || "grib", title)}>
-                Open in Morsel
+            {mode === "artifact" && host.openInAnsatzEditor && code && (
+              <PanelButton variant="primary" onClick={() => host.openInAnsatzEditor?.(code, dialect || "grib", title)}>
+                Open in Ansatz Editor
               </PanelButton>
             )}
           </>

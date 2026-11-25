@@ -15,6 +15,7 @@ import TwoFactorModal from "../../../components/auth/TwoFactorModal";
 import Box from "../../../components/Box";
 import { useToast } from "../../../components/ToastContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { deletePrivateKey, getAllPrivateKeyIds, migrateLegacyKeys, savePrivateKey } from "../../../util/keystore";
 import { SigningKeysSection } from "../components/SigningKeysSection";
 import {
@@ -31,6 +32,10 @@ export interface SecurityTabProps {
   onBack?: () => void;
 }
 
+interface BackupCodesUserFields {
+  backup_codes_remaining?: number | undefined;
+}
+
 export const SecurityTab: React.FC<SecurityTabProps> = () => {
   const { user, updateToken, refreshUser } = useAuth();
   const branding = useInstanceBranding();
@@ -40,8 +45,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   const [is2FAModalOpen, setIs2FAModalOpen] = useState(false);
   const [twoFactorModalMode, setTwoFactorModalMode] = useState<"manage" | "regenerate">("manage");
   const [is2FAEnabled, setIs2FAEnabled] = useState(Boolean(user?.totp_enabled));
+  const initialBackupCodes = (user as (typeof user & BackupCodesUserFields) | null)?.backup_codes_remaining;
   const [backupCodesRemaining, setBackupCodesRemaining] = useState<number>(
-    typeof (user as any)?.backup_codes_remaining === "number" ? (user as any).backup_codes_remaining : 10,
+    typeof initialBackupCodes === "number" ? initialBackupCodes : 10,
   );
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [showInlineRegenerate, setShowInlineRegenerate] = useState(false);
@@ -63,8 +69,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
   useEffect(() => {
     if (user) {
       setIs2FAEnabled(Boolean(user.totp_enabled));
-      if (typeof (user as any).backup_codes_remaining === "number") {
-        setBackupCodesRemaining((user as any).backup_codes_remaining);
+      const remaining = (user as typeof user & BackupCodesUserFields).backup_codes_remaining;
+      if (typeof remaining === "number") {
+        setBackupCodesRemaining(remaining);
       }
     }
   }, [user]);
@@ -91,8 +98,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       setSessionRevokeSuccess(true);
       toast.success("All other active sessions have been signed out.", "Sessions Revoked");
       setTimeout(() => setSessionRevokeSuccess(false), 5000);
-    } catch (err: any) {
-      const errMsg = err.response?.data?.error || err.message || "Failed to revoke sessions";
+    } catch (err: unknown) {
+      const errMsg = getApiErrorMessage(err, "Failed to revoke sessions");
       setError(errMsg);
       toast.error(errMsg, "Revocation Failed");
     } finally {
@@ -133,9 +140,9 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       setKeys(await getPublicKeys());
       setNewDeviceName("Browser WebCrypto Key");
       toast.success(`Registered key for "${deviceName}".`, "Device Key Created");
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const errMsg = err.response?.data?.error || err.message || "Failed to generate key";
+      const errMsg = getApiErrorMessage(err, "Failed to generate key");
       setError(errMsg);
     } finally {
       setLoading(false);
@@ -152,8 +159,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       setLocalKeyIds(new Set(currentLocalIds));
       setKeys(await getPublicKeys());
       toast.success(`Revoked key "${k.device_name || k.key_id_string}".`);
-    } catch (err: any) {
-      const errMsg = err.response?.data?.error || err.message || "Failed to revoke public key";
+    } catch (err: unknown) {
+      const errMsg = getApiErrorMessage(err, "Failed to revoke public key");
       setError(errMsg);
       toast.error(errMsg, "Revocation Failed");
     }
@@ -173,8 +180,8 @@ export const SecurityTab: React.FC<SecurityTabProps> = () => {
       setRegenCode("");
       void refreshUser();
       toast.success("Generated 10 new backup recovery codes.");
-    } catch (err: any) {
-      const errMsg = err.response?.data?.error || err.message || "Failed to regenerate backup codes.";
+    } catch (err: unknown) {
+      const errMsg = getApiErrorMessage(err, "Failed to regenerate backup codes.");
       setError(errMsg);
       toast.error(errMsg);
     } finally {

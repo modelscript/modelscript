@@ -184,7 +184,7 @@ export interface LibraryListItem {
       }
     | null
     | undefined;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 const isDevMode = (): boolean =>

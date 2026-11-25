@@ -44,6 +44,7 @@ import {
   TYPE_UNKNOWN,
   VARIABILITY_CONTINUOUS,
   VARIABILITY_PARAMETER,
+  type ModelicaGrammarSymbols,
 } from "./helpers.js";
 
 /**
@@ -66,7 +67,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
         ? `Variable ${vName} not found in scope ${className.text}.`
         : `Variable ${vName} not found in scope.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       let rootId: u32 = 0;
       for (const id of db.ast.getDescendants(node, $.identifier)) {
         rootId = id;
@@ -335,7 +336,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 2003,
     message: (target, fullType) =>
       `Class or type '${fullType && fullType.text && fullType.text !== "0" ? fullType.text : target.text}' not found in scope.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       let firstIdent: u32 = 0;
       let identCount = 0;
       for (const id of db.ast.getDescendants(node, $.identifier)) {
@@ -447,7 +448,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4001,
     message: (target) => `Extends cycle detected for '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Traverse base classes reachable from `node` and report if the enclosing class is revisited
       if (hasExtendsCycleInScope(db, node, $)) {
         db.diagnostic(node);
@@ -463,7 +464,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     severity: "info",
     code: 2093,
     message: () => `From here:`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Emit source-location note pointing to the conflicting modification/redeclaration clause
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -725,7 +726,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const tName = targetName && targetName.text !== "0" && targetName.text !== "" ? targetName.text : "";
       return `Duplicate modification of element ${elemStr} on ${kindStr} ${tName}.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Track 64-bit hashes of modified element paths in `node` to flag duplicate assignments
       let isNestedMod = false;
       for (const anc of db.ast.getAncestors(node, 0)) {
@@ -1043,7 +1044,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       compName
         ? `Component ${compName.text} of variability parameter has binding '${target.text}' of higher variability continuous.`
         : `Component '${target.text}' of variability parameter has binding of higher continuous variability.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if an enclosing parameter component_clause has a continuous-variability binding
       for (const comp of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(comp) == $.component_clause) {
@@ -1106,7 +1107,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4030,
     message: (target, modNode, nameNode) =>
       `Modifier '${modNode ? modNode.text : ""}' found on outer element ${nameNode ? nameNode.text : target.text}.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check whether the enclosing element has the 'outer' prefix
       let isOuter = false;
       for (const el of db.ast.getAncestors(node, $.element)) {
@@ -1172,7 +1173,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4034,
     message: (target) =>
       `Class '${target.text}' in 'extends ${target.text}' is replaceable, the base class name must be transitively non-replaceable.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Flag extends clauses whose target class is declared replaceable in scope
       if (isReplaceableBaseClassInScope(db, node, $)) {
         for (const typeSpec of db.ast.getDescendants(node, $.type_specifier)) {
@@ -1197,7 +1198,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       compName
         ? `Component ${compName.text} of variability constant has binding '${target.text}' of higher variability ${varbNode && varbNode.text && varbNode.text !== "0" ? "parameter" : "continuous"}.`
         : `Component '${target.text}' of variability constant has binding of higher variability.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Verify that constant component declarations do not have non-constant bindings
       for (const comp of db.ast.getAncestors(node, 0)) {
         if (db.ast.getType(comp) == $.component_clause) {
@@ -1264,7 +1265,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4044,
     message: (target, fullMod) =>
       `Non-array modification '${fullMod && fullMod.text && fullMod.text !== "0" ? fullMod.text : target.text}' for array component, possibly due to missing 'each'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Check if an array component is modified by a scalar expression without 'each'
       if (isNonArrayScalarModification(db, node, $)) {
         const name = db.ast.getChildByFieldId(node, "name");
@@ -1284,7 +1285,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 5023,
     message: () => `The same variables must be solved in elsewhen clause as in the when clause.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       // Partition LHS targets by branch ('when' vs each 'elsewhen') in pre-order across GLR wrappers.
       if ($.simple_equation == 0) return;
 
@@ -1385,7 +1386,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4039,
     message: (target) =>
       `Following variable is discrete, but does not appear on the LHS of a when-statement: '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if (isOldFrontendActive(db, $)) return;
       // Flag simple equations outside 'when' blocks that assign to a discrete variable
       if (isDiscreteAssignedOutsideWhen(db, node, $)) {
@@ -1419,7 +1420,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
       const tText = isLegacyOldInst && typeName.text === "String" && eText === "value" ? "Real" : typeName.text;
       return `Modified element ${eText} not found in class ${tText}.`;
     },
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       const isInheritanceMod = $.inheritance_modification != 0 && db.ast.getType(node) == $.inheritance_modification;
       let nameNode: u32 = 0;
       if (isInheritanceMod) {
@@ -1759,7 +1760,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4049,
     message: (target, ident) => `Invalid use of break on non-component '${ident ? ident.text : target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if ($.connect_equation != 0) {
         for (const c of db.ast.getDescendants(node, $.connect_equation)) {
           void c;
@@ -1838,7 +1839,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4050,
     message: (target, ident) =>
       `Invalid use of break on component '${ident ? ident.text : target.text}', component must be a model, block, or connector.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       if ($.connect_equation != 0) {
         for (const c of db.ast.getDescendants(node, $.connect_equation)) {
           void c;
@@ -1908,7 +1909,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     severity: "error",
     code: 4051,
     message: (target) => `No matching element found for '${target.text}'.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       let connNode: u32 = 0;
       for (const c of db.ast.getDescendants(node, $.connect_equation)) {
         connNode = c;
@@ -1992,7 +1993,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     severity: "warning",
     code: 4123,
     message: (target) => `Protected parameter '${target.text}' is declared but never referenced.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       const paramId = getUnusedProtectedParameterNode(db, node, $);
       if (paramId != 0) {
         db.diagnostic(paramId);
@@ -2009,7 +2010,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 5045,
     message: (target) =>
       `Direct assignment to continuous state '${target.text}' inside when-clause is illegal; use reinit().`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       const stateId = getContinuousStateInWhenNode(db, node, $);
       if (stateId != 0) {
         db.diagnostic(stateId);
@@ -2029,7 +2030,7 @@ export const modelicaHierarchyLints: Record<string, CompilerLint> = {
     code: 4146,
     message: (target) =>
       `Parameter '${target.text}' has no value and relies on default start value during initialization.`,
-    query: (db: CodeGraph, node: u32, $: any) => {
+    query: (db: CodeGraph, node: u32, $: ModelicaGrammarSymbols) => {
       let compClause: u32 = 0;
       let enclosingEl: u32 = 0;
       for (const anc of db.ast.getAncestors(node)) {

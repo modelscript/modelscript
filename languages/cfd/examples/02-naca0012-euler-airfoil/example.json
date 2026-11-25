@@ -1,0 +1,11 @@
+{
+  "id": "cfd-02-naca0012-euler-airfoil",
+  "lang": "cfd",
+  "subFormats": ["cfg", "su2"],
+  "difficulty": 2,
+  "title": "NACA 0012 Subsonic Inviscid Euler Airfoil",
+  "description": "External subsonic inviscid Euler SU2 aerodynamic setup for a NACA 0012 airfoil at Mach 0.30 and 2.5 deg angle of attack with companion .su2 mesh.",
+  "category": "External Aerodynamics",
+  "tags": ["cfd", "su2", "naca0012", "euler", "multi-file"],
+  "activeFile": "naca0012.cfg"
+}

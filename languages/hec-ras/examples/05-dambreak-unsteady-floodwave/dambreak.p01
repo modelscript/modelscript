@@ -1,0 +1,8 @@
+Plan Title=Unsteady Dam-Break Flood Routing Plan
+Short Identifier=BreachUnsteady
+Geom File=g01
+Unsteady File=u01
+Simulation Date=01JAN2026,0000,01JAN2026,1600
+Computation Interval=10SEC
+Output Interval=5MIN
+Mapping Interval=10MIN

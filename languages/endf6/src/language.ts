@@ -26,7 +26,7 @@ export const endf6Language = language({
         shortTitle: "ENDF-6",
         selector: ["*.endf", "*.endf6", "*.enf", "*.pendf", "*.gendf"],
         priority: "option",
-        targets: ["vscode", "morsel", "artifact"],
+        targets: ["vscode", "ansatz", "artifact"],
         entry: "./src/ui/Endf6Panel.tsx",
         artifactViewTypes: ["endf6", "endf"],
       },

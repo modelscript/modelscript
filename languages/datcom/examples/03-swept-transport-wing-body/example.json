@@ -1,0 +1,11 @@
+{
+  "id": "datcom-03-swept-transport-wing-body",
+  "lang": "datcom",
+  "subFormats": ["digital-datcom"],
+  "difficulty": 3,
+  "title": "Swept High-Subsonic Transport Wing-Body Polar",
+  "description": "Twin-jet regional transport aircraft with 28-degree swept supercritical-class wing, cylindrical fuselage, and T-tail empennage at Mach 0.72 cruise.",
+  "category": "Aerodynamics & Stability",
+  "tags": ["datcom", "transport", "swept-wing", "drag-polar"],
+  "activeFile": "swept_transport.dcm"
+}

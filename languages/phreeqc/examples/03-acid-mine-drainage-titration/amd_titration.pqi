@@ -1,0 +1,21 @@
+TITLE Acid Mine Drainage Neutralization with Limestone Titration
+SOLUTION 1 Acid Mine Drainage
+    temp      20.0
+    pH        2.8
+    pe        10.0
+    units     mmol/kgw
+    Fe        8.5
+    Ca        4.0
+    Mg        2.5
+    S(6)      15.5 charge
+    Cl        1.5
+
+REACTION 1
+    CaCO3     1.0
+    0.03 moles in 10 steps
+
+EQUILIBRIUM_PHASES 1
+    Gypsum    0.0 0.0
+    Calcite   0.0 0.0
+
+END

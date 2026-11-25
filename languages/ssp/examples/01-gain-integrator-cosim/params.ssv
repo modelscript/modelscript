@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssv:ParameterSet xmlns:ssv="http://ssp-standard.org/SSP1/SystemStructureParameterValues"
+                  version="1.0"
+                  name="GainIntegratorParams">
+  <ssv:Parameters>
+    <ssv:Parameter name="GainBlock.k">
+      <ssv:Real value="2.5" />
+    </ssv:Parameter>
+    <ssv:Parameter name="IntegratorBlock.y0">
+      <ssv:Real value="0.0" />
+    </ssv:Parameter>
+  </ssv:Parameters>
+</ssv:ParameterSet>

@@ -1,0 +1,11 @@
+{
+  "id": "usgs-dem-05-stratovolcano-quadrangle",
+  "lang": "usgs-dem",
+  "subFormats": ["free-format"],
+  "difficulty": 5,
+  "title": "Mount Rainier-Style Multi-Profile 7.5-Min Quadrangle DEM",
+  "description": "9x9 alpine stratovolcano USGS 7.5-minute quadrangle DEM spanning 2400 m glacial valleys to a 4390 m glaciated summit with radial ridges and Type C accuracy report.",
+  "category": "Alpine Cartography",
+  "tags": ["usgs-dem", "stratovolcano", "quadrangle", "alpine"],
+  "activeFile": "mount_rainier_west.dem"
+}

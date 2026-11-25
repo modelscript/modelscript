@@ -34,6 +34,7 @@ import Box from "../../../components/Box";
 import { CircleIconButton } from "../../../components/SharedStyles";
 import { useFeatureFlags } from "../../../FeatureFlagContext";
 import { useInstanceBranding } from "../../../InstanceBrandingContext";
+import { getApiErrorMessage } from "../../../util/error";
 import { DetailSubtitle, DetailTitle, Header } from "../settingsStyles";
 
 const PlanHeaderCard = styled.div`
@@ -530,11 +531,9 @@ export const BillingTab: React.FC<BillingTabProps> = ({ onBack }) => {
           isStripeLiveMode ? "Stripe Live Mode" : "Local Simulation Billing Mode"
         }).`,
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(
-        err?.response?.data?.error ||
-          err?.message ||
-          "Top-up request failed. Please verify your permissions or billing configuration.",
+        getApiErrorMessage(err, "Top-up request failed. Please verify your permissions or billing configuration."),
       );
     } finally {
       setIsTopUpLoading(false);

@@ -207,7 +207,9 @@ export class HpcEngine {
                   bytesRead = res.totalBytes;
                   break;
                 }
-              } catch {}
+              } catch {
+                // Log file may not exist yet or candidate path may be unreadable
+              }
             }
           }
         }

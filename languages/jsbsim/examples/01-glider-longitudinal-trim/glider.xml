@@ -1,0 +1,79 @@
+<?xml version="1.0"?>
+<fdm_config name="ASW28_Glider" version="2.0" release="PRODUCTION">
+  <fileheader>
+    <author>Ansatz Aerospace Team</author>
+    <description>15-meter Standard-Class Sailplane Longitudinal Flight Dynamics Model</description>
+  </fileheader>
+  <metrics>
+    <wingarea unit="FT2"> 113.0 </wingarea>
+    <wingspan unit="FT"> 49.2 </wingspan>
+    <chord unit="FT"> 2.30 </chord>
+    <htailarea unit="FT2"> 11.2 </htailarea>
+    <htailarm unit="FT"> 13.8 </htailarm>
+    <vtailarea unit="FT2"> 9.4 </vtailarea>
+    <vtailarm unit="FT"> 14.1 </vtailarm>
+    <location name="AERORP" unit="IN">
+      <x> 28.0 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+  </metrics>
+  <mass_balance>
+    <emptywt unit="LBS"> 540.0 </emptywt>
+    <location name="CG" unit="IN">
+      <x> 26.5 </x>
+      <y> 0.0 </y>
+      <z> 0.0 </z>
+    </location>
+    <ixx unit="SLUG*FT2"> 680.0 </ixx>
+    <iyy unit="SLUG*FT2"> 340.0 </iyy>
+    <izz unit="SLUG*FT2"> 920.0 </izz>
+    <ixz unit="SLUG*FT2"> 0.0 </ixz>
+  </mass_balance>
+  <ground_reactions>
+    <contact type="BOGEY" name="MAIN_WHEEL">
+      <location unit="IN"> <x> 28.0 </x> <y> 0.0 </y> <z> -18.0 </z> </location>
+      <static_friction> 0.8 </static_friction>
+      <dynamic_friction> 0.5 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 1200.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 350.0 </damping_coeff>
+    </contact>
+    <contact type="BOGEY" name="TAIL_WHEEL">
+      <location unit="IN"> <x> 185.0 </x> <y> 0.0 </y> <z> -12.0 </z> </location>
+      <static_friction> 0.6 </static_friction>
+      <dynamic_friction> 0.4 </dynamic_friction>
+      <spring_coeff unit="LBS/FT"> 400.0 </spring_coeff>
+      <damping_coeff unit="LBS/FT/SEC"> 120.0 </damping_coeff>
+    </contact>
+  </ground_reactions>
+  <aerodynamics>
+    <axis name="LIFT">
+      <function name="aero/coefficient/CLalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 5.45 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="DRAG">
+      <function name="aero/coefficient/CD0">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <value> 0.014 </value>
+        </product>
+      </function>
+    </axis>
+    <axis name="PITCH">
+      <function name="aero/coefficient/Cmalpha">
+        <product>
+          <property>aero/qbar-psf</property>
+          <property>metrics/Sw-sqft</property>
+          <property>metrics/cbarw-ft</property>
+          <value> -0.65 </value>
+        </product>
+      </function>
+    </axis>
+  </aerodynamics>
+</fdm_config>

@@ -1,0 +1,18 @@
+-- ESA ESL Hybrid Bouncing Ball with Coefficient of Restitution
+MODEL BouncingBall
+  CONSTANT REAL: g = 9.80665;   -- Gravitational acceleration (m/s^2)
+  CONSTANT REAL: e = 0.82;      -- Coefficient of restitution
+  REAL: y, v;
+  INTEGER: bounces = 0;
+INITIAL
+  y = 5.0;
+  v = 0.0;
+DYNAMIC
+  y' = v;
+  v' = -g;
+  WHEN y <= 0.0 AND v < 0.0 THEN
+    v := -e * v;
+    y := 0.0;
+    bounces := bounces + 1;
+  END_WHEN
+END MODEL BouncingBall

@@ -78,12 +78,12 @@ export default function RenderArtifactPage() {
   usePageTitle(artifact ? `Artifact: ${artifact.title || artifact.view_type}` : "Render Artifact");
 
   const parsedArtifactId = Number(artifact?.id || id || 0);
-  const viewConfig = useMemo<Record<string, any>>(
+  const viewConfig = useMemo<Record<string, unknown>>(
     () => ({
       ...((artifact as unknown as { thumbnail_url?: string } | null)?.thumbnail_url
         ? { thumbnail_url: (artifact as unknown as { thumbnail_url?: string }).thumbnail_url }
         : {}),
-      ...safeJsonParse<Record<string, any>>(artifact?.view_config, {}),
+      ...safeJsonParse<Record<string, unknown>>(artifact?.view_config, {}),
       artifactId: parsedArtifactId,
     }),
     [artifact, parsedArtifactId],
@@ -122,8 +122,9 @@ export default function RenderArtifactPage() {
 
   const rotundaDocument = useMemo(() => {
     if (!isVrRotundaMode || !artifact) return null;
+    const configTitle = typeof viewConfig["title"] === "string" ? viewConfig["title"] : undefined;
     return buildArtifactRotundaDocument({
-      title: artifact.title || (artifact as unknown as { name?: string }).name || viewConfig["title"],
+      title: artifact.title || (artifact as unknown as { name?: string }).name || configTitle,
       viewType: artifact.view_type,
       viewConfig,
       artifactId: parsedArtifactId,
@@ -166,7 +167,7 @@ export default function RenderArtifactPage() {
       if (!id) {
         setLoading(false);
         setError("Missing artifact ID.");
-        (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
+        window.__ARTIFACT_READY = true;
         return;
       }
       setLoading(true);
@@ -177,7 +178,7 @@ export default function RenderArtifactPage() {
         const resolved = data?.artifactView || data?.artifact_view || data;
         if (!resolved || (!resolved.view_type && !resolved.view_config)) {
           setError(`Artifact #${id} could not be found.`);
-          (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
+          window.__ARTIFACT_READY = true;
         } else {
           setArtifact(resolved);
         }
@@ -186,7 +187,7 @@ export default function RenderArtifactPage() {
         if (!cancelled) {
           setError(`Failed to load artifact #${id}.`);
         }
-        (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
+        window.__ARTIFACT_READY = true;
       } finally {
         if (!cancelled) {
           setLoading(false);
@@ -220,23 +221,42 @@ export default function RenderArtifactPage() {
         "3d-model",
       ];
       if (isVrRotundaMode || !heavyAsyncTypes.includes(artifact.view_type)) {
-        (window as unknown as { __ARTIFACT_READY: boolean }).__ARTIFACT_READY = true;
+        window.__ARTIFACT_READY = true;
       }
     }
   }, [artifact, isVrRotundaMode]);
 
   const resolvedForkedFromId = useMemo<number | string | null>(() => {
-    if (viewConfig.forkedFromArtifactId) return viewConfig.forkedFromArtifactId;
-    if (viewConfig.forked_from_artifact_id) return viewConfig.forked_from_artifact_id;
-    if (viewConfig.upstreamArtifactId) return viewConfig.upstreamArtifactId;
-    const anyArt = artifact as any;
-    const meta = anyArt?.metadata ? safeJsonParse(anyArt.metadata, anyArt.metadata) : {};
-    if (meta?.forkedFromArtifactId) return meta.forkedFromArtifactId;
-    if (meta?.forked_from_artifact_id) return meta.forked_from_artifact_id;
-    if (meta?.forked_from_post_id) return meta.forked_from_post_id;
-    if (anyArt?.forked_from_id) return anyArt.forked_from_id;
-    if (anyArt?.post?.forked_from_post_id) return anyArt.post.forked_from_post_id;
-    return null;
+    const asId = (val: unknown): number | string | null =>
+      typeof val === "number" || (typeof val === "string" && val.length > 0) ? val : null;
+    const fromCfg =
+      asId(viewConfig.forkedFromArtifactId) ??
+      asId(viewConfig.forked_from_artifact_id) ??
+      asId(viewConfig.upstreamArtifactId);
+    if (fromCfg !== null) return fromCfg;
+    const artExt = artifact as
+      | (ArtifactViewDTO & {
+          name?: string | undefined;
+          metadata?: Record<string, unknown> | string | undefined;
+          forked_from_id?: number | string | undefined;
+          post?: { forked_from_post_id?: number | string | undefined } | undefined;
+        })
+      | null;
+    const rawMeta = artExt?.metadata;
+    const meta: Record<string, unknown> =
+      typeof rawMeta === "string"
+        ? safeJsonParse<Record<string, unknown>>(rawMeta, {})
+        : rawMeta && typeof rawMeta === "object"
+          ? rawMeta
+          : {};
+    return (
+      asId(meta.forkedFromArtifactId) ??
+      asId(meta.forked_from_artifact_id) ??
+      asId(meta.forked_from_post_id) ??
+      asId(artExt?.forked_from_id) ??
+      asId(artExt?.post?.forked_from_post_id) ??
+      null
+    );
   }, [viewConfig, artifact]);
 
   const [paramDeltaCount, setParamDeltaCount] = useState<number | null>(null);
@@ -254,18 +274,22 @@ export default function RenderArtifactPage() {
     let active = true;
     async function loadDiffCount() {
       try {
-        let parentArt: any = await getCachedArtifact(resolvedForkedFromId!);
+        let parentArt: { view_config?: Record<string, unknown> | string | undefined } | null | undefined =
+          await getCachedArtifact<{ view_config?: Record<string, unknown> | string | undefined }>(
+            resolvedForkedFromId!,
+          );
         if (!parentArt) {
           const res = await getArtifactView(resolvedForkedFromId!);
-          parentArt = res?.artifactView || res;
+          parentArt = (res?.artifactView || res) as
+            { view_config?: Record<string, unknown> | string | undefined } | undefined;
         }
         if (!active || !parentArt) return;
-        const parentCfg =
+        const parentCfg: Record<string, unknown> =
           typeof parentArt.view_config === "string"
-            ? safeJsonParse(parentArt.view_config, {})
+            ? safeJsonParse<Record<string, unknown>>(parentArt.view_config, {})
             : parentArt.view_config || {};
-        const parentCode = parentCfg.code || "";
-        const currentCode = viewConfig.code || "";
+        const parentCode = typeof parentCfg.code === "string" ? parentCfg.code : "";
+        const currentCode = typeof viewConfig.code === "string" ? viewConfig.code : "";
         if (parentCode && currentCode) {
           const parentParams = parseModelicaParameters(parentCode);
           const currentParams = parseModelicaParameters(currentCode);
@@ -330,7 +354,7 @@ export default function RenderArtifactPage() {
             artifactId: parsedArtifactId,
             viewType: artifact.view_type,
             viewConfig,
-            title: artifact.title || (artifact as any).name,
+            title: artifact.title || (artifact as ArtifactViewDTO & { name?: string | undefined }).name,
           }),
         );
       } else if (e.key === "c" || e.key === "C") {
@@ -437,8 +461,8 @@ export default function RenderArtifactPage() {
         "modelica",
         "modelica-code",
         "modelica-diagram",
-        "morsel",
-        "polyglot-morsel",
+        "ansatz",
+        "polyglot-ansatz",
         "modelscript",
         "msx",
         "simulation",
@@ -580,10 +604,17 @@ export default function RenderArtifactPage() {
                 onClose={() => setIsHpcModalOpen(false)}
                 artifactId={parsedArtifactId}
                 artifactTitle={
-                  artifact?.title || (artifact as any)?.name || viewConfig?.title || `Artifact #${parsedArtifactId}`
+                  artifact?.title ||
+                  (artifact as (ArtifactViewDTO & { name?: string | undefined }) | null)?.name ||
+                  (typeof viewConfig?.title === "string" ? viewConfig.title : undefined) ||
+                  `Artifact #${parsedArtifactId}`
                 }
-                fileContent={viewConfig?.code || ""}
-                dialect={viewConfig?.dialect || artifact?.view_type || "modelica"}
+                fileContent={typeof viewConfig?.code === "string" ? viewConfig.code : ""}
+                dialect={
+                  (typeof viewConfig?.dialect === "string" ? viewConfig.dialect : undefined) ||
+                  artifact?.view_type ||
+                  "modelica"
+                }
               />
             </Suspense>
           )}

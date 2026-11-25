@@ -1,0 +1,11 @@
+{
+  "id": "endf6-04-u235-fission-resonance",
+  "lang": "endf6",
+  "subFormats": ["endf-6"],
+  "difficulty": 4,
+  "title": "Uranium-235 Fission & Resolved Resonance ENDF-6 Tape",
+  "description": "Multi-file ENDF-6 evaluation for U-235 (MAT=9228) including MF=1/MT=451 directory, MF=2/MT=151 Breit-Wigner resolved resonance parameters, and MF=3 total, elastic, fission, and capture cross sections.",
+  "category": "Nuclear Reactor Physics",
+  "tags": ["endf6", "u-235", "fission", "resonance", "mf2", "mf3"],
+  "activeFile": "u235_fission.endf"
+}

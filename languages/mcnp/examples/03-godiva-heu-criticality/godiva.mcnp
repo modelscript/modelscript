@@ -1,0 +1,18 @@
+Godiva Bare Highly Enriched Uranium Sphere (HEU-MET-FAST-001)
+C Block 1: Cell Cards
+1 1 -18.74 -1 IMP:N=1 VOL=2797.5 $ HEU metal sphere (93.71 wt% U-235)
+2 0         1 IMP:N=0            $ External vacuum graveyard
+
+C Block 2: Surface Cards
+1 SO 8.7407 $ Critical bare sphere radius (cm)
+
+C Block 3: Data Cards
+MODE N
+M1 92234.80c 0.0102 &
+   92235.80c 0.9371 &
+   92238.80c 0.0527
+KCODE 5000 1.0 20 120
+KSRC 0.0 0.0 0.0
+F4:N 1
+E4 0.01 0.1 0.5 1.0 2.0 5.0 10.0 20.0
+PHYS:N 20.0 0.0

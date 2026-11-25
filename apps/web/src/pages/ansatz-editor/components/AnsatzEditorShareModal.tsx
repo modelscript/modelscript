@@ -1,0 +1,292 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import { CopyIcon } from "@primer/octicons-react";
+import { Dialog, IconButton } from "@primer/react";
+import React, { useState } from "react";
+
+export interface AnsatzEditorShareModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  copyStatus: string | null;
+  shareUrl: string;
+  embedCode: string;
+  getEmbedCode?: (format: "iframe" | "html-page" | "custom-tag" | "ansatz-tag") => string;
+  markdownBadge: string;
+  onCopy: (text: string, label: string) => void;
+}
+
+export const AnsatzEditorShareModal: React.FC<AnsatzEditorShareModalProps> = ({
+  isOpen,
+  onClose,
+  copyStatus,
+  shareUrl,
+  embedCode,
+  getEmbedCode,
+  markdownBadge,
+  onCopy,
+}) => {
+  const [embedFormat, setEmbedFormat] = useState<"iframe" | "html-page" | "custom-tag" | "ansatz-tag">("iframe");
+
+  if (!isOpen) return null;
+
+  const embedSrc = shareUrl.includes("/editor")
+    ? shareUrl.replace("/editor", "/embed/editor")
+    : shareUrl.includes("/ansatz")
+      ? shareUrl.replace("/ansatz", "/embed/editor")
+      : shareUrl.includes("/sketch")
+        ? shareUrl.replace("/sketch", "/embed/editor")
+        : shareUrl.replace("/editor", "/embed/editor");
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://ansatz.social";
+  const defaultAnsatzTag = `<script src="${origin}/static/embed.js" defer></script>\n<ansatz-editor src="${embedSrc}" height="480px"></ansatz-editor>`;
+  const defaultCustomTag = `<script src="${origin}/static/embed.js" defer></script>\n<modelscript-viewer src="${embedSrc}" height="480px"></modelscript-viewer>`;
+  const defaultHtmlPage = `<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="utf-8" /><title>ModelScript Embed</title><style>html,body,iframe{margin:0;padding:0;width:100%;height:100%;border:0;overflow:hidden;}</style></head>\n<body><iframe src="${embedSrc}" allow="clipboard-write; fullscreen"></iframe></body>\n</html>`;
+  const activeEmbedCode = getEmbedCode
+    ? getEmbedCode(embedFormat)
+    : embedFormat === "html-page"
+      ? defaultHtmlPage
+      : embedFormat === "ansatz-tag"
+        ? defaultAnsatzTag
+        : embedFormat === "custom-tag"
+          ? defaultCustomTag
+          : embedCode;
+
+  const handleDownloadHtml = () => {
+    if (typeof document === "undefined") return;
+    const htmlContent = getEmbedCode ? getEmbedCode("html-page") : defaultHtmlPage;
+    const blob = new Blob([htmlContent], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "modelscript-embed.html";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Dialog
+      title="Share Interactive Model"
+      onClose={onClose}
+      footerButtons={[
+        ...(embedFormat === "html-page"
+          ? [
+              {
+                buttonType: "normal" as const,
+                content: "Download .html",
+                onClick: handleDownloadHtml,
+              },
+            ]
+          : []),
+        {
+          buttonType: "primary",
+          content: copyStatus ? `✓ Copied ${copyStatus}!` : "Copy Direct Link",
+          onClick: () => onCopy(shareUrl, "Link"),
+        },
+        {
+          buttonType: "normal",
+          content: "Done",
+          onClick: onClose,
+        },
+      ]}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        <p style={{ fontSize: "13px", color: "var(--color-fg-muted)", margin: 0, lineHeight: 1.5 }}>
+          Share this self-contained cyber-physical model. The entire code, diagram layout, and simulation settings are
+          encoded directly into the URL—anyone with the link can run and edit it immediately without creating an
+          account.
+        </p>
+
+        <div>
+          <p style={{ fontSize: "12px", fontWeight: "bold", margin: "0 0 6px 0", color: "var(--color-fg-default)" }}>
+            Direct Shareable Link
+          </p>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              background: "var(--color-canvas-subtle)",
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: "1px solid var(--color-border-default)",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "12px",
+                fontFamily: "var(--font-mono)",
+                userSelect: "all",
+              }}
+            >
+              {shareUrl}
+            </div>
+            <IconButton aria-label="Copy Link" icon={CopyIcon} size="small" onClick={() => onCopy(shareUrl, "Link")} />
+          </div>
+        </div>
+
+        <div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "8px",
+              marginBottom: "6px",
+            }}
+          >
+            <p style={{ fontSize: "12px", fontWeight: "bold", margin: 0, color: "var(--color-fg-default)" }}>
+              Embed Widget (for Intranet, Confluence, Notion, docs)
+            </p>
+            <div
+              role="group"
+              aria-label="Embed format"
+              style={{
+                display: "inline-flex",
+                borderRadius: "6px",
+                border: "1px solid var(--color-border-default)",
+                overflow: "hidden",
+                background: "var(--color-canvas-subtle)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setEmbedFormat("iframe")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: embedFormat === "iframe" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "iframe" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
+                  color: embedFormat === "iframe" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                Iframe
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmbedFormat("html-page")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontWeight: embedFormat === "html-page" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "html-page" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
+                  color: embedFormat === "html-page" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                HTML
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmbedFormat("ansatz-tag")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontWeight: embedFormat === "ansatz-tag" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "ansatz-tag" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
+                  color: embedFormat === "ansatz-tag" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                &lt;ansatz-editor&gt;
+              </button>
+              <button
+                type="button"
+                onClick={() => setEmbedFormat("custom-tag")}
+                style={{
+                  border: "none",
+                  padding: "2px 8px",
+                  fontSize: "11px",
+                  fontFamily: "var(--font-mono, monospace)",
+                  fontWeight: embedFormat === "custom-tag" ? 600 : 400,
+                  cursor: "pointer",
+                  background: embedFormat === "custom-tag" ? "var(--ms-accent, var(--color-accent-fg))" : "transparent",
+                  color: embedFormat === "custom-tag" ? "#ffffff" : "var(--color-fg-muted)",
+                }}
+              >
+                &lt;modelscript-viewer&gt;
+              </button>
+            </div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              background: "var(--color-canvas-subtle)",
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: "1px solid var(--color-border-default)",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "12px",
+                fontFamily: "var(--font-mono)",
+                userSelect: "all",
+              }}
+            >
+              {activeEmbedCode}
+            </div>
+            <IconButton
+              aria-label="Copy Embed Code"
+              icon={CopyIcon}
+              size="small"
+              onClick={() => onCopy(activeEmbedCode, embedFormat === "html-page" ? "HTML Embed" : "Embed Code")}
+            />
+          </div>
+        </div>
+
+        <div>
+          <p style={{ fontSize: "12px", fontWeight: "bold", margin: "0 0 6px 0", color: "var(--color-fg-default)" }}>
+            Markdown Badge (for GitHub READMEs)
+          </p>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              alignItems: "center",
+              background: "var(--color-canvas-subtle)",
+              padding: "8px 12px",
+              borderRadius: "6px",
+              border: "1px solid var(--color-border-default)",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "12px",
+                fontFamily: "var(--font-mono)",
+                userSelect: "all",
+              }}
+            >
+              {markdownBadge}
+            </div>
+            <IconButton
+              aria-label="Copy Markdown Badge"
+              icon={CopyIcon}
+              size="small"
+              onClick={() => onCopy(markdownBadge, "Markdown Badge")}
+            />
+          </div>
+        </div>
+      </div>
+    </Dialog>
+  );
+};

@@ -1,0 +1,41 @@
+// CF-1.8 2D Sea-Surface Temperature Analysis over the Western North Atlantic
+netcdf gulf_stream_sst {
+dimensions:
+  lat = 4 ;
+  lon = 5 ;
+variables:
+  float lat(lat) ;
+    lat:units = "degrees_north" ;
+    lat:long_name = "latitude" ;
+    lat:standard_name = "latitude" ;
+  float lon(lon) ;
+    lon:units = "degrees_east" ;
+    lon:long_name = "longitude" ;
+    lon:standard_name = "longitude" ;
+  float sst(lat, lon) ;
+    sst:units = "K" ;
+    sst:long_name = "Sea Surface Foundation Temperature" ;
+    sst:standard_name = "sea_surface_temperature" ;
+    sst:_FillValue = -9999.f ;
+  byte land_mask(lat, lon) ;
+    land_mask:units = "1" ;
+    land_mask:long_name = "Binary Land-Sea Mask (0=ocean, 1=land)" ;
+
+// global attributes:
+  :Conventions = "CF-1.8" ;
+  :title = "Gulf Stream 2-Degree Sea-Surface Temperature Grid" ;
+  :institution = "Woods Hole Oceanographic Institution" ;
+data:
+  lat = 34.0, 36.0, 38.0, 40.0 ;
+  lon = -76.0, -74.0, -72.0, -70.0, -68.0 ;
+  sst =
+    296.8, 297.4, 297.1, 296.5, 295.9,
+    _,     295.2, 296.1, 295.6, 294.8,
+    _,     291.0, 293.8, 294.2, 293.5,
+    _,     _,     288.4, 289.7, 290.6 ;
+  land_mask =
+    0b, 0b, 0b, 0b, 0b,
+    1b, 0b, 0b, 0b, 0b,
+    1b, 0b, 0b, 0b, 0b,
+    1b, 1b, 0b, 0b, 0b ;
+}

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<AUTOSAR>
+  <AR-PACKAGES>
+    <AR-PACKAGE>
+      <SHORT-NAME>AccSystem</SHORT-NAME>
+      <ELEMENTS>
+        <COMPOSITION-SW-COMPONENT-TYPE>
+          <SHORT-NAME>AccVehicleComposition</SHORT-NAME>
+          <COMPONENTS>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>FrontRadar</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/AccSwcs/RadarTrackerSwc</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+            <SW-COMPONENT-PROTOTYPE>
+              <SHORT-NAME>AccCtrl</SHORT-NAME>
+              <TYPE-TREF DEST="APPLICATION-SW-COMPONENT-TYPE">/AccSwcs/AccControllerSwc</TYPE-TREF>
+            </SW-COMPONENT-PROTOTYPE>
+          </COMPONENTS>
+          <CONNECTORS>
+            <ASSEMBLY-SW-CONNECTOR>
+              <SHORT-NAME>Conn_RadarToAcc</SHORT-NAME>
+              <PROVIDER-IREF>
+                <CONTEXT-COMPONENT-REF>FrontRadar</CONTEXT-COMPONENT-REF>
+                <TARGET-P-PORT-REF>TrackOut</TARGET-P-PORT-REF>
+              </PROVIDER-IREF>
+              <REQUESTER-IREF>
+                <CONTEXT-COMPONENT-REF>AccCtrl</CONTEXT-COMPONENT-REF>
+                <TARGET-R-PORT-REF>TrackIn</TARGET-R-PORT-REF>
+              </REQUESTER-IREF>
+            </ASSEMBLY-SW-CONNECTOR>
+          </CONNECTORS>
+        </COMPOSITION-SW-COMPONENT-TYPE>
+      </ELEMENTS>
+    </AR-PACKAGE>
+  </AR-PACKAGES>
+</AUTOSAR>

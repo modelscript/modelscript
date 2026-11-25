@@ -10,6 +10,7 @@
  * 4. Gate 4: DAE Arena Structural Balance (N_eq == N_var) & BLT Causalization
  */
 
+import type { SymbolEntry, WorkspaceCstNode } from "@modelscript/runtime";
 import {
   createSysML2QueryEngine,
   createSysML2WorkspaceIndex,
@@ -23,10 +24,39 @@ import {
   type SMTRequirementCheckResult,
 } from "@modelscript/sysml2";
 import { globalLanguageRegistry } from "../registry/LanguageRegistry.js";
-import { findCstNodesByType } from "../utils/ast-utils.js";
+import { findCstNodesByType, type CstNodeLike, type CstParserLike, type CstTreeLike } from "../utils/ast-utils.js";
 
-let cachedSysml2Parser: any = null;
-let cachedModelicaParser: any = null;
+export interface ClosedLoopLspContext {
+  parserService?: {
+    sharedContext?: {
+      load?(code: string, path: string): void;
+      flattenArena?(
+        className: string,
+        x?: unknown,
+        path?: string,
+      ):
+        (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined }) | null | undefined;
+    };
+  };
+}
+
+type WalkableCstNode = Omit<CstNodeLike, "hasError" | "isMissing" | "children"> & {
+  hasError?: boolean | (() => boolean) | undefined;
+  isMissing?: boolean | (() => boolean) | undefined;
+  children?: readonly WalkableCstNode[] | undefined;
+};
+
+interface LintQueryDiagnostic {
+  message?: string | undefined;
+  range?: { startOffset?: number | undefined; endOffset?: number | undefined } | undefined;
+}
+
+interface LintFetchableEngine {
+  fetch(queryName: string, id: number): LintQueryDiagnostic | null | undefined;
+}
+
+let cachedSysml2Parser: CstParserLike | null = null;
+let cachedModelicaParser: CstParserLike | null = null;
 
 const SI_UNIT_WORDS = new Set(["kg", "m", "s", "N", "Pa", "W", "J", "V", "A", "Ohm", "F", "H"]);
 const MODELICA_DECL_SKIP_KEYWORDS = new Set(["model", "class", "package", "block", "import", "extends", "annotation"]);
@@ -381,7 +411,7 @@ function stripLeadingModelicaHeader(stmt: string): string {
 }
 
 function extractModelicaClauseDecls(
-  clauseNode: any,
+  clauseNode: CstNodeLike,
 ): Array<{ varName: string; mods: string; binding?: string | undefined }> {
   const out: Array<{ varName: string; mods: string; binding?: string | undefined }> = [];
   const compDecls = findCstNodesByType(clauseNode, "component_declaration");
@@ -390,13 +420,13 @@ function extractModelicaClauseDecls(
     const innerDecl =
       declNode.type === "declaration" ? declNode : (findCstNodesByType(declNode, "declaration")[0] ?? declNode);
     const idNode =
-      (innerDecl.children || []).find((gc: any) => gc.type === "identifier" || gc.type === "IDENT") ??
+      (innerDecl.children || []).find((gc: CstNodeLike) => gc.type === "identifier" || gc.type === "IDENT") ??
       findCstNodesByType(innerDecl, "identifier")[0] ??
       findCstNodesByType(innerDecl, "IDENT")[0];
     const varName = idNode?.text?.trim();
     if (!varName || !isStrictIdentifier(varName)) continue;
     const modNode =
-      (innerDecl.children || []).find((gc: any) => gc.type === "modification") ??
+      (innerDecl.children || []).find((gc: CstNodeLike) => gc.type === "modification") ??
       findCstNodesByType(declNode, "modification")[0];
     const parsedMod = parseModelicaModificationSpan(modNode?.text ?? "");
     out.push({ varName, mods: parsedMod.mods, binding: parsedMod.binding });
@@ -847,9 +877,9 @@ export function parseSysmlComparisonConstraint(
   return undefined;
 }
 
-function parseSysmlNumericAttrNode(attrNode: any): { name: string; value: number } | undefined {
+function parseSysmlNumericAttrNode(attrNode: CstNodeLike): { name: string; value: number } | undefined {
   const nameNode =
-    attrNode.childForFieldName?.("declaredName") ?? attrNode.children?.find((c: any) => c.type === "Name");
+    attrNode.childForFieldName?.("declaredName") ?? attrNode.children?.find((c: CstNodeLike) => c.type === "Name");
   const name = nameNode?.text?.trim();
   const txt = attrNode.text || "";
   const eqIdx = txt.indexOf("=");
@@ -1172,8 +1202,8 @@ export async function getWasmParserForLanguage(
 export async function verifyGate1Syntax(
   code: string,
   language: ClosedLoopLanguage,
-  parserOverride?: any,
-): Promise<{ result: GateVerificationResult; tree?: any }> {
+  parserOverride?: CstParserLike | null,
+): Promise<{ result: GateVerificationResult; tree?: CstTreeLike | null | undefined }> {
   const diagnostics: GateDiagnostic[] = [];
   const parser = parserOverride ?? (await getWasmParserForLanguage(language));
 
@@ -1200,15 +1230,16 @@ export async function verifyGate1Syntax(
     };
   }
 
-  let tree: any = null;
+  let tree: CstTreeLike | null = null;
   try {
     tree = parser.parse(code);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
     diagnostics.push({
       gate: 1,
       gateName: "WASM GLR Syntax",
       severity: "error",
-      message: `Fatal parser exception: ${err?.message ?? String(err)}`,
+      message: `Fatal parser exception: ${errMsg}`,
     });
     return {
       result: {
@@ -1238,7 +1269,7 @@ export async function verifyGate1Syntax(
   }
 
   let nodeCount = 0;
-  const walk = (node: any) => {
+  const walk = (node: WalkableCstNode | null | undefined) => {
     if (!node) return;
     nodeCount++;
     const hasErr = typeof node.hasError === "function" ? node.hasError() : Boolean(node.hasError);
@@ -1271,7 +1302,8 @@ export async function verifyGate1Syntax(
     }
   };
 
-  walk(tree.rootNode);
+  const walkableRoot = tree.rootNode as WalkableCstNode;
+  walk(walkableRoot);
 
   // Check delimiter balance
   const openBraces = countChar(code, "{");
@@ -1288,7 +1320,7 @@ export async function verifyGate1Syntax(
   // Fallback: if tree.rootNode indicates an error but no node was explicitly flagged
   if (
     diagnostics.length === 0 &&
-    (typeof tree.rootNode.hasError === "function" ? tree.rootNode.hasError() : Boolean(tree.rootNode.hasError))
+    (typeof walkableRoot.hasError === "function" ? walkableRoot.hasError() : Boolean(walkableRoot.hasError))
   ) {
     diagnostics.push({
       gate: 1,
@@ -1317,27 +1349,13 @@ export async function verifyGate1Syntax(
 async function flattenModelicaCandidate(
   code: string,
   documentUri = "file:///candidate/model.mo",
-  lspContext?: {
-    parserService?: {
-      sharedContext?: {
-        load?(code: string, path: string): void;
-        flattenArena?(
-          className: string,
-          x?: unknown,
-          path?: string,
-        ):
-          | (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined })
-          | null
-          | undefined;
-      };
-    };
-  },
-  existingTree?: import("../utils/ast-utils.js").CstTreeLike | null,
+  lspContext?: ClosedLoopLspContext,
+  existingTree?: CstTreeLike | null,
 ): Promise<{
   arena: (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined }) | null;
   className: string;
   ctx: unknown;
-  tree?: import("../utils/ast-utils.js").CstTreeLike | null;
+  tree?: CstTreeLike | null;
 } | null> {
   let localTree: import("../utils/ast-utils.js").CstTreeLike | null = existingTree ?? null;
   let createdLocalTree = false;
@@ -1392,9 +1410,7 @@ async function flattenModelicaCandidate(
     });
     ctx.load(code, filePath);
     const arena = ctx.flattenArena(className, undefined, filePath) as
-      | (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined })
-      | null
-      | undefined;
+      (import("@modelscript/runtime").DAEBuilder & { getVarUnit?(i: number): string | undefined }) | null | undefined;
     return { arena: arena ?? null, className, ctx, tree: localTree };
   } catch {
     if (createdLocalTree) localTree?.delete?.();
@@ -1408,7 +1424,7 @@ async function flattenModelicaCandidate(
 export async function verifyGate2Dimensions(
   code: string,
   language: ClosedLoopLanguage,
-  tree?: any,
+  tree?: CstTreeLike | null,
   documentUri = "file:///candidate/model.sysml",
 ): Promise<GateVerificationResult> {
   const diagnostics: GateDiagnostic[] = [];
@@ -1429,21 +1445,23 @@ export async function verifyGate2Dimensions(
     const ws = createSysML2WorkspaceIndex();
     loadEmbeddedKerMLStdlib(ws);
 
-    ws.register(documentUri, () => tree.rootNode);
+    ws.register(documentUri, () => tree.rootNode as unknown as WorkspaceCstNode);
     const unified = ws.getIndex({ eager: true });
-    const qe = createSysML2QueryEngine(unified, tree);
+    const qe = createSysML2QueryEngine(unified, tree as unknown as Parameters<typeof createSysML2QueryEngine>[1]);
+    const lintQe = qe as unknown as LintFetchableEngine;
     const db = qe.toQueryDB();
 
     let checkedCount = 0;
 
     // Collect all symbol entries
-    const entries: any[] = [];
-    if (unified.symbols instanceof Map) {
-      for (const entry of unified.symbols.values()) entries.push(entry);
-    } else if (Array.isArray((unified as any).symbols)) {
-      for (const entry of (unified as any).symbols as any[]) entries.push(entry);
-    } else if (typeof (unified as any).symbols === "object" && (unified as any).symbols !== null) {
-      for (const entry of Object.values((unified as any).symbols)) entries.push(entry);
+    const entries: SymbolEntry[] = [];
+    const rawSymbols: unknown = unified.symbols;
+    if (rawSymbols instanceof Map) {
+      for (const entry of rawSymbols.values()) entries.push(entry as SymbolEntry);
+    } else if (Array.isArray(rawSymbols)) {
+      for (const entry of rawSymbols) entries.push(entry as SymbolEntry);
+    } else if (typeof rawSymbols === "object" && rawSymbols !== null) {
+      for (const entry of Object.values(rawSymbols as Record<string, SymbolEntry>)) entries.push(entry);
     }
 
     // 1. Check all symbol entries for dimensional assignment errors
@@ -1454,15 +1472,15 @@ export async function verifyGate2Dimensions(
 
       // Check dimensional assignment lint
       try {
-        const assignDiag = (qe as any).fetch("lint__dimensionalAssignment", entry.id);
-        if (assignDiag && (assignDiag as any).message) {
+        const assignDiag = lintQe.fetch("lint__dimensionalAssignment", entry.id);
+        if (assignDiag?.message) {
           diagnostics.push({
             gate: 2,
             gateName: "QUDV Physical Dimensions",
             severity: "error",
-            message: (assignDiag as any).message,
-            startOffset: (assignDiag as any).range?.startOffset,
-            endOffset: (assignDiag as any).range?.endOffset,
+            message: assignDiag.message,
+            startOffset: assignDiag.range?.startOffset,
+            endOffset: assignDiag.range?.endOffset,
             metadata: { featureName: entry.name, rule: "dimensionalAssignment" },
           });
         }
@@ -1477,15 +1495,15 @@ export async function verifyGate2Dimensions(
         entry.ruleName === "ConstraintDefinition"
       ) {
         try {
-          const constrDiag = (qe as any).fetch("lint__dimensionalConstraint", entry.id);
-          if (constrDiag && (constrDiag as any).message) {
+          const constrDiag = lintQe.fetch("lint__dimensionalConstraint", entry.id);
+          if (constrDiag?.message) {
             diagnostics.push({
               gate: 2,
               gateName: "QUDV Physical Dimensions",
               severity: "error",
-              message: (constrDiag as any).message,
-              startOffset: (constrDiag as any).range?.startOffset,
-              endOffset: (constrDiag as any).range?.endOffset,
+              message: constrDiag.message,
+              startOffset: constrDiag.range?.startOffset,
+              endOffset: constrDiag.range?.endOffset,
               metadata: { constraintName: entry.name, rule: "dimensionalConstraint" },
             });
           }
@@ -1497,15 +1515,15 @@ export async function verifyGate2Dimensions(
       // Check connection dimensional lint
       if (entry.ruleName === "ConnectionUsage") {
         try {
-          const connDiag = (qe as any).fetch("lint__connectionDimensionalConsistency", entry.id);
-          if (connDiag && (connDiag as any).message) {
+          const connDiag = lintQe.fetch("lint__connectionDimensionalConsistency", entry.id);
+          if (connDiag?.message) {
             diagnostics.push({
               gate: 2,
               gateName: "QUDV Physical Dimensions",
               severity: "error",
-              message: (connDiag as any).message,
-              startOffset: (connDiag as any).range?.startOffset,
-              endOffset: (connDiag as any).range?.endOffset,
+              message: connDiag.message,
+              startOffset: connDiag.range?.startOffset,
+              endOffset: connDiag.range?.endOffset,
               metadata: { connectionName: entry.name, rule: "connectionDimensionalConsistency" },
             });
           }
@@ -1542,9 +1560,10 @@ export async function verifyGate2Dimensions(
       try {
         const { parseUnit, checkEquationUnits, formatSIUnit, unitDivide, unitMultiply } =
           await import("@modelscript/modelica");
+        type ParsedSIUnit = NonNullable<ReturnType<typeof parseUnit>>;
         const { EqKind, ExprKind, BinOp } = await import("@modelscript/runtime");
         const arena = flattened.arena;
-        const varUnits = new Map<number, any>();
+        const varUnits = new Map<number, ParsedSIUnit>();
 
         for (let i = 0; i < arena.varCount; i++) {
           checkedFeatures++;
@@ -1566,7 +1585,7 @@ export async function verifyGate2Dimensions(
         }
 
         const timeUnit = parseUnit("s");
-        const inferArenaExprUnit = (exprId: number): any => {
+        const inferArenaExprUnit = (exprId: number): ParsedSIUnit | null => {
           if (exprId < 0 || exprId >= arena.exprCount) return null;
           const kind = arena.getExprKind(exprId);
           if (kind === ExprKind.Name) {
@@ -1755,7 +1774,7 @@ export async function verifyGate2Dimensions(
 export async function verifyGate3Requirements(
   code: string,
   language: ClosedLoopLanguage,
-  tree?: any,
+  tree?: CstTreeLike | null,
   documentUri = "file:///candidate/model.sysml",
 ): Promise<GateVerificationResult> {
   const diagnostics: GateDiagnostic[] = [];
@@ -1767,9 +1786,9 @@ export async function verifyGate3Requirements(
     if (tree) {
       const ws = createSysML2WorkspaceIndex();
       loadEmbeddedKerMLStdlib(ws);
-      ws.register(documentUri, () => tree.rootNode);
+      ws.register(documentUri, () => tree.rootNode as unknown as WorkspaceCstNode);
       const unified = ws.getIndex({ eager: true });
-      const qe = createSysML2QueryEngine(unified, tree);
+      const qe = createSysML2QueryEngine(unified, tree as unknown as Parameters<typeof createSysML2QueryEngine>[1]);
       const db = qe.toQueryDB();
       constraints = extractSysML2Constraints(db) || [];
     }
@@ -1787,7 +1806,7 @@ export async function verifyGate3Requirements(
           const comp = parseSysmlComparisonConstraint(block.body);
           if (comp) {
             const nameNode =
-              cNode.childForFieldName?.("declaredName") ?? cNode.children?.find((c: any) => c.type === "Name");
+              cNode.childForFieldName?.("declaredName") ?? cNode.children?.find((c: CstNodeLike) => c.type === "Name");
             constraints.push({
               ...comp,
               expression: block.body.trim(),
@@ -1819,7 +1838,7 @@ export async function verifyGate3Requirements(
       ];
       for (const reqNode of reqNodes) {
         const reqNameNode =
-          reqNode.childForFieldName?.("declaredName") ?? reqNode.children?.find((c: any) => c.type === "Name");
+          reqNode.childForFieldName?.("declaredName") ?? reqNode.children?.find((c: CstNodeLike) => c.type === "Name");
         const reqName = reqNameNode?.text?.trim();
         for (const attrNode of findCstNodesByType(reqNode, "AttributeUsage")) {
           const parsedAttr = parseSysmlNumericAttrNode(attrNode);
@@ -2352,8 +2371,8 @@ function analyzeBipartiteAndBLT(
 export async function verifyGate4DAEBalance(
   code: string,
   language: ClosedLoopLanguage,
-  _tree?: any,
-  _lspContext?: any,
+  _tree?: CstTreeLike | null,
+  _lspContext?: ClosedLoopLspContext,
 ): Promise<GateVerificationResult> {
   const diagnostics: GateDiagnostic[] = [];
   const norm = language.toLowerCase();
@@ -2412,14 +2431,15 @@ export async function verifyGate4DAEBalance(
     const equationStrings: string[] = [];
 
     if (mRoot) {
-      const visitCst = (node: any) => {
+      const visitCst = (node: CstNodeLike) => {
         if (node.type === "component_clause") {
           const prefixNodes = findCstNodesByType(node, "type_prefix");
           const isNonState =
-            (node.children || []).some((c: any) => {
+            (node.children || []).some((c: CstNodeLike) => {
               const t = c.type ?? "";
               return t === "parameter" || t === "constant" || t === "input";
-            }) || prefixNodes.some((p: any) => hasAnyWordMatch(p.text ?? "", ["parameter", "constant", "input"]));
+            }) ||
+            prefixNodes.some((p: CstNodeLike) => hasAnyWordMatch(p.text ?? "", ["parameter", "constant", "input"]));
           if (!isNonState) {
             for (const decl of extractModelicaClauseDecls(node)) {
               declaredVars.add(decl.varName);
@@ -2542,7 +2562,7 @@ export async function verifyGate4DAEBalance(
     const uninitializedAttrs: string[] = [];
     const equations: string[] = [];
 
-    let localSysmlTree: any = null;
+    let localSysmlTree: CstTreeLike | null = null;
     try {
       let sysmlRoot = _tree?.rootNode;
       if (!sysmlRoot) {
@@ -2556,7 +2576,8 @@ export async function verifyGate4DAEBalance(
       if (sysmlRoot) {
         for (const attrNode of findCstNodesByType(sysmlRoot, "AttributeUsage")) {
           const nameNode =
-            attrNode.childForFieldName?.("declaredName") ?? attrNode.children?.find((c: any) => c.type === "Name");
+            attrNode.childForFieldName?.("declaredName") ??
+            attrNode.children?.find((c: CstNodeLike) => c.type === "Name");
           const attrName = nameNode?.text?.trim();
           const attrText = attrNode.text || "";
           if (attrName && !hasSysmlAttrInitializer(attrText)) {
@@ -2652,7 +2673,7 @@ export async function verifyGate4DAEBalance(
  * Main Closed-Loop Verification Engine.
  */
 export class ClosedLoopCompilerEngine {
-  constructor(public readonly lspContext?: any) {}
+  constructor(public readonly lspContext?: ClosedLoopLspContext) {}
 
   /**
    * Runs candidate code through the 4 verification gates.
@@ -2670,12 +2691,12 @@ export class ClosedLoopCompilerEngine {
     const docUri = options?.documentUri ?? "file:///candidate/model.sysml";
 
     // --- Gate 1: Syntax (Prerequisite for semantic CST analysis) ---
-    let tree: any = null;
+    let tree: CstTreeLike | null = null;
     try {
       if (targetGates.has(1)) {
         const g1 = await verifyGate1Syntax(code, language, options?.parser);
         gates.push(g1.result);
-        tree = g1.tree;
+        tree = g1.tree ?? null;
         if (!g1.result.passed) {
           return {
             allPassed: false,

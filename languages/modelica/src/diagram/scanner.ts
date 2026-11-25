@@ -12,13 +12,7 @@ import {
 import type { ModelicaClassInstance } from "./types.js";
 
 export type CompositionSectionKind =
-  | "public"
-  | "protected"
-  | "initial_equation"
-  | "equation"
-  | "initial_algorithm"
-  | "algorithm"
-  | "external";
+  "public" | "protected" | "initial_equation" | "equation" | "initial_algorithm" | "algorithm" | "external";
 
 export interface ScannedSection {
   kind: CompositionSectionKind;
@@ -1240,7 +1234,34 @@ function parseExtentMatrix(rawBody: string, maskedBody: string): [[number, numbe
   return p1 && p2 ? [p1, p2] : null;
 }
 
-function parseDiagramAnnotationFromSlice(annSlice: string): any | null {
+interface ScannedDiagramAnnotation {
+  "@type": "Diagram";
+  coordinateSystem: {
+    "@type": "coordinateSystem";
+    extent: [[number, number], [number, number]];
+    preserveAspectRatio?: boolean;
+    initialScale?: number;
+    grid?: [number, number];
+  };
+}
+
+interface ScannedPlacementAnnotation {
+  "@type": "Placement";
+  transformation: {
+    "@type": "transformation";
+    origin?: [number, number];
+    extent?: [[number, number], [number, number]];
+    rotation?: number;
+  };
+}
+
+interface ScannedLineAnnotation {
+  "@type": "Line";
+  points?: [number, number][];
+  color?: [number, number, number];
+}
+
+function parseDiagramAnnotationFromSlice(annSlice: string): ScannedDiagramAnnotation | null {
   const masked = maskModelicaCommentsAndStrings(annSlice);
   const call = findKeywordCallBody(annSlice, masked, "Diagram");
   if (!call) return null;
@@ -1269,7 +1290,7 @@ function parseDiagramAnnotationFromSlice(annSlice: string): any | null {
   };
 }
 
-function parsePlacementAnnotationFromSlice(annSlice: string): any | null {
+function parsePlacementAnnotationFromSlice(annSlice: string): ScannedPlacementAnnotation | null {
   const masked = maskModelicaCommentsAndStrings(annSlice);
   const call = findKeywordCallBody(annSlice, masked, "Placement");
   if (!call) return null;
@@ -1292,7 +1313,7 @@ function parsePlacementAnnotationFromSlice(annSlice: string): any | null {
   };
 }
 
-function parseLineAnnotationFromSlice(annSlice: string): any | null {
+function parseLineAnnotationFromSlice(annSlice: string): ScannedLineAnnotation | null {
   const masked = maskModelicaCommentsAndStrings(annSlice);
   const call = findKeywordCallBody(annSlice, masked, "Line");
   if (!call) return null;

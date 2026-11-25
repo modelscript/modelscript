@@ -23,7 +23,7 @@ export interface AlignmentElement {
   type?: string | undefined;
   ports?: string[] | undefined;
   children?: string[] | undefined;
-  properties?: Record<string, any> | undefined;
+  properties?: Record<string, unknown> | undefined;
 }
 
 export interface AlignmentScoreBreakdown {

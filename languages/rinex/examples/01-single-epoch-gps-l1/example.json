@@ -1,0 +1,12 @@
+{
+  "id": "rinex-01-single-epoch-gps-l1",
+  "lang": "rinex",
+  "subFormats": ["rinex-2.11-obs"],
+  "difficulty": 1,
+  "title": "Single-Epoch 4-Satellite GPS L1 C/A RINEX v2.11",
+  "description": "Minimal RINEX v2.11 GPS observation file capturing a single epoch of L1 C/A code pseudoranges (C1) and signal-to-noise ratios (S1) from four satellites.",
+  "category": "GNSS Geodesy",
+  "tags": ["rinex", "gps", "l1", "pseudorange", "v2.11"],
+  "activeFile": "single.obs",
+  "isDefaultStarter": true
+}

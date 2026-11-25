@@ -1,0 +1,660 @@
+[
+  {
+    "namePath": "gcode.G00",
+    "aliases": [
+      "G0",
+      "RAPID"
+    ],
+    "label": "Rapid Positioning",
+    "category": "Motion Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MOVE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G00</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G01",
+    "aliases": [
+      "G1",
+      "LINEAR"
+    ],
+    "label": "Linear Interpolation",
+    "category": "Motion Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MOVE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G01</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G02",
+    "aliases": [
+      "G2",
+      "ARC_CW"
+    ],
+    "label": "Circular Interpolation CW",
+    "category": "Motion Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MOVE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G02</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G03",
+    "aliases": [
+      "G3",
+      "ARC_CCW"
+    ],
+    "label": "Circular Interpolation CCW",
+    "category": "Motion Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MOVE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G03</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G04",
+    "aliases": [
+      "G4",
+      "DWELL"
+    ],
+    "label": "Programmed Dwell",
+    "category": "Motion Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#1e3a5f\" stroke=\"#38bdf8\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#38bdf8\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#38bdf8\">MOVE</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G04</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G80",
+    "aliases": [
+      "CANCEL_CYCLE"
+    ],
+    "label": "Cancel Canned Cycle",
+    "category": "Canned Cycles",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">CYCL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G80</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G81",
+    "aliases": [
+      "DRILL"
+    ],
+    "label": "Simple Drilling Cycle",
+    "category": "Canned Cycles",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">CYCL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G81</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G82",
+    "aliases": [
+      "SPOT_DRILL",
+      "COUNTERBORE"
+    ],
+    "label": "Spot Drilling / Counterbore Cycle",
+    "category": "Canned Cycles",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">CYCL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G82</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.G83",
+    "aliases": [
+      "PECK_DRILL"
+    ],
+    "label": "Deep-Hole Peck Drilling Cycle",
+    "category": "Canned Cycles",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#2e2447\" stroke=\"#c084fc\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#c084fc\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#c084fc\">CYCL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">G83</text></svg>",
+    "ports": [
+      {
+        "name": "pos_in",
+        "kind": "kinematic",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "pos_out",
+        "kind": "kinematic",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M03",
+    "aliases": [
+      "M3",
+      "SPINDLE_CW"
+    ],
+    "label": "Spindle On Clockwise",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M03</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M04",
+    "aliases": [
+      "M4",
+      "SPINDLE_CCW"
+    ],
+    "label": "Spindle On Counter-Clockwise",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M04</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M05",
+    "aliases": [
+      "M5",
+      "SPINDLE_STOP"
+    ],
+    "label": "Spindle Stop",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M05</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M06",
+    "aliases": [
+      "M6",
+      "TOOL_CHANGE"
+    ],
+    "label": "Automatic Tool Change",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M06</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M08",
+    "aliases": [
+      "M8",
+      "COOLANT_ON"
+    ],
+    "label": "Flood Coolant On",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M08</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M09",
+    "aliases": [
+      "M9",
+      "COOLANT_OFF"
+    ],
+    "label": "Coolant Off",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M09</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M02",
+    "aliases": [
+      "M2",
+      "PROGRAM_END"
+    ],
+    "label": "End of Program",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M02</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.M30",
+    "aliases": [
+      "PROGRAM_END_REWIND"
+    ],
+    "label": "End of Program & Rewind",
+    "category": "Machine Control",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#4a1d1d\" stroke=\"#fb923c\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#fb923c\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#fb923c\">MACH</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"9.5\" font-weight=\"bold\" fill=\"#f8fafc\">M30</text></svg>",
+    "ports": [
+      {
+        "name": "cmd_in",
+        "kind": "signal",
+        "side": "left",
+        "dx": 0,
+        "dy": 26
+      },
+      {
+        "name": "state_out",
+        "kind": "signal",
+        "side": "right",
+        "dx": 96,
+        "dy": 26
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.ENDMILL_CARBIDE_AL",
+    "aliases": [
+      "CARBIDE_ENDMILL_AL6061"
+    ],
+    "label": "Carbide Endmill — Aluminum 6061",
+    "category": "Cutting Tool Presets",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TOOL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">ENDMILL_CARB</text></svg>",
+    "ports": [
+      {
+        "name": "spindle",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "cut_out",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.ENDMILL_CARBIDE_STEEL",
+    "aliases": [
+      "CARBIDE_ENDMILL_1018",
+      "CARBIDE_ENDMILL_4140"
+    ],
+    "label": "Carbide Endmill — Mild/Alloy Steel",
+    "category": "Cutting Tool Presets",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TOOL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">ENDMILL_CARB</text></svg>",
+    "ports": [
+      {
+        "name": "spindle",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "cut_out",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.ENDMILL_HSS_AL",
+    "aliases": [
+      "HSS_ENDMILL_AL"
+    ],
+    "label": "HSS Endmill — Aluminum",
+    "category": "Cutting Tool Presets",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TOOL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">ENDMILL_HSS_</text></svg>",
+    "ports": [
+      {
+        "name": "spindle",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "cut_out",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.DRILL_CARBIDE_STEEL",
+    "aliases": [
+      "CARBIDE_DRILL_STEEL"
+    ],
+    "label": "Carbide Twist Drill — Steel",
+    "category": "Cutting Tool Presets",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TOOL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">DRILL_CARBID</text></svg>",
+    "ports": [
+      {
+        "name": "spindle",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "cut_out",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.DRILL_HSS_AL",
+    "aliases": [
+      "HSS_DRILL_AL"
+    ],
+    "label": "HSS Twist Drill — Aluminum",
+    "category": "Cutting Tool Presets",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TOOL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">DRILL_HSS_AL</text></svg>",
+    "ports": [
+      {
+        "name": "spindle",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "cut_out",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  },
+  {
+    "namePath": "gcode.FACEMILL_CARBIDE_CASTIRON",
+    "aliases": [
+      "CARBIDE_FACEMILL_CI"
+    ],
+    "label": "Carbide Face Mill — Gray Cast Iron",
+    "category": "Cutting Tool Presets",
+    "domain": "manufacturing",
+    "width": 96,
+    "height": 52,
+    "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 96 52\" width=\"96\" height=\"52\"><rect x=\"2\" y=\"2\" width=\"92\" height=\"48\" rx=\"6\" fill=\"#163b3b\" stroke=\"#34d399\" stroke-width=\"1.8\"/><rect x=\"6\" y=\"6\" width=\"30\" height=\"12\" rx=\"3\" fill=\"#34d399\" fill-opacity=\"0.22\"/><text x=\"21\" y=\"15\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.2\" fill=\"#34d399\">TOOL</text><text x=\"48\" y=\"36\" text-anchor=\"middle\" font-family=\"monospace\" font-size=\"7.8\" font-weight=\"bold\" fill=\"#f8fafc\">FACEMILL_CAR</text></svg>",
+    "ports": [
+      {
+        "name": "spindle",
+        "kind": "mechanical",
+        "side": "top",
+        "dx": 48,
+        "dy": 0
+      },
+      {
+        "name": "cut_out",
+        "kind": "mechanical",
+        "side": "bottom",
+        "dx": 48,
+        "dy": 52
+      }
+    ]
+  }
+]

@@ -180,6 +180,9 @@ export class TelecomTheoryOracle implements TheoryOracle {
   }
 
   public checkSat(): { isSat: boolean; conflict?: ConflictClause | undefined } {
+    const matchArg = (a: unknown, key: string, expected: unknown): boolean =>
+      typeof a === "object" && a !== null && (a as Record<string, unknown>)[key] === expected;
+
     // 1. Check Optical Channels
     for (const [id, spec] of this.opticalChannels.entries()) {
       if (spec.actualGsnrDb < spec.minRequiredGsnrDb) {
@@ -187,7 +190,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.channelId === spec.channelId),
+              l.args.some((a) => matchArg(a, "channelId", spec.channelId)),
             ),
             explanation: `Optical Transmission Violation: Channel '${id}' GSNR ${spec.actualGsnrDb.toFixed(2)} dB is below required threshold ${spec.minRequiredGsnrDb.toFixed(2)} dB (deficit: ${(spec.minRequiredGsnrDb - spec.actualGsnrDb).toFixed(2)} dB).`,
             culpritEntities: [id, `Wavelength ${spec.wavelengthNm}nm`],
@@ -201,7 +204,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.channelId === spec.channelId),
+              l.args.some((a) => matchArg(a, "channelId", spec.channelId)),
             ),
             explanation: `Optical CD Overflow: Channel '${id}' accumulated chromatic dispersion ${spec.accumulatedCdPsPerNm.toFixed(0)} ps/nm exceeds DSP receiver buffer ${spec.maxDspCdBufferPsPerNm.toFixed(0)} ps/nm.`,
             culpritEntities: [id],
@@ -215,7 +218,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.channelId === spec.channelId),
+              l.args.some((a) => matchArg(a, "channelId", spec.channelId)),
             ),
             explanation: `Optical Non-linear Violation: Channel '${id}' launch power ${spec.launchPowerDbm.toFixed(2)} dBm exceeds Kerr threshold ${spec.maxKerrPowerDbm.toFixed(2)} dBm.`,
             culpritEntities: [id],
@@ -232,7 +235,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.chainId === spec.chainId),
+              l.args.some((a) => matchArg(a, "chainId", spec.chainId)),
             ),
             explanation: `PTP Timing Violation: Sync chain '${id}' end-to-end time error ${spec.actualTimeErrorNs.toFixed(1)} ns exceeds 3GPP limit ${spec.maxAllowedTimeErrorNs.toFixed(1)} ns.`,
             culpritEntities: [id],
@@ -246,7 +249,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.chainId === spec.chainId),
+              l.args.some((a) => matchArg(a, "chainId", spec.chainId)),
             ),
             explanation: `PTP Cluster Alignment Violation: Sync chain '${id}' cluster error ${spec.clusterTimeErrorNs.toFixed(1)} ns exceeds CoMP/MIMO limit ${spec.maxAllowedClusterErrorNs.toFixed(1)} ns.`,
             culpritEntities: [id],
@@ -263,7 +266,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.linkId === spec.linkId),
+              l.args.some((a) => matchArg(a, "linkId", spec.linkId)),
             ),
             explanation: `Microwave Fresnel Obstruction: Link '${id}' 1st Fresnel clearance ratio ${spec.actualClearanceRatio.toFixed(2)} is below required minimum ${spec.minClearanceRatio.toFixed(2)}.`,
             culpritEntities: [id],
@@ -277,7 +280,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.linkId === spec.linkId),
+              l.args.some((a) => matchArg(a, "linkId", spec.linkId)),
             ),
             explanation: `Microwave Availability Deficit: Link '${id}' availability ${spec.annualAvailabilityPercent.toFixed(4)}% fails five-nines requirement ${spec.minAvailabilityPercent.toFixed(4)}%.`,
             culpritEntities: [id],
@@ -291,7 +294,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.linkId === spec.linkId),
+              l.args.some((a) => matchArg(a, "linkId", spec.linkId)),
             ),
             explanation: `FCC Part 101 Regulatory Violation: Link '${id}' EIRP ${spec.eirpDbm.toFixed(1)} dBm exceeds legal limit ${spec.maxAllowedEirpDbm.toFixed(1)} dBm.`,
             culpritEntities: [id],
@@ -308,7 +311,7 @@ export class TelecomTheoryOracle implements TheoryOracle {
           isSat: false,
           conflict: {
             literals: Array.from(this.assertedLiterals.values()).filter((l) =>
-              l.args.some((a) => a?.primaryPathId === spec.primaryPathId),
+              l.args.some((a) => matchArg(a, "primaryPathId", spec.primaryPathId)),
             ),
             explanation: `SRLG Physical Risk Violation: Primary path '${spec.primaryPathId}' and backup '${spec.backupPathId}' share ${spec.sharedSrlgCount} physical risk groups: [${spec.sharedSrlgs.join(", ")}].`,
             culpritEntities: [spec.primaryPathId, spec.backupPathId, ...spec.sharedSrlgs],

@@ -1,0 +1,30 @@
+-- Multi-Well Development Production & Injection Schedule
+WELSPECS
+  'P_NORTH1' 'PROD' 4  4  8550.0 'OIL' /
+  'P_NORTH2' 'PROD' 11 5  8550.0 'OIL' /
+  'P_SOUTH1' 'PROD' 8  12 8550.0 'OIL' /
+  'I_WATER1' 'INJ'  2  13 8600.0 'WATER' /
+  'I_WATER2' 'INJ'  13 13 8600.0 'WATER' /
+/
+
+COMPDAT
+  'P_NORTH1' 4  4  1 3 'OPEN' 1* 18.0 0.5 /
+  'P_NORTH2' 11 5  1 3 'OPEN' 1* 17.5 0.5 /
+  'P_SOUTH1' 8  12 1 4 'OPEN' 1* 19.0 0.5 /
+  'I_WATER1' 2  13 2 4 'OPEN' 1* 24.0 0.5 /
+  'I_WATER2' 13 13 2 4 'OPEN' 1* 24.0 0.5 /
+/
+
+WCONPROD
+  'P_NORTH1' 'OPEN' 'ORAT' 4000.0 1* 1* 1* 2200.0 /
+  'P_NORTH2' 'OPEN' 'ORAT' 3800.0 1* 1* 1* 2200.0 /
+  'P_SOUTH1' 'OPEN' 'ORAT' 4200.0 1* 1* 1* 2200.0 /
+/
+
+WCONINJE
+  'I_WATER1' 'WATER' 'OPEN' 'RATE' 6500.0 5400.0 /
+  'I_WATER2' 'WATER' 'OPEN' 'RATE' 6500.0 5400.0 /
+/
+
+TSTEP
+  30.0 60.0 90.0 180.0 365.0 365.0 /

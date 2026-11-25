@@ -2,7 +2,83 @@
 
 export interface ModelicaCodeLens {
   range: { start: { line: number; character: number }; end: { line: number; character: number } };
-  command: { title: string; command: string; arguments?: any[] };
+  command: { title: string; command: string; arguments?: unknown[] };
+}
+
+export interface CodeLensCstNode {
+  type?: string | undefined;
+  text?: string | undefined;
+  startPosition?: { row: number; column: number } | undefined;
+  children?: readonly CodeLensCstNode[] | undefined;
+}
+
+export interface CodeLensProofBug {
+  category?: string | undefined;
+  description?: string | undefined;
+  witnessValues?: { index?: string | number | undefined; arrayLength?: string | number | undefined } | undefined;
+}
+
+export interface CodeLensProofResult {
+  definiteBugs: CodeLensProofBug[];
+  potentialBugs: CodeLensProofBug[];
+  isCertifiedSafe?: boolean | undefined;
+  formattedMatrix?: unknown;
+}
+
+export interface CodeLensDaeIssue {
+  severity?: string | undefined;
+  message: string;
+}
+
+export interface CodeLensDaeProofResult {
+  issues: CodeLensDaeIssue[];
+  verdict?: { kind?: string | undefined } | undefined;
+  unboundedVariables?: number | string | undefined;
+}
+
+export interface CodeLensThreadPeer {
+  domain?: string | undefined;
+  name?: string | undefined;
+  properties?: Record<string, unknown> | undefined;
+  meta?: { name?: string | undefined; properties?: Record<string, unknown> | undefined } | undefined;
+}
+
+export interface CodeLensSymbolLike {
+  name: string;
+  kind?: string | undefined;
+  classKind?: string | undefined;
+  resourceId?: string | undefined;
+  startOffset?: number | undefined;
+  selectionRange?: { start: { line: number; character: number } } | undefined;
+  range?: { start?: { line: number; character: number } | undefined } | undefined;
+}
+
+export interface CodeLensWorkspaceManager {
+  getThreadsForUri?: (uri: string) => Array<{ slot: string }> | undefined;
+  findAlignedElementsBySlot?: (slot: string) => CodeLensThreadPeer[] | undefined;
+  getWorkspaceIndex?: (
+    lang: string,
+  ) => { getFileIndex: (uri: string) => { symbols: Map<unknown, unknown> } | undefined } | undefined;
+  globalWorkspaceIndex?: { getFileIndex: (uri: string) => { symbols: Map<unknown, unknown> } | undefined } | undefined;
+}
+
+export interface CodeLensDocumentManager {
+  getDocumentTree?: (
+    uri: string,
+  ) => { tree?: { rootNode?: CodeLensCstNode | null } | null; rootNode?: CodeLensCstNode | null } | undefined;
+  documentTrees?:
+    Map<string, { tree?: { rootNode?: CodeLensCstNode | null } | null; rootNode?: CodeLensCstNode | null }> | undefined;
+}
+
+export interface CodeLensValidationService {
+  modelicaProofResultsByUri?: Map<string, Map<string, CodeLensProofResult>> | undefined;
+  modelicaDaeVerificationResultsByUri?: Map<string, Map<string, CodeLensDaeProofResult>> | undefined;
+}
+
+export interface CodeLensDocumentLike {
+  uri?: string | undefined;
+  getText?: () => string;
+  positionAt?: (offset: number) => { line: number; character: number };
 }
 
 export interface ModelicaCodeLensContext {
@@ -17,9 +93,9 @@ export interface ModelicaCodeLensContext {
     rawVerif?: unknown;
     formalVerification?: boolean;
   };
-  workspaceManager?: any;
-  documentManager?: any;
-  validationService?: any;
+  workspaceManager?: CodeLensWorkspaceManager;
+  documentManager?: CodeLensDocumentManager;
+  validationService?: CodeLensValidationService;
 }
 
 const MODELICA_CLASS_KINDS = new Set(["model", "block", "study", "process", "class", "function", "record"]);
@@ -200,9 +276,9 @@ function matchModelicaParamRealLine(line: string): { name: string; value: string
   return valEnd > valStart ? { name: paramName.token, value: line.slice(valStart, valEnd) } : undefined;
 }
 
-function findNodesByType(root: any, targetType: string): any[] {
-  const out: any[] = [];
-  const visit = (n: any) => {
+function findNodesByType(root: CodeLensCstNode | null | undefined, targetType: string): CodeLensCstNode[] {
+  const out: CodeLensCstNode[] = [];
+  const visit = (n: CodeLensCstNode | null | undefined) => {
     if (!n) return;
     if (n.type === targetType) out.push(n);
     const children = n.children;
@@ -215,7 +291,7 @@ function findNodesByType(root: any, targetType: string): any[] {
 }
 
 function resolveDigitalTwinLens(
-  workspaceManager: any,
+  workspaceManager: CodeLensWorkspaceManager | undefined,
   uri: string,
   param: string,
   val: string,
@@ -224,19 +300,19 @@ function resolveDigitalTwinLens(
 ): ModelicaCodeLens {
   const numVal = parseFloat(val);
   const threadEntries = workspaceManager?.getThreadsForUri?.(uri) ?? [];
-  let alignedPeers: any[] = [];
+  let alignedPeers: CodeLensThreadPeer[] = [];
   if (threadEntries.length > 0 && workspaceManager?.findAlignedElementsBySlot) {
     alignedPeers = workspaceManager.findAlignedElementsBySlot(threadEntries[0]!.slot) ?? [];
   }
 
   if (param === "m" || param.toLowerCase() === "mass") {
     const feaPeer = alignedPeers.find(
-      (p: any) =>
+      (p) =>
         p.domain?.toLowerCase() === "fea" &&
         (p.properties?.["mass"] !== undefined || p.meta?.properties?.["mass"] !== undefined),
     );
     const sysmlPeer = alignedPeers.find(
-      (p: any) =>
+      (p) =>
         p.domain?.toLowerCase() === "sysml2" &&
         (p.properties?.["mass"] !== undefined || p.meta?.properties?.["mass"] !== undefined),
     );
@@ -247,13 +323,14 @@ function resolveDigitalTwinLens(
       sysmlPeer?.meta?.properties?.["mass"];
 
     if (expectedMass !== undefined && !Number.isNaN(numVal)) {
-      const isParity = Math.abs(numVal - expectedMass) < 0.01;
+      const expectedMassNum = Number(expectedMass);
+      const isParity = Math.abs(numVal - expectedMassNum) < 0.01;
       const feaName = feaPeer?.name ?? feaPeer?.meta?.name ?? "FEA";
       const rawSysmlName = sysmlPeer?.name ?? sysmlPeer?.meta?.name ?? "SysML";
       const sysmlName = stripLeadingKeywords(rawSysmlName, ["part", "def"]);
       const title = isParity
         ? `🔗 Digital Thread Parity: ${param} = ${numVal.toFixed(2)} kg [Aligned with FEA ${feaName} & SysML ${sysmlName}]`
-        : `⚠ Digital Thread Drift: ${param} = ${val} kg (FEA Structural Mass: ${Number(expectedMass).toFixed(2)} kg) | Reconcile`;
+        : `⚠ Digital Thread Drift: ${param} = ${val} kg (FEA Structural Mass: ${expectedMassNum.toFixed(2)} kg) | Reconcile`;
       return {
         range,
         command: { title, command: "modelscript.syncDigitalThreadParams", arguments: [uri] },
@@ -262,7 +339,7 @@ function resolveDigitalTwinLens(
   }
 
   if (param === "Cd" || param.toLowerCase() === "aerodragcoeff") {
-    const cfdPeer = alignedPeers.find((p: any) => p.domain?.toLowerCase() === "cfd");
+    const cfdPeer = alignedPeers.find((p) => p.domain?.toLowerCase() === "cfd");
     if (cfdPeer) {
       const cfdName = cfdPeer.name ?? cfdPeer.meta?.name ?? "CFD";
       return {
@@ -277,7 +354,7 @@ function resolveDigitalTwinLens(
   }
 
   if (param === "A" || param.toLowerCase() === "frontalarea") {
-    const cadPeer = alignedPeers.find((p: any) => p.domain?.toLowerCase() === "cad");
+    const cadPeer = alignedPeers.find((p) => p.domain?.toLowerCase() === "cad");
     if (cadPeer) {
       return {
         range,
@@ -300,9 +377,13 @@ function resolveDigitalTwinLens(
   };
 }
 
-export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): ModelicaCodeLens[] {
-  const uri = ctx?.uri ?? doc?.uri ?? "";
-  const text = ctx?.text ?? (typeof doc?.getText === "function" ? doc.getText() : String(doc ?? ""));
+export function getModelicaCodeLenses(
+  doc: CodeLensDocumentLike | string | null | undefined,
+  ctx?: ModelicaCodeLensContext,
+): ModelicaCodeLens[] {
+  const docObj = typeof doc === "object" && doc !== null ? doc : undefined;
+  const uri = ctx?.uri ?? docObj?.uri ?? "";
+  const text = ctx?.text ?? (typeof docObj?.getText === "function" ? docObj.getText() : String(doc ?? ""));
   const lenses: ModelicaCodeLens[] = [];
 
   const flags = ctx?.flags ?? {};
@@ -324,9 +405,7 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
   const emittedProofClasses = new Set<string>();
   const emittedDaeClasses = new Set<string>();
 
-  const shouldEmitModelicaProof = (
-    proof: { definiteBugs?: unknown[]; potentialBugs?: unknown[] } | null | undefined,
-  ): boolean => {
+  const shouldEmitModelicaProof = (proof: CodeLensProofResult | null | undefined): proof is CodeLensProofResult => {
     if (!proof || verificationMode === "off") return false;
     const hasDefects = (proof.definiteBugs?.length ?? 0) > 0 || (proof.potentialBugs?.length ?? 0) > 0;
     if (verificationMode === "problemsOnly") {
@@ -335,7 +414,9 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
     return true;
   };
 
-  const shouldEmitDaeProof = (daeProof: { issues?: unknown[] } | null | undefined): boolean => {
+  const shouldEmitDaeProof = (
+    daeProof: CodeLensDaeProofResult | null | undefined,
+  ): daeProof is CodeLensDaeProofResult => {
     if (!daeProof || verificationMode === "off") return false;
     const hasIssues = (daeProof.issues?.length ?? 0) > 0;
     if (verificationMode === "problemsOnly") {
@@ -392,7 +473,7 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
       if (proof.definiteBugs.length > 0) {
         proofTitle = `✗ Formal Defect: ${proof.definiteBugs.length} bug(s) detected`;
       } else if (proof.potentialBugs.length > 0) {
-        const oobCount = proof.potentialBugs.filter((b: any) => b.category === "array_out_of_bounds").length;
+        const oobCount = proof.potentialBugs.filter((b) => b.category === "array_out_of_bounds").length;
         proofTitle =
           oobCount > 0
             ? `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s) (array out of bounds)`
@@ -416,8 +497,8 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
           ? "✓ DAE: no singularities (interval analysis, all variables bounded)"
           : `◌ DAE: no singularity found among bounded variables (${daeProof.unboundedVariables ?? "some"} unbounded — not proven)`;
       if (daeProof.issues.length > 0) {
-        const definite = daeProof.issues.find((i: any) => i.severity === "definite");
-        daeTitle = definite ? `✗ DAE Defect: ${definite.message}` : `⚠ DAE Invariant: ${daeProof.issues[0].message}`;
+        const definite = daeProof.issues.find((i) => i.severity === "definite");
+        daeTitle = definite ? `✗ DAE Defect: ${definite.message}` : `⚠ DAE Invariant: ${daeProof.issues[0]!.message}`;
       }
       lenses.push({
         range,
@@ -430,11 +511,15 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
     }
   };
 
-  const emitLoopLens = (className: string, proof: any, loopRange: ModelicaCodeLens["range"]) => {
+  const emitLoopLens = (
+    className: string,
+    proof: CodeLensProofResult | null | undefined,
+    loopRange: ModelicaCodeLens["range"],
+  ) => {
     if (!shouldEmitModelicaProof(proof)) return;
     const loopBug =
-      proof.definiteBugs.find((b: any) => b.category === "array_out_of_bounds") ??
-      proof.potentialBugs.find((b: any) => b.category === "array_out_of_bounds") ??
+      proof.definiteBugs.find((b) => b.category === "array_out_of_bounds") ??
+      proof.potentialBugs.find((b) => b.category === "array_out_of_bounds") ??
       proof.definiteBugs[0] ??
       proof.potentialBugs[0];
     let loopTitle: string | undefined;
@@ -588,7 +673,7 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
     const norm = (u: string | undefined) => (u ? u.replace(/^([a-z0-9+-]+):\/{1,3}/i, "$1:///").toLowerCase() : "");
     const targetUri = norm(uri);
     for (const [, symbol] of index.symbols.entries()) {
-      const sym = symbol as any;
+      const sym = symbol as CodeLensSymbolLike;
       if (sym.resourceId && norm(sym.resourceId) !== targetUri) continue;
       if (
         sym.kind !== "Class" &&
@@ -603,8 +688,13 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
       }
       let startLine = sym.selectionRange?.start.line ?? sym.range?.start?.line;
       let startChar = sym.selectionRange?.start.character ?? sym.range?.start?.character;
-      if (startLine === undefined && doc && typeof doc.positionAt === "function" && sym.startOffset !== undefined) {
-        const pos = doc.positionAt(sym.startOffset);
+      if (
+        startLine === undefined &&
+        docObj &&
+        typeof docObj.positionAt === "function" &&
+        sym.startOffset !== undefined
+      ) {
+        const pos = docObj.positionAt(sym.startOffset);
         startLine = pos.line;
         startChar = pos.character;
       }
@@ -617,7 +707,7 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
         if (proof.definiteBugs.length > 0) {
           proofTitle = `✗ Formal Defect: ${proof.definiteBugs.length} bug(s) detected`;
         } else if (proof.potentialBugs.length > 0) {
-          const oobCount = proof.potentialBugs.filter((b: any) => b.category === "array_out_of_bounds").length;
+          const oobCount = proof.potentialBugs.filter((b) => b.category === "array_out_of_bounds").length;
           proofTitle =
             oobCount > 0
               ? `⚠ Formal Proof: ${proof.potentialBugs.length} unproven condition(s) (array out of bounds)`
@@ -641,8 +731,8 @@ export function getModelicaCodeLenses(doc: any, ctx?: ModelicaCodeLensContext): 
             ? "✓ DAE: no singularities (interval analysis, all variables bounded)"
             : `◌ DAE: no singularity found among bounded variables (${daeProof.unboundedVariables ?? "some"} unbounded — not proven)`;
         if (daeProof.issues.length > 0) {
-          const definite = daeProof.issues.find((i: any) => i.severity === "definite");
-          daeTitle = definite ? `✗ DAE Defect: ${definite.message}` : `⚠ DAE Invariant: ${daeProof.issues[0].message}`;
+          const definite = daeProof.issues.find((i) => i.severity === "definite");
+          daeTitle = definite ? `✗ DAE Defect: ${definite.message}` : `⚠ DAE Invariant: ${daeProof.issues[0]!.message}`;
         }
         lenses.push({
           range,

@@ -22,16 +22,16 @@ export interface CFGInstruction {
   astNodeId?: number | undefined;
   startOffset?: number | undefined;
   endOffset?: number | undefined;
-  operands?: any[] | undefined;
+  operands?: unknown[] | undefined;
   targetVar?: string | undefined;
-  metadata?: Record<string, any> | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface CFGEdge {
   fromBlockId: number;
   toBlockId: number;
   kind: CFGEdgeKind;
-  conditionExpr?: any;
+  conditionExpr?: unknown;
 }
 
 export class BasicBlock {
@@ -80,12 +80,12 @@ export class GenericCFG {
   createInstruction(
     op: string,
     targetVar?: string,
-    operands?: any[],
+    operands?: unknown[],
     meta?: {
       astNodeId?: number | undefined;
       startOffset?: number | undefined;
       endOffset?: number | undefined;
-      [key: string]: any;
+      [key: string]: unknown;
     },
   ): CFGInstruction {
     return {
@@ -100,7 +100,7 @@ export class GenericCFG {
     };
   }
 
-  addEdge(fromId: number, toId: number, kind: CFGEdgeKind = CFGEdgeKind.Normal, conditionExpr?: any): void {
+  addEdge(fromId: number, toId: number, kind: CFGEdgeKind = CFGEdgeKind.Normal, conditionExpr?: unknown): void {
     const from = this.blocks.get(fromId);
     const to = this.blocks.get(toId);
     if (!from || !to) {

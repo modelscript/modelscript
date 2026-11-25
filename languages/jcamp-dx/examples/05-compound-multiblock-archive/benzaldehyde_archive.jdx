@@ -1,0 +1,49 @@
+##TITLE=Benzaldehyde Multimodal Spectral Archive (IR + EI-MS + UV-Vis)
+##JCAMP-DX=5.00
+##DATA TYPE=LINK
+##BLOCKS=3
+##ORIGIN=Integrated Molecular Spectroscopy Facility
+##OWNER=PUBLIC DOMAIN
+##TITLE=Benzaldehyde FTIR Carbonyl Region
+##JCAMP-DX=4.24
+##DATA TYPE=INFRARED SPECTRUM
+##XUNITS=1/CM
+##YUNITS=ABSORBANCE
+##FIRSTX=1740
+##LASTX=1660
+##NPOINTS=9
+##XFACTOR=1
+##YFACTOR=0.01
+$$ Conjugated aldehyde C=O stretch at 1702 cm-1
+##XYDATA=(X++(Y..Y))
+1740 8 15 34 78 124 85 38 14 7
+##END=
+##TITLE=Benzaldehyde 70 eV EI-MS
+##JCAMP-DX=5.00
+##DATA TYPE=MASS SPECTRUM
+##XUNITS=M/Z
+##YUNITS=RELATIVE ABUNDANCE
+##FIRSTX=51
+##LASTX=106
+##NPOINTS=5
+##XFACTOR=1
+##YFACTOR=1
+$$ Phenyl cation m/z 77, benzoyl cation m/z 105, molecular ion m/z 106
+##PEAK TABLE=(XY..XY)
+51, 38.0; 77, 96.5; 78, 12.2; 105, 98.4; 106, 100.0
+##END=
+##TITLE=Benzaldehyde UV-Vis Electronic Absorption
+##JCAMP-DX=5.00
+##DATA TYPE=UV/VIS SPECTRUM
+##XUNITS=NANOMETERS
+##YUNITS=ABSORBANCE
+##FIRSTX=220
+##LASTX=300
+##NPOINTS=9
+##XFACTOR=1
+##YFACTOR=0.01
+$$ pi-to-pi* aromatic transition maximum near 248 nm
+##XYDATA=(X++(Y..Y))
+220 42 76 118 132 94 48 26 14 6
+##END=
+##END=

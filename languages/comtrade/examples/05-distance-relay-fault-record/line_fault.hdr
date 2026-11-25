@@ -1,0 +1,6 @@
+Station: SUB_ALPHA_230
+Protected Line: 230 kV Line 1 (Alpha - Bravo, 48.2 km)
+Fault Type: Bolted 3-Phase Transmission Fault at 38% of Line Length
+Relay Element Operated: Zone-1 Mho Distance (21P1) + POTT Pilot Assist
+Total Clearing Time: 50.0 ms (3.0 cycles at 60 Hz)
+CT Ratio: 2000:5 A | PT Ratio: 230000:115 V

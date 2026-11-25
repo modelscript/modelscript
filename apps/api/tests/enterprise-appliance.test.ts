@@ -36,7 +36,7 @@ fs.writeFileSync(
 fs.writeFileSync(path.join(fakeWebDir, "bundle.js"), "console.log('ModelScript SPA Asset');");
 fs.writeFileSync(
   path.join(fakeIdeDir, "index.html"),
-  "<!DOCTYPE html><html><head><title>ModelScript IDE</title></head><body>IDE Workbench</body></html>",
+  "<!DOCTYPE html><html><head><title>Ansatz Studio</title></head><body>IDE Workbench</body></html>",
 );
 
 process.env["STATIC_WEB_DIR"] = fakeWebDir;

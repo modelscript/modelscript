@@ -1,0 +1,14 @@
+; Single-dose one-compartment IV bolus model
+[LONGITUDINAL]
+input = {Cl, V}
+
+PK:
+compartment(cmt = 1, amount = Ac, volume = V)
+iv(cmt = 1)
+
+EQUATION:
+ddt_Ac = -(Cl / V) * Ac
+Cc = Ac / V
+
+OUTPUT:
+output = {Cc}

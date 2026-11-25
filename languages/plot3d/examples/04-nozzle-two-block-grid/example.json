@@ -1,0 +1,11 @@
+{
+  "id": "plot3d-04-nozzle-two-block-grid",
+  "lang": "plot3d",
+  "subFormats": ["xyz", "q"],
+  "difficulty": 4,
+  "title": "Two-Block Converging Nozzle Multi-Zone Grid and Solution",
+  "description": "Multi-block PLOT3D converging-diverging propulsion nozzle with two matched 3x2x2 structured zones (converging inlet block and diverging diffuser block) and accelerating compressible flow solution.",
+  "category": "Structured CFD & Aerodynamics",
+  "tags": ["plot3d", "multi-block", "nozzle", "multi-file"],
+  "activeFile": "nozzle_2blk.xyz"
+}

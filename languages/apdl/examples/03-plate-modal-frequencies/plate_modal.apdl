@@ -1,0 +1,43 @@
+! Clamped 6061-T6 Aluminum Plate Modal Frequency Extraction
+/TITLE, Cantilever Plate Natural Frequencies (SHELL181)
+/UNITS, SI
+/PREP7
+
+THK = 0.005
+DX = 0.25
+DY = 0.25
+
+ET, 1, SHELL181
+MP, EX, 1, 69e9
+MP, PRXY, 1, 0.33
+MP, DENS, 1, 2700.0
+SECTYPE, 1, SHELL
+SECDATA, THK, 1
+
+! 3x3 node grid (2x2 shell elements)
+N, 1, 0.0, 0.0, 0.0
+N, 2, DX, 0.0, 0.0
+N, 3, 2 * DX, 0.0, 0.0
+N, 4, 0.0, DY, 0.0
+N, 5, DX, DY, 0.0
+N, 6, 2 * DX, DY, 0.0
+N, 7, 0.0, 2 * DY, 0.0
+N, 8, DX, 2 * DY, 0.0
+N, 9, 2 * DX, 2 * DY, 0.0
+
+TYPE, 1
+MAT, 1
+E, 1, 2, 5, 4
+E, 2, 3, 6, 5
+E, 4, 5, 8, 7
+E, 5, 6, 9, 8
+FINISH
+
+/SOLU
+ANTYPE, MODAL
+MODOPT, LANB, 6
+D, 1, ALL, 0.0
+D, 4, ALL, 0.0
+D, 7, ALL, 0.0
+SOLVE
+FINISH

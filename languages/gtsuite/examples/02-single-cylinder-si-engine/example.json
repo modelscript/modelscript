@@ -1,0 +1,11 @@
+{
+  "id": "gtsuite-02-single-cylinder-si-engine",
+  "lang": "gtsuite",
+  "subFormats": ["gtm"],
+  "difficulty": 2,
+  "title": "Single-Cylinder 4-Stroke SI Engine Breathing",
+  "description": "Naturally aspirated single-cylinder 500 cc spark-ignition engine with intake plenum, tuned intake and exhaust runners, Wiebe combustion model, and CFL-stable pipe discretization.",
+  "category": "Internal Combustion Engines",
+  "tags": ["si-engine", "wiebe", "breathing", "gas-dynamics"],
+  "activeFile": "single_cyl_si.gtm"
+}

@@ -8,7 +8,7 @@ import {
   inferModelDomain,
 } from "../../../packages/editor/src/workbench/openModelCatalog.js";
 
-describe("Morsel Open Model Catalog & Schematic Fallbacks", () => {
+describe("Ansatz Open Model Catalog & Schematic Fallbacks", () => {
   it("provides curated multi-domain connected models with valid schematic SVGs and runnable fallback code", () => {
     assert.ok(CURATED_OPEN_MODELS.length >= 13, "Expected at least 13 curated models across engineering domains");
 

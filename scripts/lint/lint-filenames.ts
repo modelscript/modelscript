@@ -62,7 +62,7 @@ export function checkFile(rawRelPath: string): Violation[] {
   // 3. Normalization of packages/ide/src
   if (relPath.startsWith("packages/ide/src/") && (ext === ".ts" || ext === ".tsx" || ext === ".css")) {
     // Exclude sub-sub components like step-viewer if any
-    const pureName = ext === ".css" ? nameWithoutExt : nameWithoutExt.replace(/\.test$/, "");
+    const pureName = ext === ".css" ? nameWithoutExt : nameWithoutExt.replace(/\.(?:test|generated)$/, "");
     if (!isKebabCase(pureName) && !isPascalCase(pureName)) {
       violations.push({
         file: relPath,

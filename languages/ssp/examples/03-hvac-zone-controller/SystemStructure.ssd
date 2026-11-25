@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ssd:SystemStructureDescription xmlns:ssd="http://ssp-standard.org/SSP1/SystemStructureDescription"
+                                xmlns:ssc="http://ssp-standard.org/SSP1/SystemStructureCommon"
+                                name="HvacZoneLoop"
+                                version="1.0"
+                                description="Closed-loop HVAC thermal zone and thermostat controller">
+  <ssd:System name="HvacSystem">
+    <ssd:Connectors>
+      <ssd:Connector name="T_setpoint" kind="input"><ssc:Real unit="K" /></ssd:Connector>
+      <ssd:Connector name="T_room" kind="output"><ssc:Real unit="K" /></ssd:Connector>
+    </ssd:Connectors>
+    <ssd:ParameterBindings>
+      <ssd:ParameterBinding source="hvac.ssv" />
+    </ssd:ParameterBindings>
+    <ssd:Elements>
+      <ssd:Component name="Controller" type="application/x-fmu-sharedlibrary" source="resources/controller_modelDescription.xml">
+        <ssd:Connectors>
+          <ssd:Connector name="T_ref" kind="input"><ssc:Real unit="K" /></ssd:Connector>
+          <ssd:Connector name="T_meas" kind="input"><ssc:Real unit="K" /></ssd:Connector>
+          <ssd:Connector name="Q_cmd" kind="output"><ssc:Real unit="W" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+      <ssd:Component name="ThermalZone" type="application/x-fmu-sharedlibrary" source="resources/zone_modelDescription.xml">
+        <ssd:Connectors>
+          <ssd:Connector name="Q_hvac" kind="input"><ssc:Real unit="W" /></ssd:Connector>
+          <ssd:Connector name="T_zone" kind="output"><ssc:Real unit="K" /></ssd:Connector>
+        </ssd:Connectors>
+      </ssd:Component>
+    </ssd:Elements>
+    <ssd:Connections>
+      <ssd:Connection startElement="HvacSystem" startConnector="T_setpoint" endElement="Controller" endConnector="T_ref" />
+      <ssd:Connection startElement="Controller" startConnector="Q_cmd" endElement="ThermalZone" endConnector="Q_hvac" />
+      <ssd:Connection startElement="ThermalZone" startConnector="T_zone" endElement="Controller" endConnector="T_meas" />
+      <ssd:Connection startElement="ThermalZone" startConnector="T_zone" endElement="HvacSystem" endConnector="T_room" />
+    </ssd:Connections>
+  </ssd:System>
+  <ssd:DefaultExperiment startTime="0.0" stopTime="7200.0" />
+</ssd:SystemStructureDescription>

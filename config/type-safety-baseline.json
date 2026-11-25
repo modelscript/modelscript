@@ -22,10 +22,14 @@
       "tsComments": 0
     },
     "apps/web": {
-      "explicitAny": 637,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "ee": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/acsl": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -41,11 +45,31 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/apdl": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/apt": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/arinc429": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/asm": {
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/asn1": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/aspen": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/atopile": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -65,6 +89,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/bufr": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/c": {
       "explicitAny": 0,
       "tsComments": 0
@@ -74,10 +102,14 @@
       "tsComments": 0
     },
     "languages/cantera": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/ccsds": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cea": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -93,7 +125,23 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/chemkin": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cif": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/comtrade": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/cplex-lp": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/csmp": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -105,11 +153,27 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/datcom": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/dicom-rt": {
       "explicitAny": 0,
       "tsComments": 0
     },
     "languages/dnp3": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/doe2": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/dxf": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/dynamo": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -121,11 +185,27 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/edif": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/endf6": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/energyplus": {
       "explicitAny": 0,
       "tsComments": 0
     },
     "languages/epanet": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/esl": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/esterel": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -141,7 +221,27 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/fits": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/fortran": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gams": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gaussian": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gcode": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gdsii": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -153,7 +253,19 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/gerber": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/gproms": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/gpss": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/grib": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -169,11 +281,23 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/hdf4": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/hec-hms": {
       "explicitAny": 0,
       "tsComments": 0
     },
     "languages/hec-ras": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/hec1": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/hec2": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -185,11 +309,43 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/ieee-cdf": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/iges": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/igtl": {
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/ihex": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/irig106": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/iucr-cif": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/jcamp-dx": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/jedec": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/jsbsim": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/kicad": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -205,8 +361,28 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/lsdyna": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/lustre": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/magicdraw": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/matpower": {
-      "explicitAny": 2,
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/mcnp": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/melcor": {
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/mlxtran": {
@@ -214,7 +390,7 @@
       "tsComments": 0
     },
     "languages/modelica": {
-      "explicitAny": 3241,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/modelscript": {
@@ -225,7 +401,31 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/molfile": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/mps": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/nasa-cdf": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/nec2": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/netcdf": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/nifti": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/nmea0183": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -234,6 +434,10 @@
       "tsComments": 0
     },
     "languages/nmtran": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/obj": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -293,6 +497,10 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/plot3d": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/plscadd": {
       "explicitAny": 0,
       "tsComments": 0
@@ -306,7 +514,7 @@
       "tsComments": 0
     },
     "languages/pscad": {
-      "explicitAny": 19,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/pslf": {
@@ -314,11 +522,11 @@
       "tsComments": 0
     },
     "languages/psse": {
-      "explicitAny": 9,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/pypsa": {
-      "explicitAny": 1,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/qif": {
@@ -334,6 +542,10 @@
       "tsComments": 0
     },
     "languages/reqif": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/rinex": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -357,11 +569,23 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/scale": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/scl": {
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/sdl": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/sedml": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/segy": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -377,15 +601,35 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/simscript": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/simulink": {
-      "explicitAny": 19,
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/sinda": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/slam": {
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/smiles": {
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/sparql": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/spice": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/srec": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -397,12 +641,16 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/stl": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/swmm": {
       "explicitAny": 0,
       "tsComments": 0
     },
     "languages/sysml2": {
-      "explicitAny": 21,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/three-mf": {
@@ -421,15 +669,39 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/trasys": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/trnsys": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/twentysim": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/urdf": {
-      "explicitAny": 2,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "languages/usd": {
       "explicitAny": 0,
       "tsComments": 0
     },
+    "languages/usgs-dem": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/verilog": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "languages/verilog-a": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "languages/vhdl": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -441,20 +713,24 @@
       "explicitAny": 0,
       "tsComments": 0
     },
+    "packages/canvas": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
     "packages/design-tokens": {
       "explicitAny": 0,
       "tsComments": 0
     },
     "packages/diagram": {
-      "explicitAny": 4,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/dsl": {
-      "explicitAny": 3,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/editor": {
-      "explicitAny": 251,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/embed": {
@@ -482,10 +758,14 @@
       "tsComments": 0
     },
     "packages/lsp": {
-      "explicitAny": 1258,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/mcp": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/native": {
       "explicitAny": 0,
       "tsComments": 0
     },
@@ -494,7 +774,7 @@
       "tsComments": 0
     },
     "packages/runtime": {
-      "explicitAny": 817,
+      "explicitAny": 0,
       "tsComments": 0
     },
     "packages/sdk": {
@@ -502,6 +782,10 @@
       "tsComments": 0
     },
     "packages/simulate": {
+      "explicitAny": 0,
+      "tsComments": 0
+    },
+    "packages/solve": {
       "explicitAny": 0,
       "tsComments": 0
     }

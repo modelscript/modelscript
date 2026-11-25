@@ -1,0 +1,11 @@
+{
+  "id": "sinda-03-spacecraft-radiator-panel",
+  "lang": "sinda",
+  "subFormats": ["sinda-fluint", "radiation"],
+  "difficulty": 3,
+  "title": "Spacecraft Radiator Panel Solar-Flux and Space-Sink Radiation",
+  "description": "Spacecraft avionics box coupled through heat pipes to a white-paint Z-93 radiator panel rejecting heat via Stefan-Boltzmann radiation to 4 K deep space.",
+  "category": "Spacecraft Thermal Control",
+  "tags": ["sinda", "spacecraft", "radiator", "radiation"],
+  "activeFile": "radiator_panel.sin"
+}

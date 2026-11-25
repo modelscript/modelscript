@@ -1,0 +1,11 @@
+{
+  "id": "eclipse-04-layered-black-oil-reservoir",
+  "lang": "eclipse",
+  "subFormats": ["data", "grdecl", "inc"],
+  "difficulty": 4,
+  "title": "Layered Heterogeneous Black-Oil Reservoir",
+  "description": "Multi-layer heterogeneous black-oil sandstone reservoir modularized into a master deck, external GRDECL petrophysical grid, and Corey relative-permeability INCLUDE table.",
+  "category": "Reservoir Simulation",
+  "tags": ["eclipse", "grdecl", "heterogeneous", "multi-file", "black-oil"],
+  "activeFile": "field.data"
+}

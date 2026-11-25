@@ -1,0 +1,1910 @@
+[
+  {
+    "name": "PUMP",
+    "kind": "rocets_module",
+    "namePath": "rocets:PUMP",
+    "exports": [
+      "designFlow",
+      "designHead",
+      "designRpm",
+      "efficiency",
+      "shutoffHeadRatio",
+      "density",
+      "cp"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Centrifugal Propellant Pump",
+      "category": "Turbomachinery",
+      "domain": "aerospace",
+      "description": "Liquid propellant centrifugal turbopump stage with affinity-law head/torque characteristics.",
+      "provenance": "Huzel & Huang (AIAA, 1992) Ch. 6; NASA SP-8107 Liquid Rocket Engine Turbopump Inducers & Pumps",
+      "aliases": [
+        "TP_PUMP",
+        "CENTRIFUGAL_PUMP"
+      ],
+      "parameters": [
+        {
+          "key": "designFlow",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "kg/s",
+          "description": "Design mass flow rate"
+        },
+        {
+          "key": "designHead",
+          "type": "real",
+          "defaultValue": 1500,
+          "unit": "m",
+          "description": "Design pump head at rated speed"
+        },
+        {
+          "key": "designRpm",
+          "type": "real",
+          "defaultValue": 30000,
+          "unit": "rpm",
+          "description": "Design shaft rotational speed"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.78,
+          "unit": "1",
+          "description": "Hydraulic efficiency at design point"
+        },
+        {
+          "key": "shutoffHeadRatio",
+          "type": "real",
+          "defaultValue": 1.25,
+          "unit": "1",
+          "description": "Zero-flow shutoff head to design head ratio"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Nominal liquid propellant density"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1699,
+          "unit": "J/(kg.K)",
+          "description": "Liquid specific heat capacity"
+        }
+      ],
+      "wasmKernel": "PUMP",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "TURBINE",
+    "kind": "rocets_module",
+    "namePath": "rocets:TURBINE",
+    "exports": [
+      "designFlow",
+      "pressureRatio",
+      "efficiency",
+      "designRpm",
+      "cpGas",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Drive Gas Turbine",
+      "category": "Turbomachinery",
+      "domain": "aerospace",
+      "description": "Axial impulse/reaction drive gas turbine expanding hot gas to power the turbopump shaft.",
+      "provenance": "Sutton & Biblarz (9th ed.) Ch. 10; NASA SP-8110 Liquid Rocket Engine Turbines",
+      "aliases": [
+        "TP_TURBINE",
+        "GAS_TURBINE"
+      ],
+      "parameters": [
+        {
+          "key": "designFlow",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "kg/s",
+          "description": "Design turbine gas mass flow rate"
+        },
+        {
+          "key": "pressureRatio",
+          "type": "real",
+          "defaultValue": 1.85,
+          "unit": "1",
+          "description": "Design total-to-total pressure ratio"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.82,
+          "unit": "1",
+          "description": "Isentropic total-to-total efficiency"
+        },
+        {
+          "key": "designRpm",
+          "type": "real",
+          "defaultValue": 30000,
+          "unit": "rpm",
+          "description": "Design shaft rotational speed"
+        },
+        {
+          "key": "cpGas",
+          "type": "real",
+          "defaultValue": 2800,
+          "unit": "J/(kg.K)",
+          "description": "Drive gas constant-pressure specific heat"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.32,
+          "unit": "1",
+          "description": "Drive gas ratio of specific heats"
+        }
+      ],
+      "wasmKernel": "TURBINE",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "INDUCER",
+    "kind": "rocets_module",
+    "namePath": "rocets:INDUCER",
+    "exports": [
+      "designFlow",
+      "designHead",
+      "designRpm",
+      "efficiency",
+      "shutoffHeadRatio",
+      "density",
+      "suctionSpecificSpeed"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cavitating Axial Inducer",
+      "category": "Turbomachinery",
+      "domain": "aerospace",
+      "description": "Low-NPSH axial-flow inducer boosting inlet pressure upstream of the main impeller.",
+      "provenance": "NASA SP-8052 Liquid Rocket Engine Turbopump Inducers; Huzel & Huang Ch. 6",
+      "aliases": [
+        "CAV_INDUCER",
+        "BOOST_PUMP"
+      ],
+      "parameters": [
+        {
+          "key": "designFlow",
+          "type": "real",
+          "defaultValue": 50,
+          "unit": "kg/s",
+          "description": "Design mass flow rate"
+        },
+        {
+          "key": "designHead",
+          "type": "real",
+          "defaultValue": 180,
+          "unit": "m",
+          "description": "Design inducer head rise"
+        },
+        {
+          "key": "designRpm",
+          "type": "real",
+          "defaultValue": 30000,
+          "unit": "rpm",
+          "description": "Design rotational speed"
+        },
+        {
+          "key": "efficiency",
+          "type": "real",
+          "defaultValue": 0.68,
+          "unit": "1",
+          "description": "Inducer hydraulic efficiency"
+        },
+        {
+          "key": "shutoffHeadRatio",
+          "type": "real",
+          "defaultValue": 1.35,
+          "unit": "1",
+          "description": "Shutoff-to-design head ratio"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Nominal propellant density"
+        },
+        {
+          "key": "suctionSpecificSpeed",
+          "type": "real",
+          "defaultValue": 35000,
+          "unit": "1",
+          "description": "Design suction specific speed"
+        }
+      ],
+      "wasmKernel": "INDUCER",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "SHAFT",
+    "kind": "rocets_module",
+    "namePath": "rocets:SHAFT",
+    "exports": [
+      "designRpm",
+      "inertia",
+      "frictionTorque",
+      "maxRpm"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Turbopump Rotor Shaft",
+      "category": "Turbomachinery",
+      "domain": "aerospace",
+      "description": "Common rotating mechanical shaft integrating net turbine-minus-pump torque.",
+      "provenance": "NASA SP-1252 / ROCETS Turbopump Rotor Dynamics Formulation; Sutton Ch. 10",
+      "aliases": [
+        "ROTOR",
+        "TP_SHAFT"
+      ],
+      "parameters": [
+        {
+          "key": "designRpm",
+          "type": "real",
+          "defaultValue": 30000,
+          "unit": "rpm",
+          "description": "Nominal operating speed"
+        },
+        {
+          "key": "inertia",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "kg.m2",
+          "description": "Polar moment of inertia of rotating assembly"
+        },
+        {
+          "key": "frictionTorque",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "N.m",
+          "description": "Bearing and seal viscous friction torque"
+        },
+        {
+          "key": "maxRpm",
+          "type": "real",
+          "defaultValue": 45000,
+          "unit": "rpm",
+          "description": "Maximum allowable overspeed limit"
+        }
+      ],
+      "wasmKernel": "SHAFT",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "GEARBOX",
+    "kind": "rocets_module",
+    "namePath": "rocets:GEARBOX",
+    "exports": [
+      "gearRatio",
+      "mechEfficiency",
+      "inertia"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Turbopump Reduction Gearbox",
+      "category": "Turbomachinery",
+      "domain": "aerospace",
+      "description": "Mechanical speed reduction gear train coupling high-speed turbine to low-speed pump.",
+      "provenance": "Huzel & Huang Ch. 6; NASA SP-8100 Liquid Rocket Engine Turbopump Gears",
+      "aliases": [
+        "REDUCER",
+        "GEAR_TRAIN"
+      ],
+      "parameters": [
+        {
+          "key": "gearRatio",
+          "type": "real",
+          "defaultValue": 2.5,
+          "unit": "1",
+          "description": "Input-to-output speed reduction ratio"
+        },
+        {
+          "key": "mechEfficiency",
+          "type": "real",
+          "defaultValue": 0.97,
+          "unit": "1",
+          "description": "Gear mesh mechanical transmission efficiency"
+        },
+        {
+          "key": "inertia",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "kg.m2",
+          "description": "Equivalent output-referred inertia"
+        }
+      ],
+      "wasmKernel": "GEARBOX",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "CHAMBER",
+    "kind": "rocets_module",
+    "namePath": "rocets:CHAMBER",
+    "exports": [
+      "throatArea",
+      "cstar",
+      "cstarEff",
+      "chamberVolume",
+      "rGas",
+      "tComb",
+      "gamma",
+      "expansionRatio"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Main Combustion Chamber",
+      "category": "Combustion & Nozzle",
+      "domain": "aerospace",
+      "description": "Transient rocket combustion chamber with c-star throat choking and ideal-gas pressure dynamics.",
+      "provenance": "Sutton & Biblarz (9th ed.) Ch. 3 & Ch. 8; NASA SP-1252 ROCETS Chamber Module",
+      "aliases": [
+        "MCC",
+        "MAIN_CHAMBER",
+        "THRUST_CHAMBER"
+      ],
+      "parameters": [
+        {
+          "key": "throatArea",
+          "type": "real",
+          "defaultValue": 0.045,
+          "unit": "m2",
+          "description": "Nozzle throat cross-sectional area At"
+        },
+        {
+          "key": "cstar",
+          "type": "real",
+          "defaultValue": 2320,
+          "unit": "m/s",
+          "description": "Theoretical characteristic exhaust velocity c*"
+        },
+        {
+          "key": "cstarEff",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "1",
+          "description": "Combustion c* efficiency"
+        },
+        {
+          "key": "chamberVolume",
+          "type": "real",
+          "defaultValue": 0.06,
+          "unit": "m3",
+          "description": "Combustion chamber free volume Vc"
+        },
+        {
+          "key": "rGas",
+          "type": "real",
+          "defaultValue": 620,
+          "unit": "J/(kg.K)",
+          "description": "Combustion gas specific gas constant R"
+        },
+        {
+          "key": "tComb",
+          "type": "real",
+          "defaultValue": 3450,
+          "unit": "K",
+          "description": "Adiabatic combustion temperature Tc"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "1",
+          "description": "Combustion gas ratio of specific heats"
+        },
+        {
+          "key": "expansionRatio",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "1",
+          "description": "Nozzle exit-to-throat area ratio Ae/At"
+        }
+      ],
+      "wasmKernel": "CHAMBER",
+      "archetypeId": 10
+    }
+  },
+  {
+    "name": "PREBURNER",
+    "kind": "rocets_module",
+    "namePath": "rocets:PREBURNER",
+    "exports": [
+      "throatArea",
+      "cstar",
+      "cstarEff",
+      "chamberVolume",
+      "rGas",
+      "tComb",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Staged-Combustion Preburner",
+      "category": "Combustion & Nozzle",
+      "domain": "aerospace",
+      "description": "High-pressure fuel-rich or oxidizer-rich preburner generating turbine drive gas.",
+      "provenance": "Huzel & Huang Ch. 4; NASA SP-1252 / SSME Staged-Combustion Preburner Model",
+      "aliases": [
+        "PB",
+        "FPPB",
+        "OPPB"
+      ],
+      "parameters": [
+        {
+          "key": "throatArea",
+          "type": "real",
+          "defaultValue": 0.012,
+          "unit": "m2",
+          "description": "Effective turbine-nozzle choke area"
+        },
+        {
+          "key": "cstar",
+          "type": "real",
+          "defaultValue": 1650,
+          "unit": "m/s",
+          "description": "Preburner characteristic velocity c*"
+        },
+        {
+          "key": "cstarEff",
+          "type": "real",
+          "defaultValue": 0.96,
+          "unit": "1",
+          "description": "Preburner combustion efficiency"
+        },
+        {
+          "key": "chamberVolume",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "m3",
+          "description": "Preburner combustion volume"
+        },
+        {
+          "key": "rGas",
+          "type": "real",
+          "defaultValue": 1850,
+          "unit": "J/(kg.K)",
+          "description": "Fuel-rich drive gas constant R"
+        },
+        {
+          "key": "tComb",
+          "type": "real",
+          "defaultValue": 980,
+          "unit": "K",
+          "description": "Preburner outlet gas temperature"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.34,
+          "unit": "1",
+          "description": "Preburner drive gas gamma"
+        }
+      ],
+      "wasmKernel": "PREBURNER",
+      "archetypeId": 11
+    }
+  },
+  {
+    "name": "GASGEN",
+    "kind": "rocets_module",
+    "namePath": "rocets:GASGEN",
+    "exports": [
+      "throatArea",
+      "cstar",
+      "cstarEff",
+      "chamberVolume",
+      "rGas",
+      "tComb",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Open-Cycle Gas Generator",
+      "category": "Combustion & Nozzle",
+      "domain": "aerospace",
+      "description": "Open-cycle propellant gas generator supplying low-temperature turbine drive gas.",
+      "provenance": "Sutton & Biblarz (9th ed.) Ch. 10; Huzel & Huang Ch. 7",
+      "aliases": [
+        "GAS_GENERATOR",
+        "GG"
+      ],
+      "parameters": [
+        {
+          "key": "throatArea",
+          "type": "real",
+          "defaultValue": 0.008,
+          "unit": "m2",
+          "description": "Gas generator effective nozzle area"
+        },
+        {
+          "key": "cstar",
+          "type": "real",
+          "defaultValue": 1420,
+          "unit": "m/s",
+          "description": "Gas generator characteristic velocity c*"
+        },
+        {
+          "key": "cstarEff",
+          "type": "real",
+          "defaultValue": 0.95,
+          "unit": "1",
+          "description": "Combustion efficiency"
+        },
+        {
+          "key": "chamberVolume",
+          "type": "real",
+          "defaultValue": 0.015,
+          "unit": "m3",
+          "description": "Gas generator volume"
+        },
+        {
+          "key": "rGas",
+          "type": "real",
+          "defaultValue": 520,
+          "unit": "J/(kg.K)",
+          "description": "Gas generator exhaust gas constant"
+        },
+        {
+          "key": "tComb",
+          "type": "real",
+          "defaultValue": 900,
+          "unit": "K",
+          "description": "Target turbine inlet temperature"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.28,
+          "unit": "1",
+          "description": "Exhaust gas specific heat ratio"
+        }
+      ],
+      "wasmKernel": "GASGEN",
+      "archetypeId": 12
+    }
+  },
+  {
+    "name": "NOZZLE",
+    "kind": "rocets_module",
+    "namePath": "rocets:NOZZLE",
+    "exports": [
+      "throatArea",
+      "expansionRatio",
+      "cstar",
+      "gamma",
+      "cfEff",
+      "pAmbient"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Convergent-Divergent Nozzle",
+      "category": "Combustion & Nozzle",
+      "domain": "aerospace",
+      "description": "Isentropic choked supersonic rocket nozzle computing mdot = Pc*At/c*, Cf, thrust, and Isp.",
+      "provenance": "Sutton & Biblarz (9th ed.) Ch. 3 Eqs. 3-24 to 3-32; NASA SP-8120 Rocket Engine Nozzles",
+      "aliases": [
+        "CD_NOZZLE",
+        "BELL_NOZZLE"
+      ],
+      "parameters": [
+        {
+          "key": "throatArea",
+          "type": "real",
+          "defaultValue": 0.045,
+          "unit": "m2",
+          "description": "Nozzle throat area At"
+        },
+        {
+          "key": "expansionRatio",
+          "type": "real",
+          "defaultValue": 35,
+          "unit": "1",
+          "description": "Nozzle area expansion ratio Ae/At"
+        },
+        {
+          "key": "cstar",
+          "type": "real",
+          "defaultValue": 2320,
+          "unit": "m/s",
+          "description": "Characteristic velocity c*"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.2,
+          "unit": "1",
+          "description": "Exhaust gas specific heat ratio"
+        },
+        {
+          "key": "cfEff",
+          "type": "real",
+          "defaultValue": 0.98,
+          "unit": "1",
+          "description": "Nozzle thrust coefficient efficiency"
+        },
+        {
+          "key": "pAmbient",
+          "type": "real",
+          "defaultValue": 101325,
+          "unit": "Pa",
+          "description": "Ambient atmospheric back pressure"
+        }
+      ],
+      "wasmKernel": "NOZZLE",
+      "archetypeId": 13
+    }
+  },
+  {
+    "name": "INJECTOR",
+    "kind": "rocets_module",
+    "namePath": "rocets:INJECTOR",
+    "exports": [
+      "cdA",
+      "density",
+      "stiffnessTarget"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Propellant Main Injector",
+      "category": "Combustion & Nozzle",
+      "domain": "aerospace",
+      "description": "Coaxial/impinging injector face hydraulic resistance and pressure drop stiffness model.",
+      "provenance": "NASA SP-8089 Liquid Rocket Engine Injectors; Huzel & Huang Ch. 4",
+      "aliases": [
+        "INJ",
+        "MAIN_INJECTOR"
+      ],
+      "parameters": [
+        {
+          "key": "cdA",
+          "type": "real",
+          "defaultValue": 0.0018,
+          "unit": "m2",
+          "description": "Effective discharge coefficient times orifice area"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Injected propellant density"
+        },
+        {
+          "key": "stiffnessTarget",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "Design injector dP/Pc stability margin"
+        }
+      ],
+      "wasmKernel": "INJECTOR",
+      "archetypeId": 14
+    }
+  },
+  {
+    "name": "IGNITER",
+    "kind": "rocets_module",
+    "namePath": "rocets:IGNITER",
+    "exports": [
+      "pilotFlow",
+      "thermalPowerW",
+      "burnDuration"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Augmented Spark / Torch Igniter",
+      "category": "Combustion & Nozzle",
+      "domain": "aerospace",
+      "description": "Hypergolic or torch igniter providing startup thermal power and pilot mass flow.",
+      "provenance": "NASA SP-8051 Solid/Liquid Rocket Engine Igniters; Sutton Ch. 8",
+      "aliases": [
+        "TORCH_IGNITER",
+        "ASI"
+      ],
+      "parameters": [
+        {
+          "key": "pilotFlow",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "kg/s",
+          "description": "Nominal igniter pilot mass flow rate"
+        },
+        {
+          "key": "thermalPowerW",
+          "type": "real",
+          "defaultValue": 2500000,
+          "unit": "W",
+          "description": "Igniter flame thermal heat release"
+        },
+        {
+          "key": "burnDuration",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "s",
+          "description": "Nominal igniter firing duration"
+        }
+      ],
+      "wasmKernel": "IGNITER",
+      "archetypeId": 15
+    }
+  },
+  {
+    "name": "PIPE",
+    "kind": "rocets_module",
+    "namePath": "rocets:PIPE",
+    "exports": [
+      "length",
+      "diameter",
+      "frictionFactor",
+      "density",
+      "kMinor"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Propellant Feedline / Pipe",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "1-D propellant duct with fluid inertance (L/A) and Darcy-Weisbach friction loss.",
+      "provenance": "NASA SP-1252 ROCETS Fluid Line Module; Streeter & Wylie Fluid Transients",
+      "aliases": [
+        "LINE",
+        "DUCT",
+        "FEEDLINE"
+      ],
+      "parameters": [
+        {
+          "key": "length",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "m",
+          "description": "Pipe centerline length L"
+        },
+        {
+          "key": "diameter",
+          "type": "real",
+          "defaultValue": 0.08,
+          "unit": "m",
+          "description": "Internal pipe diameter D"
+        },
+        {
+          "key": "frictionFactor",
+          "type": "real",
+          "defaultValue": 0.02,
+          "unit": "1",
+          "description": "Darcy-Weisbach friction factor f"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Nominal fluid density"
+        },
+        {
+          "key": "kMinor",
+          "type": "real",
+          "defaultValue": 0.5,
+          "unit": "1",
+          "description": "Minor bend and fitting loss coefficient K"
+        }
+      ],
+      "wasmKernel": "PIPE",
+      "archetypeId": 20
+    }
+  },
+  {
+    "name": "VOLUME",
+    "kind": "rocets_module",
+    "namePath": "rocets:VOLUME",
+    "exports": [
+      "volume",
+      "bulkModulus",
+      "density",
+      "initPressure"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fluid Capacitance Volume",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Lumped fluid capacitance manifold integrating net mass inflow via bulk modulus.",
+      "provenance": "NASA SP-1252 ROCETS Volume Node; Huzel & Huang Ch. 10 Fluid Transients",
+      "aliases": [
+        "PLENUM",
+        "MANIFOLD",
+        "CAVITY"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 0.015,
+          "unit": "m3",
+          "description": "Internal fluid volume V"
+        },
+        {
+          "key": "bulkModulus",
+          "type": "real",
+          "defaultValue": 800000000,
+          "unit": "Pa",
+          "description": "Effective fluid/wall bulk modulus beta"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Nominal fluid density"
+        },
+        {
+          "key": "initPressure",
+          "type": "real",
+          "defaultValue": 10000000,
+          "unit": "Pa",
+          "description": "Initial steady-state manifold pressure"
+        }
+      ],
+      "wasmKernel": "VOLUME",
+      "archetypeId": 21
+    }
+  },
+  {
+    "name": "VALVE",
+    "kind": "rocets_module",
+    "namePath": "rocets:VALVE",
+    "exports": [
+      "cdAMax",
+      "initPosition",
+      "openTime",
+      "density",
+      "cvMax"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Propellant Control Valve",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Actuated propellant control valve with first-order stroke lag and CdA/Cv flow law.",
+      "provenance": "NASA SP-8097 Liquid Rocket Valve Components; ISA-75.01 / Huzel & Huang Ch. 7",
+      "aliases": [
+        "CONTROL_VALVE",
+        "MOV",
+        "MFV"
+      ],
+      "parameters": [
+        {
+          "key": "cdAMax",
+          "type": "real",
+          "defaultValue": 0.002,
+          "unit": "m2",
+          "description": "Fully open effective discharge area Cd*A"
+        },
+        {
+          "key": "initPosition",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Initial normalized valve stroke (0..1)"
+        },
+        {
+          "key": "openTime",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "s",
+          "description": "Actuator first-order stroke time constant"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Nominal propellant density"
+        },
+        {
+          "key": "cvMax",
+          "type": "real",
+          "defaultValue": 140,
+          "unit": "gpm/psi^0.5",
+          "description": "Equivalent valve flow coefficient Cv"
+        }
+      ],
+      "wasmKernel": "VALVE",
+      "archetypeId": 22
+    }
+  },
+  {
+    "name": "ORIFICE",
+    "kind": "rocets_module",
+    "namePath": "rocets:ORIFICE",
+    "exports": [
+      "cdA",
+      "density",
+      "cavitatingRecovery"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Fixed Trim Orifice / Venturi",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Sharp-edged calibration orifice or cavitating venturi for steady hydraulic balancing.",
+      "provenance": "NASA SP-1252; Crane Technical Paper 410 / ISO 5167",
+      "aliases": [
+        "TRIM_ORIFICE",
+        "RESTRICTOR",
+        "VENTURI"
+      ],
+      "parameters": [
+        {
+          "key": "cdA",
+          "type": "real",
+          "defaultValue": 0.0012,
+          "unit": "m2",
+          "description": "Effective orifice area Cd*A"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Nominal fluid density"
+        },
+        {
+          "key": "cavitatingRecovery",
+          "type": "real",
+          "defaultValue": 0.85,
+          "unit": "1",
+          "description": "Venturi pressure recovery factor"
+        }
+      ],
+      "wasmKernel": "ORIFICE",
+      "archetypeId": 23
+    }
+  },
+  {
+    "name": "CHECKVALVE",
+    "kind": "rocets_module",
+    "namePath": "rocets:CHECKVALVE",
+    "exports": [
+      "cdA",
+      "crackingPressure",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Non-Return Check Valve",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "One-way propellant check valve with cracking pressure threshold preventing backflow.",
+      "provenance": "NASA SP-8097 Liquid Rocket Valve Components",
+      "aliases": [
+        "CHECK_VALVE",
+        "NRV"
+      ],
+      "parameters": [
+        {
+          "key": "cdA",
+          "type": "real",
+          "defaultValue": 0.0015,
+          "unit": "m2",
+          "description": "Open effective flow area Cd*A"
+        },
+        {
+          "key": "crackingPressure",
+          "type": "real",
+          "defaultValue": 35000,
+          "unit": "Pa",
+          "description": "Forward cracking pressure differential"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Nominal fluid density"
+        }
+      ],
+      "wasmKernel": "CHECKVALVE",
+      "archetypeId": 24
+    }
+  },
+  {
+    "name": "REGULATOR",
+    "kind": "rocets_module",
+    "namePath": "rocets:REGULATOR",
+    "exports": [
+      "pSetpoint",
+      "cdAMax",
+      "droopGain",
+      "density"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dome-Loaded Pressure Regulator",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Closed-loop pneumatic/hydraulic pressure regulator modulating flow to maintain outlet setpoint.",
+      "provenance": "NASA SP-8097; Huzel & Huang Ch. 7 Pressurization Control",
+      "aliases": [
+        "PRESSURE_REGULATOR",
+        "PREG"
+      ],
+      "parameters": [
+        {
+          "key": "pSetpoint",
+          "type": "real",
+          "defaultValue": 350000,
+          "unit": "Pa",
+          "description": "Target regulated outlet pressure"
+        },
+        {
+          "key": "cdAMax",
+          "type": "real",
+          "defaultValue": 0.0004,
+          "unit": "m2",
+          "description": "Maximum regulator orifice area"
+        },
+        {
+          "key": "droopGain",
+          "type": "real",
+          "defaultValue": 0.00002,
+          "unit": "1/Pa",
+          "description": "Proportional pressure droop sensitivity"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 4.5,
+          "unit": "kg/m3",
+          "description": "Regulated pressurant gas density"
+        }
+      ],
+      "wasmKernel": "REGULATOR",
+      "archetypeId": 25
+    }
+  },
+  {
+    "name": "SPLIT",
+    "kind": "rocets_module",
+    "namePath": "rocets:SPLIT",
+    "exports": [
+      "splitFraction",
+      "kLoss"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Flow Splitter Manifold",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Hydraulic tee splitting an inlet stream into primary and secondary branches.",
+      "provenance": "NASA SP-1252 ROCETS Flow Junction Formulation",
+      "aliases": [
+        "SPLITTER",
+        "TEE",
+        "JUNCTION"
+      ],
+      "parameters": [
+        {
+          "key": "splitFraction",
+          "type": "real",
+          "defaultValue": 0.7,
+          "unit": "1",
+          "description": "Mass flow fraction routed to primary outlet"
+        },
+        {
+          "key": "kLoss",
+          "type": "real",
+          "defaultValue": 0.15,
+          "unit": "1",
+          "description": "Branch junction loss coefficient"
+        }
+      ],
+      "wasmKernel": "SPLIT",
+      "archetypeId": 26
+    }
+  },
+  {
+    "name": "JOIN",
+    "kind": "rocets_module",
+    "namePath": "rocets:JOIN",
+    "exports": [
+      "cpPrimary",
+      "cpSecondary",
+      "kLoss"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Flow Mixer / Combiner",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Enthalpy-conserving fluid junction combining two incoming propellant or gas streams.",
+      "provenance": "NASA SP-1252 ROCETS Mixer Node",
+      "aliases": [
+        "MIXER",
+        "COMBINER",
+        "WYE"
+      ],
+      "parameters": [
+        {
+          "key": "cpPrimary",
+          "type": "real",
+          "defaultValue": 1700,
+          "unit": "J/(kg.K)",
+          "description": "Primary stream specific heat"
+        },
+        {
+          "key": "cpSecondary",
+          "type": "real",
+          "defaultValue": 1700,
+          "unit": "J/(kg.K)",
+          "description": "Secondary stream specific heat"
+        },
+        {
+          "key": "kLoss",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "Mixing pressure loss coefficient"
+        }
+      ],
+      "wasmKernel": "JOIN",
+      "archetypeId": 27
+    }
+  },
+  {
+    "name": "HEATX",
+    "kind": "rocets_module",
+    "namePath": "rocets:HEATX",
+    "exports": [
+      "ua",
+      "tHot",
+      "cpCold",
+      "dpDesign"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Propellant Heat Exchanger",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Shell-and-tube or helical heat exchanger for autogenous pressurant vaporization.",
+      "provenance": "Huzel & Huang Ch. 4; Incropera & DeWitt Heat Transfer NTU Formulation",
+      "aliases": [
+        "HEX",
+        "HEAT_EXCHANGER"
+      ],
+      "parameters": [
+        {
+          "key": "ua",
+          "type": "real",
+          "defaultValue": 12000,
+          "unit": "W/K",
+          "description": "Overall heat transfer conductance U*A"
+        },
+        {
+          "key": "tHot",
+          "type": "real",
+          "defaultValue": 850,
+          "unit": "K",
+          "description": "Hot-side boundary gas temperature"
+        },
+        {
+          "key": "cpCold",
+          "type": "real",
+          "defaultValue": 2400,
+          "unit": "J/(kg.K)",
+          "description": "Cold-side propellant specific heat"
+        },
+        {
+          "key": "dpDesign",
+          "type": "real",
+          "defaultValue": 150000,
+          "unit": "Pa",
+          "description": "Nominal cold-side friction pressure drop"
+        }
+      ],
+      "wasmKernel": "HEATX",
+      "archetypeId": 28
+    }
+  },
+  {
+    "name": "COOLING_JACKET",
+    "kind": "rocets_module",
+    "namePath": "rocets:COOLING_JACKET",
+    "exports": [
+      "surfaceArea",
+      "heatFlux",
+      "cpCoolant",
+      "dpNominal",
+      "designFlow"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Regenerative Cooling Jacket",
+      "category": "Fluid Network & Valves",
+      "domain": "aerospace",
+      "description": "Nozzle and combustion chamber regenerative coolant channels absorbing wall heat flux.",
+      "provenance": "Bartz (1957) Jet Propulsion; Sutton & Biblarz (9th ed.) Ch. 8; Huzel & Huang Ch. 4",
+      "aliases": [
+        "REGEN_JACKET",
+        "COOLANT_CHANNEL"
+      ],
+      "parameters": [
+        {
+          "key": "surfaceArea",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "m2",
+          "description": "Heated chamber/nozzle wall surface area"
+        },
+        {
+          "key": "heatFlux",
+          "type": "real",
+          "defaultValue": 25000000,
+          "unit": "W/m2",
+          "description": "Average convective wall heat flux q\""
+        },
+        {
+          "key": "cpCoolant",
+          "type": "real",
+          "defaultValue": 14300,
+          "unit": "J/(kg.K)",
+          "description": "Coolant specific heat capacity"
+        },
+        {
+          "key": "dpNominal",
+          "type": "real",
+          "defaultValue": 1800000,
+          "unit": "Pa",
+          "description": "Nominal coolant channel pressure drop"
+        },
+        {
+          "key": "designFlow",
+          "type": "real",
+          "defaultValue": 25,
+          "unit": "kg/s",
+          "description": "Design coolant mass flow rate"
+        }
+      ],
+      "wasmKernel": "COOLING_JACKET",
+      "archetypeId": 29
+    }
+  },
+  {
+    "name": "TANK",
+    "kind": "rocets_module",
+    "namePath": "rocets:TANK",
+    "exports": [
+      "initMass",
+      "ullagePressure",
+      "density",
+      "crossArea",
+      "axialAccelG"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Cryogenic Propellant Tank",
+      "category": "Tanks & Pressurization",
+      "domain": "aerospace",
+      "description": "Propellant storage tank tracking liquid mass depletion and hydrostatic outlet head.",
+      "provenance": "Sutton & Biblarz (9th ed.) Ch. 6; NASA SP-8080 Liquid Rocket Pressure Vessels",
+      "aliases": [
+        "PROPELLANT_TANK",
+        "CRYO_TANK"
+      ],
+      "parameters": [
+        {
+          "key": "initMass",
+          "type": "real",
+          "defaultValue": 50000,
+          "unit": "kg",
+          "description": "Initial liquid propellant mass"
+        },
+        {
+          "key": "ullagePressure",
+          "type": "real",
+          "defaultValue": 320000,
+          "unit": "Pa",
+          "description": "Nominal tank ullage pressure"
+        },
+        {
+          "key": "density",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Stored liquid propellant density"
+        },
+        {
+          "key": "crossArea",
+          "type": "real",
+          "defaultValue": 10,
+          "unit": "m2",
+          "description": "Tank cylindrical cross-sectional area"
+        },
+        {
+          "key": "axialAccelG",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "g",
+          "description": "Vehicle axial acceleration in standard gravities"
+        }
+      ],
+      "wasmKernel": "TANK",
+      "archetypeId": 30
+    }
+  },
+  {
+    "name": "PRESSURANT",
+    "kind": "rocets_module",
+    "namePath": "rocets:PRESSURANT",
+    "exports": [
+      "volume",
+      "initPressure",
+      "initTemp",
+      "rGas",
+      "gamma"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "High-Pressure Pressurant Bottle",
+      "category": "Tanks & Pressurization",
+      "domain": "aerospace",
+      "description": "Composite overwrapped pressure vessel (COPV) helium/nitrogen blowdown storage tank.",
+      "provenance": "Huzel & Huang Ch. 5 Pressurization Systems; NIST Real-Gas Helium Blowdown",
+      "aliases": [
+        "COPV",
+        "HE_BOTTLE",
+        "PRESS_BOTTLE"
+      ],
+      "parameters": [
+        {
+          "key": "volume",
+          "type": "real",
+          "defaultValue": 0.45,
+          "unit": "m3",
+          "description": "Pressurant bottle internal volume"
+        },
+        {
+          "key": "initPressure",
+          "type": "real",
+          "defaultValue": 31000000,
+          "unit": "Pa",
+          "description": "Initial fill pressure (310 bar)"
+        },
+        {
+          "key": "initTemp",
+          "type": "real",
+          "defaultValue": 293,
+          "unit": "K",
+          "description": "Initial gas temperature"
+        },
+        {
+          "key": "rGas",
+          "type": "real",
+          "defaultValue": 2077,
+          "unit": "J/(kg.K)",
+          "description": "Pressurant specific gas constant (Helium)"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.66,
+          "unit": "1",
+          "description": "Pressurant ratio of specific heats"
+        }
+      ],
+      "wasmKernel": "PRESSURANT",
+      "archetypeId": 31
+    }
+  },
+  {
+    "name": "ULLAGE",
+    "kind": "rocets_module",
+    "namePath": "rocets:ULLAGE",
+    "exports": [
+      "initVolume",
+      "initPressure",
+      "gasTemp",
+      "rGas",
+      "gamma",
+      "propDensity"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Tank Ullage Gas Space",
+      "category": "Tanks & Pressurization",
+      "domain": "aerospace",
+      "description": "Variable-volume tank ullage gas space balancing pressurant inflow against propellant outflow.",
+      "provenance": "NASA SP-1252; Huzel & Huang Ch. 5 Tank Ullage Thermodynamics",
+      "aliases": [
+        "ULLAGE_GAS",
+        "GAS_SPACE"
+      ],
+      "parameters": [
+        {
+          "key": "initVolume",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "m3",
+          "description": "Initial ullage gas volume"
+        },
+        {
+          "key": "initPressure",
+          "type": "real",
+          "defaultValue": 320000,
+          "unit": "Pa",
+          "description": "Initial ullage pressure"
+        },
+        {
+          "key": "gasTemp",
+          "type": "real",
+          "defaultValue": 220,
+          "unit": "K",
+          "description": "Mean ullage gas temperature"
+        },
+        {
+          "key": "rGas",
+          "type": "real",
+          "defaultValue": 2077,
+          "unit": "J/(kg.K)",
+          "description": "Ullage gas specific gas constant"
+        },
+        {
+          "key": "gamma",
+          "type": "real",
+          "defaultValue": 1.66,
+          "unit": "1",
+          "description": "Ullage gas specific heat ratio"
+        },
+        {
+          "key": "propDensity",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Displaced liquid propellant density"
+        }
+      ],
+      "wasmKernel": "ULLAGE",
+      "archetypeId": 32
+    }
+  },
+  {
+    "name": "FLUID_LOX",
+    "kind": "rocets_module",
+    "namePath": "rocets:FLUID_LOX",
+    "exports": [
+      "tRef",
+      "rhoRef",
+      "cp",
+      "alphaT",
+      "kappaP",
+      "hRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Liquid Oxygen (LOX) Properties",
+      "category": "Propellant Properties",
+      "domain": "aerospace",
+      "description": "Subcooled/saturated Liquid Oxygen density and enthalpy table around 90.2 K NBP.",
+      "provenance": "NIST Chemistry WebBook (SRD 69) / NASA RP-1311 (CEA) Oxygen Properties",
+      "aliases": [
+        "LOX",
+        "O2_LIQ"
+      ],
+      "parameters": [
+        {
+          "key": "tRef",
+          "type": "real",
+          "defaultValue": 90.19,
+          "unit": "K",
+          "description": "Normal boiling point reference temperature"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 1141,
+          "unit": "kg/m3",
+          "description": "Reference liquid density at NBP"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1699,
+          "unit": "J/(kg.K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "alphaT",
+          "type": "real",
+          "defaultValue": 0.0043,
+          "unit": "1/K",
+          "description": "Thermal expansion coefficient"
+        },
+        {
+          "key": "kappaP",
+          "type": "real",
+          "defaultValue": 1.5e-9,
+          "unit": "1/Pa",
+          "description": "Isothermal compressibility"
+        },
+        {
+          "key": "hRef",
+          "type": "real",
+          "defaultValue": -133400,
+          "unit": "J/kg",
+          "description": "Reference specific enthalpy at NBP"
+        }
+      ],
+      "wasmKernel": "FLUID_LOX",
+      "archetypeId": 40
+    }
+  },
+  {
+    "name": "FLUID_LH2",
+    "kind": "rocets_module",
+    "namePath": "rocets:FLUID_LH2",
+    "exports": [
+      "tRef",
+      "rhoRef",
+      "cp",
+      "alphaT",
+      "kappaP",
+      "hRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Liquid Hydrogen (LH2) Properties",
+      "category": "Propellant Properties",
+      "domain": "aerospace",
+      "description": "Cryogenic para-Hydrogen liquid density and enthalpy table around 20.3 K NBP.",
+      "provenance": "NIST Chemistry WebBook (SRD 69) / Leachman et al. (2009) Para-Hydrogen EOS",
+      "aliases": [
+        "LH2",
+        "H2_LIQ"
+      ],
+      "parameters": [
+        {
+          "key": "tRef",
+          "type": "real",
+          "defaultValue": 20.27,
+          "unit": "K",
+          "description": "Normal boiling point reference temperature"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 70.85,
+          "unit": "kg/m3",
+          "description": "Reference liquid density at NBP"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 9680,
+          "unit": "J/(kg.K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "alphaT",
+          "type": "real",
+          "defaultValue": 0.0165,
+          "unit": "1/K",
+          "description": "Thermal expansion coefficient"
+        },
+        {
+          "key": "kappaP",
+          "type": "real",
+          "defaultValue": 1.9e-8,
+          "unit": "1/Pa",
+          "description": "Isothermal compressibility"
+        },
+        {
+          "key": "hRef",
+          "type": "real",
+          "defaultValue": -255000,
+          "unit": "J/kg",
+          "description": "Reference specific enthalpy at NBP"
+        }
+      ],
+      "wasmKernel": "FLUID_LH2",
+      "archetypeId": 41
+    }
+  },
+  {
+    "name": "FLUID_RP1",
+    "kind": "rocets_module",
+    "namePath": "rocets:FLUID_RP1",
+    "exports": [
+      "tRef",
+      "rhoRef",
+      "cp",
+      "alphaT",
+      "kappaP",
+      "hRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "RP-1 Rocket Kerosene Properties",
+      "category": "Propellant Properties",
+      "domain": "aerospace",
+      "description": "MIL-DTL-25576 RP-1 rocket-grade kerosene density and enthalpy property correlation.",
+      "provenance": "NIST Technical Note 1640 (Huber et al., 2009) RP-1 Thermophysical Properties",
+      "aliases": [
+        "RP1",
+        "KEROSENE"
+      ],
+      "parameters": [
+        {
+          "key": "tRef",
+          "type": "real",
+          "defaultValue": 293.15,
+          "unit": "K",
+          "description": "Standard reference temperature"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 806,
+          "unit": "kg/m3",
+          "description": "Reference liquid density at 293.15 K"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 2010,
+          "unit": "J/(kg.K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "alphaT",
+          "type": "real",
+          "defaultValue": 0.00092,
+          "unit": "1/K",
+          "description": "Thermal expansion coefficient"
+        },
+        {
+          "key": "kappaP",
+          "type": "real",
+          "defaultValue": 8.5e-10,
+          "unit": "1/Pa",
+          "description": "Isothermal compressibility"
+        },
+        {
+          "key": "hRef",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "J/kg",
+          "description": "Reference specific enthalpy at 293.15 K"
+        }
+      ],
+      "wasmKernel": "FLUID_RP1",
+      "archetypeId": 42
+    }
+  },
+  {
+    "name": "FLUID_CH4",
+    "kind": "rocets_module",
+    "namePath": "rocets:FLUID_CH4",
+    "exports": [
+      "tRef",
+      "rhoRef",
+      "cp",
+      "alphaT",
+      "kappaP",
+      "hRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Liquid Methane (LCH4) Properties",
+      "category": "Propellant Properties",
+      "domain": "aerospace",
+      "description": "Cryogenic Liquid Methane density and enthalpy property correlation around 111.7 K NBP.",
+      "provenance": "NIST Chemistry WebBook (SRD 69) / Setzmann & Wagner (1991) Methane EOS",
+      "aliases": [
+        "LCH4",
+        "CH4",
+        "METHANE"
+      ],
+      "parameters": [
+        {
+          "key": "tRef",
+          "type": "real",
+          "defaultValue": 111.67,
+          "unit": "K",
+          "description": "Normal boiling point reference temperature"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 422.4,
+          "unit": "kg/m3",
+          "description": "Reference liquid density at NBP"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 3480,
+          "unit": "J/(kg.K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "alphaT",
+          "type": "real",
+          "defaultValue": 0.0034,
+          "unit": "1/K",
+          "description": "Thermal expansion coefficient"
+        },
+        {
+          "key": "kappaP",
+          "type": "real",
+          "defaultValue": 1.8e-9,
+          "unit": "1/Pa",
+          "description": "Isothermal compressibility"
+        },
+        {
+          "key": "hRef",
+          "type": "real",
+          "defaultValue": -285000,
+          "unit": "J/kg",
+          "description": "Reference specific enthalpy at NBP"
+        }
+      ],
+      "wasmKernel": "FLUID_CH4",
+      "archetypeId": 43
+    }
+  },
+  {
+    "name": "FLUID_N2O4",
+    "kind": "rocets_module",
+    "namePath": "rocets:FLUID_N2O4",
+    "exports": [
+      "tRef",
+      "rhoRef",
+      "cp",
+      "alphaT",
+      "kappaP",
+      "hRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Nitrogen Tetroxide (N2O4) Properties",
+      "category": "Propellant Properties",
+      "domain": "aerospace",
+      "description": "Storable hypergolic oxidizer Nitrogen Tetroxide (NTO) density and enthalpy table.",
+      "provenance": "Sutton & Biblarz (9th ed.) Table 7-1; NASA SP-3004 Storable Propellant Properties",
+      "aliases": [
+        "N2O4",
+        "NTO"
+      ],
+      "parameters": [
+        {
+          "key": "tRef",
+          "type": "real",
+          "defaultValue": 293.15,
+          "unit": "K",
+          "description": "Standard reference temperature"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 1447,
+          "unit": "kg/m3",
+          "description": "Reference liquid density at 293.15 K"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 1545,
+          "unit": "J/(kg.K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "alphaT",
+          "type": "real",
+          "defaultValue": 0.0016,
+          "unit": "1/K",
+          "description": "Thermal expansion coefficient"
+        },
+        {
+          "key": "kappaP",
+          "type": "real",
+          "defaultValue": 9e-10,
+          "unit": "1/Pa",
+          "description": "Isothermal compressibility"
+        },
+        {
+          "key": "hRef",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "J/kg",
+          "description": "Reference specific enthalpy at 293.15 K"
+        }
+      ],
+      "wasmKernel": "FLUID_N2O4",
+      "archetypeId": 44
+    }
+  },
+  {
+    "name": "FLUID_MMH",
+    "kind": "rocets_module",
+    "namePath": "rocets:FLUID_MMH",
+    "exports": [
+      "tRef",
+      "rhoRef",
+      "cp",
+      "alphaT",
+      "kappaP",
+      "hRef"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Monomethylhydrazine (MMH) Properties",
+      "category": "Propellant Properties",
+      "domain": "aerospace",
+      "description": "Storable hypergolic fuel Monomethylhydrazine density and enthalpy property table.",
+      "provenance": "Sutton & Biblarz (9th ed.) Table 7-1; AIAA G-095 / NASA Storable Propellants",
+      "aliases": [
+        "MMH",
+        "MONOMETHYLHYDRAZINE"
+      ],
+      "parameters": [
+        {
+          "key": "tRef",
+          "type": "real",
+          "defaultValue": 293.15,
+          "unit": "K",
+          "description": "Standard reference temperature"
+        },
+        {
+          "key": "rhoRef",
+          "type": "real",
+          "defaultValue": 874,
+          "unit": "kg/m3",
+          "description": "Reference liquid density at 293.15 K"
+        },
+        {
+          "key": "cp",
+          "type": "real",
+          "defaultValue": 2930,
+          "unit": "J/(kg.K)",
+          "description": "Isobaric specific heat capacity"
+        },
+        {
+          "key": "alphaT",
+          "type": "real",
+          "defaultValue": 0.00105,
+          "unit": "1/K",
+          "description": "Thermal expansion coefficient"
+        },
+        {
+          "key": "kappaP",
+          "type": "real",
+          "defaultValue": 6.5e-10,
+          "unit": "1/Pa",
+          "description": "Isothermal compressibility"
+        },
+        {
+          "key": "hRef",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "J/kg",
+          "description": "Reference specific enthalpy at 293.15 K"
+        }
+      ],
+      "wasmKernel": "FLUID_MMH",
+      "archetypeId": 45
+    }
+  }
+]

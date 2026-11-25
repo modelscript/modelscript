@@ -1,0 +1,5 @@
+stop_id,stop_name,stop_lat,stop_lon
+UNION_STA,Union Central Station,42.3523,-71.0552
+JUNCTION_STA,River Junction Transfer,42.3680,-71.0785
+NORTH_BRANCH,Northvale Heights,42.4120,-71.0910
+SOUTH_BRANCH,Southport Harbor,42.3210,-71.1120

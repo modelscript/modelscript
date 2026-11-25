@@ -1,0 +1,11 @@
+{
+  "id": "lps-05-multi-station-gas-network",
+  "lang": "lps",
+  "subFormats": ["lps", "csv"],
+  "difficulty": 5,
+  "title": "Multi-Station Gas Transmission Network with Hourly Demand Profile",
+  "description": "350 km interstate natural gas transmission network featuring two series compressor stations, dual market delivery branches with preheated regulation, and a 24-hour demand profile CSV.",
+  "category": "Pipeline Hydraulics",
+  "tags": ["lps", "multi-station", "multi-file", "demand-profile", "interstate"],
+  "activeFile": "trunkline.lps"
+}

@@ -42,7 +42,9 @@ export class VerificationPanel extends BaseWebviewPanel {
                   uri,
                   options: { all: true },
                 });
-              } catch {}
+              } catch {
+                // Best-effort verification fetch; panel renders fallback state
+              }
               this._panel.webview.postMessage({
                 type: "verificationComplete",
                 requirements,

@@ -1,0 +1,11 @@
+{
+  "id": "mps-04-binary-knapsack-mip",
+  "lang": "mps",
+  "subFormats": ["mps", "milp"],
+  "difficulty": 4,
+  "title": "Spacecraft Payload Selection Binary Knapsack MIP",
+  "description": "0-1 binary knapsack mixed-integer program using INTORG/INTEND markers to select scientific instruments maximizing mission science value within mass and power budgets.",
+  "category": "Combinatorial Optimization",
+  "tags": ["mps", "mip", "knapsack", "binary", "intorg"],
+  "activeFile": "payload_knapsack.mps"
+}

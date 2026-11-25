@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">
+  <model id="Oscillator" name="Lotka-Volterra Oscillator">
+    <listOfCompartments><compartment id="hab" size="1.0" constant="true"/></listOfCompartments>
+    <listOfSpecies>
+      <species id="Prey" compartment="hab" initialConcentration="30.0" constant="false"/>
+      <species id="Pred" compartment="hab" initialConcentration="8.0" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="alpha" value="0.5" constant="true"/>
+      <parameter id="beta" value="0.025" constant="true"/>
+      <parameter id="gamma" value="0.7" constant="true"/>
+    </listOfParameters>
+    <listOfReactions>
+      <reaction id="R_grow" reversible="false">
+        <listOfReactants><speciesReference species="Prey" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="Prey" stoichiometry="2"/></listOfProducts>
+        <kineticLaw><formula>alpha * Prey</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_eat" reversible="false">
+        <listOfReactants><speciesReference species="Prey" stoichiometry="1"/></listOfReactants>
+        <listOfProducts><speciesReference species="Pred" stoichiometry="1"/></listOfProducts>
+        <kineticLaw><formula>beta * Prey * Pred</formula></kineticLaw>
+      </reaction>
+      <reaction id="R_die" reversible="false">
+        <listOfReactants><speciesReference species="Pred" stoichiometry="1"/></listOfReactants>
+        <kineticLaw><formula>gamma * Pred</formula></kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>

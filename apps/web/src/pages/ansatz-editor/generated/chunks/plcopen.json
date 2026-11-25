@@ -1,0 +1,83 @@
+[
+  {
+    "id": "plcopen-01-motor-seal-in-latch",
+    "lang": "plcopen",
+    "subFormats": ["st"],
+    "difficulty": 1,
+    "title": "Motor Start/Stop Seal-In Latch with Overload Trip",
+    "description": "IEC 61131-3 Structured Text three-wire motor starter seal-in circuit with momentary start pushbutton, normally-closed stop button, thermal overload interlock, and fault indicator.",
+    "category": "Industrial PLC Control",
+    "tags": ["plcopen", "structured-text", "motor-starter", "interlock"],
+    "activeFile": "motor_latch.st",
+    "fileNames": ["motor_latch.st"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "PROGRAM MotorStarterLatch\n  VAR_INPUT\n    StartPB : BOOL := FALSE;\n    StopPB : BOOL := TRUE;\n    OverloadTrip : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    MotorContactor : BOOL := FALSE;\n    FaultLamp : BOOL := FALSE;\n  END_VAR\n\n  MotorContactor := (StartPB OR MotorContactor) AND StopPB AND NOT OverloadTrip;\n  FaultLamp := OverloadTrip;\nEND_PROGRAM\n"
+  },
+  {
+    "id": "plcopen-02-conveyor-batch-counter",
+    "lang": "plcopen",
+    "subFormats": ["st"],
+    "difficulty": 2,
+    "title": "Conveyor Batch Counter & Pneumatic Diverter Timer",
+    "description": "IEC 61131-3 Structured Text conveyor automation controller using R_TRIG edge detection, CTU batch counting, and TON pneumatic diverter pulse timing for automated palletizing lines.",
+    "category": "Material Handling",
+    "tags": ["plcopen", "iec61131-3", "conveyor", "ton", "ctu"],
+    "activeFile": "conveyor_batch.st",
+    "fileNames": ["conveyor_batch.st"],
+    "fileCount": 1,
+    "code": "(* Conveyor Batch Counter with Pneumatic Diverter Actuation *)\nPROGRAM ConveyorBatchControl\n  VAR_INPUT\n    ConveyorEnable : BOOL;\n    PhotoEyeSensor : BOOL;\n    ManualReset : BOOL;\n    BatchTarget : INT := 12;\n  END_VAR\n  VAR_OUTPUT\n    BeltDriveRun : BOOL := FALSE;\n    DiverterValve : BOOL := FALSE;\n    BatchReadyLamp : BOOL := FALSE;\n    PartsCounted : INT := 0;\n  END_VAR\n  VAR\n    PartEdge : R_TRIG;\n    BatchCounter : CTU;\n    DiverterTimer : TON;\n    PartPulse : BOOL := FALSE;\n    BatchReached : BOOL := FALSE;\n    DiverterDone : BOOL := FALSE;\n    AutoResetPulse : BOOL := FALSE;\n  END_VAR\n\n  BeltDriveRun := ConveyorEnable;\n\n  (* Rising-edge detection on optical part sensor *)\n  PartEdge(CLK := PhotoEyeSensor AND BeltDriveRun, Q => PartPulse);\n\n  (* Count parts up to BatchTarget *)\n  AutoResetPulse := ManualReset OR DiverterDone;\n  BatchCounter(\n    CU := PartPulse,\n    R := AutoResetPulse,\n    PV := BatchTarget,\n    Q => BatchReached,\n    CV => PartsCounted\n  );\n\n  (* Hold pneumatic diverter extended for 2.5 seconds once batch is full *)\n  DiverterTimer(IN := BatchReached, PT := T#2500ms, Q => DiverterDone);\n\n  DiverterValve := BatchReached AND NOT DiverterDone;\n  BatchReadyLamp := BatchReached;\nEND_PROGRAM\n"
+  },
+  {
+    "id": "plcopen-03-tank-level-pid-pump",
+    "lang": "plcopen",
+    "subFormats": ["st"],
+    "difficulty": 3,
+    "title": "Tank Level PI Control with Cascade Pump Alternation",
+    "description": "Process tank level controller combining discrete PI variable-speed pump regulation with anti-windup clamping and lead-lag dual-pump alternation for high-level surge protection.",
+    "category": "Process Control PLC",
+    "tags": ["plcopen", "pid", "pump-alternation", "process-control"],
+    "activeFile": "tank_pid.st",
+    "fileNames": ["tank_pid.st"],
+    "fileCount": 1,
+    "code": "PROGRAM TankLevelControl\n  VAR_INPUT\n    LevelPV : REAL := 50.0;\n    LevelSP : REAL := 60.0;\n    HighLevelSwitch : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    Pump1SpeedPct : REAL := 0.0;\n    Pump2BoostRun : BOOL := FALSE;\n    HighLevelAlarm : BOOL := FALSE;\n  END_VAR\n  VAR\n    Error : REAL := 0.0;\n    IntegralTerm : REAL := 0.0;\n    Kp : REAL := 2.2;\n    Ki : REAL := 0.15;\n    Dt : REAL := 0.1;\n    RawCmd : REAL := 0.0;\n  END_VAR\n\n  Error := LevelSP - LevelPV;\n  IntegralTerm := IntegralTerm + (Ki * Error * Dt);\n\n  IF IntegralTerm > 80.0 THEN\n    IntegralTerm := 80.0;\n  ELSIF IntegralTerm < 0.0 THEN\n    IntegralTerm := 0.0;\n  END_IF;\n\n  RawCmd := (Kp * Error) + IntegralTerm;\n  IF RawCmd > 100.0 THEN\n    Pump1SpeedPct := 100.0;\n  ELSIF RawCmd < 0.0 THEN\n    Pump1SpeedPct := 0.0;\n  ELSE\n    Pump1SpeedPct := RawCmd;\n  END_IF;\n\n  Pump2BoostRun := (Pump1SpeedPct > 85.0) AND NOT HighLevelSwitch;\n  HighLevelAlarm := HighLevelSwitch;\nEND_PROGRAM\n"
+  },
+  {
+    "id": "plcopen-04-packaging-line-safety",
+    "lang": "plcopen",
+    "subFormats": ["st"],
+    "difficulty": 4,
+    "title": "Packaging Line State Machine with Safety Interlocks",
+    "description": "Multi-file IEC 61131-3 PackML-style state machine for a carton packaging line paired with a dedicated safety-gate and E-stop interlock function block library.",
+    "category": "Machine Safety & PackML",
+    "tags": ["plcopen", "packml", "state-machine", "safety", "multi-file"],
+    "activeFile": "main.st",
+    "fileNames": ["main.st", "safety_fb.st"],
+    "fileCount": 2,
+    "code": "PROGRAM PackagingLineMain\n  VAR_INPUT\n    EStopHealthy : BOOL := TRUE;\n    GuardClosed : BOOL := TRUE;\n    StartCmd : BOOL := FALSE;\n    StopCmd : BOOL := FALSE;\n    CartonReady : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    StateCode : INT := 0;\n    SealHeaterOn : BOOL := FALSE;\n    DriveEnable : BOOL := FALSE;\n  END_VAR\n  VAR\n    SafetyOk : BOOL := FALSE;\n    WarmupDone : BOOL := FALSE;\n    WarmupTimer : TON;\n  END_VAR\n\n  SafetyOk := EStopHealthy AND GuardClosed;\n\n  IF NOT SafetyOk THEN\n    StateCode := 99;\n    DriveEnable := FALSE;\n    SealHeaterOn := FALSE;\n  ELSE\n    CASE StateCode OF\n      0:\n        DriveEnable := FALSE;\n        IF StartCmd THEN\n          StateCode := 10;\n        END_IF;\n      10:\n        SealHeaterOn := TRUE;\n        WarmupTimer(IN := TRUE, PT := T#5s, Q => WarmupDone);\n        IF WarmupDone THEN\n          StateCode := 20;\n        END_IF;\n      20:\n        DriveEnable := CartonReady;\n        IF StopCmd THEN\n          StateCode := 0;\n        END_IF;\n      99:\n        IF NOT StartCmd THEN\n          StateCode := 0;\n        END_IF;\n    END_CASE;\n  END_IF;\nEND_PROGRAM\n",
+    "files": {
+      "main.st": "PROGRAM PackagingLineMain\n  VAR_INPUT\n    EStopHealthy : BOOL := TRUE;\n    GuardClosed : BOOL := TRUE;\n    StartCmd : BOOL := FALSE;\n    StopCmd : BOOL := FALSE;\n    CartonReady : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    StateCode : INT := 0;\n    SealHeaterOn : BOOL := FALSE;\n    DriveEnable : BOOL := FALSE;\n  END_VAR\n  VAR\n    SafetyOk : BOOL := FALSE;\n    WarmupDone : BOOL := FALSE;\n    WarmupTimer : TON;\n  END_VAR\n\n  SafetyOk := EStopHealthy AND GuardClosed;\n\n  IF NOT SafetyOk THEN\n    StateCode := 99;\n    DriveEnable := FALSE;\n    SealHeaterOn := FALSE;\n  ELSE\n    CASE StateCode OF\n      0:\n        DriveEnable := FALSE;\n        IF StartCmd THEN\n          StateCode := 10;\n        END_IF;\n      10:\n        SealHeaterOn := TRUE;\n        WarmupTimer(IN := TRUE, PT := T#5s, Q => WarmupDone);\n        IF WarmupDone THEN\n          StateCode := 20;\n        END_IF;\n      20:\n        DriveEnable := CartonReady;\n        IF StopCmd THEN\n          StateCode := 0;\n        END_IF;\n      99:\n        IF NOT StartCmd THEN\n          StateCode := 0;\n        END_IF;\n    END_CASE;\n  END_IF;\nEND_PROGRAM\n",
+      "safety_fb.st": "FUNCTION_BLOCK SafetyGateInterlock\n  VAR_INPUT\n    EStopChannelA : BOOL := TRUE;\n    EStopChannelB : BOOL := TRUE;\n    DoorSwitch : BOOL := TRUE;\n    ResetPulse : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    SafeToOperate : BOOL := FALSE;\n    FaultLatched : BOOL := FALSE;\n  END_VAR\n\n  IF NOT (EStopChannelA AND EStopChannelB AND DoorSwitch) THEN\n    SafeToOperate := FALSE;\n    FaultLatched := TRUE;\n  ELSIF ResetPulse THEN\n    FaultLatched := FALSE;\n    SafeToOperate := TRUE;\n  END_IF;\nEND_FUNCTION_BLOCK\n"
+    }
+  },
+  {
+    "id": "plcopen-05-automated-bottling-plant",
+    "lang": "plcopen",
+    "subFormats": ["st"],
+    "difficulty": 5,
+    "title": "Automated Bottling Plant Multi-POU Project",
+    "description": "Multi-file IEC 61131-3 bottling line automation project organizing main sequencing logic, reusable PID filler pressure controller, plant alarm manager, and hardware I/O mapping across four POU files.",
+    "category": "Factory Automation",
+    "tags": ["plcopen", "bottling-plant", "multi-pou", "pid", "multi-file"],
+    "activeFile": "plant_main.st",
+    "fileNames": ["plant_main.st", "pid_lib.st", "alarm_mgr.st", "io_map.st"],
+    "fileCount": 4,
+    "code": "PROGRAM BottlingPlantMain\n  VAR_INPUT\n    LineAutoMode : BOOL := TRUE;\n    BottleAtFiller : BOOL := FALSE;\n    FillerPressureBar : REAL := 2.4;\n    EmergencyStop : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    MainConveyorRun : BOOL := FALSE;\n    FillValveOpen : BOOL := FALSE;\n    CapperEngage : BOOL := FALSE;\n    BottlesFilled : INT := 0;\n  END_VAR\n  VAR\n    FillDone : BOOL := FALSE;\n    FillTimer : TON;\n    PressureError : REAL := 0.0;\n    TargetPressureBar : REAL := 2.5;\n  END_VAR\n\n  IF EmergencyStop THEN\n    MainConveyorRun := FALSE;\n    FillValveOpen := FALSE;\n    CapperEngage := FALSE;\n  ELSE\n    PressureError := TargetPressureBar - FillerPressureBar;\n    MainConveyorRun := LineAutoMode AND NOT BottleAtFiller;\n    FillTimer(IN := BottleAtFiller, PT := T#1500ms, Q => FillDone);\n    FillValveOpen := BottleAtFiller AND NOT FillDone;\n    CapperEngage := FillDone;\n\n    IF FillDone THEN\n      BottlesFilled := BottlesFilled + 1;\n    END_IF;\n  END_IF;\nEND_PROGRAM\n",
+    "files": {
+      "plant_main.st": "PROGRAM BottlingPlantMain\n  VAR_INPUT\n    LineAutoMode : BOOL := TRUE;\n    BottleAtFiller : BOOL := FALSE;\n    FillerPressureBar : REAL := 2.4;\n    EmergencyStop : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    MainConveyorRun : BOOL := FALSE;\n    FillValveOpen : BOOL := FALSE;\n    CapperEngage : BOOL := FALSE;\n    BottlesFilled : INT := 0;\n  END_VAR\n  VAR\n    FillDone : BOOL := FALSE;\n    FillTimer : TON;\n    PressureError : REAL := 0.0;\n    TargetPressureBar : REAL := 2.5;\n  END_VAR\n\n  IF EmergencyStop THEN\n    MainConveyorRun := FALSE;\n    FillValveOpen := FALSE;\n    CapperEngage := FALSE;\n  ELSE\n    PressureError := TargetPressureBar - FillerPressureBar;\n    MainConveyorRun := LineAutoMode AND NOT BottleAtFiller;\n    FillTimer(IN := BottleAtFiller, PT := T#1500ms, Q => FillDone);\n    FillValveOpen := BottleAtFiller AND NOT FillDone;\n    CapperEngage := FillDone;\n\n    IF FillDone THEN\n      BottlesFilled := BottlesFilled + 1;\n    END_IF;\n  END_IF;\nEND_PROGRAM\n",
+      "pid_lib.st": "FUNCTION_BLOCK FillerPressurePid\n  VAR_INPUT\n    Setpoint : REAL := 2.5;\n    ProcessValue : REAL := 2.5;\n    Kp : REAL := 1.8;\n    Ki : REAL := 0.25;\n  END_VAR\n  VAR_OUTPUT\n    ValveOutputPct : REAL := 0.0;\n  END_VAR\n  VAR\n    Err : REAL := 0.0;\n    IntAcc : REAL := 0.0;\n  END_VAR\n\n  Err := Setpoint - ProcessValue;\n  IntAcc := IntAcc + (Ki * Err * 0.05);\n  ValveOutputPct := (Kp * Err) + IntAcc;\n  IF ValveOutputPct > 100.0 THEN\n    ValveOutputPct := 100.0;\n  ELSIF ValveOutputPct < 0.0 THEN\n    ValveOutputPct := 0.0;\n  END_IF;\nEND_FUNCTION_BLOCK\n",
+      "alarm_mgr.st": "FUNCTION_BLOCK PlantAlarmManager\n  VAR_INPUT\n    OverPressure : BOOL := FALSE;\n    LowTankLevel : BOOL := FALSE;\n    AckButton : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    AlarmActive : BOOL := FALSE;\n    SirenOn : BOOL := FALSE;\n  END_VAR\n\n  IF OverPressure OR LowTankLevel THEN\n    AlarmActive := TRUE;\n    SirenOn := NOT AckButton;\n  ELSE\n    AlarmActive := FALSE;\n    SirenOn := FALSE;\n  END_IF;\nEND_FUNCTION_BLOCK\n",
+      "io_map.st": "PROGRAM BottlingIoMap\n  VAR_INPUT\n    RawSensorIn : BOOL := FALSE;\n  END_VAR\n  VAR_OUTPUT\n    MappedBottlePresent : BOOL := FALSE;\n  END_VAR\n\n  MappedBottlePresent := RawSensorIn;\nEND_PROGRAM\n"
+    }
+  }
+]

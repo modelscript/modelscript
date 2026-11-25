@@ -1,0 +1,29 @@
+C Power Electronics PCB and Finned Heatsink Thermal Network
+HEADER OPTIONS DATA
+  TITLE = "Electronics PCB Finned Heatsink Network"
+  ABSZRO = 0.0
+HEADER NODE DATA, ELEC
+  1, 355.0, 12.0   $ Power MOSFET junction
+  2, 340.0, 35.0   $ TO-247 case and TIM interface
+  3, 330.0, 180.0  $ Aluminum heatsink baseplate
+  4, 322.0, 95.0   $ Fin array outer surface
+  5, 325.0, 65.0   $ FR-4 PCB copper ground plane
+  -99, 298.15, 0.0 $ Forced-air ambient sink (25 C)
+HEADER CONDUCTOR DATA, ELEC
+  10, 1, 2, 1.8    $ Junction-to-case conductance (W/K)
+  11, 2, 3, 3.2    $ TIM interface conductance (W/K)
+  12, 3, 4, 12.5   $ Base-to-fin conduction (W/K)
+  13, 4, 99, 2.4   $ Forced convection off fins (W/K)
+  14, 2, 5, 0.65   $ Leadframe conduction to PCB (W/K)
+  15, 5, 99, 0.45  $ Natural convection from PCB (W/K)
+HEADER SOURCE DATA, ELEC
+  1, 45.0          $ MOSFET switching and conduction loss (W)
+HEADER CONSTANTS DATA
+  TIMEO = 0.0, TIMEND = 300.0, DTIMEI = 1.0
+  DRLXCA = 1.0E-6, NLOOP = 150
+HEADER EXECUTION
+  CALL STDSTL
+  CALL CRANKN
+HEADER OUTPUT CALLS
+  CALL TPRINT
+END OF DATA

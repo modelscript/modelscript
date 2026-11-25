@@ -208,7 +208,7 @@ export const DIAGRAM_EDITOR_SUPPORTED_LANGS = new Set<string>([
 export interface ExtensionOptions {
   /** Extension unique identifier (e.g. "modelscript", "calc-lang") */
   name?: string | undefined;
-  /** Human-readable display name (e.g. "ModelScript — Polyglot Systems IDE") */
+  /** Human-readable display name (e.g. "Ansatz Studio") */
   displayName?: string | undefined;
   /** Semantic version string */
   version?: string | undefined;
@@ -347,14 +347,13 @@ export function generatePackageJson(
 
   const name = options?.name || (isMultiLang ? "modelscript-suite" : `${primaryLang.id}-lang`);
   const displayName =
-    options?.displayName ||
-    (isMultiLang ? "ModelScript — Polyglot Systems IDE" : `${primaryLang.displayName} for VS Code`);
+    options?.displayName || (isMultiLang ? "Ansatz Studio" : `${primaryLang.displayName} for VS Code`);
   const version = options?.version || `1.0.${Math.floor(Date.now() / 1000)}`;
   const publisher = options?.publisher || "modelscript";
   const description =
     options?.description ||
     (isMultiLang
-      ? "Complete multi-language modeling, diagramming, and simulation environment for VS Code."
+      ? "Ansatz Studio — Complete multi-language modeling, diagramming, and simulation environment for VS Code powered by ModelScript."
       : `VS Code support for ${primaryLang.displayName} with syntax highlighting, diagnostics, and diagram editing.`);
 
   const contributesLanguages: Record<string, unknown>[] = [];
@@ -530,7 +529,7 @@ export function generatePackageJson(
     const panels = lang.options.ui?.panels;
     if (!Array.isArray(panels)) continue;
     for (const panel of panels) {
-      const targets = panel.targets ?? ["vscode", "morsel", "artifact"];
+      const targets = panel.targets ?? ["vscode", "ansatz", "artifact"];
       if (!targets.includes("vscode")) continue;
       const viewType = panel.viewType ?? `modelscript.${lang.id}.${panel.id}`;
       const selector = (
@@ -1136,19 +1135,19 @@ export function generatePackageJson(
       }
     }
 
-    // 7. Declarative ui.toolbarButtons targeting VS Code (unified with Morsel/Ansatz topbar)
+    // 7. Declarative ui.toolbarButtons targeting VS Code (unified with Ansatz Editor topbar)
     const declaredToolbarButtons = lang.options.ui?.toolbarButtons ?? [];
     const registeredEditorTitleCmds = new Set<string>(editorTitleActions.map((a) => `modelscript.${lang.id}.${a.id}`));
     const registeredCommandIds = new Set<string>(commands.map((c) => String(c["command"] ?? "")));
     let hasPrimaryTitleSlot = Boolean(primaryTitleAction);
 
     for (const btn of declaredToolbarButtons) {
-      const targets = btn.targets && btn.targets.length > 0 ? btn.targets : ["morsel", "vscode"];
+      const targets = btn.targets && btn.targets.length > 0 ? btn.targets : ["ansatz", "vscode"];
       if (!targets.includes("vscode")) continue;
 
       const resolvedCommandId = btn.actionId
         ? `modelscript.${lang.id}.${btn.actionId}`
-        : btn.command && !btn.command.startsWith("morsel:")
+        : btn.command && !btn.command.startsWith("ansatz:")
           ? btn.command
           : null;
       if (!resolvedCommandId || registeredEditorTitleCmds.has(resolvedCommandId)) continue;
@@ -2291,7 +2290,14 @@ interface LanguageMeta {
 
 const REGISTERED_LANGUAGES: LanguageMeta[] = ${langArrayJson};
 
-let wasmExports: any;
+let wasmExports: {
+  ensureInputBuffer?: (lenBytes: number) => number;
+  getInputBuffer?: () => number;
+  lsp_setInputEncoding?: (encoding: number) => void;
+  lsp_setInputLength?: (lenBytes: number) => void;
+  getDiagramData?: (fileId: number) => number;
+  [key: string]: unknown;
+} | undefined;
 let wasmMemory: WebAssembly.Memory;
 let currentWasmBufferUri: string | null = null;
 const uriToLastText = new Map<string, string>();
@@ -2505,8 +2511,8 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("modelscript.openDiagramSource", async () => {
       const tab = vscode.window.tabGroups?.activeTabGroup?.activeTab;
-      if (tab?.input && typeof tab.input === "object" && "uri" in (tab.input as any)) {
-        await vscode.commands.executeCommand("vscode.openWith", (tab.input as any).uri, "default");
+      if (tab?.input && typeof tab.input === "object" && "uri" in tab.input) {
+        await vscode.commands.executeCommand("vscode.openWith", (tab.input as { uri: unknown }).uri, "default");
       } else {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -2679,7 +2685,9 @@ export async function buildIdeExtension(outDir: string, options?: ExtensionOptio
           }
           break;
         }
-      } catch {}
+      } catch {
+        // Optional candidate file probe ignored
+      }
     }
     repoRoot = path.dirname(repoRoot);
   }
@@ -3151,7 +3159,7 @@ if (rootEl) {
     }
   }
 
-  // Package shared file-icons and generate VS Code icon theme JSON using the same language names as Morsel
+  // Package shared file-icons and generate VS Code icon theme JSON using the same language names as Ansatz Editor
   const fileIconsSrcDir = path.join(repoRoot, "apps/web/public/file-icons");
   if (fs.existsSync(fileIconsSrcDir)) {
     const destFileIconsDir = path.join(outDir, "file-icons");

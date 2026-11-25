@@ -1,0 +1,11 @@
+{
+  "id": "esterel-05-cockpit-display-mgr",
+  "lang": "esterel",
+  "subFormats": ["strl"],
+  "difficulty": 5,
+  "title": "Avionics Cockpit Display Mode Manager",
+  "description": "Multi-file avionics primary flight display mode manager composing a reusable alarm-acknowledgement submodule (alarm_handler.strl) via Esterel run signal renaming and mode preemption.",
+  "category": "Avionics Systems",
+  "tags": ["esterel", "avionics", "cockpit", "run", "multi-file"],
+  "activeFile": "cockpit.strl"
+}

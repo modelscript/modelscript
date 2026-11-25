@@ -1,0 +1,10 @@
+# Alluvial Valley Discretization (2 layers x 10 rows x 10 columns)
+BEGIN DIS6
+  NLAY 2
+  NROW 10
+  NCOL 10
+  DELR 120.0
+  DELC 120.0
+  TOP 65.0
+  BOTM 35.0 5.0
+END DIS6

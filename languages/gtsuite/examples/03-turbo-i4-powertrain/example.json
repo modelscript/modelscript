@@ -1,0 +1,11 @@
+{
+  "id": "gtsuite-03-turbo-i4-powertrain",
+  "lang": "gtsuite",
+  "subFormats": ["gtm"],
+  "difficulty": 3,
+  "title": "Turbocharged 4-Cylinder Inline Powertrain",
+  "description": "2.0L turbocharged inline-4 GDI engine with surge-free compressor, charge-air intercooler, four-cylinder intake and exhaust manifolds, and exhaust gas turbine.",
+  "category": "Turbocharged Powertrains",
+  "tags": ["turbocharger", "intercooler", "inline-4", "engine"],
+  "activeFile": "turbo_i4.gtm"
+}

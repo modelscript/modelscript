@@ -1,0 +1,73 @@
+[
+  {
+    "id": "ihex-01-8051-blink-reset-vector",
+    "lang": "ihex",
+    "subFormats": ["i8hex"],
+    "difficulty": 1,
+    "title": "8051 LED Blink Reset Vector & Delay Routine (I8HEX)",
+    "description": "Clean 64-byte I8HEX firmware image for an Intel 8051 microcontroller containing reset/timer vectors, Port 1 LED toggle main loop, and nested software delay subroutine.",
+    "category": "Embedded Firmware",
+    "tags": ["ihex", "i8hex", "8051", "firmware", "checksum"],
+    "activeFile": "blink8051.hex",
+    "fileNames": ["blink8051.hex"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": ":10000000020030000000000000000002002000009C\n:10002000C0E0B290D0E0320000000000000000000C\n:10003000758150759055120040B29080F900000013\n:100040007EFF7FFFDFFEDEFA2200000000000000DE\n:00000001FF\n"
+  },
+  {
+    "id": "ihex-02-avr-atmega328p-vectors",
+    "lang": "ihex",
+    "subFormats": ["i8hex"],
+    "difficulty": 2,
+    "title": "AVR ATmega328P Interrupt Vector Table & Stack Init",
+    "description": "56-byte I8HEX AVR ATmega328P firmware image encoding JMP interrupt vectors, stack pointer initialization to RAMEND (0x08FF), and Port B LED pin setup.",
+    "category": "Microcontroller Firmware",
+    "tags": ["ihex", "avr", "atmega328p", "vectors", "bootloader"],
+    "activeFile": "atmega328p_boot.hex",
+    "fileNames": ["atmega328p_boot.hex"],
+    "fileCount": 1,
+    "code": ":100000000C9420000C942A000C942A000C942A00D2\n:100010000C942A000C942A000C942A000C942A00B8\n:1000200011241FBECFEFD8E0DEBFCDBF0E9430004D\n:08003000259A2D9AFFCF0895D7\n:00000001FF\n"
+  },
+  {
+    "id": "ihex-03-8086-segmented-rom",
+    "lang": "ihex",
+    "subFormats": ["i16hex"],
+    "difficulty": 3,
+    "title": "Intel 8086 Segmented ROM Image (Type 02 & Type 03)",
+    "description": "I16HEX real-mode 8086 firmware utilizing Extended Segment Address (02) at segment 0x1200 and Start Segment Address (03) CS:IP entry point.",
+    "category": "Legacy System Firmware",
+    "tags": ["ihex", "i16hex", "8086", "segmented", "rom"],
+    "activeFile": "rom8086.hex",
+    "fileNames": ["rom8086.hex"],
+    "fileCount": 1,
+    "code": ":020000021200EA\n:10000000B800128ED8BA1000B409CD21B8004CCD7A\n:0C0010002148454C4C4F20383038362435\n:0400000312000000E7\n:00000001FF\n"
+  },
+  {
+    "id": "ihex-04-cortex-m4-flash-image",
+    "lang": "ihex",
+    "subFormats": ["i32hex"],
+    "difficulty": 4,
+    "title": "ARM Cortex-M4 32-Bit Flash Image (Type 04 & Type 05)",
+    "description": "I32HEX ARM Cortex-M4 flash image mapped at 0x08000000 via Extended Linear Address (04) with vector table, Thumb-2 reset handler, and Start Linear Address (05).",
+    "category": "ARM Embedded Firmware",
+    "tags": ["ihex", "i32hex", "cortex-m4", "arm", "flash"],
+    "activeFile": "cortex_m4.hex",
+    "fileNames": ["cortex_m4.hex"],
+    "fileCount": 1,
+    "code": ":020000040800F2\n:1000000000000220110000081D0000081F00000869\n:1000100000BF4FF0010000BFFEE700BFFEE7FEE7B4\n:0400000508000010DF\n:00000001FF\n"
+  },
+  {
+    "id": "ihex-05-stm32-multi-region-firmware",
+    "lang": "ihex",
+    "subFormats": ["i32hex"],
+    "difficulty": 5,
+    "title": "STM32 Multi-Region Bootloader, Application & CRC Header Flash Image",
+    "description": "Multi-section I32HEX STM32F4 firmware image placing a bootloader at 0x08000000, main application at 0x08000400, and version/CRC metadata block at 0x08000800.",
+    "category": "Automotive & Industrial Firmware",
+    "tags": ["ihex", "i32hex", "stm32", "bootloader", "multi-region"],
+    "activeFile": "stm32_full_flash.hex",
+    "fileNames": ["stm32_full_flash.hex"],
+    "fileCount": 1,
+    "code": ":020000040800F2\n:100000000000022011000008290000082B00000851\n:100010000448016881F308884068004700BF00BFBA\n:1000200000040008FEE7FEE7FEE7FEE700BF00BFB2\n:1004000000000220110400081D0400081F04000859\n:1004100010B50020401C00BFFDE710BDFEE7FEE761\n:1008000053544D333246340001040000A55AC33C12\n:0400000508000010DF\n:00000001FF\n"
+  }
+]

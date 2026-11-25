@@ -1,8 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import type { ActionExecutionContext } from "@modelscript/dsl";
-import { ExprKind, initBltWasm, printArenaDAE, UnifiedWorkspace, Variability, VarType } from "@modelscript/runtime";
-import { simulateArenaAsync } from "@modelscript/simulate";
+import {
+  type CSTTree,
+  type DAEBuilder,
+  ExprKind,
+  initBltWasm,
+  printArenaDAE,
+  type QueryDB,
+  type SymbolEntry,
+  type SymbolIndex,
+  UnifiedWorkspace,
+  Variability,
+  VarType,
+} from "@modelscript/runtime";
+import { type ArenaSimulateOptions, simulateArenaAsync } from "@modelscript/simulate";
 import { Context } from "./context.js";
 import { createModelicaWorkspaceIndex } from "./factory.js";
 import { ModelicaFlattener } from "./flattener.js";
@@ -14,14 +26,127 @@ import {
   extractWithinFromSource,
 } from "./workspace-hooks.js";
 
-function resolveClassId(queryEngine: any, queryDB: any, className: string): number | undefined {
+interface ActionSymbolLike {
+  kind: string | number;
+  name: string;
+  qualifiedName?: string | undefined;
+  typeText?: string | undefined;
+  comment?: string | undefined;
+}
+
+interface ActionSymbolIndexLike {
+  symbols?: Map<number, ActionSymbolLike> | undefined;
+  byName?: Map<string, number[]> | undefined;
+  childrenOf?: Map<number | null, number[]> | undefined;
+}
+
+interface ActionQueryEngineLike {
+  index?: ActionSymbolIndexLike | undefined;
+  tree?: CSTTree | null | undefined;
+  toQueryDB?: () => QueryDB;
+  updateTree?: (tree: CSTTree) => void;
+  updateIndex?: (
+    index: SymbolIndex,
+    resourceId?: string,
+    changedIds?: Set<number>,
+    structuralChangedIds?: Set<number>,
+  ) => void;
+  invalidate?: (changedIds: Set<number>, structuralChangedIds?: Set<number>) => void;
+}
+
+interface ActionDocLike {
+  uri: string;
+  getText(): string;
+}
+
+interface ActionCstRootWithLookup {
+  descendantForIndex?: (start: number, end: number) => unknown;
+  getNode?: (start: number, end: number) => unknown;
+}
+
+interface ActionWorkspaceIndexLike {
+  unifiedIndex?: ActionSymbolIndexLike | undefined;
+  reindexDocument?: (uri: string, getRoot: () => unknown) => void;
+  indexDocument?: (uri: string, getRoot: () => unknown) => void;
+  getIndex: (opts?: { eager?: boolean }) => SymbolIndex;
+  takeGlobalChangedIds?: () => { changedIds?: Set<number>; structuralChangedIds?: Set<number> } | undefined;
+}
+
+interface ActionUnifiedWorkspaceLike {
+  reindexDocument?: (uri: string, getRoot: () => unknown) => void;
+  getIndex: () => SymbolIndex;
+}
+
+interface ActionParserServiceLike {
+  sharedContext?:
+    | { parse?: (ext: string, input: string) => { rootNode?: MoCstRootLike & ActionCstRootWithLookup } | null }
+    | undefined;
+  getParser?: (id: string) => MoParserLike | undefined;
+  parser?: MoParserLike | undefined;
+  getSharedCstTreeWrapper?: () => CSTTree | undefined;
+}
+
+interface ActionDocumentManagerLike {
+  documentTrees?:
+    Map<string, { text?: string; tree?: { rootNode?: MoCstRootLike & ActionCstRootWithLookup } }> | undefined;
+}
+
+interface ActionWorkspaceManagerLike {
+  globalWorkspaceIndex?: ActionWorkspaceIndexLike | undefined;
+  getWorkspaceIndex?: (lang: string) => ActionWorkspaceIndexLike | undefined;
+  unifiedWorkspace?: ActionUnifiedWorkspaceLike | undefined;
+  sharedContext?:
+    | { parse?: (ext: string, input: string) => { rootNode?: MoCstRootLike & ActionCstRootWithLookup } | null }
+    | undefined;
+  parserService?: ActionParserServiceLike | undefined;
+  documentManager?: ActionDocumentManagerLike | undefined;
+}
+
+interface ActionGlobalExtras {
+  sharedContext?:
+    | { parse?: (ext: string, input: string) => { rootNode?: MoCstRootLike & ActionCstRootWithLookup } | null }
+    | undefined;
+  modelicaParser?: MoParserLike | undefined;
+  serverDistBase?: string | undefined;
+}
+
+export interface ModelicaActionInputs {
+  name?: string | undefined;
+  solver?: ArenaSimulateOptions["solver"] | undefined;
+  startTime?: number | undefined;
+  stopTime?: number | undefined;
+  interval?: number | undefined;
+  parameterOverrides?: Record<string, number> | undefined;
+  format?: string | undefined;
+  code?: string | undefined;
+  [key: string]: unknown;
+}
+
+interface ArenaParameterInfo {
+  name: string;
+  type: "real" | "integer" | "boolean" | "enumeration";
+  defaultValue: number;
+  step: number;
+  unit?: string;
+  description?: string;
+  min?: number;
+  max?: number;
+}
+
+function resolveClassId(
+  queryEngine: ActionQueryEngineLike,
+  queryDB: QueryDB | null,
+  className: string,
+): number | undefined {
   let firstId: number | undefined;
   if (className.includes(".")) {
     const parts = className.split(".");
-    let currentId: any = null;
+    let currentId: number | null = null;
     for (const part of parts) {
-      const resolver = queryDB.query?.("resolveSimpleName", currentId);
-      const res = resolver ? resolver(part) : null;
+      const resolver: ((name: string) => SymbolEntry | null) | undefined = queryDB?.query?.<
+        (name: string) => SymbolEntry | null
+      >("resolveSimpleName", currentId as number);
+      const res: SymbolEntry | null = resolver ? resolver(part) : null;
       if (!res) {
         currentId = null;
         break;
@@ -33,7 +158,7 @@ function resolveClassId(queryEngine: any, queryDB: any, className: string): numb
   const isClass = (id: number | undefined): boolean => {
     if (id === undefined) return false;
     const entry = queryEngine.index?.symbols?.get(id);
-    return entry && (entry.kind === "Class" || entry.kind === "Def");
+    return Boolean(entry && (entry.kind === "Class" || entry.kind === "Def"));
   };
 
   if (firstId !== undefined && !isClass(firstId)) {
@@ -77,18 +202,20 @@ function resolveClassId(queryEngine: any, queryDB: any, className: string): numb
 function ensureClassIndexed(
   context: ActionExecutionContext,
   className: string,
-  queryEngine: any,
-): { firstId: number | undefined; queryDB: any } {
+  queryEngine: ActionQueryEngineLike,
+): { firstId: number | undefined; queryDB: QueryDB } {
+  const ctx = context as ActionContextWithInternals;
+  const g = globalThis as unknown as ActionGlobalExtras;
   let docText = context.documentText;
   let uri = context.uri;
 
-  if (!docText && uri && typeof (context as any).documents?.get === "function") {
-    const doc = (context as any).documents.get(uri);
+  if (!docText && uri && typeof ctx.documents?.get === "function") {
+    const doc = ctx.documents.get(uri);
     if (doc) docText = doc.getText();
   }
 
-  if (!docText && typeof (context as any).documents?.all === "function") {
-    for (const d of (context as any).documents.all()) {
+  if (!docText && typeof ctx.documents?.all === "function") {
+    for (const d of ctx.documents.all()) {
       const t = d.getText();
       if (t.includes(className)) {
         docText = t;
@@ -98,24 +225,23 @@ function ensureClassIndexed(
     }
   }
 
-  const ws =
-    (context.workspaceManager as any)?.globalWorkspaceIndex ??
-    (context.workspaceManager as any)?.getWorkspaceIndex?.("modelica");
+  const wsMgr = ctx.workspaceManager;
+  const ws = wsMgr?.globalWorkspaceIndex ?? wsMgr?.getWorkspaceIndex?.("modelica");
   const sharedCtx =
-    (globalThis as any).sharedContext ??
-    (context as any).sharedContext ??
-    (context as any).state?.sharedContext ??
-    (context as any).parserService?.sharedContext ??
-    (context.workspaceManager as any)?.sharedContext;
+    g.sharedContext ??
+    ctx.sharedContext ??
+    ctx.state?.sharedContext ??
+    ctx.parserService?.sharedContext ??
+    wsMgr?.sharedContext;
 
   let parseFn = sharedCtx?.parse;
   if (typeof parseFn !== "function") {
     const parser =
-      (globalThis as any).modelicaParser ??
-      (context as any).parserService?.getParser?.("modelica") ??
-      (context as any).parserService?.parser ??
-      (context.workspaceManager as any)?.parserService?.getParser?.("modelica") ??
-      (context.workspaceManager as any)?.parserService?.parser;
+      g.modelicaParser ??
+      ctx.parserService?.getParser?.("modelica") ??
+      ctx.parserService?.parser ??
+      wsMgr?.parserService?.getParser?.("modelica") ??
+      wsMgr?.parserService?.parser;
     if (parser && typeof parser.parse === "function") {
       parseFn = (_ext: string, input: string) => parser.parse(input);
     }
@@ -126,9 +252,7 @@ function ensureClassIndexed(
       const tree = parseFn(".mo", docText);
       if (tree) {
         const effectiveUri = uri ?? "file:///unnamed.mo";
-        const docTrees =
-          (context as any).documentManager?.documentTrees ??
-          (context.workspaceManager as any)?.documentManager?.documentTrees;
+        const docTrees = ctx.documentManager?.documentTrees ?? wsMgr?.documentManager?.documentTrees;
         if (docTrees && typeof docTrees.set === "function") {
           docTrees.set(effectiveUri, { text: docText, tree });
         }
@@ -146,14 +270,14 @@ function ensureClassIndexed(
           while (after < rawUri.length && after < colonSlash + 4 && rawUri[after] === "/") after++;
           return `${scheme}:///${rawUri.slice(after)}`;
         };
-        const prevTree = (queryEngine as any).tree;
-        const cstWrapper = {
-          getText: (s: number, e: number, entry?: any) => {
+        const prevTree = queryEngine.tree;
+        const cstWrapper: CSTTree = {
+          getText: (s: number, e: number, entry?: SymbolEntry) => {
             const resUri = entry?.resourceId ?? effectiveUri;
             const norm = normalizeUriScheme(resUri);
             const dt = docTrees?.get?.(resUri) ?? docTrees?.get?.(norm);
             if (dt?.text) return dt.text.substring(s, e);
-            const sharedWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.();
+            const sharedWrapper = ctx.parserService?.getSharedCstTreeWrapper?.();
             if (sharedWrapper) return sharedWrapper.getText(s, e, entry);
             if (resUri === effectiveUri && docText) return docText.substring(s, e);
             if (prevTree && typeof prevTree.getText === "function") {
@@ -162,19 +286,21 @@ function ensureClassIndexed(
             }
             return docText ? docText.substring(s, e) : null;
           },
-          getNode: (s: number, e: number, entry?: any) => {
+          getNode: (s: number, e: number, entry?: SymbolEntry) => {
             const resUri = entry?.resourceId ?? effectiveUri;
             const norm = normalizeUriScheme(resUri);
             const dt = docTrees?.get?.(resUri) ?? docTrees?.get?.(norm);
             const rNode = dt ? dt.tree?.rootNode : resUri === effectiveUri ? tree.rootNode : null;
             if (rNode) {
-              return typeof rNode.descendantForIndex === "function"
-                ? rNode.descendantForIndex(s, Math.max(s, e))
-                : typeof rNode.getNode === "function"
-                  ? rNode.getNode(s, e)
-                  : null;
+              return (
+                typeof rNode.descendantForIndex === "function"
+                  ? rNode.descendantForIndex(s, Math.max(s, e))
+                  : typeof rNode.getNode === "function"
+                    ? rNode.getNode(s, e)
+                    : null
+              ) as ReturnType<CSTTree["getNode"]>;
             }
-            const sharedWrapper = (context as any).parserService?.getSharedCstTreeWrapper?.();
+            const sharedWrapper = ctx.parserService?.getSharedCstTreeWrapper?.();
             if (sharedWrapper) return sharedWrapper.getNode(s, e, entry);
             if (prevTree && typeof prevTree.getNode === "function") {
               const res = prevTree.getNode(s, e, entry);
@@ -187,9 +313,9 @@ function ensureClassIndexed(
           queryEngine.updateTree(cstWrapper);
         }
 
-        const uws = (context.workspaceManager as any)?.unifiedWorkspace;
-        let unified: any;
-        let changedInfo: any;
+        const uws = wsMgr?.unifiedWorkspace;
+        let unified: SymbolIndex;
+        let changedInfo: { changedIds?: Set<number>; structuralChangedIds?: Set<number> } | undefined;
 
         if (uws && typeof uws.reindexDocument === "function") {
           uws.reindexDocument(effectiveUri, () => tree.rootNode);
@@ -202,7 +328,7 @@ function ensureClassIndexed(
           if (typeof ws.reindexDocument === "function") {
             ws.reindexDocument(effectiveUri, () => tree.rootNode);
           } else {
-            ws.indexDocument(effectiveUri, () => tree.rootNode);
+            ws.indexDocument?.(effectiveUri, () => tree.rootNode);
           }
           unified = ws.getIndex({ eager: true });
           changedInfo = ws.takeGlobalChangedIds?.();
@@ -219,14 +345,14 @@ function ensureClassIndexed(
     }
   }
 
-  let queryDB = queryEngine.toQueryDB();
+  let queryDB = queryEngine.toQueryDB!();
   let firstId = resolveClassId(queryEngine, queryDB, className);
 
   if (firstId !== undefined && typeof queryEngine.invalidate === "function") {
     const childIds = queryEngine.index?.childrenOf?.get(firstId) ?? [];
     const structSet = new Set<number>([firstId, ...childIds]);
     queryEngine.invalidate(structSet, structSet);
-    queryDB = queryEngine.toQueryDB();
+    queryDB = queryEngine.toQueryDB!();
   }
 
   const shortName = className.includes(".") ? className.split(".").pop()! : className;
@@ -238,8 +364,8 @@ function ensureClassIndexed(
     }
     const isWsClass = (id: number | undefined): boolean => {
       if (id === undefined) return false;
-      const entry = ws.unifiedIndex.symbols?.get(id);
-      return entry && (entry.kind === "Class" || entry.kind === "Def");
+      const entry = ws.unifiedIndex?.symbols?.get(id);
+      return Boolean(entry && (entry.kind === "Class" || entry.kind === "Def"));
     };
     firstId = entries.find((id: number) => isWsClass(id)) ?? entries[0];
     if ((firstId === undefined || !isWsClass(firstId)) && ws.unifiedIndex.symbols) {
@@ -257,15 +383,15 @@ function ensureClassIndexed(
       const unified = ws.getIndex({ eager: true });
       injectPredefinedTypes(unified);
       queryEngine.updateIndex(unified);
-      queryDB = queryEngine.toQueryDB();
+      queryDB = queryEngine.toQueryDB!();
       const childIds = queryEngine.index?.childrenOf?.get(firstId) ?? [];
       const structSet = new Set<number>([firstId, ...childIds]);
-      queryEngine.invalidate(structSet, structSet);
+      queryEngine.invalidate?.(structSet, structSet);
     }
   }
 
-  if (firstId === undefined && (context.workspaceManager as any)?.unifiedWorkspace) {
-    const uws = (context.workspaceManager as any).unifiedWorkspace.getIndex();
+  if (firstId === undefined && wsMgr?.unifiedWorkspace) {
+    const uws = wsMgr.unifiedWorkspace.getIndex();
     if (uws?.byName) {
       let entries = uws.byName.get(className) || [];
       if (entries.length === 0 && shortName !== className) {
@@ -274,13 +400,14 @@ function ensureClassIndexed(
       const isUwsClass = (id: number | undefined): boolean => {
         if (id === undefined) return false;
         const entry = uws.symbols?.get(id);
-        return entry && (entry.kind === "Class" || entry.kind === "Def");
+        return Boolean(entry && (entry.kind === "Class" || entry.kind === "Def"));
       };
       firstId = entries.find((id: number) => isUwsClass(id)) ?? entries[0];
       if ((firstId === undefined || !isUwsClass(firstId)) && uws.symbols) {
         for (const [id, entry] of uws.symbols.entries()) {
+          const entryWithQual = entry as SymbolEntry & { qualifiedName?: string };
           if (
-            (entry.name === className || entry.qualifiedName === className || entry.name === shortName) &&
+            (entry.name === className || entryWithQual.qualifiedName === className || entry.name === shortName) &&
             (entry.kind === "Class" || entry.kind === "Def")
           ) {
             firstId = id;
@@ -291,10 +418,10 @@ function ensureClassIndexed(
       if (firstId !== undefined && typeof queryEngine.updateIndex === "function") {
         injectPredefinedTypes(uws);
         queryEngine.updateIndex(uws);
-        queryDB = queryEngine.toQueryDB();
+        queryDB = queryEngine.toQueryDB!();
         const childIds = queryEngine.index?.childrenOf?.get(firstId) ?? [];
         const structSet = new Set<number>([firstId, ...childIds]);
-        queryEngine.invalidate(structSet, structSet);
+        queryEngine.invalidate?.(structSet, structSet);
       }
     }
   }
@@ -305,14 +432,22 @@ function ensureClassIndexed(
 const ACTION_TARGET_CLASS_KINDS = new Set(["model", "block", "class", "record"]);
 
 type MoCstRootLike = Parameters<typeof extractFirstClassFromCstNode>[0];
-type MoParserLike = { parse: (s: string) => { rootNode?: MoCstRootLike } | null };
+type MoParserLike = { parse: (s: string) => { rootNode?: MoCstRootLike & ActionCstRootWithLookup } | null };
 type ActionContextWithInternals = ActionExecutionContext & {
-  parserService?: { getParser?: (id: string) => MoParserLike | undefined; parser?: MoParserLike };
-  documentManager?: { documentTrees?: Map<string, { tree?: { rootNode?: MoCstRootLike } }> };
-  workspaceManager?: ActionExecutionContext["workspaceManager"] & {
-    parserService?: { getParser?: (id: string) => MoParserLike | undefined; parser?: MoParserLike };
-    documentManager?: { documentTrees?: Map<string, { tree?: { rootNode?: MoCstRootLike } }> };
-  };
+  documents?: { get?: (uri: string) => ActionDocLike | undefined; all?: () => ActionDocLike[] } | undefined;
+  sharedContext?:
+    | { parse?: (ext: string, input: string) => { rootNode?: MoCstRootLike & ActionCstRootWithLookup } | null }
+    | undefined;
+  state?:
+    | {
+        sharedContext?:
+          | { parse?: (ext: string, input: string) => { rootNode?: MoCstRootLike & ActionCstRootWithLookup } | null }
+          | undefined;
+      }
+    | undefined;
+  parserService?: ActionParserServiceLike | undefined;
+  documentManager?: ActionDocumentManagerLike | undefined;
+  workspaceManager?: (ActionExecutionContext["workspaceManager"] & ActionWorkspaceManagerLike) | undefined;
 };
 
 function resolveActionMoParser(context: ActionExecutionContext): MoParserLike | undefined {
@@ -340,17 +475,21 @@ function getDocRootNode(context: ActionExecutionContext, docText: string, uri?: 
   return moParser && typeof moParser.parse === "function" ? moParser.parse(docText)?.rootNode : null;
 }
 
-function extractClassName(context: ActionExecutionContext, inputs: any): string | undefined {
+function extractClassName(
+  context: ActionExecutionContext,
+  inputs: ModelicaActionInputs | undefined,
+): string | undefined {
+  const ctx = context as ActionContextWithInternals;
   let className = inputs?.name;
   let docText = context.documentText;
   let uri = context.uri;
 
-  if (!docText && uri && typeof (context as any).documents?.get === "function") {
-    const doc = (context as any).documents.get(uri);
+  if (!docText && uri && typeof ctx.documents?.get === "function") {
+    const doc = ctx.documents.get(uri);
     if (doc) docText = doc.getText();
   }
-  if (!docText && typeof (context as any).documents?.all === "function") {
-    for (const d of (context as any).documents.all()) {
+  if (!docText && typeof ctx.documents?.all === "function") {
+    for (const d of ctx.documents.all()) {
       const t = d.getText();
       if (className && t.includes(className)) {
         docText = t;
@@ -392,15 +531,15 @@ function extractClassName(context: ActionExecutionContext, inputs: any): string 
  */
 export const modelicaActionHandlers: Record<
   string,
-  (context: ActionExecutionContext, inputs: any) => Promise<any> | any
+  (context: ActionExecutionContext, inputs: ModelicaActionInputs) => Promise<unknown> | unknown
 > = {
-  flatten: async (context: ActionExecutionContext, inputs: any) => {
+  flatten: async (context: ActionExecutionContext, inputs: ModelicaActionInputs) => {
     const className = extractClassName(context, inputs);
     if (!className) {
       throw new Error("No Modelica class name specified to flatten.");
     }
 
-    const queryEngine = context.queryEngine;
+    const queryEngine = context.queryEngine as ActionQueryEngineLike | undefined;
     if (!queryEngine) {
       throw new Error("QueryEngine not available in execution context.");
     }
@@ -421,13 +560,13 @@ export const modelicaActionHandlers: Record<
     };
   },
 
-  simulate: async (context: ActionExecutionContext, inputs: any) => {
+  simulate: async (context: ActionExecutionContext, inputs: ModelicaActionInputs) => {
     const className = extractClassName(context, inputs);
     if (!className) {
       throw new Error("No Modelica class name specified to simulate.");
     }
 
-    const queryEngine = context.queryEngine;
+    const queryEngine = context.queryEngine as ActionQueryEngineLike | undefined;
     if (!queryEngine) {
       throw new Error("QueryEngine not available in execution context.");
     }
@@ -524,7 +663,7 @@ export const modelicaActionHandlers: Record<
       }
     }
 
-    const simOpts: any = {
+    const simOpts: ArenaSimulateOptions = {
       solver: inputs?.solver || "dopri5",
       ...(outputStringIds.length > 0 ? { outputStringIds } : {}),
     };
@@ -537,7 +676,7 @@ export const modelicaActionHandlers: Record<
     }
 
     try {
-      const serverDist = (globalThis as any).serverDistBase;
+      const serverDist = (globalThis as unknown as ActionGlobalExtras).serverDistBase;
       if (serverDist) {
         await initBltWasm(`${serverDist}/release.wasm`);
       } else {
@@ -547,13 +686,13 @@ export const modelicaActionHandlers: Record<
       // ignore if already initialized
     }
 
-    const result = await simulateArenaAsync(arena as any, simOpts);
+    const result = await simulateArenaAsync(arena, simOpts);
     context.notifyProgress?.("Simulation complete", 100);
 
     const tArr = Array.from(result.t);
-    const yArr = (result.y || []).map((row: any) => (Array.isArray(row) ? row : Array.from(row)));
+    const yArr = (result.y || []).map((row) => (Array.isArray(row) ? row : Array.from(row)));
 
-    function resolveAttrString(ar: any, varIdx: number, attrName: string): string | undefined {
+    function resolveAttrString(ar: DAEBuilder, varIdx: number, attrName: string): string | undefined {
       const exprId = ar.getVarAttrExprId?.(varIdx, attrName);
       if (exprId === undefined || exprId < 0) return undefined;
       if (ar.getExprKind(exprId) === ExprKind.StringLiteral) {
@@ -562,7 +701,7 @@ export const modelicaActionHandlers: Record<
       return undefined;
     }
 
-    function evalAttrNum(ar: any, varIdx: number, attrName: string): number | undefined {
+    function evalAttrNum(ar: DAEBuilder, varIdx: number, attrName: string): number | undefined {
       const exprId = ar.getVarAttrExprId?.(varIdx, attrName);
       if (exprId === undefined || exprId < 0) return undefined;
       const kind = ar.getExprKind(exprId);
@@ -571,8 +710,8 @@ export const modelicaActionHandlers: Record<
       return undefined;
     }
 
-    function extractArenaParameters(ar: any): any[] {
-      const infos: any[] = [];
+    function extractArenaParameters(ar: DAEBuilder): ArenaParameterInfo[] {
+      const infos: ArenaParameterInfo[] = [];
       for (let i = 0; i < ar.varCount; i++) {
         if (ar.isVarRemoved(i)) continue;
         if (ar.getVarVariability(i) !== Variability.Parameter) continue;
@@ -607,7 +746,7 @@ export const modelicaActionHandlers: Record<
     }
 
     function extractVariableMetadata(
-      ar: any,
+      ar: DAEBuilder,
       stateNames: string[],
     ): Record<string, { unit?: string; description?: string }> {
       const meta: Record<string, { unit?: string; description?: string }> = {};
@@ -633,6 +772,7 @@ export const modelicaActionHandlers: Record<
 
     const statesList = result.states || [];
     const variableMetadata = extractVariableMetadata(arena, statesList);
+    const experimentMeta = arena.experiment as Record<string, unknown> & { solver?: string };
 
     if ((inputs?.format ?? "json") === "csv") {
       const states = statesList;
@@ -649,8 +789,8 @@ export const modelicaActionHandlers: Record<
         parameters: extractArenaParameters(arena),
         variableMetadata,
         experiment: {
-          ...(arena as any).experiment,
-          solver: (arena as any).experiment?.solver ?? simOpts.solver ?? "dopri5",
+          ...experimentMeta,
+          solver: experimentMeta?.solver ?? simOpts.solver ?? "dopri5",
         },
       };
     }
@@ -663,24 +803,23 @@ export const modelicaActionHandlers: Record<
       parameters: extractArenaParameters(arena),
       variableMetadata,
       experiment: {
-        ...(arena as any).experiment,
-        solver: (arena as any).experiment?.solver ?? simOpts.solver ?? "dopri5",
+        ...experimentMeta,
+        solver: experimentMeta?.solver ?? simOpts.solver ?? "dopri5",
       },
       text: `Simulation of ${className} completed: ${tArr.length} steps, states: [${statesList.join(", ")}]`,
     };
   },
 
-  query: async (context: ActionExecutionContext, inputs: any) => {
+  query: async (context: ActionExecutionContext, inputs: ModelicaActionInputs) => {
     const name = inputs?.name;
     if (!name) throw new Error("Missing required class name");
     const queryEngine = context.queryEngine as
-      | {
-          toQueryDB?: () => unknown;
+      | (ActionQueryEngineLike & {
           index: {
             symbols: Map<number, { kind: number; name: string; typeText?: string; comment?: string }>;
             childrenOf: Map<number, number[]>;
           };
-        }
+        })
       | undefined;
     if (!queryEngine) throw new Error("QueryEngine not available");
 
@@ -691,8 +830,8 @@ export const modelicaActionHandlers: Record<
     }
     const entry = queryEngine.index.symbols.get(firstId);
     const children = queryEngine.index.childrenOf.get(firstId) || [];
-    const components: any[] = [];
-    const childClasses: any[] = [];
+    const components: Array<{ name: string; type: string; description: string }> = [];
+    const childClasses: Array<{ name: string; kind: string }> = [];
 
     for (const chId of children) {
       const ch = queryEngine.index.symbols.get(chId);

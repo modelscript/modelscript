@@ -1,0 +1,710 @@
+[
+  {
+    "name": "HF",
+    "kind": "Class",
+    "namePath": "Gaussian.WavefunctionMethod.HF",
+    "exports": [
+      "scalingOrder",
+      "hfExchangeFrac",
+      "zpeScaleFactor",
+      "correlationOrder"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Hartree-Fock (HF)",
+      "category": "Wavefunction Method",
+      "domain": "chemistry",
+      "description": "Self-consistent field mean-field wavefunction theory (no dynamic electron correlation).",
+      "provenance": "Roothaan (1951), Rev. Mod. Phys. 23, 69; Pople & Nesbet (1954), J. Chem. Phys. 22, 571",
+      "aliases": [
+        "RHF",
+        "UHF",
+        "ROHF",
+        "Hartree-Fock"
+      ],
+      "parameters": [
+        {
+          "key": "scalingOrder",
+          "type": "real",
+          "defaultValue": 4,
+          "unit": "N^k",
+          "description": "Formal computational scaling exponent with basis size N"
+        },
+        {
+          "key": "hfExchangeFrac",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Fraction of exact Hartree-Fock exchange"
+        },
+        {
+          "key": "zpeScaleFactor",
+          "type": "real",
+          "defaultValue": 0.8953,
+          "unit": "1",
+          "description": "Harmonic frequency / ZPE empirical scale factor"
+        },
+        {
+          "key": "correlationOrder",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "1",
+          "description": "Perturbative/coupled-cluster correlation level"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 1
+    }
+  },
+  {
+    "name": "MP2",
+    "kind": "Class",
+    "namePath": "Gaussian.WavefunctionMethod.MP2",
+    "exports": [
+      "scalingOrder",
+      "hfExchangeFrac",
+      "zpeScaleFactor",
+      "correlationOrder"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Møller-Plesset 2nd Order (MP2)",
+      "category": "Wavefunction Method",
+      "domain": "chemistry",
+      "description": "Second-order Møller-Plesset perturbation theory capturing dynamic pair correlation.",
+      "provenance": "Møller & Plesset (1934), Phys. Rev. 46, 618; Head-Gordon et al. (1988), Chem. Phys. Lett. 153, 503",
+      "aliases": [
+        "RMP2",
+        "UMP2",
+        "Moller-Plesset-2"
+      ],
+      "parameters": [
+        {
+          "key": "scalingOrder",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "N^k",
+          "description": "Formal computational scaling exponent with basis size N"
+        },
+        {
+          "key": "hfExchangeFrac",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Reference exact Hartree-Fock exchange fraction"
+        },
+        {
+          "key": "zpeScaleFactor",
+          "type": "real",
+          "defaultValue": 0.967,
+          "unit": "1",
+          "description": "Harmonic frequency / ZPE empirical scale factor"
+        },
+        {
+          "key": "correlationOrder",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Second-order perturbation theory"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 2
+    }
+  },
+  {
+    "name": "CCSD(T)",
+    "kind": "Class",
+    "namePath": "Gaussian.WavefunctionMethod.CCSD(T)",
+    "exports": [
+      "scalingOrder",
+      "hfExchangeFrac",
+      "zpeScaleFactor",
+      "correlationOrder"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Coupled Cluster Singles, Doubles & Perturbative Triples (CCSD(T))",
+      "category": "Wavefunction Method",
+      "domain": "chemistry",
+      "description": "Gold-standard coupled-cluster wavefunction method with perturbative triple excitations.",
+      "provenance": "Raghavachari, Trucks, Pople & Head-Gordon (1989), Chem. Phys. Lett. 157, 479",
+      "aliases": [
+        "CCSDT",
+        "CCSD-T"
+      ],
+      "parameters": [
+        {
+          "key": "scalingOrder",
+          "type": "real",
+          "defaultValue": 7,
+          "unit": "N^k",
+          "description": "Formal computational scaling exponent O(N^7)"
+        },
+        {
+          "key": "hfExchangeFrac",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Reference exact Hartree-Fock exchange fraction"
+        },
+        {
+          "key": "zpeScaleFactor",
+          "type": "real",
+          "defaultValue": 0.975,
+          "unit": "1",
+          "description": "Harmonic frequency / ZPE empirical scale factor"
+        },
+        {
+          "key": "correlationOrder",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "Singles, doubles, and perturbative triples"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 3
+    }
+  },
+  {
+    "name": "B3LYP",
+    "kind": "Class",
+    "namePath": "Gaussian.DensityFunctional.B3LYP",
+    "exports": [
+      "scalingOrder",
+      "hfExchangeFrac",
+      "zpeScaleFactor",
+      "correlationOrder"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Becke 3-Parameter Lee-Yang-Parr (B3LYP)",
+      "category": "Density Functional",
+      "domain": "chemistry",
+      "description": "Hybrid GGA density functional combining 20% exact HF exchange with Becke88 and LYP correlation.",
+      "provenance": "Becke (1993), J. Chem. Phys. 98, 5648; Stephens et al. (1994), J. Phys. Chem. 98, 11623",
+      "aliases": [
+        "RB3LYP",
+        "UB3LYP"
+      ],
+      "parameters": [
+        {
+          "key": "scalingOrder",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "N^k",
+          "description": "Effective computational scaling exponent O(N^3)"
+        },
+        {
+          "key": "hfExchangeFrac",
+          "type": "real",
+          "defaultValue": 0.2,
+          "unit": "1",
+          "description": "20% exact Hartree-Fock exchange"
+        },
+        {
+          "key": "zpeScaleFactor",
+          "type": "real",
+          "defaultValue": 0.9614,
+          "unit": "1",
+          "description": "Harmonic frequency / ZPE empirical scale factor (6-31G(d))"
+        },
+        {
+          "key": "correlationOrder",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Hybrid GGA DFT correlation"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 4
+    }
+  },
+  {
+    "name": "PBE0",
+    "kind": "Class",
+    "namePath": "Gaussian.DensityFunctional.PBE0",
+    "exports": [
+      "scalingOrder",
+      "hfExchangeFrac",
+      "zpeScaleFactor",
+      "correlationOrder"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Perdew-Burke-Ernzerhof Hybrid (PBE0)",
+      "category": "Density Functional",
+      "domain": "chemistry",
+      "description": "Parameter-free hybrid GGA functional mixing 25% exact HF exchange with 75% PBE exchange.",
+      "provenance": "Adamo & Barone (1999), J. Chem. Phys. 110, 6158; Perdew, Ernzerhof & Burke (1996)",
+      "aliases": [
+        "PBE1PBE",
+        "PBEh"
+      ],
+      "parameters": [
+        {
+          "key": "scalingOrder",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "N^k",
+          "description": "Effective computational scaling exponent O(N^3)"
+        },
+        {
+          "key": "hfExchangeFrac",
+          "type": "real",
+          "defaultValue": 0.25,
+          "unit": "1",
+          "description": "25% exact Hartree-Fock exchange"
+        },
+        {
+          "key": "zpeScaleFactor",
+          "type": "real",
+          "defaultValue": 0.9512,
+          "unit": "1",
+          "description": "Harmonic frequency / ZPE empirical scale factor"
+        },
+        {
+          "key": "correlationOrder",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Hybrid GGA DFT correlation"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 5
+    }
+  },
+  {
+    "name": "M06-2X",
+    "kind": "Class",
+    "namePath": "Gaussian.DensityFunctional.M06-2X",
+    "exports": [
+      "scalingOrder",
+      "hfExchangeFrac",
+      "zpeScaleFactor",
+      "correlationOrder"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Minnesota 06 Global Hybrid Meta-GGA (M06-2X)",
+      "category": "Density Functional",
+      "domain": "chemistry",
+      "description": "High-nonlocality hybrid meta-GGA functional with 54% HF exchange for main-group thermochemistry.",
+      "provenance": "Zhao & Truhlar (2008), Theor. Chem. Acc. 120, 215",
+      "aliases": [
+        "M062X",
+        "M06_2X"
+      ],
+      "parameters": [
+        {
+          "key": "scalingOrder",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "N^k",
+          "description": "Effective computational scaling exponent O(N^3)"
+        },
+        {
+          "key": "hfExchangeFrac",
+          "type": "real",
+          "defaultValue": 0.54,
+          "unit": "1",
+          "description": "54% exact Hartree-Fock exchange"
+        },
+        {
+          "key": "zpeScaleFactor",
+          "type": "real",
+          "defaultValue": 0.947,
+          "unit": "1",
+          "description": "Harmonic frequency / ZPE empirical scale factor"
+        },
+        {
+          "key": "correlationOrder",
+          "type": "real",
+          "defaultValue": 1.5,
+          "unit": "1",
+          "description": "Hybrid meta-GGA DFT correlation"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 6
+    }
+  },
+  {
+    "name": "STO-3G",
+    "kind": "Class",
+    "namePath": "Gaussian.PopleBasisSet.STO-3G",
+    "exports": [
+      "zeta",
+      "bfPerH",
+      "bfPerSecondRow",
+      "hasPolarization",
+      "hasDiffuse"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Minimal Slater-Type Orbital 3-Gaussian (STO-3G)",
+      "category": "Pople Basis Set",
+      "domain": "chemistry",
+      "description": "Minimal basis set contracting 3 primitive Gaussians per Slater-type orbital.",
+      "provenance": "Hehre, Stewart & Pople (1969), J. Chem. Phys. 51, 2657",
+      "aliases": [
+        "STO3G"
+      ],
+      "parameters": [
+        {
+          "key": "zeta",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Minimal (single-zeta) valence representation"
+        },
+        {
+          "key": "bfPerH",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "1",
+          "description": "Contracted basis functions per Hydrogen atom"
+        },
+        {
+          "key": "bfPerSecondRow",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "1",
+          "description": "Contracted basis functions per C/N/O/F atom (1s, 2s, 2p)"
+        },
+        {
+          "key": "hasPolarization",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "Polarization functions present (0=no, 1=yes)"
+        },
+        {
+          "key": "hasDiffuse",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "Diffuse functions present (0=no, 1=yes)"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 101
+    }
+  },
+  {
+    "name": "3-21G",
+    "kind": "Class",
+    "namePath": "Gaussian.PopleBasisSet.3-21G",
+    "exports": [
+      "zeta",
+      "bfPerH",
+      "bfPerSecondRow",
+      "hasPolarization",
+      "hasDiffuse"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pople Split-Valence 3-21G",
+      "category": "Pople Basis Set",
+      "domain": "chemistry",
+      "description": "Split-valence double-zeta Pople basis set with 3 core primitives and 2+1 valence primitives.",
+      "provenance": "Binkley, Pople & Hehre (1980), J. Am. Chem. Soc. 102, 939",
+      "aliases": [
+        "321G"
+      ],
+      "parameters": [
+        {
+          "key": "zeta",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Double-zeta split valence"
+        },
+        {
+          "key": "bfPerH",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Contracted basis functions per Hydrogen atom"
+        },
+        {
+          "key": "bfPerSecondRow",
+          "type": "real",
+          "defaultValue": 9,
+          "unit": "1",
+          "description": "Contracted basis functions per C/N/O/F atom"
+        },
+        {
+          "key": "hasPolarization",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "Polarization functions present"
+        },
+        {
+          "key": "hasDiffuse",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "Diffuse functions present"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 102
+    }
+  },
+  {
+    "name": "6-31G(d)",
+    "kind": "Class",
+    "namePath": "Gaussian.PopleBasisSet.6-31G(d)",
+    "exports": [
+      "zeta",
+      "bfPerH",
+      "bfPerSecondRow",
+      "hasPolarization",
+      "hasDiffuse"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pople Polarized Split-Valence 6-31G(d)",
+      "category": "Pople Basis Set",
+      "domain": "chemistry",
+      "description": "Workhorse split-valence basis set with d-type polarization functions on heavy atoms.",
+      "provenance": "Hariharan & Pople (1973), Theor. Chim. Acta 28, 213",
+      "aliases": [
+        "6-31G*",
+        "6-31Gd"
+      ],
+      "parameters": [
+        {
+          "key": "zeta",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Double-zeta split valence"
+        },
+        {
+          "key": "bfPerH",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Contracted basis functions per Hydrogen atom"
+        },
+        {
+          "key": "bfPerSecondRow",
+          "type": "real",
+          "defaultValue": 15,
+          "unit": "1",
+          "description": "Contracted basis functions per C/N/O/F atom (6D Cartesian)"
+        },
+        {
+          "key": "hasPolarization",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "d polarization on heavy atoms"
+        },
+        {
+          "key": "hasDiffuse",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "Diffuse functions present"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 103
+    }
+  },
+  {
+    "name": "6-311++G(d,p)",
+    "kind": "Class",
+    "namePath": "Gaussian.PopleBasisSet.6-311++G(d,p)",
+    "exports": [
+      "zeta",
+      "bfPerH",
+      "bfPerSecondRow",
+      "hasPolarization",
+      "hasDiffuse"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Pople Triple-Zeta Diffuse & Polarized 6-311++G(d,p)",
+      "category": "Pople Basis Set",
+      "domain": "chemistry",
+      "description": "Triple-zeta split-valence basis set with diffuse and polarization functions on all atoms.",
+      "provenance": "Krishnan et al. (1980), J. Chem. Phys. 72, 650; Clark et al. (1983), J. Comput. Chem. 4, 294",
+      "aliases": [
+        "6-311++G**"
+      ],
+      "parameters": [
+        {
+          "key": "zeta",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "Triple-zeta split valence"
+        },
+        {
+          "key": "bfPerH",
+          "type": "real",
+          "defaultValue": 7,
+          "unit": "1",
+          "description": "Contracted basis functions per Hydrogen atom (3s+1s_diff+3p)"
+        },
+        {
+          "key": "bfPerSecondRow",
+          "type": "real",
+          "defaultValue": 22,
+          "unit": "1",
+          "description": "Contracted basis functions per C/N/O/F atom"
+        },
+        {
+          "key": "hasPolarization",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "d on heavy atoms, p on hydrogen"
+        },
+        {
+          "key": "hasDiffuse",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Diffuse sp on heavy atoms, s on hydrogen"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 104
+    }
+  },
+  {
+    "name": "cc-pVDZ",
+    "kind": "Class",
+    "namePath": "Gaussian.CorrelationConsistentBasisSet.cc-pVDZ",
+    "exports": [
+      "zeta",
+      "bfPerH",
+      "bfPerSecondRow",
+      "hasPolarization",
+      "hasDiffuse"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dunning Correlation-Consistent Polarized Valence Double-Zeta (cc-pVDZ)",
+      "category": "Correlation-Consistent Basis Set",
+      "domain": "chemistry",
+      "description": "Dunning correlation-consistent polarized double-zeta basis set designed for post-HF methods.",
+      "provenance": "Dunning (1989), J. Chem. Phys. 90, 1007",
+      "aliases": [
+        "cc-pVDZ",
+        "ccpvdz"
+      ],
+      "parameters": [
+        {
+          "key": "zeta",
+          "type": "real",
+          "defaultValue": 2,
+          "unit": "1",
+          "description": "Double-zeta correlation-consistent"
+        },
+        {
+          "key": "bfPerH",
+          "type": "real",
+          "defaultValue": 5,
+          "unit": "1",
+          "description": "Contracted spherical basis functions per Hydrogen atom (2s1p)"
+        },
+        {
+          "key": "bfPerSecondRow",
+          "type": "real",
+          "defaultValue": 14,
+          "unit": "1",
+          "description": "Contracted spherical basis functions per C/N/O/F atom (3s2p1d)"
+        },
+        {
+          "key": "hasPolarization",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Polarization functions on all atoms"
+        },
+        {
+          "key": "hasDiffuse",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "No augmentation diffuse shells"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 105
+    }
+  },
+  {
+    "name": "cc-pVTZ",
+    "kind": "Class",
+    "namePath": "Gaussian.CorrelationConsistentBasisSet.cc-pVTZ",
+    "exports": [
+      "zeta",
+      "bfPerH",
+      "bfPerSecondRow",
+      "hasPolarization",
+      "hasDiffuse"
+    ],
+    "inherits": [],
+    "metadata": {
+      "label": "Dunning Correlation-Consistent Polarized Valence Triple-Zeta (cc-pVTZ)",
+      "category": "Correlation-Consistent Basis Set",
+      "domain": "chemistry",
+      "description": "Dunning correlation-consistent polarized triple-zeta basis set for accurate energies & geometries.",
+      "provenance": "Dunning (1989), J. Chem. Phys. 90, 1007",
+      "aliases": [
+        "cc-pVTZ",
+        "ccpvtz"
+      ],
+      "parameters": [
+        {
+          "key": "zeta",
+          "type": "real",
+          "defaultValue": 3,
+          "unit": "1",
+          "description": "Triple-zeta correlation-consistent"
+        },
+        {
+          "key": "bfPerH",
+          "type": "real",
+          "defaultValue": 14,
+          "unit": "1",
+          "description": "Contracted spherical basis functions per Hydrogen atom (3s2p1d)"
+        },
+        {
+          "key": "bfPerSecondRow",
+          "type": "real",
+          "defaultValue": 30,
+          "unit": "1",
+          "description": "Contracted spherical basis functions per C/N/O/F atom (4s3p2d1f)"
+        },
+        {
+          "key": "hasPolarization",
+          "type": "real",
+          "defaultValue": 1,
+          "unit": "bool",
+          "description": "Polarization functions through f on heavy atoms"
+        },
+        {
+          "key": "hasDiffuse",
+          "type": "real",
+          "defaultValue": 0,
+          "unit": "bool",
+          "description": "No augmentation diffuse shells"
+        }
+      ],
+      "wasmKernel": "gaussianModelEval",
+      "archetypeId": 106
+    }
+  }
+]

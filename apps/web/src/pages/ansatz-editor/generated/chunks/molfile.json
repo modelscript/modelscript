@@ -1,0 +1,73 @@
+[
+  {
+    "id": "molfile-01-water-methane-v2000",
+    "lang": "molfile",
+    "subFormats": ["mol", "sdf"],
+    "difficulty": 1,
+    "title": "Water and Methane V2000 3D Molecular Coordinates",
+    "description": "Two-record MDL V2000 Structure-Data File (SDF) encoding equilibrium 3D tetrahedral methane (CH4) and bent water (H2O) geometries with explicit covalent hydrogens and property tags.",
+    "category": "Cheminformatics & Molecular Structure",
+    "tags": ["molfile", "v2000", "sdf", "3d-coordinates"],
+    "activeFile": "water_methane.sdf",
+    "fileNames": ["water_methane.sdf"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "Water\n  Ansatz-Mol          3D\nEquilibrium gas-phase H2O (rOH = 0.957 A, angle = 104.5 deg)\n  3  2  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.1173 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.7572   -0.4692 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000   -0.7572   -0.4692 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n> <FORMULA>\nH2O\n\n> <CAS_RN>\n7732-18-5\n\n$$$$\nMethane\n  Ansatz-Mol          3D\nEquilibrium tetrahedral CH4 (rCH = 1.090 A)\n  5  4  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.6293    0.6293    0.6293 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.6293   -0.6293    0.6293 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.6293    0.6293   -0.6293 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.6293   -0.6293   -0.6293 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\n  1  4  1  0  0  0  0\n  1  5  1  0  0  0  0\nM  END\n> <FORMULA>\nCH4\n\n> <CAS_RN>\n74-82-8\n\n$$$$\n"
+  },
+  {
+    "id": "molfile-02-benzene-aromatic-ring",
+    "lang": "molfile",
+    "subFormats": ["mol"],
+    "difficulty": 2,
+    "title": "Benzene Planar Aromatic Ring (Bond Type 4)",
+    "description": "Regular hexagonal C6H6 benzene ring encoded in MDL V2000 format using aromatic bond order 4 for all six C-C ring bonds and 1.395 Angstrom equilibrium carbon-carbon spacing.",
+    "category": "Cheminformatics & Molecular Structure",
+    "tags": ["molfile", "benzene", "aromatic", "v2000"],
+    "activeFile": "benzene.mol",
+    "fileNames": ["benzene.mol"],
+    "fileCount": 1,
+    "code": "Benzene\n  Ansatz-Mol          2D\nC6H6 aromatic ring with explicit bond type 4\n  6  6  0  0  0  0  0  0  0  0999 V2000\n    1.3950    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.6975    1.2081    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.6975    1.2081    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n   -1.3950    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.6975   -1.2081    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.6975   -1.2081    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  4  0  0  0  0\n  2  3  4  0  0  0  0\n  3  4  4  0  0  0  0\n  4  5  4  0  0  0  0\n  5  6  4  0  0  0  0\n  6  1  4  0  0  0  0\nM  END\n"
+  },
+  {
+    "id": "molfile-03-aspirin-v2000-structure",
+    "lang": "molfile",
+    "subFormats": ["mol"],
+    "difficulty": 3,
+    "title": "Aspirin (Acetylsalicylic Acid) V2000 Structure",
+    "description": "Complete 13-heavy-atom MDL V2000 connection table of acetylsalicylic acid (C9H8O4) combining a Kekule benzene ring, ortho carboxylic acid group, and phenolic acetate ester.",
+    "category": "Cheminformatics & Molecular Structure",
+    "tags": ["molfile", "aspirin", "pharmaceutical", "v2000"],
+    "activeFile": "aspirin.mol",
+    "fileNames": ["aspirin.mol"],
+    "fileCount": 1,
+    "code": "Aspirin\n  Ansatz-Mol          2D\nAcetylsalicylic acid (C9H8O4) heavy-atom V2000 connection table\n 13 13  0  0  0  0  0  0  0  0999 V2000\n    0.0000    1.4000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2124    0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2124   -0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000   -1.4000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n   -1.2124   -0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n   -1.2124    0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    2.4249    1.4000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    2.4249    2.8000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    3.6373    0.7000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.4249   -1.4000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.4249   -2.8000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2124   -3.5000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    3.6373   -3.5000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  2  0  0  0  0\n  2  3  1  0  0  0  0\n  3  4  2  0  0  0  0\n  4  5  1  0  0  0  0\n  5  6  2  0  0  0  0\n  6  1  1  0  0  0  0\n  2  7  1  0  0  0  0\n  7  8  2  0  0  0  0\n  7  9  1  0  0  0  0\n  3 10  1  0  0  0  0\n 10 11  1  0  0  0  0\n 11 12  2  0  0  0  0\n 11 13  1  0  0  0  0\nM  END\n"
+  },
+  {
+    "id": "molfile-04-caffeine-alkaloid-structure",
+    "lang": "molfile",
+    "subFormats": ["mol"],
+    "difficulty": 4,
+    "title": "Caffeine Heterocyclic Purine-Dione Alkaloid",
+    "description": "Fused bicyclic 1,3,7-trimethylxanthine (caffeine, C8H10N4O2) structure with 14 heavy atoms, 15 bonds, two fused pyrimidine-imidazole rings, exocyclic carbonyl oxygens, and N-methyl substituents.",
+    "category": "Cheminformatics & Molecular Structure",
+    "tags": ["molfile", "caffeine", "heterocycle", "bicyclic"],
+    "activeFile": "caffeine.mol",
+    "fileNames": ["caffeine.mol"],
+    "fileCount": 1,
+    "code": "Caffeine\n  Ansatz-Mol          2D\n1,3,7-Trimethylxanthine (C8H10N4O2) fused purine-dione alkaloid\n 14 15  0  0  0  0  0  0  0  0999 V2000\n   -1.2124    0.7000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n   -1.2124   -0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000   -1.4000    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2124   -0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.2124    0.7000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    1.4000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    2.5440    1.1326    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n    3.3669    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    2.5440   -1.1326    0.0000 N   0  0  0  0  0  0  0  0  0  0  0  0\n   -2.4249    1.4000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n   -2.4249   -1.4000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000   -2.8000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    2.8000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.9766    2.4642    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  2  3  1  0  0  0  0\n  3  4  1  0  0  0  0\n  4  5  2  0  0  0  0\n  5  6  1  0  0  0  0\n  6  1  1  0  0  0  0\n  5  7  1  0  0  0  0\n  7  8  1  0  0  0  0\n  8  9  2  0  0  0  0\n  9  4  1  0  0  0  0\n  1 10  1  0  0  0  0\n  2 11  2  0  0  0  0\n  3 12  1  0  0  0  0\n  6 13  2  0  0  0  0\n  7 14  1  0  0  0  0\nM  END\n"
+  },
+  {
+    "id": "molfile-05-v3000-stereo-drug-series",
+    "lang": "molfile",
+    "subFormats": ["sdf", "mol"],
+    "difficulty": 5,
+    "title": "V3000 Stereo Drug-Lead Series Multi-Record SDF",
+    "description": "Multi-record MDL V3000 Structure-Data File containing chiral (S)-L-alanine and (S)-ibuprofen stereoisomers with explicit CFG=1 wedge stereochemistry and Lipinski assay metadata tags.",
+    "category": "Cheminformatics & Molecular Structure",
+    "tags": ["molfile", "v3000", "stereochemistry", "sdf"],
+    "activeFile": "drug_leads_v3000.sdf",
+    "fileNames": ["drug_leads_v3000.sdf"],
+    "fileCount": 1,
+    "code": "L-Alanine\n  Ansatz-Mol          2D\n(S)-2-Aminopropanoic acid (MDL V3000)\n  0  0  0     0  0              0 V3000\nM  V30 BEGIN CTAB\nM  V30 COUNTS 6 5 0 0 1\nM  V30 BEGIN ATOM\nM  V30 1 C 0.0000 0.0000 0.0000 0\nM  V30 2 N 0.0000 1.4500 0.0000 0\nM  V30 3 C -1.2557 -0.7250 0.0000 0\nM  V30 4 C 1.2557 -0.7250 0.0000 0\nM  V30 5 O 1.2557 -2.1250 0.0000 0\nM  V30 6 O 2.4681 -0.0250 0.0000 0\nM  V30 END ATOM\nM  V30 BEGIN BOND\nM  V30 1 1 1 2 CFG=1\nM  V30 2 1 1 3\nM  V30 3 1 1 4\nM  V30 4 2 4 5\nM  V30 5 1 4 6\nM  V30 END BOND\nM  V30 END CTAB\nM  END\n> <SERIES_ID>\nLEAD-001\n\n> <STEREO_CONFIG>\nS\n\n> <LOGP>\n-2.85\n\n$$$$\nAcetaminophen\n  Ansatz-Mol          2D\nN-(4-Hydroxyphenyl)acetamide (MDL V3000)\n  0  0  0     0  0              0 V3000\nM  V30 BEGIN CTAB\nM  V30 COUNTS 11 11 0 0 0\nM  V30 BEGIN ATOM\nM  V30 1 C 1.3950 0.0000 0.0000 0\nM  V30 2 C 0.6975 1.2081 0.0000 0\nM  V30 3 C -0.6975 1.2081 0.0000 0\nM  V30 4 C -1.3950 0.0000 0.0000 0\nM  V30 5 C -0.6975 -1.2081 0.0000 0\nM  V30 6 C 0.6975 -1.2081 0.0000 0\nM  V30 7 O -2.7950 0.0000 0.0000 0\nM  V30 8 N 2.7950 0.0000 0.0000 0\nM  V30 9 C 3.4950 1.2124 0.0000 0\nM  V30 10 O 2.7950 2.4249 0.0000 0\nM  V30 11 C 4.8950 1.2124 0.0000 0\nM  V30 END ATOM\nM  V30 BEGIN BOND\nM  V30 1 4 1 2\nM  V30 2 4 2 3\nM  V30 3 4 3 4\nM  V30 4 4 4 5\nM  V30 5 4 5 6\nM  V30 6 4 6 1\nM  V30 7 1 4 7\nM  V30 8 1 1 8\nM  V30 9 1 8 9\nM  V30 10 2 9 10\nM  V30 11 1 9 11\nM  V30 END BOND\nM  V30 END CTAB\nM  END\n> <SERIES_ID>\nLEAD-002\n\n> <STEREO_CONFIG>\nACHIRAL\n\n> <LOGP>\n0.46\n\n$$$$\n"
+  }
+]

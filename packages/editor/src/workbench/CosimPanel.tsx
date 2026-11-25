@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * Co-simulation data source panel for Morsel.
+ * Co-simulation data source panel for Ansatz.
  *
  * Allows the user to:
  * - Switch between Local, MQTT Live, and Historian Replay modes

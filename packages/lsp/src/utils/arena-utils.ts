@@ -11,11 +11,22 @@ function resolveAttrString(arena: DAEBuilder, varIdx: number, attrName: string):
   return undefined;
 }
 
+export interface ArenaParameterInfo {
+  name: string;
+  type: "real" | "integer" | "boolean" | "enumeration";
+  defaultValue: number;
+  step: number;
+  unit?: string | undefined;
+  description?: string | undefined;
+  min?: number | undefined;
+  max?: number | undefined;
+}
+
 /**
  * Port getParameterInfo to work on DAEBuilder.
  */
-export function getArenaParameterInfo(arena: DAEBuilder): any[] {
-  const infos: any[] = [];
+export function getArenaParameterInfo(arena: DAEBuilder): ArenaParameterInfo[] {
+  const infos: ArenaParameterInfo[] = [];
   for (let i = 0; i < arena.varCount; i++) {
     if (arena.isVarRemoved(i)) continue;
     if (arena.getVarVariability(i) !== Variability.Parameter) continue;

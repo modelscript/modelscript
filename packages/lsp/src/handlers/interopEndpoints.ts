@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { buildFmuArchive, parseFmuModelDescription } from "@modelscript/exchange/fmu";
+import type { DAEBuilder } from "@modelscript/runtime";
 import { readZipTextEntry } from "@modelscript/runtime/wasm_container.js";
 import { ArenaSimulator } from "@modelscript/simulate";
 import { LspContext } from "../lsp-context.js";
@@ -56,21 +57,25 @@ export function registerInteropEndpoints(context: LspContext) {
         }
       }
 
-      let arena: any = null;
+      let arena: DAEBuilder | null = null;
       let targetClass = "";
 
-      if (instances && instances.length > 0) {
+      if (instances && instances.length > 0 && instances[0]) {
         const targetInstance = instances[0];
         targetClass = targetInstance.name || targetInstance.compositeName || "";
         const ctx =
           context.workspaceManager.documentContexts.get(params.uri) ??
           (doc ? context.workspaceManager.documentContexts.get(doc.uri) : undefined) ??
           context.state.sharedContext ??
-          (context.parserService as any)?.sharedContext;
-        const flattenFn = (globalThis as any).flattenArenaFromInstance ?? flattenArenaFromInstance;
+          context.parserService?.sharedContext;
+        const flattenFn = (
+          globalThis as unknown as {
+            flattenArenaFromInstance?: (inst: unknown, context?: unknown) => DAEBuilder | null;
+          }
+        ).flattenArenaFromInstance;
         if (typeof flattenFn === "function") {
           try {
-            arena = flattenFn(targetInstance, ctx);
+            arena = flattenFn(targetInstance, ctx) as DAEBuilder | null;
           } catch {
             arena = null;
           }
@@ -88,7 +93,7 @@ export function registerInteropEndpoints(context: LspContext) {
           }
           arena = flatRes.arena;
           targetClass = flatRes.target.className;
-        } catch (e: any) {
+        } catch (e: unknown) {
           if (!instances || instances.length === 0) {
             throw new Error("No Modelica classes found in the active document.", { cause: e });
           }
@@ -253,7 +258,7 @@ export function registerInteropEndpoints(context: LspContext) {
           variables: desc.variables,
         };
         const fmuUri = `__fmu__:${params.name}`;
-        context.workspaceManager.workspaceInstances.set(fmuUri, [fmuEntity as any]);
+        context.workspaceManager.workspaceInstances.set(fmuUri, [fmuEntity]);
         context.connection.console.info(`[fmu-import] Registered FMU entity '${params.name}'`);
 
         return {

@@ -1,0 +1,11 @@
+{
+  "id": "nmea0183-05-vessel-voyage-ais-integration",
+  "lang": "nmea0183",
+  "subFormats": ["nmea0183"],
+  "difficulty": 5,
+  "title": "Full Multi-Sensor Vessel Voyage Telemetry Stream",
+  "description": "Complete maritime bridge NMEA 0183 capture combining DGPS position (GGA/RMC), course/speed (VTG), 8-satellite skyview (GSA/GSV), magnetic heading (HDG), apparent wind (MWV), and bathymetry (DBT).",
+  "category": "Maritime Navigation",
+  "tags": ["nmea0183", "voyage", "multi-sensor", "dgps", "bathymetry"],
+  "activeFile": "voyage_bridge.nmea"
+}

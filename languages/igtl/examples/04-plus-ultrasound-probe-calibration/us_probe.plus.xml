@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PlusConfiguration version="2.8">
+  <DataCollection StartupDelaySec="1.0">
+    <DeviceSet Name="TrackedUltrasoundCalibration" Description="NDI Polaris Optical Tracker + Telemed B-Mode Ultrasound Probe">
+      <Device Id="OpticalTracker" Type="PolarisTracker" AcquisitionRate="60" ToolReferenceFrame="Tracker">
+        <DataSources>
+          <DataSource Type="Tool" Id="Probe" PortName="0" BufferSize="150"/>
+          <DataSource Type="Tool" Id="Reference" PortName="1" BufferSize="150"/>
+          <DataSource Type="Tool" Id="Stylus" PortName="2" BufferSize="150"/>
+        </DataSources>
+        <OutputChannels>
+          <OutputChannel Id="TrackerStream"/>
+        </OutputChannels>
+      </Device>
+      <Device Id="UltrasoundScanner" Type="TelemedVideo" AcquisitionRate="30">
+        <DataSources>
+          <DataSource Type="Video" Id="Video" PortUsImageOrientation="MF" BufferSize="100"/>
+        </DataSources>
+        <OutputChannels>
+          <OutputChannel Id="VideoStream"/>
+        </OutputChannels>
+      </Device>
+    </DeviceSet>
+  </DataCollection>
+  <CoordinateDefinitions>
+    <Transform From="Image" To="Probe"
+      Matrix="0.0 -1.0 0.0 24.5  1.0 0.0 0.0 -12.0  0.0 0.0 1.0 8.5  0 0 0 1"
+      Error="0.54" Date="2026.02.10"/>
+    <Transform From="Probe" To="Tracker"
+      Matrix="1 0 0 15.0  0 1 0 -22.0  0 0 1 640.0  0 0 0 1"
+      Error="0.22"/>
+    <Transform From="StylusTip" To="Stylus"
+      Matrix="1 0 0 0.0  0 1 0 0.0  0 0 1 152.0  0 0 0 1"
+      Error="0.35"/>
+    <Transform From="Stylus" To="Tracker"
+      Matrix="1 0 0 -18.0  0 1 0 14.0  0 0 1 610.0  0 0 0 1"
+      Error="0.20"/>
+    <Transform From="Tracker" To="Reference"
+      Matrix="1 0 0 8.0  0 1 0 -5.0  0 0 1 -590.0  0 0 0 1"
+      Error="0.18"/>
+  </CoordinateDefinitions>
+  <PlusOpenIGTLinkServer MaxNumberOfIgtlMessagesToSend="10" ListeningPort="18944" OutputChannelId="TrackerStream">
+    <DefaultClientInfo>
+      <MessageTypes>
+        <Message Type="TRANSFORM"/>
+        <Message Type="IMAGE"/>
+      </MessageTypes>
+      <TransformNames>
+        <Transform Name="ImageToReference"/>
+        <Transform Name="StylusTipToReference"/>
+      </TransformNames>
+    </DefaultClientInfo>
+  </PlusOpenIGTLinkServer>
+  <FiducialRegistration FLE="0.48" FRE="0.52" TRE="0.69" Target="12.0 8.0 45.0">
+    <Fiducial Position="-45 -45 0"/>
+    <Fiducial Position="45 -45 0"/>
+    <Fiducial Position="45 45 0"/>
+    <Fiducial Position="-45 45 0"/>
+  </FiducialRegistration>
+</PlusConfiguration>

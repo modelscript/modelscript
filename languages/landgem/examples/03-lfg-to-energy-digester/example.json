@@ -1,0 +1,11 @@
+{
+  "id": "landgem-03-lfg-to-energy-digester",
+  "lang": "landgem",
+  "subFormats": ["landgem"],
+  "difficulty": 3,
+  "title": "Landfill Gas-to-Energy Flare & Co-Digestion CHP Sizing",
+  "description": "Integrated landfill gas recovery site paired with a mesophilic anaerobic co-digester to size combined heat and power (CHP) turbine output and evaluate volatile fatty acid stability.",
+  "category": "Biogas & Renewable Energy",
+  "tags": ["landgem", "biogas-chp", "anaerobic-digester", "lfgte"],
+  "activeFile": "lfg_chp_plant.landgem"
+}

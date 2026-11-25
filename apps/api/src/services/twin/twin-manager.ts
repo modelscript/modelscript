@@ -110,7 +110,9 @@ export class TwinManager {
       if (session.subscribers.size === 0 && now - session.lastAccessedAt > maxIdleMs) {
         try {
           (session.arena as { dispose?: () => void }).dispose?.();
-        } catch {}
+        } catch {
+          // Arena may already be disposed during idle eviction
+        }
         this.sessions.delete(id);
         evicted++;
       }
@@ -719,8 +721,7 @@ export class TwinManager {
     reason: string,
     db: LibraryDatabase,
     driftEvent?:
-      | (NonNullable<ReturnType<CusumDriftDetector["update"]>> & { magnitude?: number | undefined })
-      | undefined,
+      (NonNullable<ReturnType<CusumDriftDetector["update"]>> & { magnitude?: number | undefined }) | undefined,
   ): Promise<MheResult> {
     const session = await this.getOrCreateSession(twinId, db);
     const range = session.buffer.getTimeRange();

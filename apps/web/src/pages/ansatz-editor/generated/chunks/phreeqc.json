@@ -1,0 +1,77 @@
+[
+  {
+    "id": "phreeqc-01-seawater-speciation",
+    "lang": "phreeqc",
+    "subFormats": ["phreeqc"],
+    "difficulty": 1,
+    "title": "Seawater Aqueous Speciation and Saturation Indices",
+    "description": "Standard seawater geochemical speciation deck at 25 C and pH 8.1 computing ionic strength, carbonate alkalinity, and aragonite/calcite saturation state.",
+    "category": "Aqueous Geochemistry",
+    "tags": ["phreeqc", "seawater", "speciation", "geochemistry"],
+    "activeFile": "seawater.pqi",
+    "fileNames": ["seawater.pqi"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "TITLE Standard Seawater Aqueous Speciation at 25 C\n# Major ion composition of standard mean ocean water (SMOW)\nSOLUTION 1 Standard Seawater\n    temp      25.0\n    pH        8.1\n    pe        8.45\n    units     mmol/kgw\n    Na        468.0\n    Mg        53.2\n    Ca        10.3\n    K         10.2\n    Cl        546.0\n    S(6)      28.2\n    C(4)      2.3\n\nEND\n"
+  },
+  {
+    "id": "phreeqc-02-calcite-co2-karst",
+    "lang": "phreeqc",
+    "subFormats": ["phreeqc"],
+    "difficulty": 2,
+    "title": "Calcite-CO2-Water Equilibrium and Karst Dissolution",
+    "description": "Open-system carbonate geochemistry modeling rainwater equilibration with soil CO2(g) and limestone aquifer calcite dissolution kinetics.",
+    "category": "Aqueous Geochemistry",
+    "tags": ["phreeqc", "calcite", "karst", "carbonate"],
+    "activeFile": "karst_calcite.pqi",
+    "fileNames": ["karst_calcite.pqi"],
+    "fileCount": 1,
+    "code": "TITLE Calcite-CO2-Water Equilibrium and Karst Limestone Dissolution\nSOLUTION 1 Recharge Rainwater\n    temp      15.0\n    pH        5.6 charge\n    pe        4.0\n    units     mmol/kgw\n    Ca        0.1\n    C(4)      0.2\n\nEQUILIBRIUM_PHASES 1\n    Calcite   0.0 10.0\n    CO2(g)    -2.5 10.0\n\nKINETICS 1\n    Calcite\n        -m0     5.0\n        -m      5.0\n        -parms  1.5e-6 12.0\n    -steps 7200 in 12 steps\n\nEND\n"
+  },
+  {
+    "id": "phreeqc-03-acid-mine-drainage-titration",
+    "lang": "phreeqc",
+    "subFormats": ["phreeqc"],
+    "difficulty": 3,
+    "title": "Acid Mine Drainage Neutralization with Limestone Titration",
+    "description": "Remediation of acidic iron- and sulfate-rich mine drainage (pH 2.8) via stepwise CaCO3 limestone addition and gypsum/ferrihydrite mineral precipitation.",
+    "category": "Environmental Geochemistry",
+    "tags": ["phreeqc", "acid-mine-drainage", "titration", "remediation"],
+    "activeFile": "amd_titration.pqi",
+    "fileNames": ["amd_titration.pqi"],
+    "fileCount": 1,
+    "code": "TITLE Acid Mine Drainage Neutralization with Limestone Titration\nSOLUTION 1 Acid Mine Drainage\n    temp      20.0\n    pH        2.8\n    pe        10.0\n    units     mmol/kgw\n    Fe        8.5\n    Ca        4.0\n    Mg        2.5\n    S(6)      15.5 charge\n    Cl        1.5\n\nREACTION 1\n    CaCO3     1.0\n    0.03 moles in 10 steps\n\nEQUILIBRIUM_PHASES 1\n    Gypsum    0.0 0.0\n    Calcite   0.0 0.0\n\nEND\n"
+  },
+  {
+    "id": "phreeqc-04-reactive-transport-column",
+    "lang": "phreeqc",
+    "subFormats": ["phreeqc"],
+    "difficulty": 4,
+    "title": "1D Advective-Dispersive Reactive Ion-Exchange Column",
+    "description": "One-dimensional reactive transport simulation of CaCl2 brine displacing Na-K groundwater through a 20-cell cation-exchange aquifer column.",
+    "category": "Hydrogeology & Reactive Transport",
+    "tags": ["phreeqc", "transport", "ion-exchange", "hydrogeology"],
+    "activeFile": "ion_exchange_column.pqi",
+    "fileNames": ["ion_exchange_column.pqi"],
+    "fileCount": 1,
+    "code": "TITLE 1D Advective-Dispersive Reactive Ion-Exchange Column\nSOLUTION 0 Influent CaCl2 Brine\n    temp      25.0\n    pH        7.0\n    pe        4.0\n    units     mmol/kgw\n    Ca        1.2\n    Cl        2.4\n\nSOLUTION 1 Background Na-K Aquifer Water\n    temp      25.0\n    pH        7.2\n    pe        4.0\n    units     mmol/kgw\n    Na        1.0\n    K         0.2\n    Cl        1.2\n\nMIX 1\n    0 0.5\n    1 0.5\n\nEQUILIBRIUM_PHASES 1\n    Calcite   0.0 5.0\n\nEND\n"
+  },
+  {
+    "id": "phreeqc-05-geothermal-silica-scaling",
+    "lang": "phreeqc",
+    "subFormats": ["phreeqc"],
+    "difficulty": 5,
+    "title": "Geothermal Silica Scaling with Custom Mineral Database",
+    "description": "High-enthalpy geothermal brine cooling and amorphous silica/calcite scaling kinetics paired with a companion custom thermodynamic mineral database (.dat).",
+    "category": "Geothermal Engineering",
+    "tags": ["phreeqc", "geothermal", "silica-scaling", "thermodynamics", "multi-file"],
+    "activeFile": "geothermal_scale.pqi",
+    "fileNames": ["geothermal_scale.pqi", "custom_thermo.dat"],
+    "fileCount": 2,
+    "code": "TITLE High-Temperature Geothermal Brine Silica Scaling and Mixing\nSOLUTION 1 Deep Reservoir Brine\n    temp      180.0\n    pH        6.8\n    pe        -2.0\n    units     mmol/kgw\n    Na        42.0\n    K         4.5\n    Ca        1.8\n    Cl        46.0\n    S(6)      1.2\n    C(4)      3.5\n    Si        8.2\n\nSOLUTION 2 Reinjection Condensate\n    temp      70.0\n    pH        7.4\n    pe        4.0\n    units     mmol/kgw\n    Na        5.0\n    Cl        5.0\n    C(4)      0.5\n\nMIX 1\n    1 0.8\n    2 0.2\n\nEQUILIBRIUM_PHASES 1\n    Quartz    0.0 10.0\n    Calcite   0.0 5.0\n\nKINETICS 1\n    Quartz\n        -m0     1.0\n        -m      1.0\n        -parms  2.4e-7 5.0\n    -steps 10800 in 12 steps\n\nEND\n",
+    "files": {
+      "geothermal_scale.pqi": "TITLE High-Temperature Geothermal Brine Silica Scaling and Mixing\nSOLUTION 1 Deep Reservoir Brine\n    temp      180.0\n    pH        6.8\n    pe        -2.0\n    units     mmol/kgw\n    Na        42.0\n    K         4.5\n    Ca        1.8\n    Cl        46.0\n    S(6)      1.2\n    C(4)      3.5\n    Si        8.2\n\nSOLUTION 2 Reinjection Condensate\n    temp      70.0\n    pH        7.4\n    pe        4.0\n    units     mmol/kgw\n    Na        5.0\n    Cl        5.0\n    C(4)      0.5\n\nMIX 1\n    1 0.8\n    2 0.2\n\nEQUILIBRIUM_PHASES 1\n    Quartz    0.0 10.0\n    Calcite   0.0 5.0\n\nKINETICS 1\n    Quartz\n        -m0     1.0\n        -m      1.0\n        -parms  2.4e-7 5.0\n    -steps 10800 in 12 steps\n\nEND\n",
+      "custom_thermo.dat": "# Custom Geothermal Mineral Thermodynamic Database\nPHASES\nQuartz\n    SiO2 + 2 H2O = H4SiO4\n    log_k       -3.98\n    delta_h     5.99 kcal\nSiO2(a)\n    SiO2 + 2 H2O = H4SiO4\n    log_k       -2.71\n    delta_h     3.34 kcal\nCalcite\n    CaCO3 = CO3-2 + Ca+2\n    log_k       -8.48\n    delta_h     -2.297 kcal\nEND\n"
+    }
+  }
+]

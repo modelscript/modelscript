@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { describe, it } from "node:test";
+
+describe("Ansatz Diagram Coordinate Grid Centering on Load Completion", () => {
+  const diagramEditorPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/Diagram.tsx");
+  const visualizerPanePath = path.resolve(
+    import.meta.dirname,
+    "../../../packages/editor/src/workbench/panels/AnsatzVisualizerPane.tsx",
+  );
+  const ansatzPath = path.resolve(import.meta.dirname, "../../../packages/editor/src/workbench/AnsatzEditor.tsx");
+  const diagramPkgPath = path.resolve(import.meta.dirname, "../../../packages/diagram/src/index.ts");
+
+  it("verifies Diagram.tsx measures parent element and resizes X6 graph before centering", () => {
+    const src = fs.readFileSync(diagramEditorPath, "utf-8");
+
+    // fitContent must check parent element dimensions and resize graph
+    assert.ok(
+      src.includes("const parent = container.parentElement") || src.includes("container.parentElement"),
+      "Diagram.tsx fitContent must check container.parentElement",
+    );
+    assert.ok(
+      src.includes("parentW > 0 ? parentW :") || src.includes("parent?.clientWidth"),
+      "Diagram.tsx fitContent must prioritize parent element clientWidth",
+    );
+    assert.ok(
+      src.includes("(g as any).resize(cw, ch)") || src.includes("g.resize(cw, ch)"),
+      "Diagram.tsx fitContent must resize graph to actual viewport before zoomToRect",
+    );
+
+    // zoomToFit must check parent element and resize graph
+    assert.ok(
+      src.includes("const parent = container?.parentElement") || src.includes("container?.parentElement"),
+      "Diagram.tsx zoomToFit must check container.parentElement",
+    );
+    assert.ok(
+      src.includes("g.resize(cw, ch)"),
+      "Diagram.tsx zoomToFit must resize graph to actual viewport dimensions",
+    );
+
+    // Container style must allow flex filling without being trapped by inline styles
+    assert.ok(
+      src.includes('maxWidth: "100%"') && src.includes('maxHeight: "100%"'),
+      "Diagram.tsx containerRef div must set maxWidth: 100% and maxHeight: 100%",
+    );
+  });
+
+  it("verifies Diagram.tsx ResizeObserver observes the parent element to avoid being trapped by fixed pixel dimensions", () => {
+    const src = fs.readFileSync(diagramEditorPath, "utf-8");
+
+    assert.ok(
+      src.includes("const target = container.parentElement ?? container;"),
+      "Diagram.tsx must observe container.parentElement ?? container",
+    );
+    assert.ok(src.includes("ro?.observe(target)"), "Diagram.tsx must pass target to ro.observe");
+  });
+
+  it("verifies AnsatzVisualizerPane.tsx triggers zoomToFit when loadingProgress finishes", () => {
+    const src = fs.readFileSync(visualizerPanePath, "utf-8");
+
+    assert.ok(src.includes("loadingProgress >= 100"), "AnsatzVisualizerPane.tsx must check for loadingProgress >= 100");
+    assert.ok(
+      src.includes("effectiveDiagramRef?.current?.zoomToFit()") ||
+        src.includes("effectiveDiagramRef.current?.zoomToFit()"),
+      "AnsatzVisualizerPane.tsx must call effectiveDiagramRef.current.zoomToFit() when loading finishes",
+    );
+    assert.ok(
+      src.includes("hasCenteredOnLoadRef"),
+      "AnsatzVisualizerPane.tsx must track initial load centering via ref",
+    );
+  });
+
+  it("verifies Ansatz.tsx hideLoading schedules diagram zoomToFit when modal unmounts", () => {
+    const src = fs.readFileSync(ansatzPath, "utf-8");
+
+    assert.ok(
+      src.includes("diagramEditorRef.current?.zoomToFit()"),
+      "Ansatz.tsx must trigger diagramEditorRef.current.zoomToFit()",
+    );
+    assert.ok(
+      src.includes("hideLoading") && src.includes("diagramEditorRef.current?.zoomToFit()"),
+      "Ansatz.tsx hideLoading must trigger zoomToFit",
+    );
+  });
+
+  it("verifies packages/diagram/src/index.ts checks parent element and schedules follow-up recentering", () => {
+    const src = fs.readFileSync(diagramPkgPath, "utf-8");
+
+    // initGraph checks parentElement
+    assert.ok(
+      src.includes("const parent = container.parentElement;"),
+      "packages/diagram initGraph must check container.parentElement",
+    );
+    // renderDiagramInternal checks parentElement
+    assert.ok(
+      src.includes("const parent = g.container?.parentElement;"),
+      "packages/diagram renderDiagramInternal must check g.container.parentElement",
+    );
+    // Follow-up recentering checks at 60ms and 300ms
+    assert.ok(
+      src.includes("setTimeout(checkAndRecenter, 60)") && src.includes("setTimeout(checkAndRecenter, 300)"),
+      "packages/diagram renderDiagramInternal must schedule recenter at 60ms and 300ms",
+    );
+    // Origin centering in renderDiagramInternal and checkAndRecenter
+    assert.ok(
+      src.includes("const ox = cs.axesStyle?.origin?.[0] ?? 0;") && src.includes("centerPoint(ox, oy)"),
+      "packages/diagram must center coordinate system origin using centerPoint(ox, oy)",
+    );
+  });
+
+  it("verifies languages/modelica/src/diagram/data.ts sets boundsOnly: false so axes extend to infinity", () => {
+    const dataPath = path.resolve(import.meta.dirname, "../../../languages/modelica/src/diagram/data.ts");
+    const src = fs.readFileSync(dataPath, "utf-8");
+
+    assert.ok(
+      src.includes("boundsOnly: false"),
+      "languages/modelica/src/diagram/data.ts must set boundsOnly: false for coordinate axes to extend to infinity",
+    );
+  });
+
+  it("verifies Diagram.tsx centers coordinate origin using centerPoint(ox, oy) when coordinateSystem is present", () => {
+    const src = fs.readFileSync(diagramEditorPath, "utf-8");
+
+    assert.ok(
+      src.includes("const ox = cs.axesStyle?.origin?.[0] ?? 0;"),
+      "Diagram.tsx must extract origin ox from cs.axesStyle",
+    );
+    assert.ok(
+      src.includes("centerPoint(ox, oy)"),
+      "Diagram.tsx must call centerPoint(ox, oy) to center axes at the origin",
+    );
+  });
+
+  it("verifies AnsatzVisualizerPane.tsx triggers zoomToFit in onRenderComplete when diagram finishes rendering", () => {
+    const src = fs.readFileSync(visualizerPanePath, "utf-8");
+
+    assert.ok(
+      src.includes("onRenderComplete={(data) => {") && src.includes("effectiveDiagramRef?.current?.zoomToFit()"),
+      "AnsatzVisualizerPane.tsx must trigger zoomToFit in onRenderComplete if not already centered",
+    );
+  });
+
+  it("verifies Diagram.tsx ResizeObserver preserves zoom/pan once fitted and does not re-center on selection resize", () => {
+    const src = fs.readFileSync(diagramEditorPath, "utf-8");
+
+    assert.ok(
+      src.includes("hasFittedViewportRef"),
+      "Diagram.tsx must track hasFittedViewportRef to avoid re-centering on every container resize",
+    );
+    assert.ok(
+      src.includes("!hasFittedViewportRef.current"),
+      "Diagram.tsx ResizeObserver must only auto-fit when hasFittedViewportRef.current is false",
+    );
+  });
+
+  it("verifies loading placeholders do not lock in zoomed-out viewports", () => {
+    const diagramSrc = fs.readFileSync(diagramPkgPath, "utf-8");
+    const servicePath = path.resolve(import.meta.dirname, "../../../packages/lsp/src/services/diagram-service.ts");
+    const serviceSrc = fs.readFileSync(servicePath, "utf-8");
+
+    assert.ok(
+      diagramSrc.includes("lastRenderWasLoading") && diagramSrc.includes("renderFitGeneration"),
+      "packages/diagram renderDiagramInternal must track loading transitions and cancel stale recenter timers",
+    );
+    assert.ok(
+      diagramSrc.includes("if (!isCurrentLoading && (isFirstRender || moduleChanged || loadingCompleted))"),
+      "packages/diagram renderDiagramInternal must skip initial fit on loading state and fit when loading completes",
+    );
+    assert.ok(
+      !serviceSrc.includes("coordinateSystem: { x: 0, y: 0, width: 1000, height: 1000 }"),
+      "diagram-service.ts loading placeholder must not use oversized 1000x1000 coordinateSystem",
+    );
+  });
+
+  it("verifies polyglot/SysML2 diagrams with hidden bounds/axes use zoomToFit(maxScale: 1) and wait for non-loading data", () => {
+    const diagramSrc = fs.readFileSync(diagramPkgPath, "utf-8");
+    const editorSrc = fs.readFileSync(diagramEditorPath, "utf-8");
+    const paneSrc = fs.readFileSync(visualizerPanePath, "utf-8");
+
+    assert.ok(
+      diagramSrc.includes("hasExplicitCoordBounds") &&
+        diagramSrc.includes("cs.boundsStyle?.visible !== false || cs.axesStyle?.visible !== false"),
+      "packages/diagram must check hasExplicitCoordBounds before zoomToRect",
+    );
+    assert.ok(
+      editorSrc.includes("hasExplicitCoordBounds") &&
+        editorSrc.includes("cs.boundsStyle?.visible !== false || cs.axesStyle?.visible !== false"),
+      "Diagram.tsx must check hasExplicitCoordBounds before zoomToRect",
+    );
+    assert.ok(
+      diagramSrc.includes("data.diagramType ? `${data.diagramType}:${rootNodeId"),
+      "packages/diagram must derive fallback currentModule for polyglot diagrams",
+    );
+    assert.ok(
+      paneSrc.includes("!isDiagramLoading && diagramData && !diagramData.isLoading"),
+      "AnsatzVisualizerPane.tsx must wait for non-loading diagramData before marking hasCenteredOnLoadRef",
+    );
+  });
+});

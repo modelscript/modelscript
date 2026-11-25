@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<DNP3DeviceProfile xmlns="http://www.dnp.org/DNP3/DeviceProfile/2010" id="EMS_MASTER_CONCENTRATOR">
+  <DeviceIdentity>
+    <Vendor>Siemens Energy</Vendor>
+    <DeviceName>Spectrum Power 7 DNP3 Front-End Processor</DeviceName>
+    <Version>7.4.1</Version>
+  </DeviceIdentity>
+  <CommunicationSettings>
+    <OutstationAddress>1</OutstationAddress>
+    <MasterAddress>0</MasterAddress>
+  </CommunicationSettings>
+  <DNP3PointList>
+    <BinaryInputs>
+      <BinaryInput index="0" name="SUB_A_LINK_ONLINE" class="1" normalState="1"/>
+      <BinaryInput index="1" name="SUB_B_LINK_ONLINE" class="1" normalState="1"/>
+      <BinaryInput index="2" name="TIE_LINE_CLOSED" class="1" normalState="1"/>
+      <BinaryInput index="3" name="AGC_REGULATION_ACTIVE" class="2" normalState="1"/>
+    </BinaryInputs>
+    <BinaryOutputs>
+      <BinaryOutput index="0" name="POLL_INTEGRITY_ALL"/>
+      <BinaryOutput index="1" name="TIE_LINE_EMERGENCY_TRIP"/>
+    </BinaryOutputs>
+    <AnalogInputs>
+      <AnalogInput index="0" name="AREA_CONTROL_ERROR_MW" class="2" deadband="0.5" mult="0.1" offset="0.0" units="MW" min="-200" max="200"/>
+      <AnalogInput index="1" name="TIE_LINE_FLOW_MW" class="2" deadband="1.0" mult="0.1" offset="0.0" units="MW" min="-500" max="500"/>
+      <AnalogInput index="2" name="SYSTEM_FREQ_HZ" class="2" deadband="0.01" mult="0.001" offset="60.0" units="Hz" min="58" max="62"/>
+    </AnalogInputs>
+    <AnalogOutputs>
+      <AnalogOutput index="0" name="SUB_A_GEN_DISPATCH_MW" units="MW" min="0" max="350"/>
+      <AnalogOutput index="1" name="SUB_B_BESS_DISPATCH_MW" units="MW" min="-100" max="100"/>
+    </AnalogOutputs>
+    <Counters>
+      <Counter index="0" name="NET_INTERCHANGE_MWH" class="3" units="MWh"/>
+    </Counters>
+  </DNP3PointList>
+</DNP3DeviceProfile>

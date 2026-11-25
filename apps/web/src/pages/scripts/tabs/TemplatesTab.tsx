@@ -15,6 +15,7 @@ import React, { useMemo, useState } from "react";
 import { createStudyTemplate } from "../../../api";
 import Box from "../../../components/Box";
 import { BUILTIN_HPC_TEMPLATES } from "../../../components/cloud-sim/hpcTemplates";
+import { getApiErrorMessage } from "../../../util/error";
 import { safeJsonParse } from "../../../util/json";
 import type { ScriptTemplate, StudyDefinitionClient } from "../types";
 import { categoryIcon } from "../utils";
@@ -357,8 +358,8 @@ export const TemplatesTab: React.FC<TemplatesTabProps> = ({
       if (created?.slug) {
         onSelectTemplate(created.slug);
       }
-    } catch (err: any) {
-      setSubmitError(err?.response?.data?.error || err?.message || "Failed to publish study template");
+    } catch (err: unknown) {
+      setSubmitError(getApiErrorMessage(err, "Failed to publish study template"));
     } finally {
       setIsSubmitting(false);
     }

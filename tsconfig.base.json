@@ -24,6 +24,7 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
+    "allowArbitraryExtensions": true,
     "composite": true,
     "incremental": true,
     "tsBuildInfoFile": "${configDir}/dist/tsconfig.tsbuildinfo"

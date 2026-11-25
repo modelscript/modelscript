@@ -1,0 +1,12 @@
+{
+  "id": "bngl-01-ligand-receptor-binding",
+  "lang": "bngl",
+  "subFormats": ["bngl"],
+  "difficulty": 1,
+  "title": "Reversible Ligand-Receptor Binding",
+  "description": "Foundational BioNetGen rule-based model of reversible extracellular ligand binding to a monovalent cell-surface receptor with mass-action ODE network generation.",
+  "category": "Rule-Based Systems Biology",
+  "tags": ["bngl", "bionetgen", "ligand-receptor", "rule-based"],
+  "activeFile": "ligand_receptor.bngl",
+  "isDefaultStarter": true
+}

@@ -1,0 +1,11 @@
+{
+  "id": "powerfactory-03-meshed-transmission-loop",
+  "lang": "powerfactory",
+  "subFormats": ["dgs"],
+  "difficulty": 3,
+  "title": "6-Bus Meshed 220 kV Transmission Loop",
+  "description": "Six-bus 220 kV meshed regional transmission ring with two power plants, bus-coupler breakers, and three load centers.",
+  "category": "Transmission Systems",
+  "tags": ["powerfactory", "meshed-grid", "220kv", "transmission"],
+  "activeFile": "meshed_6bus.dgs"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "opensim-02-planar-arm-reaching",
+  "lang": "opensim",
+  "subFormats": ["osim"],
+  "difficulty": 2,
+  "title": "Two-Link Planar Arm Reaching Model",
+  "description": "Two-DOF upper-extremity reaching model with shoulder and elbow pin joints, antagonistic biceps and triceps muscles, humeral wrap cylinder, and anatomical markers.",
+  "category": "Musculoskeletal Biomechanics",
+  "tags": ["opensim", "arm26", "antagonist-muscles", "wrap-object"],
+  "activeFile": "arm26_reaching.osim"
+}

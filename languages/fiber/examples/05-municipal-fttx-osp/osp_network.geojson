@@ -1,0 +1,209 @@
+{
+  "type": "FeatureCollection",
+  "name": "Municipal-FTTx-MultiDistrict",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -87.6298,
+          41.8781
+        ]
+      },
+      "properties": {
+        "id": "CO_MUNI",
+        "name": "Municipal Headend CO",
+        "node-type": "central-office"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -87.6275,
+          41.8795
+        ]
+      },
+      "properties": {
+        "id": "FDH_NORTH",
+        "name": "North District FDH",
+        "node-type": "splice-closure"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -87.6272,
+          41.8768
+        ]
+      },
+      "properties": {
+        "id": "FDH_SOUTH",
+        "name": "South District FDH",
+        "node-type": "splice-closure"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -87.625,
+          41.8805
+        ]
+      },
+      "properties": {
+        "id": "SCHOOL_01",
+        "name": "Lincoln High School",
+        "node-type": "customer-premise"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -87.6248,
+          41.876
+        ]
+      },
+      "properties": {
+        "id": "HOSP_01",
+        "name": "City General Hospital",
+        "node-type": "customer-premise"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -87.6298,
+            41.8781
+          ],
+          [
+            -87.6275,
+            41.8795
+          ]
+        ]
+      },
+      "properties": {
+        "id": "MUNI-FDR-N-144",
+        "name": "North District Feeder",
+        "from": "CO_MUNI",
+        "to": "FDH_NORTH",
+        "strands": 144,
+        "length": 245,
+        "slack": 20,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -87.6298,
+            41.8781
+          ],
+          [
+            -87.6272,
+            41.8768
+          ]
+        ]
+      },
+      "properties": {
+        "id": "MUNI-FDR-S-144",
+        "name": "South District Feeder",
+        "from": "CO_MUNI",
+        "to": "FDH_SOUTH",
+        "strands": 144,
+        "length": 260,
+        "slack": 20,
+        "helix-factor": 1.03
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -87.6275,
+            41.8795
+          ],
+          [
+            -87.625,
+            41.8805
+          ]
+        ]
+      },
+      "properties": {
+        "id": "LAT-SCHOOL-24",
+        "name": "School Lateral",
+        "from": "FDH_NORTH",
+        "to": "SCHOOL_01",
+        "strands": 24,
+        "length": 230,
+        "slack": 15,
+        "helix-factor": 1.02
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            -87.6272,
+            41.8768
+          ],
+          [
+            -87.6248,
+            41.876
+          ]
+        ]
+      },
+      "properties": {
+        "id": "LAT-HOSP-48",
+        "name": "Hospital Lateral",
+        "from": "FDH_SOUTH",
+        "to": "HOSP_01",
+        "strands": 48,
+        "length": 220,
+        "slack": 15,
+        "helix-factor": 1.02
+      }
+    }
+  ],
+  "splices": [
+    {
+      "id": "SPL-N-01",
+      "closure": "FDH_NORTH",
+      "tray": 1,
+      "in": "MUNI-FDR-N-144",
+      "in-strand": 1,
+      "out": "LAT-SCHOOL-24",
+      "out-strand": 1,
+      "type": "fusion",
+      "loss": 0.04
+    },
+    {
+      "id": "SPL-S-01",
+      "closure": "FDH_SOUTH",
+      "tray": 1,
+      "in": "MUNI-FDR-S-144",
+      "in-strand": 1,
+      "out": "LAT-HOSP-48",
+      "out-strand": 1,
+      "type": "fusion",
+      "loss": 0.03
+    }
+  ]
+}

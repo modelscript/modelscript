@@ -1,0 +1,11 @@
+{
+  "id": "stl-02-regular-octahedron",
+  "lang": "stl",
+  "subFormats": ["ascii-stl"],
+  "difficulty": 2,
+  "title": "Watertight Regular Octahedron Polyhedron",
+  "description": "Closed 8-facet Platonic regular octahedron ASCII STL mesh with verified Euler characteristic (V=6, E=12, F=8) and outward unit facet normals.",
+  "category": "Computational Geometry",
+  "tags": ["stl", "octahedron", "polyhedron", "watertight"],
+  "activeFile": "octahedron.stl"
+}

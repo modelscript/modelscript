@@ -1,0 +1,11 @@
+{
+  "id": "fea-05-thermo-mechanical-brake-disc",
+  "lang": "fea",
+  "subFormats": ["inp"],
+  "difficulty": 5,
+  "title": "Thermo-Mechanical Coupled Brake Disc Analysis",
+  "description": "Four-file CalculiX thermo-mechanical brake rotor analysis composing disc mesh sets, grey cast-iron thermal-elastic properties, and braking heat-flux boundary conditions.",
+  "category": "Multiphysics FEA",
+  "tags": ["fea", "calculix", "thermo-mechanical", "brake-disc", "multi-file"],
+  "activeFile": "brake_coupled.inp"
+}

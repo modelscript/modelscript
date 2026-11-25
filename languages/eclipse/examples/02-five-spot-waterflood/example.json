@@ -1,0 +1,11 @@
+{
+  "id": "eclipse-02-five-spot-waterflood",
+  "lang": "eclipse",
+  "subFormats": ["data"],
+  "difficulty": 2,
+  "title": "Five-Spot Pattern Waterflooding",
+  "description": "Quarter five-spot areal waterflooding reservoir model on an 11x11x2 sandstone grid with corner water injector, opposite corner oil producer, and capillary pressure transition.",
+  "category": "Reservoir Simulation",
+  "tags": ["eclipse", "five-spot", "waterflood", "black-oil"],
+  "activeFile": "five_spot.data"
+}

@@ -5,6 +5,7 @@ import { HistorianReplayer } from "@modelscript/exchange/cosim";
 import express from "express";
 import type { Pool } from "pg";
 import { optionalAuth } from "../middleware/auth-middleware.js";
+import { publicErrorMessage } from "../utils/http-error.js";
 import { getCosimSessionForHistorian, listCosimSessionsForHistorian } from "./cosim.js";
 
 /** Historian query parameters. */
@@ -61,7 +62,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
         ),
       });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
+      res.status(500).json({ error: publicErrorMessage(err, "Database error") });
     }
     return;
   });
@@ -113,7 +114,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
         sampleCount,
       });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
+      res.status(500).json({ error: publicErrorMessage(err, "Database error") });
     }
     return;
   });
@@ -165,7 +166,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
         })),
       });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
+      res.status(500).json({ error: publicErrorMessage(err, "Database error") });
     }
     return;
   });
@@ -202,7 +203,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
 
       res.json({ sessionId: query.sessionId, values });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
+      res.status(500).json({ error: publicErrorMessage(err, "Database error") });
     }
     return;
   });
@@ -265,7 +266,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
         ),
       });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
+      res.status(500).json({ error: publicErrorMessage(err, "Database error") });
     }
     return;
   });
@@ -379,7 +380,7 @@ export function historianRouter(pool: Pool | null, mqttClient?: CosimMqttClient 
       await pool.query(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
       res.json({ ok: true, sessionId });
     } catch (err: unknown) {
-      res.status(500).json({ error: err instanceof Error ? err.message : "Database error" });
+      res.status(500).json({ error: publicErrorMessage(err, "Database error") });
     }
     return;
   });

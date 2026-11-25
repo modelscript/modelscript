@@ -14,7 +14,39 @@
  */
 
 import { BinOp, DAEBuilder, EqKind, VarType, Variability } from "./wasm_dae.js";
-import { getDefaultWasmExports } from "./wasm_loader.js";
+import { getDefaultWasmExports, type WasmRuntimeExports } from "./wasm_loader.js";
+
+export interface NeuralBlockWasmExports extends WasmRuntimeExports {
+  nn_mlpForward?: (
+    infoPtr: number,
+    numLayers: number,
+    wPtr: number,
+    inPtr: number,
+    outPtr: number,
+    activation: number,
+    outputActivation: number,
+    scrAPtr: number,
+    scrBPtr: number,
+  ) => void;
+  nn_mlpVjp?: (
+    infoPtr: number,
+    numLayers: number,
+    wPtr: number,
+    inPtr: number,
+    cotPtr: number,
+    activation: number,
+    outputActivation: number,
+    gradInPtr: number,
+    gradWPtr: number,
+    actOffPtr: number,
+    preOffPtr: number,
+    actBufPtr: number,
+    preBufPtr: number,
+    deltaAPtr: number,
+    deltaBPtr: number,
+    dZPtr: number,
+  ) => void;
+}
 
 export enum ActivationKind {
   Linear = 0,
@@ -285,7 +317,7 @@ export class ArenaNeuralBlock {
     const numLayers = this.layerOffsets.length;
     if (numLayers === 0) return new Float64Array(inputs);
 
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as NeuralBlockWasmExports | null;
     if (w && typeof w.nn_mlpForward === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
       let maxDim = inputs.length;
       for (const lo of this.layerOffsets) {
@@ -367,7 +399,7 @@ export class ArenaNeuralBlock {
       return { gradInputs: new Float64Array(cotangent), gradWeights: new Float64Array(this.totalWeightCount) };
     }
 
-    const w = getDefaultWasmExports();
+    const w = getDefaultWasmExports() as NeuralBlockWasmExports | null;
     if (w && typeof w.nn_mlpVjp === "function" && typeof w.alloc === "function" && typeof w.free === "function") {
       let maxDim = Math.max(inputs.length, cotangent.length);
       let totalActs = inputs.length;

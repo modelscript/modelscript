@@ -14,7 +14,7 @@ export interface IdeWorkbenchFrameProps {
   iframeRef: React.RefObject<HTMLIFrameElement | null>;
   onIframeLoad: () => void;
   onRetry?: (() => void) | undefined;
-  onOpenInPlayground?: (() => void) | undefined;
+  onOpenInAnsatzEditor?: (() => void) | undefined;
 }
 
 export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
@@ -24,7 +24,7 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
   iframeRef,
   onIframeLoad,
   onRetry,
-  onOpenInPlayground,
+  onOpenInAnsatzEditor,
 }) => {
   const branding = useInstanceBranding();
   const brandName = branding.instanceName || "Ansatz";
@@ -59,8 +59,8 @@ export const IdeWorkbenchFrame: React.FC<IdeWorkbenchFrameProps> = ({
                     Retry
                   </Button>
                 )}
-                {onOpenInPlayground && (
-                  <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={onOpenInPlayground}>
+                {onOpenInAnsatzEditor && (
+                  <Button size="small" variant="primary" leadingVisual={CodeIcon} onClick={onOpenInAnsatzEditor}>
                     Open in Ansatz
                   </Button>
                 )}

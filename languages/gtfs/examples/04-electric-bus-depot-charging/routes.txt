@@ -1,0 +1,2 @@
+route_id,agency_id,route_short_name,route_long_name,route_type
+EBUS_1T,EASTBAY_EV,1T,Tempo Zero-Emission Trunk,3

@@ -1,0 +1,9 @@
+Flow Title=100-Year Floodplain Steady Profile
+Boundary for River Reach & Node=Willamette,ValleyReach,2000
+Boundary Type=Flow Hydrograph
+Hydrograph Data= 2
+0, 620.0  24, 620.0
+
+Boundary for River Reach & Node=Willamette,ValleyReach,0
+Boundary Type=Normal Depth
+Friction Slope=0.0015

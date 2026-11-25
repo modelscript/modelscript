@@ -1,0 +1,73 @@
+[
+  {
+    "id": "fits-01-ccd-bias-frame-header",
+    "lang": "fits",
+    "subFormats": ["fits"],
+    "difficulty": 1,
+    "title": "Primary 2D CCD Bias Calibration Frame Header",
+    "description": "FITS 4.0 primary HDU header for a 1024x1024 16-bit integer zero-exposure CCD bias calibration frame with detector gain, readout noise, temperature, and complete linear WCS keywords.",
+    "category": "Astronomy & Scientific Imaging",
+    "tags": ["fits", "ccd", "calibration", "wcs"],
+    "activeFile": "ccd_bias.fits",
+    "fileNames": ["ccd_bias.fits"],
+    "fileCount": 1,
+    "isDefaultStarter": true,
+    "code": "SIMPLE  =                    T / Conforms to FITS 4.0 standard\nBITPIX  =                   16 / 16-bit signed integer ADU counts\nNAXIS   =                    2 / 2D CCD detector array\nNAXIS1  =                 1024 / X-axis detector pixels\nNAXIS2  =                 1024 / Y-axis detector pixels\nBSCALE  =                  1.0 / Linear physical scaling factor\nBZERO   =              32768.0 / Unsigned 16-bit integer offset\nOBJECT  = 'MASTER_BIAS'        / Calibration frame type\nOBSTYPE = 'BIAS    '           / Zero-second exposure bias frame\nEXPTIME =                  0.0 / Integration time [s]\nINSTRUME= 'IMAGER-2K'          / Optical CCD camera\nDETTEMP =               -110.0 / Detector temperature [deg C]\nGAIN    =                 1.45 / Detector gain [e-/ADU]\nRDNOISE =                 3.20 / Readout noise [e- RMS]\nDATE-OBS= '2026-03-10T02:14:00' / UTC observation timestamp\nCTYPE1  = 'PIXEL   '           / Detector X pixel coordinate\nCTYPE2  = 'PIXEL   '           / Detector Y pixel coordinate\nCRPIX1  =                512.5 / Reference X pixel\nCRPIX2  =                512.5 / Reference Y pixel\nCRVAL1  =                512.5 / Coordinate value at CRPIX1\nCRVAL2  =                512.5 / Coordinate value at CRPIX2\nCDELT1  =                  1.0 / X pixel scale [pix/pix]\nCDELT2  =                  1.0 / Y pixel scale [pix/pix]\nEND\n"
+  },
+  {
+    "id": "fits-02-photometric-star-field-wcs",
+    "lang": "fits",
+    "subFormats": ["fits"],
+    "difficulty": 2,
+    "title": "Photometric Star Field with Complete TAN WCS Astrometry",
+    "description": "Calibrated 2D floating-point V-band optical image of the M67 open star cluster featuring full ICRS gnomonic tangent-plane (RA---TAN / DEC--TAN) WCS astrometry and CD rotation matrix.",
+    "category": "Astronomy & Scientific Imaging",
+    "tags": ["fits", "astrometry", "tan-wcs", "photometry"],
+    "activeFile": "star_field_wcs.fits",
+    "fileNames": ["star_field_wcs.fits"],
+    "fileCount": 1,
+    "code": "SIMPLE  =                    T / Conforms to FITS 4.0 standard\nBITPIX  =                  -32 / IEEE 32-bit floating-point flux\nNAXIS   =                    2 / 2D celestial image\nNAXIS1  =                 2048 / Image width [pixels]\nNAXIS2  =                 2048 / Image height [pixels]\nOBJECT  = 'M67_CLUSTER'        / Open star cluster target\nTELESCOP= 'KPNO-2.1M'          / Observatory telescope\nINSTRUME= 'DIRECT-CCD'         / Photometric imager\nFILTER  = 'JOHNSON-V'          / Photometric bandpass\nEXPTIME =                120.0 / Exposure time [s]\nAIRMASS =                1.142 / Mean airmass during exposure\nBUNIT   = 'ELECTRON/S'         / Physical pixel flux unit\nRADESYS = 'ICRS    '           / Equatorial coordinate reference frame\nEQUINOX =               2000.0 / Julian equinox of coordinates\nCTYPE1  = 'RA---TAN'           / Gnomonic tangent-plane Right Ascension\nCTYPE2  = 'DEC--TAN'           / Gnomonic tangent-plane Declination\nCUNIT1  = 'deg     '           / Axis 1 angle unit\nCUNIT2  = 'deg     '           / Axis 2 angle unit\nCRPIX1  =               1024.5 / Reference pixel along X\nCRPIX2  =               1024.5 / Reference pixel along Y\nCRVAL1  =             132.8250 / Right Ascension at reference [deg]\nCRVAL2  =              11.8167 / Declination at reference [deg]\nCD1_1   =         -0.000111111 / WCS Jacobian dRA/dx [deg/pix]\nCD1_2   =                  0.0 / WCS Jacobian dRA/dy [deg/pix]\nCD2_1   =                  0.0 / WCS Jacobian dDec/dx [deg/pix]\nCD2_2   =          0.000111111 / WCS Jacobian dDec/dy [deg/pix]\nEND\n"
+  },
+  {
+    "id": "fits-03-galaxy-redshift-spectrum",
+    "lang": "fits",
+    "subFormats": ["fits"],
+    "difficulty": 3,
+    "title": "1D Optical Galaxy Redshift Spectrum",
+    "description": "Flux-calibrated 1D optical long-slit spectrum of an emission-line spiral galaxy (z = 0.0425) with linear vacuum-wavelength WCS dispersion (3800 to 7800 Angstrom) and spectral resolution metadata.",
+    "category": "Astronomy & Scientific Imaging",
+    "tags": ["fits", "spectroscopy", "1d-spectrum", "redshift"],
+    "activeFile": "galaxy_spectrum.fits",
+    "fileNames": ["galaxy_spectrum.fits"],
+    "fileCount": 1,
+    "code": "SIMPLE  =                    T / Conforms to FITS 4.0 standard\nBITPIX  =                  -64 / IEEE 64-bit double-precision flux\nNAXIS   =                    2 / Long-slit extracted optical spectrum\nNAXIS1  =                 4000 / Number of wavelength channels\nNAXIS2  =                    1 / Extracted aperture row along slit\nOBJECT  = 'NGC-4321-NUC'       / Spiral galaxy nuclear spectrum\nTELESCOP= 'GEMINI-N'           / 8.1m optical-IR telescope\nINSTRUME= 'GMOS-N  '           / Multi-object spectrograph\nGRATING = 'R400+G5305'         / Dispersing grating\nEXPTIME =                900.0 / Total integration time [s]\nBUNIT   = 'erg/s/cm2/Angstrom' / Specific flux density unit\nZ_MEAS  =               0.0425 / Heliocentric emission-line redshift\nVELDISP =                165.4 / Stellar velocity dispersion [km/s]\nCTYPE1  = 'WAVE    '           / Vacuum wavelength spectral axis\nCTYPE2  = 'SLIT    '           / Spatial position along spectrograph slit\nCUNIT1  = 'Angstrom'           / Wavelength unit\nCUNIT2  = 'arcsec  '           / Spatial slit position unit\nCRPIX1  =                  1.0 / Reference wavelength channel index\nCRPIX2  =                  1.0 / Reference slit aperture row\nCRVAL1  =               3800.0 / Starting wavelength [Angstrom]\nCRVAL2  =                  0.0 / Slit center offset [arcsec]\nCDELT1  =                  1.0 / Linear dispersion [Angstrom/pixel]\nCDELT2  =                 0.15 / Spatial scale along slit [arcsec/pixel]\nSPECSYS = 'HELIOCEN'           / Heliocentric velocity reference frame\nEND\n"
+  },
+  {
+    "id": "fits-04-mef-science-variance-mask",
+    "lang": "fits",
+    "subFormats": ["fits"],
+    "difficulty": 4,
+    "title": "Multi-Extension FITS (MEF) Science, Variance, and Mask HDUs",
+    "description": "Four-HDU Multi-Extension FITS (MEF) pipeline data product containing a metadata-only Primary HDU (EXTEND=T) followed by SCI flux, VAR inverse-variance, and DQ bitmask IMAGE extensions with matched TAN WCS.",
+    "category": "Astronomy & Scientific Imaging",
+    "tags": ["fits", "mef", "multi-extension", "pipeline"],
+    "activeFile": "mef_science.fits",
+    "fileNames": ["mef_science.fits"],
+    "fileCount": 1,
+    "code": "SIMPLE  =                    T / Conforms to FITS 4.0 standard\nBITPIX  =                    8 / Metadata-only primary HDU\nNAXIS   =                    0 / No primary image payload\nEXTEND  =                    T / Multi-Extension FITS (MEF) file\nOBJECT  = 'ABELL-2744'         / Galaxy cluster lensing field\nTELESCOP= 'VLT-UT4 '           / Very Large Telescope Unit 4\nINSTRUME= 'HAWKI   '           / Near-infrared wide-field imager\nFILTER  = 'Ks      '           / Near-IR 2.15 micron filter\nEXPTIME =               1800.0 / Combined stack exposure [s]\nDATE-OBS= '2026-03-14T04:30:00' / UTC observation start\nEND\nXTENSION= 'IMAGE   '           / Calibrated science flux image\nBITPIX  =                  -32 / IEEE 32-bit float\nNAXIS   =                    2 / 2D science array\nNAXIS1  =                 1024 / X dimension [pixels]\nNAXIS2  =                 1024 / Y dimension [pixels]\nPCOUNT  =                    0 / No random group parameters\nGCOUNT  =                    1 / Single data group\nEXTNAME = 'SCI     '           / Science flux extension\nEXTVER  =                    1 / Extension version\nBUNIT   = 'MJy/sr  '           / Surface brightness unit\nCTYPE1  = 'RA---TAN'           / Gnomonic Right Ascension\nCTYPE2  = 'DEC--TAN'           / Gnomonic Declination\nCRPIX1  =                512.5 / X reference pixel\nCRPIX2  =                512.5 / Y reference pixel\nCRVAL1  =               3.5862 / Reference RA [deg]\nCRVAL2  =             -30.4002 / Reference Dec [deg]\nCD1_1   =         -0.000029444 / Plate scale X [deg/pix]\nCD2_2   =          0.000029444 / Plate scale Y [deg/pix]\nEND\nXTENSION= 'IMAGE   '           / Pixel variance map\nBITPIX  =                  -32 / IEEE 32-bit float\nNAXIS   =                    2 / 2D variance array\nNAXIS1  =                 1024 / X dimension [pixels]\nNAXIS2  =                 1024 / Y dimension [pixels]\nPCOUNT  =                    0 / No random group parameters\nGCOUNT  =                    1 / Single data group\nEXTNAME = 'VAR     '           / Variance extension\nEXTVER  =                    1 / Extension version\nBUNIT   = '(MJy/sr)^2'         / Variance unit\nEND\nXTENSION= 'IMAGE   '           / Data quality bitmask\nBITPIX  =                   16 / 16-bit integer bitmask\nNAXIS   =                    2 / 2D quality mask\nNAXIS1  =                 1024 / X dimension [pixels]\nNAXIS2  =                 1024 / Y dimension [pixels]\nPCOUNT  =                    0 / No random group parameters\nGCOUNT  =                    1 / Single data group\nEXTNAME = 'DQ      '           / Data quality extension\nEXTVER  =                    1 / Extension version\nEND\n"
+  },
+  {
+    "id": "fits-05-space-telescope-mosaic-catalog",
+    "lang": "fits",
+    "subFormats": ["fits"],
+    "difficulty": 5,
+    "title": "Space Telescope Astrometric Mosaic and Source Catalog BINTABLE",
+    "description": "JWST/HST-style Multi-Extension FITS bundle pairing a drizzled 4096x4096 deep-field NIRCam IMAGE extension (full rotated TAN WCS) with a 6-column BINTABLE photometric source catalog.",
+    "category": "Astronomy & Scientific Imaging",
+    "tags": ["fits", "jwst", "bintable", "astrometry"],
+    "activeFile": "jwst_mosaic_cat.fits",
+    "fileNames": ["jwst_mosaic_cat.fits"],
+    "fileCount": 1,
+    "code": "SIMPLE  =                    T / Conforms to FITS 4.0 standard\nBITPIX  =                    8 / Primary metadata HDU\nNAXIS   =                    0 / No primary array\nEXTEND  =                    T / Contains IMAGE and BINTABLE extensions\nTELESCOP= 'JWST    '           / James Webb Space Telescope\nINSTRUME= 'NIRCAM  '           / Near-Infrared Camera\nDETECTOR= 'NRCALONG'           / Long-wavelength channel mosaic\nFILTER  = 'F444W   '           / 4.4 micron wide-band filter\nTARGNAME= 'GOODS-SOUTH-DEEP'   / Deep extragalactic survey field\nEXPTIME =               7200.0 / Total drizzled exposure time [s]\nDATE-OBS= '2026-02-22T11:05:00' / UTC epoch\nEND\nXTENSION= 'IMAGE   '           / Drizzled deep-field science mosaic\nBITPIX  =                  -32 / IEEE 32-bit float surface brightness\nNAXIS   =                    2 / 2D astrometric mosaic\nNAXIS1  =                 4096 / Mosaic width [pixels]\nNAXIS2  =                 4096 / Mosaic height [pixels]\nPCOUNT  =                    0 / No group parameters\nGCOUNT  =                    1 / Single image group\nEXTNAME = 'SCI     '           / Science mosaic extension\nEXTVER  =                    1 / Version 1\nBUNIT   = 'MJy/sr  '           / Calibrated surface brightness\nRADESYS = 'ICRS    '           / Astrometric reference frame\nCTYPE1  = 'RA---TAN'           / Gnomonic Right Ascension\nCTYPE2  = 'DEC--TAN'           / Gnomonic Declination\nCUNIT1  = 'deg     '           / Axis 1 unit\nCUNIT2  = 'deg     '           / Axis 2 unit\nCRPIX1  =               2048.5 / Mosaic center X pixel\nCRPIX2  =               2048.5 / Mosaic center Y pixel\nCRVAL1  =              53.1227 / GOODS-S field center RA [deg]\nCRVAL2  =             -27.8051 / GOODS-S field center Dec [deg]\nCD1_1   =         -0.000017464 / Rotated WCS CD1_1 [deg/pix]\nCD1_2   =          0.000001528 / Rotated WCS CD1_2 [deg/pix]\nCD2_1   =          0.000001528 / Rotated WCS CD2_1 [deg/pix]\nCD2_2   =          0.000017464 / Rotated WCS CD2_2 [deg/pix]\nEND\nXTENSION= 'BINTABLE'           / Photometric source catalog binary table\nBITPIX  =                    8 / 8-bit binary table bytes\nNAXIS   =                    2 / 2D table (row bytes x num rows)\nNAXIS1  =                   44 / Row width in bytes (4+16+8+8+4+4)\nNAXIS2  =                 1250 / Number of detected galaxies\nPCOUNT  =                    0 / No heap payload\nGCOUNT  =                    1 / Single table group\nTFIELDS =                    6 / Six catalog columns\nEXTNAME = 'CATALOG '           / Extracted source catalog\nEXTVER  =                    1 / Version 1\nTTYPE1  = 'SOURCE_ID'          / Unique integer catalog ID\nTFORM1  = '1J      '           / 32-bit signed integer (4 bytes)\nTTYPE2  = 'DESIGNATION'        / IAU source designation string\nTFORM2  = '16A     '           / 16-byte ASCII string\nTTYPE3  = 'RA_ICRS '           / Right Ascension J2000 [deg]\nTFORM3  = '1D      '           / 64-bit IEEE float (8 bytes)\nTUNIT3  = 'deg     '           / Degrees\nTTYPE4  = 'DEC_ICRS'           / Declination J2000 [deg]\nTFORM4  = '1D      '           / 64-bit IEEE float (8 bytes)\nTUNIT4  = 'deg     '           / Degrees\nTTYPE5  = 'FLUX_F444W'         / Kron aperture flux [nJy]\nTFORM5  = '1E      '           / 32-bit IEEE float (4 bytes)\nTUNIT5  = 'nJy     '           / Nanojansky\nTTYPE6  = 'Z_PHOT  '           / Photometric redshift estimate\nTFORM6  = '1E      '           / 32-bit IEEE float (4 bytes)\nEND\n"
+  }
+]

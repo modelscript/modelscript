@@ -1,0 +1,11 @@
+{
+  "id": "rtds-04-grid-following-pv-inverter",
+  "lang": "rtds",
+  "subFormats": ["dft"],
+  "difficulty": 4,
+  "title": "Grid-Following PV Inverter with LCL Filter HIL Model",
+  "description": "Small-time-step (25 us) RTDS power-electronics HIL model of a grid-following solar PV inverter coupled to a stiff 13.8 kV grid through a damped LCL harmonic filter.",
+  "category": "Real-Time HIL Simulation",
+  "tags": ["rtds", "pv-inverter", "lcl-filter", "power-electronics", "hil"],
+  "activeFile": "pv_inverter_hil.dft"
+}

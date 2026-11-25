@@ -1,0 +1,12 @@
+{
+  "id": "pdb-01-agv-tripeptide",
+  "lang": "pdb",
+  "subFormats": ["pdb"],
+  "difficulty": 1,
+  "title": "Alanine-Glycine-Valine Tripeptide",
+  "description": "Idealized Ala-Gly-Val tripeptide in wwPDB v3.3 format with exact 1.33 A peptide C-N bonds and canonical right-handed backbone geometry.",
+  "category": "Structural Biology",
+  "tags": ["pdb", "peptide", "backbone", "protein-structure"],
+  "activeFile": "agv_tripeptide.pdb",
+  "isDefaultStarter": true
+}

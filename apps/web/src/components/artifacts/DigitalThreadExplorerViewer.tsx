@@ -27,7 +27,8 @@ export interface ThreadNode {
   uri?: string | undefined;
   line?: number | undefined;
   column?: number | undefined;
-  properties?: Record<string, any> | undefined;
+  conflictId?: string | number | undefined;
+  properties?: Record<string, unknown> | undefined;
 }
 
 export interface ThreadItem {
@@ -59,8 +60,16 @@ export interface ConflictDiagnostic {
   recommendation: string;
 }
 
+export interface DigitalThreadViewConfig {
+  twins?: DigitalThreadTwin[] | undefined;
+  threads?: ThreadItem[] | undefined;
+  domains?: string[] | undefined;
+  summary?: ThreadGraphData["summary"] | undefined;
+  [key: string]: unknown;
+}
+
 export interface DigitalThreadExplorerViewerProps {
-  viewConfig?: any;
+  viewConfig?: DigitalThreadViewConfig | null | undefined;
   isFullScreen?: boolean | undefined;
   onNodeSelected?: ((node: ThreadNode) => void) | undefined;
   twins?: DigitalThreadTwin[] | undefined;
@@ -213,8 +222,7 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
       // Deterministic client-side fallback from resolvedGraphData
       const matchedThread = resolvedGraphData?.threads.find(
         (t) =>
-          String(t.threadId) === conflictId ||
-          t.nodes.some((n) => String((n as any).conflictId ?? n.nodeId) === conflictId),
+          String(t.threadId) === conflictId || t.nodes.some((n) => String(n.conflictId ?? n.nodeId) === conflictId),
       );
       if (matchedThread && matchedThread.nodes.length > 0) {
         const srcNode = matchedThread.nodes[0]!;
@@ -281,7 +289,7 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
         const updatedThreads = resolvedGraphData.threads.map((t) => {
           const matches =
             String(t.threadId) === activeConflict.conflictId ||
-            t.nodes.some((n) => String((n as any).conflictId ?? n.nodeId) === activeConflict.conflictId);
+            t.nodes.some((n) => String(n.conflictId ?? n.nodeId) === activeConflict.conflictId);
           if (!matches) return t;
           return {
             ...t,
@@ -698,7 +706,7 @@ export const DigitalThreadExplorerViewer: React.FC<DigitalThreadExplorerViewerPr
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     void handleDiagnoseConflict(
-                                      String((node as any).conflictId ?? thread.threadId ?? node.nodeId),
+                                      String(node.conflictId ?? thread.threadId ?? node.nodeId),
                                     );
                                   }}
                                 >

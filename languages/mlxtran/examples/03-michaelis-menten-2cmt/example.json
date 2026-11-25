@@ -1,0 +1,12 @@
+{
+  "id": "mlxtran-03-michaelis-menten-2cmt",
+  "lang": "mlxtran",
+  "subFormats": ["mlxtran"],
+  "difficulty": 3,
+  "title": "Two-Compartment Nonlinear Michaelis-Menten Elimination",
+  "description": "Two-compartment pharmacokinetic ODE system with saturable Michaelis-Menten metabolic clearance (Vm, Km) and reversible peripheral tissue distribution.",
+  "category": "Pharmacometrics",
+  "tags": ["mlxtran", "michaelis-menten", "nonlinear-pk", "two-compartment", "multi-file"],
+  "activeFile": "mm_pk.mlxtran",
+  "fileOrder": ["mm_pk.mlxtran", "mm_data.csv"]
+}

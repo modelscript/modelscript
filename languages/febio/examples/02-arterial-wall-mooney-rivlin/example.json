@@ -1,0 +1,11 @@
+{
+  "id": "febio-02-arterial-wall-mooney-rivlin",
+  "lang": "febio",
+  "subFormats": ["feb"],
+  "difficulty": 2,
+  "title": "Mooney-Rivlin Arterial Wall Inflation Pressure Test",
+  "description": "Hyperelastic Mooney-Rivlin vascular wall patch subjected to physiological systolic blood pressure (16 kPa) on the luminal surface with clamped boundary edges.",
+  "category": "Soft-Tissue Biomechanics & FEA",
+  "tags": ["febio", "mooney-rivlin", "vascular", "pressure-load"],
+  "activeFile": "arterial_inflation.feb"
+}

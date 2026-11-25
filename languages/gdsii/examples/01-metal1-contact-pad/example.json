@@ -1,0 +1,12 @@
+{
+  "id": "gdsii-01-metal1-contact-pad",
+  "lang": "gdsii",
+  "subFormats": ["gds"],
+  "difficulty": 1,
+  "title": "Single Metal-1 Rectangular Contact Pad",
+  "description": "DRC-clean ASCII GDSII stream defining a Metal-1 interconnect landing pad with centered contact cut and pin label on a 1 nm database grid.",
+  "category": "IC Mask Primitives",
+  "tags": ["gdsii", "metal1", "contact", "drc-clean"],
+  "activeFile": "contact_pad.gds",
+  "isDefaultStarter": true
+}

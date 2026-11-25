@@ -1,0 +1,11 @@
+{
+  "id": "sel-05-coordinated-main-backup-package",
+  "lang": "sel",
+  "subFormats": ["rdb", "txt"],
+  "difficulty": 5,
+  "title": "Coordinated Main & Backup Substation Protection Package",
+  "description": "Multi-file substation protection package coordinating a JSON SEL-351 primary feeder relay (.rdb) with a JSON SEL-421 backup distance relay (.rdb) and shared ASCII SELogic breaker-failure transfer equations.",
+  "category": "Power System Protection",
+  "tags": ["sel", "rdb", "multi-file", "main-backup", "breaker-failure"],
+  "activeFile": "main_sel351.rdb"
+}

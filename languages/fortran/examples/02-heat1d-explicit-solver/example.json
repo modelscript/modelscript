@@ -1,0 +1,11 @@
+{
+  "id": "fortran-02-heat1d-explicit-solver",
+  "lang": "fortran",
+  "subFormats": ["fortran90"],
+  "difficulty": 2,
+  "title": "1D Explicit Heat Conduction Equation Solver",
+  "description": "Finite-difference FTCS explicit parabolic PDE solver for one-dimensional transient heat diffusion along an aluminum rod with fixed Dirichlet boundaries.",
+  "category": "Partial Differential Equations",
+  "tags": ["fortran", "heat-equation", "finite-difference", "pde"],
+  "activeFile": "heat1d.f90"
+}

@@ -1,0 +1,28 @@
+C Spacecraft Avionics Radiator Panel with Space-Sink Radiation
+HEADER OPTIONS DATA
+  TITLE = "Spacecraft Radiator Panel Thermal Network"
+  ABSZRO = 0.0
+  SIGMA = 5.670374419D-8
+HEADER NODE DATA, RAD
+  1, 310.0, 1200.0 $ Avionics payload baseplate
+  2, 305.0, 450.0  $ Embedded ammonia heat pipe saddle
+  3, 295.0, 680.0  $ Honeycomb radiator facesheet (1.5 m2)
+  4, 290.0, 0.0    $ Radiator arithmetic surface node
+  -100, 4.0, 0.0   $ Deep space radiation sink (4 K)
+HEADER CONDUCTOR DATA, RAD
+  10, 1, 2, 18.0   $ Bolted interface conductance (W/K)
+  11, 2, 3, 25.0   $ Heat-pipe effective conductance (W/K)
+  12, 3, 4, 42.0   $ Facesheet through-thickness conduction
+  -20, 4, 100, 1.38 $ Radiation RADK = eps*A*F (0.92 * 1.5 * 1.0)
+HEADER SOURCE DATA, RAD
+  1, 240.0         $ Avionics internal dissipation (W)
+  4, 65.0          $ Absorbed solar + Earth IR environmental load (W)
+HEADER CONSTANTS DATA
+  TIMEO = 0.0, TIMEND = 1800.0, DTIMEI = 5.0
+  DRLXCA = 1.0E-6, NLOOP = 200
+HEADER EXECUTION
+  CALL STDSTL
+  CALL CRANKN
+HEADER OUTPUT CALLS
+  CALL TPRINT
+END OF DATA

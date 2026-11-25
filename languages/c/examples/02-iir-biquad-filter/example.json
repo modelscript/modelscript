@@ -1,0 +1,11 @@
+{
+  "id": "c-02-iir-biquad-filter",
+  "lang": "c",
+  "subFormats": ["c99"],
+  "difficulty": 2,
+  "title": "Second-Order IIR Biquad Digital Filter",
+  "description": "Direct-Form II Transposed biquadratic infinite-impulse-response digital filter in C99 for real-time sensor anti-aliasing and notch attenuation.",
+  "category": "Digital Signal Processing",
+  "tags": ["c", "dsp", "biquad", "iir-filter"],
+  "activeFile": "biquad.c"
+}
