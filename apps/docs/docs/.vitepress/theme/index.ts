@@ -46,8 +46,16 @@ export default {
       defineAsyncComponent(() => import("./components/LanguageBenchmarks.vue")),
     );
     app.component(
+      "HomeWhatsNew",
+      defineAsyncComponent(() => import("./components/HomeWhatsNew.vue")),
+    );
+    app.component(
       "HomeStats",
       defineAsyncComponent(() => import("./components/HomeStats.vue")),
+    );
+    app.component(
+      "HomeBenchmarks",
+      defineAsyncComponent(() => import("./components/HomeBenchmarks.vue")),
     );
     app.component(
       "HomeFormatStrip",

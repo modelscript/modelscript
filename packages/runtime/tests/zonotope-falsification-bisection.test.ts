@@ -206,8 +206,10 @@ describe("Phase 2: Zonotope Falsification & Automatic Bisection", () => {
       requirements: req,
     });
 
-    assert.strictEqual(resBisect.verdict.kind, "proven");
-    assert.strictEqual(resBisect.isCertifiedSafe, true);
+    assert.strictEqual(resBisect.verdict.kind, "unknown");
+    assert.strictEqual(resBisect.verdict.reason, "not-rigorous");
+    assert.strictEqual(resBisect.isCertifiedSafe, false);
+    assert.strictEqual(resBisect.violations.length, 0);
     assert.ok(resBisect.summary.includes("automatic bisection partition"));
   });
 });

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import Database from "better-sqlite3";
 import { DataFactory, Store as N3Store } from "n3";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -452,23 +451,43 @@ describe("Triplestore Scalability & Performance Benchmark Suite", () => {
     const msIngestMs = performance.now() - tMsIngest0;
     const msMatches = wasm.ontology_queryTriplesBitmap!(0, rdfTypeId, targetClassId);
 
-    // 2. SQLite3 C B-Tree Ingest + Query
-    const sqliteDb = new Database(":memory:");
-    sqliteDb.exec(`
-      CREATE TABLE triples (s TEXT NOT NULL, p TEXT NOT NULL, o TEXT NOT NULL);
-      CREATE INDEX idx_spo ON triples (s, p, o);
-      CREATE INDEX idx_pos ON triples (p, o, s);
-    `);
-    const ins = sqliteDb.prepare("INSERT INTO triples (s, p, o) VALUES (?, ?, ?)");
-    const bulkTx = sqliteDb.transaction(() => {
-      for (let i = 0; i < N; i++) {
-        ins.run(subjIris[i]!, rdfTypeIri, (i & 3) === 0 ? targetClassIri : otherClassIri);
-      }
-    });
-    const tSqlIngest0 = performance.now();
-    bulkTx();
-    const sqlIngestMs = performance.now() - tSqlIngest0;
-    const sqlMatches = sqliteDb.prepare("SELECT s FROM triples WHERE p = ? AND o = ?").all(rdfTypeIri, targetClassIri);
+    // 2. SQLite3 C B-Tree Ingest + Query (when optional package is installed)
+    interface SqliteStmt {
+      run: (...args: unknown[]) => void;
+      get: (...args: unknown[]) => unknown;
+      all: (...args: unknown[]) => unknown[];
+    }
+    interface SqliteDb {
+      exec: (sql: string) => void;
+      prepare: (sql: string) => SqliteStmt;
+      transaction: (fn: () => void) => () => void;
+      close: () => void;
+    }
+    let sqliteDb: SqliteDb | null = null;
+    let ins: SqliteStmt | null = null;
+    let sqlIngestMs = Number.POSITIVE_INFINITY;
+    let sqlMatches: unknown[] | null = null;
+    try {
+      const sqliteMod = (await import("better-sqlite3" as string)) as { default: new (path: string) => SqliteDb };
+      sqliteDb = new sqliteMod.default(":memory:");
+      sqliteDb.exec(`
+        CREATE TABLE triples (s TEXT NOT NULL, p TEXT NOT NULL, o TEXT NOT NULL);
+        CREATE INDEX idx_spo ON triples (s, p, o);
+        CREATE INDEX idx_pos ON triples (p, o, s);
+      `);
+      ins = sqliteDb.prepare("INSERT INTO triples (s, p, o) VALUES (?, ?, ?)");
+      const bulkTx = sqliteDb.transaction(() => {
+        for (let i = 0; i < N; i++) {
+          ins!.run(subjIris[i]!, rdfTypeIri, (i & 3) === 0 ? targetClassIri : otherClassIri);
+        }
+      });
+      const tSqlIngest0 = performance.now();
+      bulkTx();
+      sqlIngestMs = performance.now() - tSqlIngest0;
+      sqlMatches = sqliteDb.prepare("SELECT s FROM triples WHERE p = ? AND o = ?").all(rdfTypeIri, targetClassIri);
+    } catch {
+      // Optional benchmark baseline not installed
+    }
 
     // 3. N3.js Store Ingest + Query
     const n3Store = new N3Store();
@@ -499,7 +518,9 @@ describe("Triplestore Scalability & Performance Benchmark Suite", () => {
 
     // Verify 100% result parity across engines
     assert.equal(msMatches, N / 4);
-    assert.equal(sqlMatches.length, msMatches);
+    if (sqlMatches) {
+      assert.equal(sqlMatches.length, msMatches);
+    }
     assert.equal(n3Matches.length, msMatches);
     if (comunica) {
       const comStream = await comunica.queryBindings(`SELECT ?s WHERE { ?s <${rdfTypeIri}> <${targetClassIri}> }`, {
@@ -521,13 +542,13 @@ describe("Triplestore Scalability & Performance Benchmark Suite", () => {
       const cSub = `http://modelscript.org/scale#Class_${i + 1}`;
       const cSup = `http://modelscript.org/scale#Class_${i}`;
       msStore.addAxiomDirect64(AXIOM_SUBCLASS_OF, LANG_OWL2, cSub, subClassIri, cSup);
-      ins.run(cSub, subClassIri, cSup);
+      ins?.run(cSub, subClassIri, cSup);
       n3Store.addQuad(namedNode(cSub), namedNode(subClassIri), namedNode(cSup));
 
       const pSrc = `http://modelscript.org/scale#Part_${i}`;
       const pDst = `http://modelscript.org/scale#Part_${i + 1}`;
       msStore.addAxiomDirect64(AXIOM_OBJ_PROP_ASSERT, LANG_SYSML2, pSrc, partOfIri, pDst);
-      ins.run(pSrc, partOfIri, pDst);
+      ins?.run(pSrc, partOfIri, pDst);
       n3Store.addQuad(namedNode(pSrc), namedNode(partOfIri), namedNode(pDst));
     }
 
@@ -540,36 +561,39 @@ describe("Triplestore Scalability & Performance Benchmark Suite", () => {
     const msSubsumed = wasm.ontology_isSubClassOf!(leafId, rootId) === 1;
     const msPathCount = wasm.ontology_evaluatePropertyPath!(partOfId, PATH_OP_PLUS, 0, part0Id);
 
-    const sqlSubRow = sqliteDb
-      .prepare(
-        `WITH RECURSIVE anc(c) AS (
-          SELECT o FROM triples WHERE s = ? AND p = ?
-          UNION
-          SELECT t.o FROM anc JOIN triples t ON anc.c = t.s WHERE t.p = ?
-        ) SELECT 1 AS ok FROM anc WHERE c = ? LIMIT 1`,
-      )
-      .get(
-        `http://modelscript.org/scale#Class_${hops}`,
-        subClassIri,
-        subClassIri,
-        "http://modelscript.org/scale#Class_0",
-      ) as { ok: number } | undefined;
-
-    const sqlPathRows = sqliteDb
-      .prepare(
-        `WITH RECURSIVE reach(n) AS (
-          SELECT o FROM triples WHERE s = ? AND p = ?
-          UNION
-          SELECT t.o FROM reach JOIN triples t ON reach.n = t.s WHERE t.p = ?
-        ) SELECT n FROM reach`,
-      )
-      .all("http://modelscript.org/scale#Part_0", partOfIri, partOfIri);
-    sqliteDb.close();
-
     assert.equal(msSubsumed, true);
-    assert.equal(sqlSubRow?.ok === 1, true);
     assert.equal(msPathCount, hops);
-    assert.equal(sqlPathRows.length, hops);
+
+    if (sqliteDb) {
+      const sqlSubRow = sqliteDb
+        .prepare(
+          `WITH RECURSIVE anc(c) AS (
+            SELECT o FROM triples WHERE s = ? AND p = ?
+            UNION
+            SELECT t.o FROM anc JOIN triples t ON anc.c = t.s WHERE t.p = ?
+          ) SELECT 1 AS ok FROM anc WHERE c = ? LIMIT 1`,
+        )
+        .get(
+          `http://modelscript.org/scale#Class_${hops}`,
+          subClassIri,
+          subClassIri,
+          "http://modelscript.org/scale#Class_0",
+        ) as { ok: number } | undefined;
+
+      const sqlPathRows = sqliteDb
+        .prepare(
+          `WITH RECURSIVE reach(n) AS (
+            SELECT o FROM triples WHERE s = ? AND p = ?
+            UNION
+            SELECT t.o FROM reach JOIN triples t ON reach.n = t.s WHERE t.p = ?
+          ) SELECT n FROM reach`,
+        )
+        .all("http://modelscript.org/scale#Part_0", partOfIri, partOfIri);
+      sqliteDb.close();
+
+      assert.equal(sqlSubRow?.ok === 1, true);
+      assert.equal(sqlPathRows.length, hops);
+    }
 
     if (comunica) {
       const comSubsumed = await comunica.queryBoolean(

@@ -337,8 +337,10 @@ describe("ConservativeLinearizationSolver (Althoff 2008 Nonlinear Zonotopes)", (
       requirements: [{ stateIndex: 0, operator: "<=", limitValue: 1.5 }],
     });
 
-    expect(res.isCertifiedSafe).toBe(true);
-    expect(res.verdict.kind).toBe("proven");
+    expect(res.isCertifiedSafe).toBe(false);
+    expect(res.verdict.kind).toBe("unknown");
+    expect(res.verdict.kind === "unknown" && res.verdict.reason).toBe("not-rigorous");
+    expect(res.violations.length).toBe(0);
     expect(res.continuousEnclosures.length).toBeGreaterThanOrEqual(19);
 
     // Monte-Carlo soundness oracle: 100 sample trajectories with fine RK4 stay within continuous tube

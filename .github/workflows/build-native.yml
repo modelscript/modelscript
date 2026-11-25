@@ -129,6 +129,7 @@ jobs:
       - name: Build platform-native VS Code extension (${{ matrix.target }})
         shell: bash
         run: |
+          pnpm --filter @modelscript/ide-client^... run build
           npx tsx apps/ide/scripts/build-extension.ts \
             --target="${{ matrix.target }}" \
             --outdir="apps/ide/dist/extension-${{ matrix.target }}" \
@@ -184,6 +185,7 @@ jobs:
 
       - name: Build pure-WASM web extension
         run: |
+          pnpm --filter @modelscript/ide-client^... run build
           npx tsx apps/ide/scripts/build-extension.ts \
             --target=web \
             --outdir="apps/ide/dist/extension-web"

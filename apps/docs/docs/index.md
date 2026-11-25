@@ -36,7 +36,11 @@ import {
 } from "./.vitepress/theme/data/feature-flags";
 </script>
 
+<HomeWhatsNew />
+
 <HomeStats />
+
+<HomeBenchmarks />
 
 <HomeFormatStrip />
 

@@ -1005,20 +1005,23 @@ export class ConservativeLinearizationSolver {
           });
           if (resB.verdict.kind === "violated") return resB;
 
-          if (resA.verdict.kind === "proven" && resB.verdict.kind === "proven") {
+          const aClear = resA.verdict.kind === "unknown" && resA.verdict.reason === "not-rigorous";
+          const bClear = resB.verdict.kind === "unknown" && resB.verdict.reason === "not-rigorous";
+          if (aClear && bClear) {
             return {
               verdict: {
-                kind: "proven",
-                rigor: "float-sound",
-                detail: `Certified safe via automatic zonotope bisection across ${resA.totalSteps + resB.totalSteps} steps (all sub-partitions safe).`,
+                kind: "unknown",
+                reason: "not-rigorous",
+                rigor: "heuristic",
+                detail: `No requirement breach detected via automatic zonotope bisection across ${resA.totalSteps + resB.totalSteps} steps (unrounded start-of-step linearization; not formally certified).`,
               },
-              isCertifiedSafe: true,
+              isCertifiedSafe: false,
               totalSteps: resA.totalSteps + resB.totalSteps,
               steps: [...resA.steps, ...resB.steps],
               continuousEnclosures: [...resA.continuousEnclosures, ...resB.continuousEnclosures],
               violations: [],
               durationMs: performance.now() - tStart,
-              summary: `Certified safe via automatic bisection partition (depth <= ${options.maxBisectionDepth}).`,
+              summary: `No requirement breach detected via automatic bisection partition (depth <= ${options.maxBisectionDepth}; not formally certified).`,
             };
           }
         }

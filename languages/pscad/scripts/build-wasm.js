@@ -2,10 +2,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { writeFormattedTsIfChanged } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { runLanguageWasmBuild } from "../../../scripts/build/build-language-wasm.js";
 
-const pscadDir = new URL("..", import.meta.url).pathname;
+const pscadDir = fileURLToPath(new URL("..", import.meta.url));
 
 runLanguageWasmBuild({
   langName: "pscad",

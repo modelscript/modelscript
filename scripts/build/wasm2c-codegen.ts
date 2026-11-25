@@ -16,10 +16,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
+const DEFAULT_WABT_VERSION = process.platform === "darwin" && process.arch === "x64" ? "1.0.36" : "1.0.39";
+
 const WABT_VERSION =
   process.argv.find((a) => a.startsWith("--wabt-version="))?.split("=")[1] ??
   process.env["WABT_VERSION"] ??
-  "1.0.36";
+  DEFAULT_WABT_VERSION;
 
 const SKIP_ASC = process.argv.includes("--skip-asc");
 const INCLUDE_LANGUAGES = process.argv.includes("--include-languages");
@@ -102,10 +104,19 @@ const TARGETS: WasmTargetSpec[] = INCLUDE_LANGUAGES ? [...CORE_TARGETS, ...LANGU
 function getWabtAssetName(): string {
   const p = process.platform;
   const a = process.arch;
-  if (p === "linux" && a === "x64") return `wabt-${WABT_VERSION}-ubuntu-20.04.tar.gz`;
-  if (p === "darwin" && a === "arm64") return `wabt-${WABT_VERSION}-macos-14.tar.gz`;
-  if (p === "darwin" && a === "x64") return `wabt-${WABT_VERSION}-macos-12.tar.gz`;
-  if (p === "win32" && a === "x64") return `wabt-${WABT_VERSION}-windows.tar.gz`;
+  const [maj, min, pat] = WABT_VERSION.split(".").map((n) => Number(n));
+  const is139Plus = (maj ?? 0) > 1 || ((maj ?? 0) === 1 && ((min ?? 0) > 0 || (pat ?? 0) >= 39));
+  if (p === "linux" && a === "x64") {
+    return is139Plus ? `wabt-${WABT_VERSION}-linux-x64.tar.gz` : `wabt-${WABT_VERSION}-ubuntu-20.04.tar.gz`;
+  }
+  if (p === "linux" && a === "arm64" && is139Plus) {
+    return `wabt-${WABT_VERSION}-linux-arm64.tar.gz`;
+  }
+  if (p === "darwin" && a === "arm64") return `wabt-${WABT_VERSION}-macos-arm64.tar.gz`;
+  if (p === "darwin" && a === "x64" && !is139Plus) return `wabt-${WABT_VERSION}-macos-12.tar.gz`;
+  if (p === "win32" && a === "x64") {
+    return is139Plus ? `wabt-${WABT_VERSION}-windows-x64.tar.gz` : `wabt-${WABT_VERSION}-windows.tar.gz`;
+  }
   throw new Error(
     `No prebuilt WABT ${WABT_VERSION} archive known for ${p}-${a}. Install wabt via system package manager and set WASM2C_BIN.`,
   );
@@ -121,20 +132,35 @@ async function downloadFile(url: string, dest: string): Promise<void> {
   fs.writeFileSync(dest, buf);
 }
 
+function isWabtVersionAtLeast(version: string, minMinorPatch: [number, number, number]): boolean {
+  const parts = version.split(".").map((n) => Number(n));
+  for (let i = 0; i < 3; i++) {
+    const a = parts[i] ?? 0;
+    const b = minMinorPatch[i] ?? 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return true;
+}
+
 async function ensureWasm2c(): Promise<string> {
   if (process.env["WASM2C_BIN"] && fs.existsSync(process.env["WASM2C_BIN"])) {
     return process.env["WASM2C_BIN"];
   }
 
-  // Check PATH first
+  // Check PATH first (must be runnable and >= 1.0.36 so runtime C files match)
   try {
     const cmd = process.platform === "win32" ? "where" : "which";
     const found = execFileSync(cmd, ["wasm2c"], { encoding: "utf8" }).trim().split(/\r?\n/)[0];
     if (found && fs.existsSync(found)) {
-      return found;
+      const verOut = execFileSync(found, ["--version"], { encoding: "utf8" }).trim();
+      const m = verOut.match(/(\d+\.\d+\.\d+)/);
+      if (m && isWabtVersionAtLeast(m[1]!, [1, 0, 36])) {
+        return found;
+      }
     }
   } catch {
-    // Not on PATH — fall through to cached download
+    // Not on PATH or too old — fall through to cached download
   }
 
   const exe = process.platform === "win32" ? "wasm2c.exe" : "wasm2c";
