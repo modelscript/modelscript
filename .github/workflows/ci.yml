@@ -89,7 +89,7 @@ jobs:
         if: steps.cache-fmusim.outputs.cache-hit != 'true'
         run: pnpm --filter @modelscript/exchange run fetch:fmusim
       - name: Build Prerequisites
-        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica,@modelscript/psse
+        run: npx nx run-many -t build --projects=@modelscript/dsl,@modelscript/runtime,@modelscript/modelica,@modelscript/psse,@modelscript/mps,@modelscript/cad
       - name: Run Sharded Tests
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ] || ( [ -n "$NX_BASE" ] && git rev-parse --verify "$NX_BASE" >/dev/null 2>&1 ); then

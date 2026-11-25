@@ -124,10 +124,34 @@ export type RotundaCueKind =
   | "magnet-lock"
   | "magnet-reject"
   | "materialize"
-  | "wire-pop";
+  | "wire-pop"
+  | "stockroom-open"
+  | "arena-rotate";
 
 let sharedAudioCtx: AudioContext | null = null;
 let sharedNoiseBuf: AudioBuffer | null = null;
+
+/**
+ * Returns (and lazily creates) the shared Web Audio `AudioContext` for the VR Rotunda,
+ * keeping a single OS audio stream on Quest 2 / mobile browsers. Safe in SSR/JSDOM.
+ */
+export function getSharedRotundaAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const AudioCtx =
+    window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return null;
+  try {
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new AudioCtx();
+    }
+    if (sharedAudioCtx.state === "suspended") {
+      void sharedAudioCtx.resume().catch(() => undefined);
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
 
 function getNoiseBuffer(ctx: AudioContext): AudioBuffer | null {
   try {
@@ -147,51 +171,90 @@ function getNoiseBuffer(ctx: AudioContext): AudioBuffer | null {
 
 /**
  * Plays a subtle, muted procedural micro-audio cue (mechanical detent tick, orbital page whoosh,
- * glass click, environment shimmer, magnetic wire latch, force-pull whoosh, or 3D component materialization chime)
- * using Web Audio API with zero asset downloads. Silently no-ops in headless/SSR or when autoplay is locked.
+ * glass click, environment shimmer, magnetic wire latch, force-pull whoosh, Matrix stockroom rack rush,
+ * 180° arena rotation glide, or 3D component materialization chime) using Web Audio API with zero asset downloads.
  */
 export function playRotundaCue(kind: RotundaCueKind): void {
-  if (typeof window === "undefined") return;
-  const AudioCtx =
-    window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioCtx) return;
+  const ctx = getSharedRotundaAudioContext();
+  if (!ctx) return;
 
   try {
-    if (!sharedAudioCtx) {
-      sharedAudioCtx = new AudioCtx();
-    }
-    if (sharedAudioCtx.state === "suspended") {
-      void sharedAudioCtx.resume().catch(() => undefined);
-    }
-    const now = sharedAudioCtx.currentTime;
+    const now = ctx.currentTime;
 
-    if (kind === "whoosh") {
-      const noiseBuf = getNoiseBuffer(sharedAudioCtx);
+    if (kind === "arena-rotate") {
+      // Soothing architectural turntable servo glide + soft harmonic arrival chime
+      const glide = ctx.createOscillator();
+      const glideGain = ctx.createGain();
+      glide.type = "sine";
+      glide.frequency.setValueAtTime(140, now);
+      glide.frequency.exponentialRampToValueAtTime(220, now + 0.26);
+      glide.frequency.exponentialRampToValueAtTime(165, now + 0.52);
+      glideGain.gain.setValueAtTime(0.001, now);
+      glideGain.gain.linearRampToValueAtTime(0.032, now + 0.14);
+      glideGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.56);
+      glide.connect(glideGain);
+      glideGain.connect(ctx.destination);
+      glide.start(now);
+      glide.stop(now + 0.58);
+
+      const chime = ctx.createOscillator();
+      const chimeGain = ctx.createGain();
+      chime.type = "triangle";
+      chime.frequency.setValueAtTime(528, now + 0.34);
+      chime.frequency.exponentialRampToValueAtTime(660, now + 0.54);
+      chimeGain.gain.setValueAtTime(0.0001, now + 0.34);
+      chimeGain.gain.linearRampToValueAtTime(0.022, now + 0.38);
+      chimeGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.68);
+      chime.connect(chimeGain);
+      chimeGain.connect(ctx.destination);
+      chime.start(now + 0.34);
+      chime.stop(now + 0.7);
+      return;
+    }
+
+    if (kind === "whoosh" || kind === "stockroom-open") {
+      const noiseBuf = getNoiseBuffer(ctx);
       if (noiseBuf) {
-        const src = sharedAudioCtx.createBufferSource();
+        const src = ctx.createBufferSource();
         src.buffer = noiseBuf;
-        const filter = sharedAudioCtx.createBiquadFilter();
+        const filter = ctx.createBiquadFilter();
         filter.type = "bandpass";
-        filter.Q.setValueAtTime(1.8, now);
-        filter.frequency.setValueAtTime(320, now);
-        filter.frequency.exponentialRampToValueAtTime(1650, now + 0.14);
-        const gain = sharedAudioCtx.createGain();
+        filter.Q.setValueAtTime(kind === "stockroom-open" ? 2.4 : 1.8, now);
+        filter.frequency.setValueAtTime(kind === "stockroom-open" ? 220 : 320, now);
+        filter.frequency.exponentialRampToValueAtTime(kind === "stockroom-open" ? 2400 : 1650, now + 0.16);
+        const gain = ctx.createGain();
         gain.gain.setValueAtTime(0.001, now);
-        gain.gain.linearRampToValueAtTime(0.055, now + 0.045);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.19);
+        gain.gain.linearRampToValueAtTime(kind === "stockroom-open" ? 0.068 : 0.055, now + 0.045);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
         src.connect(filter);
         filter.connect(gain);
-        gain.connect(sharedAudioCtx.destination);
+        gain.connect(ctx.destination);
         src.start(now);
-        src.stop(now + 0.2);
-        return;
+        src.stop(now + 0.24);
       }
+      if (kind === "stockroom-open") {
+        // Staggered Matrix rack-lock chrome clicks
+        for (const offset of [0.16, 0.26, 0.36]) {
+          const click = ctx.createOscillator();
+          const cg = ctx.createGain();
+          click.connect(cg);
+          cg.connect(ctx.destination);
+          click.type = "triangle";
+          click.frequency.setValueAtTime(520 + offset * 700, now + offset);
+          click.frequency.exponentialRampToValueAtTime(240, now + offset + 0.03);
+          cg.gain.setValueAtTime(0.026, now + offset);
+          cg.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.036);
+          click.start(now + offset);
+          click.stop(now + offset + 0.04);
+        }
+      }
+      return;
     }
 
-    const osc = sharedAudioCtx.createOscillator();
-    const gain = sharedAudioCtx.createGain();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
     osc.connect(gain);
-    gain.connect(sharedAudioCtx.destination);
+    gain.connect(ctx.destination);
 
     switch (kind) {
       case "hover": {
@@ -253,10 +316,10 @@ export function playRotundaCue(kind: RotundaCueKind): void {
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.042);
         osc.start(now);
         osc.stop(now + 0.048);
-        const pop = sharedAudioCtx.createOscillator();
-        const popGain = sharedAudioCtx.createGain();
+        const pop = ctx.createOscillator();
+        const popGain = ctx.createGain();
         pop.connect(popGain);
-        popGain.connect(sharedAudioCtx.destination);
+        popGain.connect(ctx.destination);
         pop.type = "sine";
         pop.frequency.setValueAtTime(140, now);
         pop.frequency.exponentialRampToValueAtTime(65, now + 0.024);
@@ -285,10 +348,10 @@ export function playRotundaCue(kind: RotundaCueKind): void {
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.075);
         osc.start(now);
         osc.stop(now + 0.08);
-        const osc2 = sharedAudioCtx.createOscillator();
-        const gain2 = sharedAudioCtx.createGain();
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
         osc2.connect(gain2);
-        gain2.connect(sharedAudioCtx.destination);
+        gain2.connect(ctx.destination);
         osc2.type = "triangle";
         osc2.frequency.setValueAtTime(1480, now + 0.008);
         osc2.frequency.exponentialRampToValueAtTime(1760, now + 0.062);
@@ -296,10 +359,10 @@ export function playRotundaCue(kind: RotundaCueKind): void {
         gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.072);
         osc2.start(now + 0.008);
         osc2.stop(now + 0.078);
-        const clack = sharedAudioCtx.createOscillator();
-        const clackGain = sharedAudioCtx.createGain();
+        const clack = ctx.createOscillator();
+        const clackGain = ctx.createGain();
         clack.connect(clackGain);
-        clackGain.connect(sharedAudioCtx.destination);
+        clackGain.connect(ctx.destination);
         clack.type = "square";
         clack.frequency.setValueAtTime(220, now);
         clack.frequency.exponentialRampToValueAtTime(90, now + 0.015);
@@ -328,10 +391,10 @@ export function playRotundaCue(kind: RotundaCueKind): void {
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.15);
         osc.start(now);
         osc.stop(now + 0.16);
-        const shimmer = sharedAudioCtx.createOscillator();
-        const shimmerGain = sharedAudioCtx.createGain();
+        const shimmer = ctx.createOscillator();
+        const shimmerGain = ctx.createGain();
         shimmer.connect(shimmerGain);
-        shimmerGain.connect(sharedAudioCtx.destination);
+        shimmerGain.connect(ctx.destination);
         shimmer.type = "triangle";
         shimmer.frequency.setValueAtTime(1320, now + 0.04);
         shimmer.frequency.exponentialRampToValueAtTime(1760, now + 0.13);

@@ -213,77 +213,8 @@ export function PartMaterial({
       : pbrMaps.roughness
     : null;
 
-  const prevStateRef = useRef<{
-    hasClipping: boolean;
-    vertexColors: boolean;
-    hasMap: boolean;
-    hasNormalMap: boolean;
-    hasRoughnessMap: boolean;
-  }>({
-    hasClipping,
-    vertexColors: activeVertexColors,
-    hasMap: activeContourMap !== null,
-    hasNormalMap: activeNormalMap !== null,
-    hasRoughnessMap: activeRoughnessMap !== null,
-  });
-
-  // Ensure Three.js recompiles shader ONLY when shader-define flags actually toggle
-  useEffect(() => {
-    const mat = matRef.current;
-    if (!mat) return;
-    mat.clippingPlanes = effectivePlanes;
-    mat.vertexColors = activeVertexColors;
-    mat.map = activeContourMap;
-    mat.normalMap = activeNormalMap;
-    mat.roughnessMap = activeRoughnessMap;
-    const prev = prevStateRef.current;
-    const hasMap = activeContourMap !== null;
-    const hasNormalMap = activeNormalMap !== null;
-    const hasRoughnessMap = activeRoughnessMap !== null;
-    if (
-      prev.hasClipping !== hasClipping ||
-      prev.vertexColors !== activeVertexColors ||
-      prev.hasMap !== hasMap ||
-      prev.hasNormalMap !== hasNormalMap ||
-      prev.hasRoughnessMap !== hasRoughnessMap
-    ) {
-      prevStateRef.current = {
-        hasClipping,
-        vertexColors: activeVertexColors,
-        hasMap,
-        hasNormalMap,
-        hasRoughnessMap,
-      };
-      mat.needsUpdate = true;
-    }
-  }, [
-    effectivePlanes,
-    hasClipping,
-    activeVertexColors,
-    activeContourMap,
-    activeNormalMap,
-    activeRoughnessMap,
-    isGhost,
-    renderStyle,
-  ]);
-
-  if (isGhost) {
-    return (
-      <meshStandardMaterial
-        ref={matRef}
-        color="#38bdf8"
-        emissive="#1d4ed8"
-        emissiveIntensity={0.55}
-        metalness={0.2}
-        roughness={0.25}
-        transparent={true}
-        opacity={clampNumber(ghostOpacity, 0.05, 0.85)}
-        depthWrite={false}
-        wireframe={renderStyle === "wireframe"}
-        side={doubleSide ? THREE.DoubleSide : THREE.FrontSide}
-      />
-    );
-  }
+  const isWireframe = renderStyle === "wireframe";
+  const isXray = renderStyle === "xray";
 
   let resolvedColor = surface.color;
   let resolvedEmissive = emissive;
@@ -296,7 +227,18 @@ export function PartMaterial({
   let resolvedIridescence = surface.iridescence;
   let resolvedEnvMapIntensity = surface.envMapIntensity;
 
-  if (activeVertexColors) {
+  if (isGhost) {
+    resolvedColor = "#38bdf8";
+    resolvedEmissive = "#1d4ed8";
+    resolvedEmissiveIntensity = 0.55;
+    resolvedMetalness = 0.2;
+    resolvedRoughness = 0.25;
+    resolvedClearcoat = 0;
+    resolvedClearcoatRoughness = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
+    resolvedEnvMapIntensity = 0.6;
+  } else if (activeVertexColors) {
     // Let the true per-vertex Von Mises / CFD Cp / Thermal colors define the surface cleanly
     resolvedColor = "#ffffff";
     resolvedEmissive = "#000000";
@@ -341,78 +283,152 @@ export function PartMaterial({
     resolvedEmissiveIntensity = Math.max(emissiveIntensity, 0.08);
   }
 
-  if (renderStyle === "wireframe") {
-    const wireColor = caeOverlay === "none" ? "#22d3ee" : resolvedColor;
-    return (
-      <meshStandardMaterial
-        ref={matRef}
-        color={wireColor}
-        emissive={caeOverlay === "none" ? "#06b6d4" : resolvedColor}
-        emissiveIntensity={0.78}
-        metalness={0.2}
-        roughness={0.3}
-        wireframe={true}
-        transparent={true}
-        opacity={0.92}
-        clippingPlanes={effectivePlanes}
-        clipShadows={true}
-      />
-    );
+  if (!isGhost && isWireframe) {
+    resolvedColor = caeOverlay === "none" ? "#22d3ee" : resolvedColor;
+    resolvedEmissive = caeOverlay === "none" ? "#06b6d4" : resolvedColor;
+    resolvedEmissiveIntensity = 0.78;
+    resolvedMetalness = 0.2;
+    resolvedRoughness = 0.3;
+    resolvedClearcoat = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
+  } else if (!isGhost && isXray) {
+    resolvedColor = caeOverlay === "none" ? "#38bdf8" : resolvedColor;
+    resolvedEmissive = caeOverlay === "none" ? "#0ea5e9" : resolvedColor;
+    resolvedEmissiveIntensity = 0.42;
+    resolvedMetalness = 0.12;
+    resolvedRoughness = 0.18;
+    resolvedClearcoat = 0;
+    resolvedAnisotropy = 0;
+    resolvedIridescence = 0;
   }
 
-  if (renderStyle === "xray") {
-    const xrayColor = caeOverlay === "none" ? "#38bdf8" : resolvedColor;
-    return (
-      <meshStandardMaterial
-        ref={matRef}
-        color={xrayColor}
-        emissive={caeOverlay === "none" ? "#0ea5e9" : resolvedColor}
-        emissiveIntensity={0.42}
-        metalness={0.12}
-        roughness={0.18}
-        transparent={true}
-        opacity={0.28}
-        depthWrite={false}
-        side={THREE.DoubleSide}
-        clippingPlanes={effectivePlanes}
-        clipShadows={true}
-      />
-    );
-  }
+  const resolvedTransparent = isGhost || isWireframe || isXray;
+  const resolvedOpacity = isGhost ? clampNumber(ghostOpacity, 0.05, 0.85) : isWireframe ? 0.92 : isXray ? 0.28 : 1.0;
+  const resolvedDepthWrite = !isGhost && !isXray;
+  const resolvedSide =
+    isXray || (!isGhost && (hasClipping || doubleSide)) || (isGhost && doubleSide) ? THREE.DoubleSide : THREE.FrontSide;
+
+  const prevStateRef = useRef<{
+    hasClipping: boolean;
+    vertexColors: boolean;
+    hasMap: boolean;
+    hasNormalMap: boolean;
+    hasRoughnessMap: boolean;
+    wireframe: boolean;
+    transparent: boolean;
+    side: THREE.Side;
+  }>({
+    hasClipping,
+    vertexColors: activeVertexColors,
+    hasMap: activeContourMap !== null,
+    hasNormalMap: activeNormalMap !== null,
+    hasRoughnessMap: activeRoughnessMap !== null,
+    wireframe: isWireframe,
+    transparent: resolvedTransparent,
+    side: resolvedSide,
+  });
+
+  // Synchronize Three.js material flags explicitly so wireframe <-> xray <-> shaded never leaves stale state
+  useEffect(() => {
+    const mat = matRef.current;
+    if (!mat) return;
+    mat.clippingPlanes = effectivePlanes;
+    mat.vertexColors = activeVertexColors;
+    mat.map = activeContourMap;
+    mat.normalMap = activeNormalMap;
+    mat.roughnessMap = activeRoughnessMap;
+    mat.wireframe = isWireframe;
+    mat.transparent = resolvedTransparent;
+    mat.opacity = resolvedOpacity;
+    mat.depthWrite = resolvedDepthWrite;
+    mat.side = resolvedSide;
+    const prev = prevStateRef.current;
+    const hasMap = activeContourMap !== null;
+    const hasNormalMap = activeNormalMap !== null;
+    const hasRoughnessMap = activeRoughnessMap !== null;
+    if (
+      prev.hasClipping !== hasClipping ||
+      prev.vertexColors !== activeVertexColors ||
+      prev.hasMap !== hasMap ||
+      prev.hasNormalMap !== hasNormalMap ||
+      prev.hasRoughnessMap !== hasRoughnessMap ||
+      prev.wireframe !== isWireframe ||
+      prev.transparent !== resolvedTransparent ||
+      prev.side !== resolvedSide
+    ) {
+      prevStateRef.current = {
+        hasClipping,
+        vertexColors: activeVertexColors,
+        hasMap,
+        hasNormalMap,
+        hasRoughnessMap,
+        wireframe: isWireframe,
+        transparent: resolvedTransparent,
+        side: resolvedSide,
+      };
+      mat.needsUpdate = true;
+    }
+  }, [
+    effectivePlanes,
+    hasClipping,
+    activeVertexColors,
+    activeContourMap,
+    activeNormalMap,
+    activeRoughnessMap,
+    isWireframe,
+    resolvedTransparent,
+    resolvedOpacity,
+    resolvedDepthWrite,
+    resolvedSide,
+    isInXr,
+  ]);
 
   if (isInXr) {
     return (
       <meshStandardMaterial
+        key="part-xr-std"
         ref={matRef}
         color={resolvedColor}
-        {...(activeContourMap ? { map: activeContourMap } : {})}
-        {...(activeNormalMap ? { normalMap: activeNormalMap, normalScale: activeNormalScale } : {})}
-        {...(activeRoughnessMap ? { roughnessMap: activeRoughnessMap } : {})}
+        map={activeContourMap}
+        normalMap={activeNormalMap}
+        normalScale={activeNormalScale}
+        roughnessMap={activeRoughnessMap}
         vertexColors={activeVertexColors}
         emissive={resolvedEmissive}
         emissiveIntensity={resolvedEmissiveIntensity}
         metalness={resolvedMetalness}
         roughness={resolvedRoughness}
+        wireframe={isWireframe}
+        transparent={resolvedTransparent}
+        opacity={resolvedOpacity}
+        depthWrite={resolvedDepthWrite}
         envMapIntensity={resolvedEnvMapIntensity}
-        side={hasClipping || doubleSide ? THREE.DoubleSide : THREE.FrontSide}
+        side={resolvedSide}
         clippingPlanes={effectivePlanes}
-        clipShadows={true}
+        clipShadows={hasClipping}
       />
     );
   }
 
   return (
     <meshPhysicalMaterial
+      key="part-desk-phys"
       ref={matRef}
       color={resolvedColor}
-      {...(activeContourMap ? { map: activeContourMap } : {})}
-      {...(activeNormalMap ? { normalMap: activeNormalMap, normalScale: activeNormalScale } : {})}
-      {...(activeRoughnessMap ? { roughnessMap: activeRoughnessMap } : {})}
+      map={activeContourMap}
+      normalMap={activeNormalMap}
+      normalScale={activeNormalScale}
+      roughnessMap={activeRoughnessMap}
       vertexColors={activeVertexColors}
       emissive={resolvedEmissive}
       emissiveIntensity={resolvedEmissiveIntensity}
       metalness={resolvedMetalness}
       roughness={resolvedRoughness}
+      wireframe={isWireframe}
+      transparent={resolvedTransparent}
+      opacity={resolvedOpacity}
+      depthWrite={resolvedDepthWrite}
       anisotropy={resolvedAnisotropy}
       anisotropyRotation={surface.anisotropyRotation}
       clearcoat={resolvedClearcoat}
@@ -420,9 +436,9 @@ export function PartMaterial({
       iridescence={resolvedIridescence}
       iridescenceIOR={surface.iridescenceIOR}
       envMapIntensity={resolvedEnvMapIntensity}
-      side={hasClipping || doubleSide ? THREE.DoubleSide : THREE.FrontSide}
+      side={resolvedSide}
       clippingPlanes={effectivePlanes}
-      clipShadows={true}
+      clipShadows={hasClipping}
     />
   );
 }

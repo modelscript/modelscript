@@ -25,13 +25,13 @@ describe("SysML v2 Multi-Physics Container Exporter (SSP & FMI 3.0)", () => {
       part def AutonomousDrone {
         part battery : Battery {
           attribute voltage = 14.8;
-        };
+        }
         part motor1 : Motor {
           attribute kv = 920.0;
-        };
+        }
         part motor2 : Motor {
           attribute kv = 920.0;
-        };
+        }
         part fc : FlightController;
 
         port telemetry : TelemetryPort;

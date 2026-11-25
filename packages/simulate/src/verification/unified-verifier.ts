@@ -539,7 +539,8 @@ export class UnifiedVerifier {
     const stages: Record<string, VerificationStageResult> = {};
 
     const registeredOracles = new Set<string>(
-      ((coordinator as unknown as { oracles?: Array<{ name?: string }> }).oracles ?? [])
+      coordinator
+        .getRegisteredOracles()
         .map((o) => o?.name)
         .filter((n): n is string => typeof n === "string"),
     );

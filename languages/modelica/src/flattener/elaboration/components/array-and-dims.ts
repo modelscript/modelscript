@@ -963,7 +963,7 @@ export function resolveArrayDimsAndEmit(input: ArrayEmissionInput): "handled" | 
             }
           }
         }
-        return "continue";
+        continue;
       }
       if (!targetDims || targetDims.length === 0) continue;
       const rawVal: unknown = arg.value;

@@ -242,7 +242,7 @@ export class ModelicaFlattener {
   }
 
   isClassPartial(classId?: SymbolId | null, visited = new Set<SymbolId>()): boolean {
-    return isClassPartial(this.db, classId, visited);
+    return isClassPartial(this.db, classId, visited, this.isOldFrontend);
   }
 
   hasOperatorRecords(rootClassId?: SymbolId | null): boolean {

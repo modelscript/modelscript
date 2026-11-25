@@ -20,6 +20,7 @@ import { AssemblyInspectorPanel } from "../cad-viewer/AssemblyInspectorPanel.js"
 import { StudioSsaoPass } from "../cad-viewer/HeroCadMaterials.js";
 import { SimulatorTelemetryHud } from "../cad-viewer/SimulatorTelemetryHud.js";
 import type { GalleryComponentItem } from "../componentGalleryCatalog.js";
+import { RotundaAmbientSoundscape } from "./ambient-audio.js";
 import { paintBoardToTextureCanvas } from "./board-painter.js";
 import { DraftingPodium } from "./DraftingPodium.js";
 import { getEnvironmentSceneBackdrop, RotundaEnvironment } from "./environments.js";
@@ -452,9 +453,35 @@ function RotundaSceneContents({
     [dispatch],
   );
 
+  const handleToggleDiagramEditor = useCallback(() => {
+    dispatch({ type: "toggleDiagramEditor" });
+    onCue("arena-rotate");
+  }, [dispatch, onCue]);
+
   const handleCycleSnapMode = useCallback(() => {
     dispatch({ type: "cycleDiagramSnapMode" });
   }, [dispatch]);
+
+  const isStockroomOpen = state.diagramEditorEnabled && state.wristPaletteOpen;
+
+  // Dedicated 180° Rotunda Mode Turntable:
+  //   - 0° hemisphere (-Z): Drafting Podium + Side Wings + Hero 3D Model
+  //   - 180° hemisphere (+Z): Dedicated wide-open 3D Diagram Stage (zero podium clutter)
+  // Activating Diagram Mode smoothly rotates the arena 180° around the standing engineer!
+  const arenaGroupRef = useRef<THREE.Group | null>(null);
+  const targetArenaYaw = state.diagramEditorEnabled ? Math.PI : 0;
+
+  useFrame((_s, rawDelta) => {
+    const grp = arenaGroupRef.current;
+    if (!grp) return;
+    const diff = targetArenaYaw - grp.rotation.y;
+    if (Math.abs(diff) < 0.0008) {
+      if (grp.rotation.y !== targetArenaYaw) grp.rotation.y = targetArenaYaw;
+      return;
+    }
+    const alpha = 1 - Math.exp(-Math.min(rawDelta, 0.05) * 6.5);
+    grp.rotation.y += diff * alpha;
+  });
 
   return (
     <>
@@ -462,7 +489,7 @@ function RotundaSceneContents({
       <XrDeskHeightAutoCalibrator onCalibrate={handleRecalibrateDeskHeight} />
 
       {/* WebXR Standing Origin, Left-Stick Smooth Locomotion, Snap-Turn & 14m Floor Teleportation */}
-      <XrLocomotionRig scaleMode={state.scaleMode} onCue={onCue} />
+      <XrLocomotionRig scaleMode={state.scaleMode} stockroomOpen={isStockroomOpen} onCue={onCue} />
 
       {/* Native WebXR Controller Gestures (Orbital Flick, Plinth Zoom, Two-Hand Squeeze Explode, A/B/X/Y) */}
       <XrControllerBindings
@@ -470,6 +497,8 @@ function RotundaSceneContents({
         modelCount={models.length}
         explodeFactor={state.explodeFactor}
         scaleMode={state.scaleMode}
+        diagramEditorEnabled={state.diagramEditorEnabled}
+        stockroomOpen={isStockroomOpen}
         onCue={onCue}
         interactionLockRef={diagramInteractionLockRef}
       />
@@ -482,112 +511,128 @@ function RotundaSceneContents({
       {/* 6 Photoreal Procedural Environments (Future Atrium hero + 5 presets) with matched IBL */}
       <RotundaEnvironment environment={state.environment} plinthCenter={plinthCenter} scaleMode={state.scaleMode} />
 
-      {/* Circular Metrology Plinth + Orbital 3D Model Carousel + Section Cut + CAE Overlays */}
-      <TurntableCarousel
-        models={models}
-        activeModelIndex={state.activeModelIndex}
-        carouselStep={state.carouselStep}
-        plinthYaw={state.plinthYaw}
-        plinthZoom={state.plinthZoom}
-        explodeFactor={state.explodeFactor}
-        caeOverlay={state.caeOverlay}
-        renderStyle={state.renderStyle}
-        scaleMode={state.scaleMode}
-        sectionCutEnabled={state.sectionCutEnabled}
-        sectionCutAxis={state.sectionCutAxis}
-        sectionCutOffset={state.sectionCutOffset}
-        simulationTime={effectiveSimTime}
-        simulationTimeRef={liveSimTimeRef}
-        isPlaying={state.isPlaying}
-        animationController={animationController}
-        visibility={visibility}
-        autoTurntable={state.autoTurntable}
-        isInXr={isInXr}
-        dark={!backdrop.isLight}
-        onSelectSubsystem={handleSelectSubsystem}
-        onPageModel={handlePageModel}
-        onSelectModelIndex={handleSelectModelIndex}
-        onPlinthYawChange={handlePlinthYawChange}
-        onSectionCutOffsetChange={handleSectionCutOffsetChange}
-        onDraggingChange={setPlinthDragging}
-      />
+      {/* Rotating 180° Rotunda Mode Arena: Podium + 3D Model at 0°, Dedicated 3D Diagram Stage at 180° */}
+      <group ref={arenaGroupRef} name="rotunda-mode-arena">
+        {/* 0° Hemisphere: Circular Metrology Plinth + Orbital 3D Model Carousel */}
+        <TurntableCarousel
+          models={models}
+          activeModelIndex={state.activeModelIndex}
+          carouselStep={state.carouselStep}
+          plinthYaw={state.plinthYaw}
+          plinthZoom={state.plinthZoom}
+          explodeFactor={state.explodeFactor}
+          caeOverlay={state.caeOverlay}
+          renderStyle={state.renderStyle}
+          scaleMode={state.scaleMode}
+          sectionCutEnabled={state.sectionCutEnabled}
+          sectionCutAxis={state.sectionCutAxis}
+          sectionCutOffset={state.sectionCutOffset}
+          simulationTime={effectiveSimTime}
+          simulationTimeRef={liveSimTimeRef}
+          isPlaying={state.isPlaying}
+          animationController={animationController}
+          visibility={visibility}
+          autoTurntable={state.autoTurntable}
+          isInXr={isInXr}
+          dark={!backdrop.isLight}
+          visible={!state.diagramEditorEnabled}
+          onSelectSubsystem={handleSelectSubsystem}
+          onPageModel={handlePageModel}
+          onSelectModelIndex={handleSelectModelIndex}
+          onPlinthYawChange={handlePlinthYawChange}
+          onSectionCutOffsetChange={handleSectionCutOffsetChange}
+          onDraggingChange={setPlinthDragging}
+        />
 
-      {/* Full 3D WebXR & Desktop Volumetric Diagram Editor (Auto-Extruded 2D SVG Icons, Magnetic Wires & Wrist Library) */}
-      <SpatialDiagramStage
-        visible={state.diagramEditorEnabled}
-        tile={activeDiagramTile}
-        snapMode={state.diagramSnapMode}
-        waferStyle={state.diagramWaferStyle}
-        wristPaletteOpen={state.wristPaletteOpen}
-        isPlaying={state.isPlaying}
-        dark={!backdrop.isLight}
-        libraryCatalog={libraryCatalog}
-        interactionLockRef={diagramInteractionLockRef}
-        onInteractionLockChange={isInXr ? undefined : setDiagramLocked}
-        onToggleWristPalette={handleToggleWristPalette}
-        onSetWristPaletteOpen={handleSetWristPaletteOpen}
-        onCycleSnapMode={handleCycleSnapMode}
-        onTogglePlaying={handleTogglePlaying}
-        onDiagramEdit={onDiagramEdit}
-        onHudStatusChange={isInXr ? undefined : onHudStatusChange}
-        onCue={onCue}
-        onExposeActions={onExposeDiagramActions}
-      />
+        {/* 0° Hemisphere: Ergonomic Drafting Podium Hosting the Spread Blueprint Canvas */}
+        <DraftingPodium
+          document={doc}
+          bridge={bridge}
+          tiltDeg={effectivePodiumTiltDeg}
+          deskScale={state.deskScale}
+          deskHeightY={state.deskHeightY}
+          boardTheme={state.deskTheme}
+          onCycleDeskScale={handleCycleDeskScale}
+          onCycleBoardTheme={handleCycleDeskTheme}
+          onRecalibrateDeskHeight={handleRecalibrateDeskHeight}
+          onResetDeskHeight={handleResetDeskHeight}
+          showPlinthTethers={!state.diagramEditorEnabled}
+          diagramEditorEnabled={state.diagramEditorEnabled}
+          stockroomOpen={isStockroomOpen}
+          onToggleDiagramEditor={handleToggleDiagramEditor}
+          onToggleStockroom={handleToggleWristPalette}
+          simulationTime={effectiveSimTime}
+          isPlaying={state.isPlaying}
+          activeHeroTileId={activeHeroTileId}
+          focusedTileId={state.focusedTileId}
+          plinthWorldCenter={plinthCenter}
+          visible={state.podiumVisible}
+          onTileSelect={handleTileSelect}
+          onFocusTileOnPlinth={handleFocusTileOnPlinth}
+          onFocusTileFullscreen={handleFocusTileFullscreen}
+          onMoveTile={onMoveTile}
+          onCreateSpatialWire={onCreateSpatialWire}
+          onPageModel={handlePageModel}
+          onTogglePlaying={handleTogglePlaying}
+          onToggleTilt={handleToggleTilt}
+          onResetView={handleResetView}
+          onHudStatusChange={isInXr ? undefined : onHudStatusChange}
+          onInteractionLockChange={isInXr ? undefined : setPodiumLocked}
+        />
 
-      {/* Ergonomic 45° Drafting Podium Hosting the Miro-like Infinite Canvas + Fiber-Optic Tethers */}
-      <DraftingPodium
-        document={doc}
-        bridge={bridge}
-        tiltDeg={effectivePodiumTiltDeg}
-        deskScale={state.deskScale}
-        deskHeightY={state.deskHeightY}
-        boardTheme={state.deskTheme}
-        onCycleDeskScale={handleCycleDeskScale}
-        onCycleBoardTheme={handleCycleDeskTheme}
-        onRecalibrateDeskHeight={handleRecalibrateDeskHeight}
-        onResetDeskHeight={handleResetDeskHeight}
-        simulationTime={effectiveSimTime}
-        isPlaying={state.isPlaying}
-        activeHeroTileId={activeHeroTileId}
-        focusedTileId={state.focusedTileId}
-        plinthWorldCenter={plinthCenter}
-        visible={state.podiumVisible}
-        onTileSelect={handleTileSelect}
-        onFocusTileOnPlinth={handleFocusTileOnPlinth}
-        onFocusTileFullscreen={handleFocusTileFullscreen}
-        onMoveTile={onMoveTile}
-        onCreateSpatialWire={onCreateSpatialWire}
-        onPageModel={handlePageModel}
-        onTogglePlaying={handleTogglePlaying}
-        onToggleTilt={handleToggleTilt}
-        onResetView={handleResetView}
-        onHudStatusChange={isInXr ? undefined : onHudStatusChange}
-        onInteractionLockChange={isInXr ? undefined : setPodiumLocked}
-      />
+        {/* 0° Hemisphere: Left & Right Podium-Docked CNC Side-Console Wings */}
+        <FloatingToolWings
+          state={{ ...state, simulationTime: effectiveSimTime }}
+          activeModelTitle={activeModel?.title ?? "Model"}
+          modelCount={models.length}
+          visible={state.wingsVisible}
+          dispatch={dispatch}
+          activeScenarioLabel={activeScenario?.shortLabel ?? activeScenario?.label}
+          onCycleScenario={onCycleScenario}
+          onPlayCue={onCue}
+          simulationTimeRef={liveSimTimeRef}
+          telemetrySpec={isOctopus ? OCTOPUS_HUD_SPEC : null}
+          telemetryProvider={isOctopus ? sampleOctopusTelemetryChannel : null}
+          subsystems={isOctopus ? OCTOPUS_SUBSYSTEMS : undefined}
+          onSeekSimulationTime={(t) => {
+            liveSimTimeRef.current = t;
+            onSimulationTimeChange?.(t);
+          }}
+          isInXr={isInXr}
+          isArSession={isArSession}
+          onExitVr={onExitVr}
+          onSelectEnvironment={onSelectEnvironment}
+          deskScale={state.deskScale}
+          deskHeightY={state.deskHeightY}
+          podiumTiltDeg={effectivePodiumTiltDeg}
+          podiumVisible={state.podiumVisible}
+        />
 
-      {/* Left & Right Curved Diegetic 3D Glass Tool Wings (Native WebXR & Desktop 3D) */}
-      <FloatingToolWings
-        state={{ ...state, simulationTime: effectiveSimTime }}
-        activeModelTitle={activeModel?.title ?? "Model"}
-        modelCount={models.length}
-        visible={state.wingsVisible}
-        dispatch={dispatch}
-        activeScenarioLabel={activeScenario?.shortLabel ?? activeScenario?.label}
-        onCycleScenario={onCycleScenario}
-        onPlayCue={onCue}
-        simulationTimeRef={liveSimTimeRef}
-        telemetrySpec={isOctopus ? OCTOPUS_HUD_SPEC : null}
-        telemetryProvider={isOctopus ? sampleOctopusTelemetryChannel : null}
-        subsystems={isOctopus ? OCTOPUS_SUBSYSTEMS : undefined}
-        onSeekSimulationTime={(t) => {
-          liveSimTimeRef.current = t;
-          onSimulationTimeChange?.(t);
-        }}
-        isInXr={isInXr}
-        isArSession={isArSession}
-        onExitVr={onExitVr}
-        onSelectEnvironment={onSelectEnvironment}
-      />
+        {/* 180° Opposite Hemisphere: Dedicated Uncluttered 3D Volumetric Diagram Arena + Matrix Stockroom */}
+        <group name="rotunda-diagram-hemisphere" rotation={[0, Math.PI, 0]}>
+          <SpatialDiagramStage
+            visible={state.diagramEditorEnabled}
+            tile={activeDiagramTile}
+            snapMode={state.diagramSnapMode}
+            waferStyle={state.diagramWaferStyle}
+            wristPaletteOpen={state.wristPaletteOpen}
+            isPlaying={state.isPlaying}
+            dark={!backdrop.isLight}
+            libraryCatalog={libraryCatalog}
+            interactionLockRef={diagramInteractionLockRef}
+            onInteractionLockChange={isInXr ? undefined : setDiagramLocked}
+            onToggleWristPalette={handleToggleWristPalette}
+            onSetWristPaletteOpen={handleSetWristPaletteOpen}
+            onExitDiagramMode={handleToggleDiagramEditor}
+            onCycleSnapMode={handleCycleSnapMode}
+            onTogglePlaying={handleTogglePlaying}
+            onDiagramEdit={onDiagramEdit}
+            onHudStatusChange={isInXr ? undefined : onHudStatusChange}
+            onCue={onCue}
+            onExposeActions={onExposeDiagramActions}
+          />
+        </group>
+      </group>
 
       {/* Remote Multiplayer VR Engineer Avatars & Live Podium/Plinth Laser Pointers */}
       {peers && peers.length > 0 && (
@@ -908,14 +953,63 @@ export function EngineeringRotunda({
   const xrCaps = useXrCapabilities();
   const [webglSupported] = useState<boolean>(detectWebGlSupport);
   const [hudStatus, setHudStatus] = useState<string | null>(null);
+  const [ambientMuted, setAmbientMuted] = useState(false);
+  const ambientMutedRef = useRef(ambientMuted);
+  ambientMutedRef.current = ambientMuted;
+  const ambientSoundscapeRef = useRef<RotundaAmbientSoundscape | null>(null);
 
   const triggerCue = useCallback(
     (kind: RotundaCueKind) => {
-      playRotundaCue(kind);
+      if (!ambientMutedRef.current) {
+        ambientSoundscapeRef.current?.start(currentEnvRef.current);
+        playRotundaCue(kind);
+      }
       pulseXrHaptics(xrStore, kind === "page" || kind === "snap" ? 0.3 : 0.16, 26);
     },
     [xrStore],
   );
+
+  // Persistent soothing procedural ambient soundscape (auto-unlocks on first user or XR gesture)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const soundscape = new RotundaAmbientSoundscape();
+    ambientSoundscapeRef.current = soundscape;
+
+    const unlockAmbient = () => {
+      if (!ambientMutedRef.current) {
+        soundscape.start(currentEnvRef.current);
+      }
+    };
+
+    window.addEventListener("pointerdown", unlockAmbient, { passive: true });
+    window.addEventListener("keydown", unlockAmbient, { passive: true });
+    const unsubXr = xrStore.subscribe((xrState) => {
+      if (xrState.session && !ambientMutedRef.current) {
+        soundscape.start(currentEnvRef.current);
+      }
+    });
+
+    return () => {
+      window.removeEventListener("pointerdown", unlockAmbient);
+      window.removeEventListener("keydown", unlockAmbient);
+      unsubXr();
+      soundscape.dispose();
+      ambientSoundscapeRef.current = null;
+    };
+  }, [xrStore]);
+
+  useEffect(() => {
+    ambientSoundscapeRef.current?.setEnvironment(state.environment);
+  }, [state.environment]);
+
+  useEffect(() => {
+    const soundscape = ambientSoundscapeRef.current;
+    if (!soundscape) return;
+    soundscape.setMuted(ambientMuted);
+    if (!ambientMuted) {
+      soundscape.start(currentEnvRef.current);
+    }
+  }, [ambientMuted]);
 
   // Sync external initialEnvironment / initialDeskTheme props if they change
   useEffect(() => {
@@ -1182,9 +1276,16 @@ export function EngineeringRotunda({
               gl={{
                 antialias: true,
                 alpha: true,
+                powerPreference: "high-performance",
                 localClippingEnabled: true,
                 toneMapping: THREE.NeutralToneMapping,
                 toneMappingExposure: 1.0,
+              }}
+              onCreated={({ gl }) => {
+                // Keep Quest 2 stereo eye buffers crisp yet 28% lighter on fragment fill-rate
+                if (typeof gl.xr?.setFramebufferScaleFactor === "function") {
+                  gl.xr.setFramebufferScaleFactor(0.85);
+                }
               }}
             >
               <Suspense fallback={null}>
@@ -1897,10 +1998,10 @@ export function EngineeringRotunda({
           <button
             type="button"
             data-testid="rotunda-toggle-diagram-3d"
-            title="Toggle full 3D WebXR Volumetric Diagram Editor (auto-extruded 2D SVG icons, magnetic 3D wiring & wrist library)"
+            title="Switch central stage between 3D Model Showcase and 3D Volumetric Diagram Editor"
             onClick={() => {
               dispatch({ type: "toggleDiagramEditor" });
-              triggerCue("env");
+              triggerCue("arena-rotate");
             }}
             style={{
               padding: "3px 9px",
@@ -1915,7 +2016,7 @@ export function EngineeringRotunda({
               cursor: "pointer",
             }}
           >
-            ✦ 3D Diagram
+            {state.diagramEditorEnabled ? "✦ Diagram Mode" : "◈ 3D Model"}
           </button>
           <button
             type="button"
@@ -1948,10 +2049,37 @@ export function EngineeringRotunda({
           >
             AO
           </button>
+          <button
+            type="button"
+            data-testid="rotunda-toggle-ambient-audio"
+            title={
+              ambientMuted
+                ? "Unmute soothing ambient soundscape & VR sound effects"
+                : "Mute ambient soundscape & VR sound effects"
+            }
+            onClick={() => {
+              const nextMuted = !ambientMuted;
+              setAmbientMuted(nextMuted);
+              if (!nextMuted) {
+                playRotundaCue("click");
+              }
+            }}
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              border: !ambientMuted ? "1px solid #22c55e" : "1px solid #334155",
+              background: !ambientMuted ? "rgba(34, 197, 94, 0.18)" : "transparent",
+              color: !ambientMuted ? "#bbf7d0" : "#94a3b8",
+              fontSize: 11,
+              cursor: "pointer",
+            }}
+          >
+            {ambientMuted ? "🔇 Muted" : "🔊 Sound"}
+          </button>
         </div>
       )}
 
-      {/* Floating Desktop 3D Diagram Studio Bar (mirrors the WebXR Wrist Tool for desktop 3D parity) */}
+      {/* Floating Desktop 3D Diagram Studio Bar (mirrors the Matrix Stockroom & Diagram tools for desktop 3D parity) */}
       {!hideDesktopHud && state.diagramEditorEnabled && (
         <div
           data-testid="rotunda-diagram-studio-bar"
@@ -1978,7 +2106,7 @@ export function EngineeringRotunda({
             data-testid="rotunda-toggle-wrist-library"
             onClick={() => {
               dispatch({ type: "toggleWristPalette" });
-              triggerCue(state.wristPaletteOpen ? "click" : "env");
+              triggerCue(state.wristPaletteOpen ? "click" : "stockroom-open");
             }}
             style={{
               padding: "3px 9px",
@@ -1991,7 +2119,7 @@ export function EngineeringRotunda({
               cursor: "pointer",
             }}
           >
-            {state.wristPaletteOpen ? "✕ Close Library" : "+ Library (L)"}
+            {state.wristPaletteOpen ? "✕ Close Stockroom" : "＋ Stockroom (L)"}
           </button>
           <span style={{ color: "#334155" }}>|</span>
           <button

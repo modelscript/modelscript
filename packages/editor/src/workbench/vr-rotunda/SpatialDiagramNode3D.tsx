@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { VrDiagramNodeLike } from "./board-painter.js";
 import { makePortKey } from "./magnetic-port-solver.js";
+import { RealisticComponentMesh3D, resolveRealisticComponentKind } from "./realistic-components-3d.js";
 import {
   DOMAIN_COLORS,
   extractNodePorts3D,
@@ -147,9 +148,11 @@ export function SpatialDiagramNode3D({
   const [hoveredBody, setHoveredBody] = useState(false);
   const [hoveredPortId, setHoveredPortId] = useState<string | null>(null);
 
-  const classHint = `${node.properties?.className ?? ""} ${node.label ?? ""} ${nodeId}`;
+  const catalogItemId = typeof node.data?.["catalogItemId"] === "string" ? node.data["catalogItemId"] : "";
+  const classHint = `${catalogItemId} ${node.properties?.className ?? ""} ${node.label ?? ""} ${nodeId}`;
   const domain = inferDomainFromText(classHint);
   const accentColor = DOMAIN_COLORS[domain];
+  const realisticKind = useMemo(() => resolveRealisticComponentKind(classHint), [classHint]);
 
   const iconSvg =
     typeof node.data?.["iconSvg"] === "string" && node.data["iconSvg"].trim().startsWith("<")
@@ -199,9 +202,9 @@ export function SpatialDiagramNode3D({
         node,
         bundle.widthMeters,
         bundle.heightMeters,
-        waferStyle === "tactile-tile" ? 0.0048 : 0.0028,
+        realisticKind ? 0 : waferStyle === "tactile-tile" ? 0.0048 : 0.0028,
       ),
-    [node, bundle.widthMeters, bundle.heightMeters, waferStyle],
+    [node, bundle.widthMeters, bundle.heightMeters, waferStyle, realisticKind],
   );
 
   useEffect(() => {
@@ -297,117 +300,169 @@ export function SpatialDiagramNode3D({
       scale={pose.scale}
     >
       <group ref={animRootRef}>
-        {/* Chamfered Ceramic/Acrylic Wafer Backing */}
-        {bundle.waferGeometry && (
-          <mesh
-            geometry={bundle.waferGeometry}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHoveredBody(true);
-              pulseEventHaptic(e, 0.06, 5);
-              onHoverNodeChange?.(nodeId);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoveredBody(false);
-              onHoverNodeChange?.(null);
-            }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onStartNodeGrab?.(nodeId, e);
-            }}
-          >
-            <meshPhysicalMaterial
-              color={waferColor}
-              roughness={dark ? 0.34 : 0.28}
-              metalness={dark ? 0.24 : 0.08}
-              clearcoat={0.45}
-              clearcoatRoughness={0.22}
-              transparent
-              opacity={isOverDeleteRing ? 0.65 : dark ? 0.92 : 0.96}
+        {realisticKind ? (
+          <>
+            {/* Authentic Real-World 3D Physical Hardware Model (Battery, Resistor, Capacitor, etc.) */}
+            <RealisticComponentMesh3D
+              kind={realisticKind}
+              emissiveColor={isOverDeleteRing ? "#991b1b" : isGrabbed ? "#0e7490" : hoveredBody ? "#0369a1" : "#000000"}
+              emissiveIntensity={isOverDeleteRing ? 0.65 : isGrabbed ? 0.35 : hoveredBody ? 0.2 : 0}
+              disableRaycast
             />
-          </mesh>
-        )}
 
-        {/* Perimeter Domain / Selection / Grab Accent Bevel Lip */}
-        {bundle.rimGeometry && (
-          <mesh geometry={bundle.rimGeometry}>
-            <meshStandardMaterial
-              color={rimColor}
-              emissive={rimColor}
-              emissiveIntensity={isGrabbed || isOverDeleteRing ? 0.95 : selected || hoveredBody ? 0.55 : 0.18}
-              roughness={0.28}
-              metalness={0.42}
-            />
-          </mesh>
-        )}
+            {/* Subtle Tactile Selection / Hover / Delete Halo Ring behind the 3D hardware */}
+            {(selected || hoveredBody || isGrabbed || isOverDeleteRing) && (
+              <mesh position={[0, 0, -0.022]}>
+                <ringGeometry args={[0.052, 0.061, 28]} />
+                <meshBasicMaterial
+                  color={rimColor}
+                  transparent
+                  opacity={0.68}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+            )}
 
-        {/* Merged Extruded 3D SVG Filled Reliefs & Raised Stroke Ribs */}
-        {bundle.opaqueGeometry && (
-          <mesh
-            geometry={bundle.opaqueGeometry}
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHoveredBody(true);
-              pulseEventHaptic(e, 0.06, 5);
-              onHoverNodeChange?.(nodeId);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoveredBody(false);
-              onHoverNodeChange?.(null);
-            }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onStartNodeGrab?.(nodeId, e);
-            }}
-          >
-            <meshStandardMaterial
-              vertexColors
-              roughness={0.32}
-              metalness={0.22}
-              emissive={isOverDeleteRing ? "#7f1d1d" : isGrabbed ? "#083344" : "#000000"}
-              emissiveIntensity={isOverDeleteRing ? 0.6 : isGrabbed ? 0.35 : 0}
-            />
-          </mesh>
-        )}
+            {/* Forgiving Invisible 3D Grab Volume so VR grab/raycast feels effortless */}
+            <mesh
+              onPointerOver={(e) => {
+                e.stopPropagation();
+                setHoveredBody(true);
+                pulseEventHaptic(e, 0.06, 5);
+                onHoverNodeChange?.(nodeId);
+              }}
+              onPointerOut={(e) => {
+                e.stopPropagation();
+                setHoveredBody(false);
+                onHoverNodeChange?.(null);
+              }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                onStartNodeGrab?.(nodeId, e);
+              }}
+            >
+              <boxGeometry
+                args={[Math.max(0.132, bundle.widthMeters * 0.9), Math.max(0.088, bundle.heightMeters * 0.9), 0.062]}
+              />
+              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+            </mesh>
+          </>
+        ) : (
+          <>
+            {/* Chamfered Ceramic/Acrylic Wafer Backing */}
+            {bundle.waferGeometry && (
+              <mesh
+                geometry={bundle.waferGeometry}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHoveredBody(true);
+                  pulseEventHaptic(e, 0.06, 5);
+                  onHoverNodeChange?.(nodeId);
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHoveredBody(false);
+                  onHoverNodeChange?.(null);
+                }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onStartNodeGrab?.(nodeId, e);
+                }}
+              >
+                <meshPhysicalMaterial
+                  color={waferColor}
+                  roughness={dark ? 0.34 : 0.28}
+                  metalness={dark ? 0.24 : 0.08}
+                  clearcoat={0.45}
+                  clearcoatRoughness={0.22}
+                  transparent
+                  opacity={isOverDeleteRing ? 0.65 : dark ? 0.92 : 0.96}
+                />
+              </mesh>
+            )}
 
-        {/* Merged Translucent SVG Fills (e.g. tinted glass interior of resistors / op-amps) */}
-        {bundle.translucentGeometry && (
-          <mesh geometry={bundle.translucentGeometry}>
-            <meshStandardMaterial
-              vertexColors
-              transparent
-              opacity={0.34}
-              roughness={0.22}
-              metalness={0.08}
-              depthWrite={false}
-            />
-          </mesh>
-        )}
+            {/* Perimeter Domain / Selection / Grab Accent Bevel Lip */}
+            {bundle.rimGeometry && (
+              <mesh geometry={bundle.rimGeometry}>
+                <meshStandardMaterial
+                  color={rimColor}
+                  emissive={rimColor}
+                  emissiveIntensity={isGrabbed || isOverDeleteRing ? 0.95 : selected || hoveredBody ? 0.55 : 0.18}
+                  roughness={0.28}
+                  metalness={0.42}
+                />
+              </mesh>
+            )}
 
-        {/* Pure-Relief Invisible Forgiving Grab Hitbox (when wafer backing is hidden) */}
-        {!bundle.waferGeometry && (
-          <mesh
-            onPointerOver={(e) => {
-              e.stopPropagation();
-              setHoveredBody(true);
-              pulseEventHaptic(e, 0.06, 5);
-              onHoverNodeChange?.(nodeId);
-            }}
-            onPointerOut={(e) => {
-              e.stopPropagation();
-              setHoveredBody(false);
-              onHoverNodeChange?.(null);
-            }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onStartNodeGrab?.(nodeId, e);
-            }}
-          >
-            <boxGeometry args={[bundle.widthMeters * 0.96, bundle.heightMeters * 0.96, 0.022]} />
-            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-          </mesh>
+            {/* Merged Extruded 3D SVG Filled Reliefs & Raised Stroke Ribs */}
+            {bundle.opaqueGeometry && (
+              <mesh
+                geometry={bundle.opaqueGeometry}
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHoveredBody(true);
+                  pulseEventHaptic(e, 0.06, 5);
+                  onHoverNodeChange?.(nodeId);
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHoveredBody(false);
+                  onHoverNodeChange?.(null);
+                }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onStartNodeGrab?.(nodeId, e);
+                }}
+              >
+                <meshStandardMaterial
+                  vertexColors
+                  roughness={0.32}
+                  metalness={0.22}
+                  emissive={isOverDeleteRing ? "#7f1d1d" : isGrabbed ? "#083344" : "#000000"}
+                  emissiveIntensity={isOverDeleteRing ? 0.6 : isGrabbed ? 0.35 : 0}
+                />
+              </mesh>
+            )}
+
+            {/* Merged Translucent SVG Fills (e.g. tinted glass interior of resistors / op-amps) */}
+            {bundle.translucentGeometry && (
+              <mesh geometry={bundle.translucentGeometry}>
+                <meshStandardMaterial
+                  vertexColors
+                  transparent
+                  opacity={0.34}
+                  roughness={0.22}
+                  metalness={0.08}
+                  depthWrite={false}
+                />
+              </mesh>
+            )}
+
+            {/* Pure-Relief Invisible Forgiving Grab Hitbox (when wafer backing is hidden) */}
+            {!bundle.waferGeometry && (
+              <mesh
+                onPointerOver={(e) => {
+                  e.stopPropagation();
+                  setHoveredBody(true);
+                  pulseEventHaptic(e, 0.06, 5);
+                  onHoverNodeChange?.(nodeId);
+                }}
+                onPointerOut={(e) => {
+                  e.stopPropagation();
+                  setHoveredBody(false);
+                  onHoverNodeChange?.(null);
+                }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onStartNodeGrab?.(nodeId, e);
+                }}
+              >
+                <boxGeometry args={[bundle.widthMeters * 0.96, bundle.heightMeters * 0.96, 0.022]} />
+                <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+              </mesh>
+            )}
+          </>
         )}
 
         {/* Crisp Stereo-Safe Nameplate Mounted Below Component */}
@@ -532,20 +587,18 @@ export function SpatialDiagramNode3D({
                 />
               </mesh>
 
-              {/* Hover / Magnetic Approach & Capture Field Halo Ring */}
-              {(approach > 0.02 || isSnapped || isRejected || isPortHovered) && (
-                <mesh position={[0, 0, 0.006]}>
-                  <ringGeometry args={[isSnapped ? 0.015 : 0.017, isSnapped ? 0.024 : 0.023, 28]} />
-                  <meshBasicMaterial
-                    color={isSnapped ? "#10b981" : isRejected ? "#f59e0b" : "#22d3ee"}
-                    transparent
-                    opacity={isSnapped ? 0.95 : isRejected ? 0.88 : isPortHovered ? 0.82 : 0.3 + approach * 0.6}
-                    toneMapped={false}
-                    depthWrite={false}
-                    side={THREE.DoubleSide}
-                  />
-                </mesh>
-              )}
+              {/* Hover / Magnetic Approach & Capture Field Halo Ring (pre-mounted via visible for zero XR hitch) */}
+              <mesh position={[0, 0, 0.006]} visible={approach > 0.02 || isSnapped || isRejected || isPortHovered}>
+                <ringGeometry args={[isSnapped ? 0.015 : 0.017, isSnapped ? 0.024 : 0.023, 24]} />
+                <meshBasicMaterial
+                  color={isSnapped ? "#10b981" : isRejected ? "#f59e0b" : "#22d3ee"}
+                  transparent
+                  opacity={isSnapped ? 0.95 : isRejected ? 0.88 : isPortHovered ? 0.82 : 0.3 + approach * 0.6}
+                  toneMapped={false}
+                  depthWrite={false}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
             </group>
           );
         })}

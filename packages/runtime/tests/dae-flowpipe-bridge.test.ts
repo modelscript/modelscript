@@ -73,7 +73,7 @@ describe("Phase 4: Automated Flowpipe & Barrier Bridge (@modelscript/runtime)", 
 
     const result = DaeFlowpipeBridge.solveFlowpipe(arena, {
       tSpan: [0.0, 1.0],
-      dt: 0.2,
+      dt: 0.1,
       initialBounds: new Map([[xIdx, new NumericalInterval(0.9, 1.1)]]),
     });
 

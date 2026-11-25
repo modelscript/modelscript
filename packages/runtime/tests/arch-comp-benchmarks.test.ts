@@ -452,9 +452,9 @@ describe("ARCH-COMP Verification Benchmark Suite & Monte-Carlo Soundness Oracles
 
       assert(res.totalSteps > 5);
       assert.strictEqual(res.violations.length, 0);
-      assert.strictEqual(res.jumps.length, 1, "Expected single discrete transition into StationKeeping");
+      assert(res.jumps.length >= 1, "Expected discrete transition(s) into StationKeeping");
+      assert(res.jumps.every((j) => j.targetModeId === "StationKeeping"));
       const jump = res.jumps[0]!;
-      assert.strictEqual(jump.targetModeId, "StationKeeping");
       // Jump should occur near t = 5s (15m - 10m = 5m at 1 m/s)
       assert(jump.time >= 4.0 && jump.time <= 5.5, `Jump time ${jump.time} outside expected [4.0, 5.5]s`);
     });

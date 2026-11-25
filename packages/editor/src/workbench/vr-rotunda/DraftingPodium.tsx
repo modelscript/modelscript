@@ -195,6 +195,16 @@ export interface DraftingPodiumProps {
   onRecalibrateDeskHeight?: ((headY: number) => void) | undefined;
   /** Restores the default (uncalibrated) desk height. */
   onResetDeskHeight?: (() => void) | undefined;
+  /** When false (3D Diagram mode active), hides fiber-optic tethers arcing to the hidden plinth. */
+  showPlinthTethers?: boolean | undefined;
+  /** True when the central stage is in 3D Diagram mode (exclusive with 3D Model view). */
+  diagramEditorEnabled?: boolean | undefined;
+  /** True when the Matrix Stockroom component vault is currently open. */
+  stockroomOpen?: boolean | undefined;
+  /** Toggles between exclusive 3D Model view and 3D Diagram mode. */
+  onToggleDiagramEditor?: (() => void) | undefined;
+  /** Summons or dismisses the Matrix Stockroom infinite-scroll component vault. */
+  onToggleStockroom?: (() => void) | undefined;
   onHudStatusChange?: ((status: string | null) => void) | undefined;
   onInteractionLockChange?: ((locked: boolean) => void) | undefined;
 }
@@ -665,6 +675,11 @@ export function DraftingPodium({
   onCycleBoardTheme,
   onRecalibrateDeskHeight,
   onResetDeskHeight,
+  showPlinthTethers = true,
+  diagramEditorEnabled = false,
+  stockroomOpen = false,
+  onToggleDiagramEditor,
+  onToggleStockroom,
   onHudStatusChange,
   onInteractionLockChange,
 }: DraftingPodiumProps): React.ReactElement | null {
@@ -1852,12 +1867,12 @@ export function DraftingPodium({
     return null;
   }
 
-  // 8 tactile bezel buttons distributed evenly along the lower control rim (desk-local, pre-scale units)
-  const keycapWidth = 0.168;
+  // 9 tactile bezel button slots distributed evenly along the lower control rim (desk-local, pre-scale units)
+  const keycapWidth = 0.152;
   const keycapHeight = 0.068;
-  const keycapGap = 0.016;
+  const keycapGap = 0.013;
   const keycapStride = keycapWidth + keycapGap;
-  const keycapStartX = -3.5 * keycapStride;
+  const keycapStartX = -4.0 * keycapStride;
   // Pedestal geometry was authored for a 0.92 m desk center (hinge at 0.865 m); scale it to the live desk height.
   const pedestalScale = clampNumber(deskLayout.center[1] / 0.92, 0.5, 1.3);
   const slopeFromHorizontalDeg = Math.round(90 - clampedTiltDeg);
@@ -2225,41 +2240,69 @@ export function DraftingPodium({
           )}
         </mesh>
 
-        {/* Interactive Glowing CADPort Handle Spheres floating above `cad3d` cards */}
-        {cadPorts.map((desc) => (
-          <CadPortHandle
-            key={`cadport-${desc.tile.id}`}
-            descriptor={desc}
-            isWiring={activeWireDrag?.sourceTileId === desc.tile.id}
-            isHero={desc.tile.id === activeHeroTileId}
-            onStartWire={handleStartWireFromPort}
-          />
-        ))}
+        {/* Interactive Glowing CADPort Handle Spheres floating above `cad3d` cards (3D Model mode only) */}
+        {showPlinthTethers &&
+          cadPorts.map((desc) => (
+            <CadPortHandle
+              key={`cadport-${desc.tile.id}`}
+              descriptor={desc}
+              isWiring={activeWireDrag?.sourceTileId === desc.tile.id}
+              isHero={desc.tile.id === activeHeroTileId}
+              onStartWire={handleStartWireFromPort}
+            />
+          ))}
 
-        {/* 8 Tactile Frosted Bezel Controls along the lower rim */}
+        {/* 9 Tactile Frosted Bezel Controls along the lower rim */}
+        {diagramEditorEnabled ? (
+          <BezelKeycapButton
+            label={stockroomOpen ? "✕ Close Stockroom" : "＋ Stockroom"}
+            position={[keycapStartX + keycapStride * 0.5, BEZEL_KEYCAP_Y, 0.01]}
+            width={keycapWidth * 2 + keycapGap}
+            height={keycapHeight}
+            accentColor="#0284c7"
+            active={stockroomOpen}
+            onPress={() => {
+              onToggleStockroom?.();
+            }}
+          />
+        ) : (
+          <>
+            <BezelKeycapButton
+              label="◀ Prev"
+              position={[keycapStartX + keycapStride * 0, BEZEL_KEYCAP_Y, 0.01]}
+              width={keycapWidth}
+              height={keycapHeight}
+              accentColor="#0284c7"
+              onPress={() => {
+                onPageModel?.(-1);
+              }}
+            />
+            <BezelKeycapButton
+              label="Next ▶"
+              position={[keycapStartX + keycapStride * 1, BEZEL_KEYCAP_Y, 0.01]}
+              width={keycapWidth}
+              height={keycapHeight}
+              accentColor="#0284c7"
+              onPress={() => {
+                onPageModel?.(1);
+              }}
+            />
+          </>
+        )}
         <BezelKeycapButton
-          label="◀ Prev"
-          position={[keycapStartX + keycapStride * 0, BEZEL_KEYCAP_Y, 0.01]}
+          label={diagramEditorEnabled ? "✦ Diagram" : "◈ 3D Model"}
+          position={[keycapStartX + keycapStride * 2, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor="#0284c7"
+          active={diagramEditorEnabled}
           onPress={() => {
-            onPageModel?.(-1);
-          }}
-        />
-        <BezelKeycapButton
-          label="Next ▶"
-          position={[keycapStartX + keycapStride * 1, BEZEL_KEYCAP_Y, 0.01]}
-          width={keycapWidth}
-          height={keycapHeight}
-          accentColor="#0284c7"
-          onPress={() => {
-            onPageModel?.(1);
+            onToggleDiagramEditor?.();
           }}
         />
         <BezelKeycapButton
           label={isPlaying ? "⏸ Pause" : "▶ Play"}
-          position={[keycapStartX + keycapStride * 2, BEZEL_KEYCAP_Y, 0.01]}
+          position={[keycapStartX + keycapStride * 3, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor={isPlaying ? "#059669" : "#d97706"}
@@ -2270,7 +2313,7 @@ export function DraftingPodium({
         />
         <BezelKeycapButton
           label={`Tilt ${slopeFromHorizontalDeg}°`}
-          position={[keycapStartX + keycapStride * 3, BEZEL_KEYCAP_Y, 0.01]}
+          position={[keycapStartX + keycapStride * 4, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor="#0284c7"
@@ -2281,7 +2324,7 @@ export function DraftingPodium({
         />
         <BezelKeycapButton
           label={`Desk ${deskScaleLabel(deskLayout.scale)}`}
-          position={[keycapStartX + keycapStride * 4, BEZEL_KEYCAP_Y, 0.01]}
+          position={[keycapStartX + keycapStride * 5, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor="#0284c7"
@@ -2291,7 +2334,7 @@ export function DraftingPodium({
         />
         <BezelKeycapButton
           label={deskHeightY !== null ? "⇕ Height ✓" : "⇕ Height"}
-          position={[keycapStartX + keycapStride * 5, BEZEL_KEYCAP_Y, 0.01]}
+          position={[keycapStartX + keycapStride * 6, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor="#0284c7"
@@ -2309,7 +2352,7 @@ export function DraftingPodium({
         />
         <BezelKeycapButton
           label={themeKeycapLabel}
-          position={[keycapStartX + keycapStride * 6, BEZEL_KEYCAP_Y, 0.01]}
+          position={[keycapStartX + keycapStride * 7, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor="#38bdf8"
@@ -2320,7 +2363,7 @@ export function DraftingPodium({
         />
         <BezelKeycapButton
           label="↺ Reset"
-          position={[keycapStartX + keycapStride * 7, BEZEL_KEYCAP_Y, 0.01]}
+          position={[keycapStartX + keycapStride * 8, BEZEL_KEYCAP_Y, 0.01]}
           width={keycapWidth}
           height={keycapHeight}
           accentColor="#7c3aed"
@@ -2334,32 +2377,34 @@ export function DraftingPodium({
       </group>
 
       {/* Glowing Curved Fiber-Optic Bezier Tethers arcing from Podium Cards up to the Circular Plinth */}
-      {fiberTethers.map((tether, index) => (
-        <group key={tether.id}>
-          <Line
-            points={tether.points}
-            color={tether.color}
-            lineWidth={tether.isHero ? 2.8 : 1.6}
-            transparent
-            opacity={tether.isHero ? 0.9 : 0.48}
-          />
-          {tether.isHero && (
-            <TetherPulseBead
-              p0={tether.p0}
-              p1={tether.p1}
-              p2={tether.p2}
-              p3={tether.p3}
-              color="#7dd3fc"
-              phaseOffset={(index * 0.27) % 1}
+      {showPlinthTethers &&
+        fiberTethers.map((tether, index) => (
+          <group key={tether.id}>
+            <Line
+              points={tether.points}
+              color={tether.color}
+              lineWidth={tether.isHero ? 2.8 : 1.6}
+              transparent
+              opacity={tether.isHero ? 0.9 : 0.48}
             />
-          )}
-        </group>
-      ))}
+            {tether.isHero && (
+              <TetherPulseBead
+                p0={tether.p0}
+                p1={tether.p1}
+                p2={tether.p2}
+                p3={tether.p3}
+                color="#7dd3fc"
+                phaseOffset={(index * 0.27) % 1}
+              />
+            )}
+          </group>
+        ))}
 
       {/* Existing 3D-to-2D CADPort Spatial Wires */}
-      {cadSpatialWires.map((w) => (
-        <Line key={w.id} points={w.points} color={w.color} lineWidth={2.0} transparent opacity={0.82} />
-      ))}
+      {showPlinthTethers &&
+        cadSpatialWires.map((w) => (
+          <Line key={w.id} points={w.points} color={w.color} lineWidth={2.0} transparent opacity={0.82} />
+        ))}
 
       {/* Live Amber 3D CADPort-to-2D Wire Drag Preview */}
       {liveWirePreviewPoints && (

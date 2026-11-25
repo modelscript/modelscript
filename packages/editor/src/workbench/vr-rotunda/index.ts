@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 export {
+  AMBIENT_SOUNDSCAPE_PROFILES,
+  RotundaAmbientSoundscape,
+  type AmbientAccentKind,
+  type AmbientSoundscapeProfile,
+} from "./ambient-audio.js";
+export {
   DEFAULT_VR_BOARD_THEME,
   extractVrDiagramData,
   extractVrSimulationSeries,
@@ -57,6 +63,31 @@ export {
   type WorldPortCandidate,
 } from "./magnetic-port-solver.js";
 export {
+  STOCKROOM_CARD_H,
+  STOCKROOM_CARD_W,
+  STOCKROOM_CENTER_Y,
+  STOCKROOM_CENTER_Z,
+  STOCKROOM_COL_SPACING,
+  STOCKROOM_ENTRANCE_DURATION_SEC,
+  STOCKROOM_ROW_SPACING,
+  STOCKROOM_TOTAL_VISIBLE_SLOTS,
+  STOCKROOM_VISIBLE_COLS,
+  STOCKROOM_VISIBLE_ROWS,
+  STOCKROOM_WALL_X,
+  computeMatrixEntranceState,
+  computeStockroomSlotPose,
+  resolveStockroomSlotItem,
+  stepStockroomScroll,
+  wrapPositiveMod,
+  type StockroomEntranceState,
+  type StockroomScrollInput,
+  type StockroomScrollState,
+  type StockroomScrollStepResult,
+  type StockroomSide,
+  type StockroomSlotPose,
+} from "./matrix-stockroom-logic.js";
+export { MatrixStockroom3D, type MatrixStockroom3DProps } from "./MatrixStockroom3D.js";
+export {
   MultiplayerPresence,
   computePeerRotundaSeat,
   type MultiplayerPresenceProps,
@@ -95,6 +126,13 @@ export {
   type PbrTextureSet,
   type RotundaHdriBundle,
 } from "./procedural-pbr.js";
+export {
+  REALISTIC_COMPONENT_KINDS,
+  RealisticComponentMesh3D,
+  resolveRealisticComponentKind,
+  type RealisticComponentKind,
+  type RealisticComponentMesh3DProps,
+} from "./realistic-components-3d.js";
 export { ROTUNDA_SHOWCASE_MODELS, ROTUNDA_SHOWCASE_SCENARIOS, getRotundaScenarioById } from "./showcase-catalog.js";
 export {
   DIAGRAM_STAGE_DEFAULT_CENTER,
@@ -306,6 +344,7 @@ export {
   enterXrSession,
   exitXrSession,
   formatXrSessionError,
+  getSharedRotundaAudioContext,
   getSharedXrStore,
   playRotundaCue,
   pulseXrHaptics,

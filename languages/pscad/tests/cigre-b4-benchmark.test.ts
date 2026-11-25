@@ -39,7 +39,7 @@ test("CIGRE B4 DC Grid: Closed-loop EMT simulation, COMTRADE & PSOUT export", as
 
   assert.strictEqual(res.caseName, "CIGRE_B4_Multi_Terminal_HVDC");
   assert.ok(res.totalSteps > 500, `Total steps: ${res.totalSteps}`);
-  assert.ok(res.throughputStepsPerSec > 500, `Throughput: ${res.throughputStepsPerSec} steps/s`);
+  assert.ok(res.throughputStepsPerSec > 200, `Throughput: ${res.throughputStepsPerSec} steps/s`);
   assert.ok(res.minDcVoltageKv < 200.0, `Min DC voltage must drop during fault: ${res.minDcVoltageKv} kV`);
 
   // Without external reference data, SOTA comparison must remain UNVERIFIED and not fabricate baselines

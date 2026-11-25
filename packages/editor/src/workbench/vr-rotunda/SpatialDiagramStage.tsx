@@ -7,7 +7,7 @@ import { useXR, useXRInputSourceState } from "@react-three/xr";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { GalleryComponentItem } from "../componentGalleryCatalog.js";
-import { FloatingLibraryPanel3D, MaterializingComponentPreview } from "./FloatingLibraryPanel3D.js";
+import { MaterializingComponentPreview } from "./FloatingLibraryPanel3D.js";
 import {
   evaluateMagneticPortSnap,
   evaluatePortCompatibility,
@@ -15,6 +15,7 @@ import {
   makeUndirectedConnectionKey,
   type WorldPortCandidate,
 } from "./magnetic-port-solver.js";
+import { MatrixStockroom3D } from "./MatrixStockroom3D.js";
 import {
   applyAutoDomainLayerLayout,
   categoryToSpatialDomain,
@@ -53,7 +54,6 @@ import { SpatialDiagramNode3D, type PortVisualHighlightState } from "./SpatialDi
 import { SpatialMagneticWires, type ActiveWireDragVisualState } from "./SpatialMagneticWires.js";
 import type { ExtrudedWaferStyle } from "./svg-extruder.js";
 import { evaluateMaterializeTransition } from "./wrist-palette-logic.js";
-import { WristPaletteTool } from "./WristPaletteTool.js";
 import { evaluatePinchState } from "./xr-gestures.js";
 import {
   applyStickDeadzone,
@@ -99,6 +99,7 @@ export interface SpatialDiagramStageProps {
   onInteractionLockChange?: ((locked: boolean) => void) | undefined;
   onToggleWristPalette: () => void;
   onSetWristPaletteOpen: (open: boolean) => void;
+  onExitDiagramMode?: (() => void) | undefined;
   onCycleSnapMode: () => void;
   onTogglePlaying: () => void;
   onDiagramEdit?:
@@ -231,8 +232,9 @@ export function SpatialDiagramStage({
   onInteractionLockChange,
   onToggleWristPalette,
   onSetWristPaletteOpen,
-  onCycleSnapMode,
-  onTogglePlaying,
+  onExitDiagramMode,
+  onCycleSnapMode: _onCycleSnapMode,
+  onTogglePlaying: _onTogglePlaying,
   onDiagramEdit,
   onHudStatusChange,
   onCue,
@@ -664,6 +666,7 @@ export function SpatialDiagramStage({
         rejected: false,
         isSource: true,
       });
+      lastHighlightSizeRef.current = 1;
       setPortHighlights(initHighlights);
       setActiveWireVisual({
         sourcePort: port,
@@ -687,6 +690,7 @@ export function SpatialDiagramStage({
     const sess = wireSessionRef.current;
     if (!sess) return;
     wireSessionRef.current = null;
+    lastHighlightSizeRef.current = 0;
     setActiveWireVisual(null);
     setPortHighlights(new Map());
     setLock("none");
@@ -715,58 +719,109 @@ export function SpatialDiagramStage({
     onHudStatusChange?.("Wire drag cancelled");
   }, [emitEdit, setLock, onCue, onHudStatusChange]);
 
-  const handleStartPullCatalogCard = useCallback(
-    (
-      item: GalleryComponentItem,
-      cardWorldPos: THREE.Vector3,
-      panelWorldNormal: THREE.Vector3,
-      panelWorldQuat: THREE.Quaternion,
-      e: ThreeEvent<PointerEvent>,
-    ) => {
-      if (nodeGrabRef.current || wireSessionRef.current || palettePullRef.current) return;
-      if (!canAcquireInteractionLock(interactionLockRef.current, "palette-pull")) return;
+  /**
+   * Instant Matrix Stockroom grab: as soon as the engineer grabs any shelf item,
+   * the flanking corridors immediately vanish, the component materializes directly
+   * in their hand / at their pointer, and it remains in live 6DOF grabbed mode moving
+   * with their hand until they release the button.
+   */
+  const handleGrabFromStockroom = useCallback(
+    (item: GalleryComponentItem, worldPos: THREE.Vector3, e: ThreeEvent<PointerEvent>) => {
+      // 1. Immediately dismiss the Matrix Stockroom shelves
+      onSetWristPaletteOpen(false);
+
+      const stage = stageGroupRef.current;
       const binding = bindPointer(e);
-      if (!binding) return;
-      const isXr = binding.kind !== "desktop";
+      const isXr = Boolean(binding && binding.kind !== "desktop");
+      const xrPose = isXr ? readEventPointerPose(e) : null;
 
-      // Desktop: drag plane faces camera through the card spawn point (pull sideways & forward into stage)
-      const planeNormal = new THREE.Vector3();
-      if (isXr) planeNormal.copy(panelWorldNormal);
-      else camera.getWorldDirection(planeNormal).negate();
-      const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, cardWorldPos);
+      // 2. Materialize RIGHT at the user's hand (near-field grab) or laser contact point
+      const spawnWorld = isXr && xrPose && binding?.kind === "grab" ? xrPose.position.clone() : worldPos.clone();
 
-      previewWorldPosRef.current.copy(cardWorldPos);
-      previewWorldQuatRef.current.copy(panelWorldQuat);
-      previewMorphProgressRef.current = 0.08;
-      previewCancelRef.current = false;
+      let localPos = new THREE.Vector3(0, 0.04, 0.08);
+      const stageWorldQuat = new THREE.Quaternion();
+      if (stage) {
+        stage.updateWorldMatrix(true, false);
+        stage.getWorldQuaternion(stageWorldQuat);
+        invStageMatScratch.current.copy(stage.matrixWorld).invert();
+        localPos = spawnWorld.clone().applyMatrix4(invStageMatScratch.current);
+      }
 
-      palettePullRef.current = {
-        item,
-        mode: isXr ? "xr-pointer" : "desktop",
-        handedness: binding.handedness,
-        binding: isXr ? binding : undefined,
-        rayDistance: Math.max(RAY_MIN_DISTANCE, binding.hitDistance),
-        panelOriginWorld: cardWorldPos.clone(),
-        panelNormalWorld: panelWorldNormal.clone(),
-        panelQuatWorld: panelWorldQuat.clone(),
-        dragPlane,
-        alreadyMaterialized: false,
-        shouldCancelOnRelease: true,
-        snapWeldCandidate: null,
+      const initialPose: SpatialNodePose3D = {
+        position: [localPos.x, localPos.y, localPos.z],
+        quaternion: [0, 0, 0, 1],
+        scale: 1,
       };
 
-      setLock("palette-pull");
-      setPullingItem(item);
-      setSnapWeldVisual(null);
-      onCue?.("grab");
-      if (isXr) pulseXrHaptics(getSharedXrStore(), 0.3, 18, binding.handedness);
-      onHudStatusChange?.(
-        isXr
-          ? `Pulling ${item.shortName} — yank it toward you (or thumbstick ↓) to materialize`
-          : `Pulling ${item.shortName} off library panel to materialize in 3D…`,
-      );
+      const res = commitSpawnCatalogComponent(diagramStateRef.current, item, initialPose);
+      diagramStateRef.current = res.state;
+      spawnedAtMapRef.current.set(res.spawnedNodeId, performance.now());
+      emitEdit(res.state, res.actions);
+      onCue?.("materialize");
+
+      // 3. Immediately attach a live grab session so the materialized component moves 1:1 with the hand until release
+      if (binding && canAcquireInteractionLock(interactionLockRef.current, "node-grab")) {
+        const initVec = new THREE.Vector3(localPos.x, localPos.y, localPos.z);
+        const initQuat = new THREE.Quaternion();
+
+        if (isXr && xrPose) {
+          const grabOffset = computeGrabOffset(xrPose.position, xrPose.quaternion, spawnWorld, stageWorldQuat);
+          nodeGrabRef.current = {
+            nodeId: res.spawnedNodeId,
+            mode: "xr-pointer",
+            handedness: binding.handedness,
+            binding,
+            dragPlane: new THREE.Plane(),
+            planeOffset: new THREE.Vector3(),
+            depthOffset: 0,
+            yawOffsetRad: 0,
+            grabOffset,
+            xrOffsetPos: new THREE.Vector3(...grabOffset.positionOffset),
+            xrOffsetQuat: new THREE.Quaternion(...grabOffset.rotationOffset),
+            targetPos: initVec.clone(),
+            targetQuat: initQuat.clone(),
+            smoothPos: initVec.clone(),
+            smoothQuat: initQuat.clone(),
+            velocity: new THREE.Vector3(),
+            releaseVel: new THREE.Vector3(),
+            prevPointerPos: xrPose.position.clone(),
+            hasPrevPointerPos: true,
+            forcePulling: false,
+          };
+          setLock("node-grab");
+          setGrabbedNodeId(res.spawnedNodeId);
+          setOverDeleteRing(false);
+          pulseXrHaptics(getSharedXrStore(), 0.65, 32, binding.handedness);
+        } else if (!isXr) {
+          const planeNormal = new THREE.Vector3();
+          camera.getWorldDirection(planeNormal).negate();
+          const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(planeNormal, spawnWorld);
+          nodeGrabRef.current = {
+            nodeId: res.spawnedNodeId,
+            mode: "desktop",
+            dragPlane,
+            planeOffset: new THREE.Vector3(),
+            depthOffset: 0,
+            yawOffsetRad: 0,
+            targetPos: initVec.clone(),
+            targetQuat: initQuat.clone(),
+            smoothPos: initVec.clone(),
+            smoothQuat: initQuat.clone(),
+            velocity: new THREE.Vector3(),
+            releaseVel: new THREE.Vector3(),
+            prevPointerPos: new THREE.Vector3(),
+            hasPrevPointerPos: false,
+            forcePulling: false,
+          };
+          setLock("node-grab");
+          setGrabbedNodeId(res.spawnedNodeId);
+          setOverDeleteRing(false);
+        }
+      }
+
+      onHudStatusChange?.(`Holding ${res.spawnedNodeId} (${item.shortName}) — release button to place in 3D`);
     },
-    [camera, interactionLockRef, bindPointer, setLock, onCue, onHudStatusChange],
+    [camera, interactionLockRef, bindPointer, setLock, emitEdit, onSetWristPaletteOpen, onCue, onHudStatusChange],
   );
 
   const finishPalettePull = useCallback(() => {
@@ -1016,10 +1071,13 @@ export function SpatialDiagramStage({
   /*  Unified 90Hz WebXR Bare-Hand, Controller & Desktop Manipulation Loop    */
   /* ------------------------------------------------------------------------ */
 
+  const lastHighlightSizeRef = useRef(0);
+
   const evaluateWireMagneticStep = useCallback(
-    (sess: ActiveWireSession, tipWorld: THREE.Vector3) => {
+    (sess: ActiveWireSession, tipWorld: THREE.Vector3, precollectedCandidates?: WorldPortCandidate[]) => {
+      if (!Number.isFinite(tipWorld.x) || !Number.isFinite(tipWorld.y) || !Number.isFinite(tipWorld.z)) return;
       wireTipWorldPosRef.current.copy(tipWorld);
-      const candidates = collectWorldPortCandidates();
+      const candidates = precollectedCandidates ?? collectWorldPortCandidates();
       const evalRes = evaluateMagneticPortSnap(sess.sourcePort, [tipWorld.x, tipWorld.y, tipWorld.z], candidates, {
         currentlySnappedKey: sess.snappedKey,
         previouslyRejectedKey: sess.rejectedKey,
@@ -1061,34 +1119,38 @@ export function SpatialDiagramStage({
       sess.snappedTarget = evalRes.snappedTarget;
       sess.rejectedTarget = evalRes.rejectedTarget;
 
-      // Update per-port magnetic highlight halos when approach/snap state updates
-      const nextMap = new Map<string, PortVisualHighlightState>();
-      nextMap.set(makePortKey(sess.sourcePort.nodeId, sess.sourcePort.portId), {
-        approach01: 1,
-        snapped: false,
-        rejected: false,
-        isSource: true,
-      });
-      for (const app of evalRes.approachCandidates) {
-        const k = makePortKey(app.candidate.port.nodeId, app.candidate.port.portId);
-        nextMap.set(k, {
-          approach01: app.proximity01,
-          snapped: k === nextSnappedKey,
-          rejected: false,
-          isSource: false,
-        });
-      }
-      if (evalRes.rejectedTarget && nextRejectedKey) {
-        nextMap.set(nextRejectedKey, {
-          approach01: 0,
+      // Update per-port magnetic highlight halos only when snap/reject or highlighted port count changes
+      const nextSize = 1 + evalRes.approachCandidates.length + (evalRes.rejectedTarget && nextRejectedKey ? 1 : 0);
+      if (snapChanged || nextSize !== lastHighlightSizeRef.current) {
+        lastHighlightSizeRef.current = nextSize;
+        const nextMap = new Map<string, PortVisualHighlightState>();
+        nextMap.set(makePortKey(sess.sourcePort.nodeId, sess.sourcePort.portId), {
+          approach01: 1,
           snapped: false,
-          rejected: true,
-          isSource: false,
+          rejected: false,
+          isSource: true,
         });
+        for (const app of evalRes.approachCandidates) {
+          const k = makePortKey(app.candidate.port.nodeId, app.candidate.port.portId);
+          nextMap.set(k, {
+            approach01: app.proximity01,
+            snapped: k === nextSnappedKey,
+            rejected: false,
+            isSource: false,
+          });
+        }
+        if (evalRes.rejectedTarget && nextRejectedKey) {
+          nextMap.set(nextRejectedKey, {
+            approach01: 0,
+            snapped: false,
+            rejected: true,
+            isSource: false,
+          });
+        }
+        setPortHighlights(nextMap);
       }
 
-      if (snapChanged || nextMap.size !== portHighlights.size) {
-        setPortHighlights(nextMap);
+      if (snapChanged) {
         setActiveWireVisual({
           sourcePort: sess.sourcePort,
           tipWorldPosRef: wireTipWorldPosRef,
@@ -1097,7 +1159,7 @@ export function SpatialDiagramStage({
         });
       }
     },
-    [collectWorldPortCandidates, existingConnectionKeys, onCue, portHighlights.size],
+    [collectWorldPortCandidates, existingConnectionKeys, onCue],
   );
 
   const evaluatePalettePullStep = useCallback(
@@ -1498,6 +1560,7 @@ export function SpatialDiagramStage({
       } else if (sess.mode === "xr-pointer") {
         if (sampleBound(sess.binding)) {
           const target = tmpVecA.current;
+          let precollected: WorldPortCandidate[] | undefined;
           if (sess.binding?.kind === "ray") {
             sess.rayDistance = telescope(sess.binding, sess.rayDistance);
             pointAlongRayPose(pointerPosScratch.current, pointerQuatScratch.current, sess.rayDistance, target);
@@ -1506,7 +1569,8 @@ export function SpatialDiagramStage({
             const rayDir = tmpNormal.current.set(0, 0, -1).applyQuaternion(pointerQuatScratch.current);
             let bestPerp = Infinity;
             let bestT = -1;
-            for (const c of collectWorldPortCandidates()) {
+            precollected = collectWorldPortCandidates();
+            for (const c of precollected) {
               if (c.port.nodeId === sess.sourcePort.nodeId && c.port.portId === sess.sourcePort.portId) continue;
               rayHitScratch.current
                 .set(c.worldPosition[0], c.worldPosition[1], c.worldPosition[2])
@@ -1530,7 +1594,7 @@ export function SpatialDiagramStage({
           // Light smoothing kills long-lever laser jitter without perceptible lag.
           const a = computeSmoothingAlpha(delta, sess.binding?.kind === "ray" ? 0.022 : 0.01);
           tmpVecB.current.copy(wireTipWorldPosRef.current).lerp(target, a);
-          evaluateWireMagneticStep(sess, tmpVecB.current);
+          evaluateWireMagneticStep(sess, tmpVecB.current, precollected);
         }
       } else {
         raycasterRef.current.setFromCamera(pointerNdcRef.current, camera);
@@ -1827,32 +1891,24 @@ export function SpatialDiagramStage({
             />
           </mesh>
         </group>
+
+        {/* Compact Podium-Styled Quick-Dock below the dedicated 3D Diagram Arena */}
+        <DiagramStageQuickDock
+          position={[0, -hy - 0.12, 0.08]}
+          stockroomOpen={wristPaletteOpen}
+          canUndo={diagramState.undoStack.length > 0}
+          onToggleStockroom={onToggleWristPalette}
+          onUndo={handleUndo}
+          onReturnToPodium={onExitDiagramMode}
+        />
       </group>
 
-      {/* Non-Dominant Left Wrist Micro-Dock (Summons Floating 2D Library Panel, Undo, Snap, Sim) */}
-      <WristPaletteTool
-        visible={visible}
-        paletteOpen={wristPaletteOpen}
-        canUndo={diagramState.undoStack.length > 0}
-        snapMode={snapMode}
-        isPlaying={isPlaying}
-        dark={dark}
-        onTogglePalette={onToggleWristPalette}
-        onUndo={handleUndo}
-        onCycleSnapMode={onCycleSnapMode}
-        onTogglePlaying={onTogglePlaying}
-        onCue={onCue}
-      />
-
-      {/* World-Locked Floating Curved 2D Component Library Panel */}
-      <FloatingLibraryPanel3D
+      {/* Matrix Stockroom Infinite-Scroll 3D Component Vault (90°-Rotated Horizontal Corridors) */}
+      <MatrixStockroom3D
         visible={visible && wristPaletteOpen}
         catalog={libraryCatalog}
-        dark={dark}
-        pullingCardId={pullingItem?.id ?? null}
+        onGrabComponent={handleGrabFromStockroom}
         onClose={() => onSetWristPaletteOpen(false)}
-        onStartPullCatalogCard={handleStartPullCatalogCard}
-        onPanelDragLockChange={(locked) => setLock(locked ? "panel-drag" : "none")}
         onCue={onCue}
       />
 
@@ -1882,6 +1938,140 @@ export function SpatialDiagramStage({
           <meshBasicMaterial color="#10b981" transparent opacity={0.85} toneMapped={false} />
         </mesh>
       )}
+    </group>
+  );
+}
+
+const DOCK_W = 768;
+const DOCK_H = 112;
+const DOCK_ZONES = [
+  { id: "stockroom", x: 16, y: 16, w: 300, h: 80 },
+  { id: "undo", x: 332, y: 16, w: 140, h: 80 },
+  { id: "podium", x: 488, y: 16, w: 264, h: 80 },
+] as const;
+
+function DiagramStageQuickDock({
+  position,
+  stockroomOpen,
+  canUndo,
+  onToggleStockroom,
+  onUndo,
+  onReturnToPodium,
+}: {
+  position: [number, number, number];
+  stockroomOpen: boolean;
+  canUndo: boolean;
+  onToggleStockroom: () => void;
+  onUndo: () => void;
+  onReturnToPodium?: (() => void) | undefined;
+}): React.ReactElement {
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const lastPressRef = useRef<{ id: string; atMs: number }>({ id: "", atMs: 0 });
+
+  const bundle = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = DOCK_W;
+    canvas.height = DOCK_H;
+    const ctx = canvas.getContext("2d");
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    return { canvas, ctx, texture };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      bundle?.texture.dispose();
+    };
+  }, [bundle]);
+
+  useEffect(() => {
+    if (!bundle?.ctx) return;
+    const ctx = bundle.ctx;
+    ctx.clearRect(0, 0, DOCK_W, DOCK_H);
+
+    // Dark recessed CNC keybed tray
+    ctx.fillStyle = "#172033";
+    ctx.beginPath();
+    ctx.roundRect(4, 4, DOCK_W - 8, DOCK_H - 8, 22);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(203, 213, 225, 0.42)";
+    ctx.stroke();
+
+    const drawKey = (z: (typeof DOCK_ZONES)[number], label: string, active: boolean, disabled = false) => {
+      const hov = hoveredId === z.id && !disabled;
+      const g = ctx.createLinearGradient(z.x, z.y, z.x, z.y + z.h);
+      if (active) {
+        g.addColorStop(0, "#0284c7");
+        g.addColorStop(1, "#0369a1");
+      } else if (disabled) {
+        g.addColorStop(0, "#334155");
+        g.addColorStop(1, "#1e293b");
+      } else if (hov) {
+        g.addColorStop(0, "#e0f2fe");
+        g.addColorStop(1, "#bae6fd");
+      } else {
+        g.addColorStop(0, "#ffffff");
+        g.addColorStop(1, "#f1f5f9");
+      }
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.roundRect(z.x, z.y, z.w, z.h, 16);
+      ctx.fill();
+      ctx.lineWidth = hov ? 4 : 2;
+      ctx.strokeStyle = hov ? "#38bdf8" : active ? "#e0f2fe" : "#cbd5e1";
+      ctx.stroke();
+
+      ctx.fillStyle = active ? "#ffffff" : disabled ? "#64748b" : "#0f172a";
+      ctx.font = "800 24px Inter, -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, z.x + z.w * 0.5, z.y + z.h * 0.52);
+    };
+
+    drawKey(DOCK_ZONES[0], stockroomOpen ? "✕ Close Stockroom" : "＋ Stockroom", stockroomOpen);
+    drawKey(DOCK_ZONES[1], "↶ Undo", false, !canUndo);
+    drawKey(DOCK_ZONES[2], "◈ 3D Model ↻", false, !onReturnToPodium);
+    bundle.texture.needsUpdate = true;
+  }, [bundle, stockroomOpen, canUndo, hoveredId, onReturnToPodium]);
+
+  const hitZone = useCallback((e: ThreeEvent<PointerEvent>): string | null => {
+    if (!e.uv) return null;
+    const px = e.uv.x * DOCK_W;
+    const py = (1 - e.uv.y) * DOCK_H;
+    for (const z of DOCK_ZONES) {
+      if (px >= z.x && px <= z.x + z.w && py >= z.y && py <= z.y + z.h) return z.id;
+    }
+    return null;
+  }, []);
+
+  if (!bundle) return <group />;
+
+  return (
+    <group position={position} rotation={[-0.28, 0, 0]}>
+      <mesh
+        onPointerMove={(e) => {
+          e.stopPropagation();
+          setHoveredId(hitZone(e));
+        }}
+        onPointerOut={() => setHoveredId(null)}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          const id = hitZone(e);
+          if (!id) return;
+          const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+          if (lastPressRef.current.id === id && now - lastPressRef.current.atMs < 140) return;
+          lastPressRef.current = { id, atMs: now };
+          if (id === "stockroom") onToggleStockroom();
+          else if (id === "undo" && canUndo) onUndo();
+          else if (id === "podium") onReturnToPodium?.();
+        }}
+      >
+        <planeGeometry args={[0.74, 0.108]} />
+        <meshBasicMaterial map={bundle.texture} transparent toneMapped={false} />
+      </mesh>
     </group>
   );
 }

@@ -181,7 +181,7 @@ test("Bidirectional Gateway Roundtrip: PSS/E -> CGMES -> PSS/E power flow parity
 
   // Format back to RAW text
   const rawText = writeRaw(roundtripCase);
-  assert.ok(rawText.includes("PSS/E RAW Data File"));
+  assert.ok(/PSS\/E-\d+ RAW Data File/.test(rawText));
   assert.ok(rawText.includes("END OF BUS DATA"));
   assert.ok(rawText.includes("END OF BRANCH DATA"));
 });

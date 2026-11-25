@@ -18,6 +18,8 @@
       "@modelscript/native/*": ["./packages/native/src/*"],
       "@modelscript/runtime": ["./packages/runtime/src/index.ts"],
       "@modelscript/runtime/benchmark": ["./packages/runtime/src/benchmark.ts"],
+      "@modelscript/runtime/wasm_fmu_subsystem": ["./packages/runtime/src/simulation/fmu_subsystem.ts"],
+      "@modelscript/runtime/wasm_fmu_subsystem.js": ["./packages/runtime/src/simulation/fmu_subsystem.ts"],
       "@modelscript/runtime/*": [
         "./packages/runtime/src/*",
         "./packages/runtime/src/dae/*",

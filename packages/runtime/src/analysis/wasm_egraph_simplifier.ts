@@ -66,21 +66,9 @@ function buildZeroArenaArray(arena: DAEBuilder, ctorId: number, isFloat: boolean
 
 /**
  * Recursively simplifies an arena expression using equality saturation rules.
- * When `stats` is omitted, executes directly in WebAssembly linear memory via `cas_export_simplify`.
  */
 export function simplifyArenaExpr(arena: DAEBuilder, exprId: number, stats?: SimplificationStats): number {
   if (exprId < 0) return exprId;
-
-  if (!stats) {
-    const w = arena.exports;
-    const daePtr = arena.ptr;
-    if (w && daePtr && typeof w.cas_export_simplify === "function") {
-      const wasmRes = w.cas_export_simplify(daePtr, exprId >>> 0) >>> 0;
-      if (wasmRes !== 0xffffffff) {
-        return wasmRes;
-      }
-    }
-  }
 
   const kind = arena.getExprKind(exprId);
 

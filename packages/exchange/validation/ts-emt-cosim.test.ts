@@ -14,7 +14,7 @@ const dt = 50e-6; // 50 us
 const nSteps = Math.round(1.0 / (f0 * dt)); // 1 cycle = 333.33 steps -> 333 steps
 const omega0 = 2 * Math.PI * f0;
 
-// Test waveform: v(t) = 120 * sqrt(2) * cos(omega0 * t + 30 deg)
+// Test waveform: v(t) = 120 * sqrt(2) * sin(omega0 * t + 30 deg)
 const vPeakExpected = 120 * Math.SQRT2;
 const phaseDegExpected = 30.0;
 const phaseRadExpected = (phaseDegExpected * Math.PI) / 180.0;
@@ -22,7 +22,7 @@ const phaseRadExpected = (phaseDegExpected * Math.PI) / 180.0;
 const signal: number[] = [];
 for (let i = 0; i < nSteps * 2; i++) {
   const t = i * dt;
-  signal.push(vPeakExpected * Math.cos(omega0 * t + phaseRadExpected));
+  signal.push(vPeakExpected * Math.sin(omega0 * t + phaseRadExpected));
 }
 
 const phasor = extractFundamentalPhasor(signal, dt, f0);

@@ -16,7 +16,9 @@ import {
   commitSpawnCatalogComponent,
   computeGrabOffset,
   computeInfiniteWireControlPoints,
+  computeMatrixEntranceState,
   computeSmoothingAlpha,
+  computeStockroomSlotPose,
   createDynamicWireTubeBuffer,
   createInitialRotundaState,
   createSpatialDiagramStateFromTile,
@@ -37,11 +39,18 @@ import {
   makeUndirectedConnectionKey,
   parseSvgColor,
   parseSvgTransform,
+  REALISTIC_COMPONENT_KINDS,
   redoSpatialDiagram,
+  resolveRealisticComponentKind,
+  resolveStockroomSlotItem,
   rotundaReducer,
   sampleWireSplineAt,
   stage3DToDiagram2D,
+  stepStockroomScroll,
+  STOCKROOM_VISIBLE_COLS,
+  STOCKROOM_VISIBLE_ROWS,
   undoSpatialDiagram,
+  wrapPositiveMod,
   type SpatialDiagramPort3D,
   type WorldPortCandidate,
 } from "@modelscript/editor/workbench/vr-rotunda/index.js";
@@ -501,5 +510,116 @@ describe("3D WebXR Spatial Diagram Editor — Pure Engines & Integration", () =>
       Object.defineProperty(globalThis, "document", { value: prevDoc, configurable: true });
       Object.defineProperty(globalThis, "navigator", { value: prevNav, configurable: true });
     }
+  });
+
+  test("matrix-stockroom-logic drives infinite 4-way shelf wrapping, Matrix whiz-in entrance, flanking poses, and exclusive stage mode transitions", () => {
+    assert.equal(wrapPositiveMod(-1, 5), 4);
+    assert.equal(wrapPositiveMod(-7, 5), 3);
+    assert.equal(wrapPositiveMod(12, 5), 2);
+
+    // Flanking left and right walls map cleanly across negative and large positive scroll coordinates
+    const leftFirst = resolveStockroomSlotItem(GALLERY_COMPONENTS, "left", 0, 0);
+    const rightFirst = resolveStockroomSlotItem(GALLERY_COMPONENTS, "right", 0, 0);
+    assert.ok(leftFirst && rightFirst, "Both left and right stockroom bays must resolve items");
+    assert.notEqual(leftFirst.id, rightFirst.id, "Left and right shelves should show distinct items side-by-side");
+    assert.ok(resolveStockroomSlotItem(GALLERY_COMPONENTS, "left", -42, -19), "Negative infinite wrap must resolve");
+    assert.ok(
+      resolveStockroomSlotItem(GALLERY_COMPONENTS, "right", 999, 123),
+      "Large positive infinite wrap must resolve",
+    );
+
+    // Matrix Construct whiz-in entrance blasts from deep -Z to settled 0 with staggered columns
+    const start0 = computeMatrixEntranceState(0, 0);
+    const mid0 = computeMatrixEntranceState(0.22, 0);
+    const mid3 = computeMatrixEntranceState(0.22, 3);
+    const done0 = computeMatrixEntranceState(1.2, 0);
+    assert.ok(start0.zOffsetMeters < -10, "Entrance must begin deep down the corridor");
+    assert.ok(mid0.zOffsetMeters > start0.zOffsetMeters && mid0.zOffsetMeters < 0);
+    assert.ok(mid3.zOffsetMeters < mid0.zOffsetMeters, "Further columns should stagger behind closer columns");
+    assert.equal(done0.zOffsetMeters, 0);
+    assert.equal(done0.settled, true);
+    assert.equal(done0.streakIntensity, 0);
+
+    // Fast 4-way scrolling with thumbstick deflection crosses bay boundaries & coasts smoothly on release
+    let scroll = { scrollCol: 0, scrollRow: 0, velCol: 0, velRow: 0 };
+    let crossed = false;
+    for (let i = 0; i < 20; i++) {
+      const step = stepStockroomScroll(scroll, { stickX: 1.0, stickY: -0.8 }, 0.03);
+      scroll = step.next;
+      if (step.crossedBay) crossed = true;
+    }
+    assert.equal(crossed, true, "Fast thumbstick pan must cross bay boundaries for detent feedback");
+    assert.ok(scroll.scrollCol > 1.5, "Horizontal scroll should advance quickly");
+    assert.ok(scroll.scrollRow < -1.0, "Vertical scroll should advance quickly");
+
+    // Inertial coast damps cleanly toward zero when sticks return to neutral
+    const coastStartVel = Math.abs(scroll.velCol);
+    for (let i = 0; i < 30; i++) {
+      scroll = stepStockroomScroll(scroll, { stickX: 0, stickY: 0 }, 0.03).next;
+    }
+    assert.ok(Math.abs(scroll.velCol) < coastStartVel * 0.15, "Inertia must damp cleanly");
+
+    // Flanking left (-X) and right (+X) shelf poses face inward symmetrically toward the engineer
+    const poseL = computeStockroomSlotPose(
+      "left",
+      Math.floor(STOCKROOM_VISIBLE_COLS / 2),
+      Math.floor(STOCKROOM_VISIBLE_ROWS / 2),
+      0,
+      0,
+      0,
+    );
+    const poseR = computeStockroomSlotPose(
+      "right",
+      Math.floor(STOCKROOM_VISIBLE_COLS / 2),
+      Math.floor(STOCKROOM_VISIBLE_ROWS / 2),
+      0,
+      0,
+      0,
+    );
+    assert.ok(poseL.position[0] < -0.9, "Left shelf must flank left (-X) side of engineer");
+    assert.ok(poseR.position[0] > 0.9, "Right shelf must flank right (+X) side of engineer");
+    assert.ok(Math.abs(poseL.position[0] + poseR.position[0]) < 1e-5, "Corridor walls must be symmetric");
+    assert.ok(poseL.yawRad > 0 && poseR.yawRad < 0, "Corridor walls must face inward toward engineer");
+    assert.equal(poseL.edgeScale, 1);
+
+    // Exclusive mode transitions: opening Stockroom enters 3D Diagram mode; returning to 3D Model mode closes Stockroom
+    let rotunda = createInitialRotundaState();
+    assert.equal(rotunda.diagramEditorEnabled, false);
+    rotunda = rotundaReducer(rotunda, { type: "toggleWristPalette" });
+    assert.equal(rotunda.diagramEditorEnabled, true);
+    assert.equal(rotunda.wristPaletteOpen, true);
+    rotunda = rotundaReducer(rotunda, { type: "toggleDiagramEditor" });
+    assert.equal(rotunda.diagramEditorEnabled, false);
+    assert.equal(rotunda.wristPaletteOpen, false);
+  });
+
+  test("resolveRealisticComponentKind maps curated real-world 3D hardware models while keeping other components as extruded cards", () => {
+    assert.equal(REALISTIC_COMPONENT_KINDS.length, 9);
+    assert.equal(resolveRealisticComponentKind("msl-constant-voltage ConstantVoltage"), "battery");
+    assert.equal(resolveRealisticComponentKind("Battery Pack V_src"), "battery");
+    assert.equal(resolveRealisticComponentKind("Modelica.Electrical.Analog.Basic.Resistor R1"), "resistor");
+    assert.equal(resolveRealisticComponentKind("Modelica.Electrical.Analog.Basic.Capacitor C1"), "capacitor");
+    assert.equal(resolveRealisticComponentKind("Modelica.Electrical.Analog.Basic.Inductor L1"), "inductor");
+    assert.equal(resolveRealisticComponentKind("spice-diode Diode 1N4148"), "diode");
+    assert.equal(resolveRealisticComponentKind("msl-opamp IdealOpAmp"), "ic-chip");
+    assert.equal(resolveRealisticComponentKind("msl-pid PID Controller"), "ic-chip");
+    assert.equal(resolveRealisticComponentKind("msl-ideal-gear IdealGear"), "gear");
+    assert.equal(resolveRealisticComponentKind("msl-spring-damper SpringDamper"), "spring-damper");
+    assert.equal(resolveRealisticComponentKind("buildings-valve Two-Way Valve"), "valve");
+
+    // Non-hardware / abstract / thermal-capacity blocks remain crisp auto-extruded schematic wafer cards
+    assert.equal(resolveRealisticComponentKind("msl-heat-capacitor HeatCapacitor"), null);
+    assert.equal(resolveRealisticComponentKind("msl-ground Ground"), null);
+    assert.equal(resolveRealisticComponentKind("msl-step Step"), null);
+    assert.equal(resolveRealisticComponentKind(""), null);
+
+    // Gallery catalog has a balanced mix of realistic 3D hardware models and extruded cards
+    const realisticCount = GALLERY_COMPONENTS.filter(
+      (item) => resolveRealisticComponentKind(`${item.id} ${item.fqn} ${item.shortName}`) !== null,
+    ).length;
+    assert.ok(
+      realisticCount >= 9 && realisticCount < GALLERY_COMPONENTS.length,
+      `Expected a mix of realistic 3D models and extruded cards, got ${realisticCount}/${GALLERY_COMPONENTS.length}`,
+    );
   });
 });

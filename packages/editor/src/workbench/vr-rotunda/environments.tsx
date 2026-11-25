@@ -3,9 +3,16 @@
 import { ContactShadows, Environment, Grid, Lightformer, MeshReflectorMaterial } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useXR } from "@react-three/xr";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import {
+  AtriumEnvironmentProps,
+  DarkLabEnvironmentProps,
+  OfficeEnvironmentProps,
+  OutdoorsEnvironmentProps,
+  WarehouseEnvironmentProps,
+} from "./environment-props.js";
 import {
   createArchitecturalWoodPbr,
   createBrushedAluminumPbr,
@@ -235,7 +242,7 @@ function sampleMeadowHeight(x: number, z: number, plinthX: number, plinthZ: numb
  * meant to multiply cleanly with `createMeadowGrassPbr` (avoiding neon plastic greens).
  */
 function createMeadowTerrainGeometry(plinthX: number, plinthZ: number, flatRadius: number): THREE.BufferGeometry {
-  const geom = new THREE.PlaneGeometry(164, 164, 72, 72);
+  const geom = new THREE.PlaneGeometry(164, 164, 48, 48);
   geom.rotateX(-Math.PI / 2);
 
   const pos = geom.attributes["position"];
@@ -601,6 +608,9 @@ function WarehouseEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): Reac
           <meshStandardMaterial color="#d99f18" roughness={0.42} metalness={0.1} />
         </mesh>
       </group>
+
+      {/* Rich instanced industrial racks, cargo, drums, bollards, bridge crane & robot arms */}
+      <WarehouseEnvironmentProps />
     </group>
   );
 }
@@ -788,6 +798,9 @@ function OfficeEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): ReactEl
           </mesh>
         </group>
       ))}
+
+      {/* Rich instanced studio desks, dual monitors, bookshelves, rolling whiteboards & plants */}
+      <OfficeEnvironmentProps />
     </group>
   );
 }
@@ -800,6 +813,11 @@ const MOTE_COUNT = 48;
 
 function OutdoorsEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): ReactElement {
   const flatRadius = bayScale > 1.2 ? 5.2 : 4.2;
+
+  const sampleGroundY = useCallback(
+    (x: number, z: number) => sampleMeadowHeight(x, z, plinthX, plinthZ, flatRadius),
+    [plinthX, plinthZ, flatRadius],
+  );
 
   const terrainGeom = useMemo(
     () => createMeadowTerrainGeometry(plinthX, plinthZ, flatRadius),
@@ -941,6 +959,9 @@ function OutdoorsEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): React
       <points geometry={motesGeom}>
         <pointsMaterial color="#fffbeb" size={0.036} sizeAttenuation transparent opacity={0.45} depthWrite={false} />
       </points>
+
+      {/* Rich instanced stylized trees, boulders, timber fence, benches, survey tripods, anemometer & clouds */}
+      <OutdoorsEnvironmentProps sampleGroundY={sampleGroundY} plinthX={plinthX} plinthZ={plinthZ} />
     </group>
   );
 }
@@ -1110,6 +1131,9 @@ function DarkLabEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): ReactE
           </mesh>
         </group>
       ))}
+
+      {/* Rich instanced 19" compute racks with status LEDs, oscilloscope benches, cryo dewars & containment pods */}
+      <DarkLabEnvironmentProps />
     </group>
   );
 }
@@ -1361,7 +1385,7 @@ function createAtriumGlazingTexture(width = 512, height = 128): THREE.DataTextur
   return tex;
 }
 
-function atriumHorizontalTorus(radius: number, y: number, tube: number, segments = 192): THREE.BufferGeometry {
+function atriumHorizontalTorus(radius: number, y: number, tube: number, segments = 64): THREE.BufferGeometry {
   const g = new THREE.TorusGeometry(radius, tube, 6, segments);
   g.rotateX(Math.PI / 2);
   g.translate(0, y, ATRIUM_CENTER_Z);
@@ -1369,7 +1393,7 @@ function atriumHorizontalTorus(radius: number, y: number, tube: number, segments
 }
 
 function atriumFlatRing(inner: number, outer: number, y: number, facingUp: boolean): THREE.BufferGeometry {
-  const g = new THREE.RingGeometry(inner, outer, 192, 1);
+  const g = new THREE.RingGeometry(inner, outer, 64, 1);
   g.rotateX(facingUp ? -Math.PI / 2 : Math.PI / 2);
   g.translate(0, y, ATRIUM_CENTER_Z);
   return g;
@@ -1395,37 +1419,37 @@ interface AtriumGeometries {
 
 /** Builds (and merges) all static atrium architecture into a handful of draw calls. */
 function createAtriumGeometries(): AtriumGeometries {
-  const skirt = new THREE.CylinderGeometry(ATRIUM_WALL_R, ATRIUM_WALL_R, ATRIUM_SKIRT_H, 192, 1, true);
+  const skirt = new THREE.CylinderGeometry(ATRIUM_WALL_R, ATRIUM_WALL_R, ATRIUM_SKIRT_H, 64, 1, true);
   skirt.translate(0, ATRIUM_SKIRT_H / 2, ATRIUM_CENTER_Z);
 
   const headerH = ATRIUM_HEADER_TOP - ATRIUM_GLAZING_TOP;
-  const header = new THREE.CylinderGeometry(ATRIUM_WALL_R, ATRIUM_WALL_R, headerH, 192, 1, true);
+  const header = new THREE.CylinderGeometry(ATRIUM_WALL_R, ATRIUM_WALL_R, headerH, 64, 1, true);
   header.translate(0, ATRIUM_GLAZING_TOP + headerH / 2, ATRIUM_CENTER_Z);
 
   // Window sill + soffit + oculus rim + central oculus hub (single white trim draw call)
-  const hub = new THREE.CylinderGeometry(0.55, 0.55, 0.22, 48, 1, false);
+  const hub = new THREE.CylinderGeometry(0.55, 0.55, 0.22, 32, 1, false);
   hub.translate(0, ATRIUM_OCULUS_Y + 0.25, ATRIUM_CENTER_Z);
   const whiteTrim = mergeOrEmpty([
     atriumFlatRing(ATRIUM_WALL_R, ATRIUM_RADIUS + 0.05, ATRIUM_SKIRT_H, true),
     atriumFlatRing(ATRIUM_WALL_R, ATRIUM_RADIUS + 0.05, ATRIUM_GLAZING_TOP, false),
-    atriumHorizontalTorus(ATRIUM_OCULUS_R, ATRIUM_OCULUS_Y, 0.16, 128),
+    atriumHorizontalTorus(ATRIUM_OCULUS_R, ATRIUM_OCULUS_Y, 0.16, 64),
     hub,
   ]);
 
   // Curved cove ceiling rising from the header into the glass oculus
   const pts: THREE.Vector2[] = [];
-  const steps = 24;
+  const steps = 16;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     const radius = ATRIUM_WALL_R + (ATRIUM_OCULUS_R - ATRIUM_WALL_R) * t;
     const y = ATRIUM_HEADER_TOP + (ATRIUM_OCULUS_Y - ATRIUM_HEADER_TOP) * Math.sin((t * Math.PI) / 2);
     pts.push(new THREE.Vector2(radius, y));
   }
-  const ceiling = new THREE.LatheGeometry(pts, 192);
+  const ceiling = new THREE.LatheGeometry(pts, 64);
   ceiling.translate(0, 0, ATRIUM_CENTER_Z);
 
   const glazingH = ATRIUM_GLAZING_TOP - ATRIUM_SKIRT_H;
-  const glazing = new THREE.CylinderGeometry(ATRIUM_RADIUS + 0.06, ATRIUM_RADIUS + 0.06, glazingH, 192, 1, true);
+  const glazing = new THREE.CylinderGeometry(ATRIUM_RADIUS + 0.06, ATRIUM_RADIUS + 0.06, glazingH, 64, 1, true);
   glazing.translate(0, ATRIUM_SKIRT_H + glazingH / 2, ATRIUM_CENTER_Z);
 
   const transoms = mergeOrEmpty([
@@ -1439,7 +1463,7 @@ function createAtriumGeometries(): AtriumGeometries {
     atriumHorizontalTorus(ATRIUM_WALL_R - 0.02, ATRIUM_SKIRT_H + 0.012, 0.012),
     atriumHorizontalTorus(ATRIUM_WALL_R - 0.02, ATRIUM_GLAZING_TOP - 0.012, 0.012),
     atriumHorizontalTorus(ATRIUM_WALL_R - 0.06, ATRIUM_HEADER_TOP + 0.05, 0.014),
-    atriumHorizontalTorus(ATRIUM_OCULUS_R - 0.2, ATRIUM_OCULUS_Y - 0.12, 0.02, 128),
+    atriumHorizontalTorus(ATRIUM_OCULUS_R - 0.2, ATRIUM_OCULUS_Y - 0.12, 0.02, 64),
   ]);
 
   // Soft volumetric daylight shaft under the oculus (desktop only)
@@ -1957,6 +1981,8 @@ function AtriumEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): ReactEl
 
       <AtriumContactShadow plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} isInXr={isInXr} />
       <AtriumHoloRings plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />
+      {/* Rich instanced architectural planters, lounge benches, side tables, blueprint kiosks & pendant globes */}
+      <AtriumEnvironmentProps />
     </group>
   );
 }
@@ -1965,6 +1991,8 @@ function AtriumEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): ReactEl
 /*  Public RotundaEnvironment Component                                       */
 /* -------------------------------------------------------------------------- */
 
+const NOOP_ENV_RAYCAST: THREE.Object3D["raycast"] = () => {};
+
 /**
  * Renders the active photorealistic procedural PBR 3D environment + matched equirectangular
  * HDRI/PMREM IBL for the Engineering Rotunda VR Mode with zero external asset dependencies
@@ -1972,24 +2000,49 @@ function AtriumEnvironment({ plinthX, plinthZ, bayScale }: SubEnvProps): ReactEl
  */
 export const RotundaEnvironment = memo(
   function RotundaEnvironment({ environment, plinthCenter, scaleMode }: RotundaEnvironmentProps): ReactElement {
+    const envRootRef = useRef<THREE.Group | null>(null);
     const plinthX = plinthCenter[0];
     const plinthZ = plinthCenter[2];
     const bayScale = scaleMode === "real-scale" ? 1.45 : 1.0;
 
+    // Disable pointer/laser raycasting on all passive background scenery (massive Quest 2 CPU win)
+    useLayoutEffect(() => {
+      const root = envRootRef.current;
+      if (!root) return;
+      root.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh || (obj as THREE.Points).isPoints) {
+          obj.raycast = NOOP_ENV_RAYCAST;
+        }
+      });
+    }, [environment, scaleMode]);
+
+    let content: ReactElement;
     switch (environment) {
       case "atrium":
-        return <AtriumEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        content = <AtriumEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        break;
       case "warehouse":
-        return <WarehouseEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        content = <WarehouseEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        break;
       case "office":
-        return <OfficeEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        content = <OfficeEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        break;
       case "outdoors":
-        return <OutdoorsEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        content = <OutdoorsEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        break;
       case "dark-lab":
-        return <DarkLabEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        content = <DarkLabEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        break;
       case "passthrough":
-        return <PassthroughEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        content = <PassthroughEnvironment plinthX={plinthX} plinthZ={plinthZ} bayScale={bayScale} />;
+        break;
     }
+
+    return (
+      <group ref={envRootRef} name="rotunda-environment-root">
+        {content}
+      </group>
+    );
   },
   (prev, next) =>
     prev.environment === next.environment &&

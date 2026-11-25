@@ -13,6 +13,10 @@ import {
 } from "../cad-viewer/telemetry-canvas-painter.js";
 import {
   clampNumber,
+  DEFAULT_DESK_SCALE,
+  DEFAULT_PODIUM_TILT_DEG,
+  PODIUM_WIDTH_METERS,
+  resolveDeskLayout,
   rotundaScaleModeLabel,
   type RotundaAction,
   type RotundaCaeOverlay,
@@ -55,17 +59,34 @@ export interface FloatingToolWingsProps {
   onExitVr?: (() => void) | undefined;
   /** Optional environment switcher override (e.g. to guard passthrough outside MR sessions). */
   onSelectEnvironment?: ((env: RotundaEnvironmentId) => void) | undefined;
+  /** Live drafting desk uniform scale (`0.45`..`1.0`) so side wings stay bolted to the podium. */
+  deskScale?: number | undefined;
+  /** Optional XR-calibrated drafting desk height in meters. */
+  deskHeightY?: number | null | undefined;
+  /** Live podium tilt angle in degrees (0° upright .. 85° flat) so wings tilt in lockstep with the desk. */
+  podiumTiltDeg?: number | undefined;
+  /** Whether the central drafting podium is visible (controls CNC hinge knuckles). */
+  podiumVisible?: boolean | undefined;
 }
 
-// Sleek ergonomic side-lectern tablets flanking the user at waist-to-chest height,
-// angled inward & tilted upward so they never obstruct the sightline to the ~3.2 m hero model.
-const WING_WIDTH = 0.44;
-const WING_HEIGHT = 0.368;
-const WING_CURVE_DEPTH = 0.016;
-const WING_YAW_RAD = (44 * Math.PI) / 180;
-const WING_TILT_RAD = (14 * Math.PI) / 180;
-const LEFT_WING_POS: [number, number, number] = [-0.88, 1.08, -0.88];
-const RIGHT_WING_POS: [number, number, number] = [0.88, 1.08, -0.88];
+// Podium-docked CNC aluminum side-console wings in pre-scale desk-local coordinates.
+// Matches DraftingPodium's side bezel (`0.048`), top bezel (`0.044`), and lower bezel (`0.114`)
+// so both wings bolt directly onto the left & right flanks of the blueprint console and angle
+// inward like an ergonomic cockpit drafting deck (~2× larger angular legibility on Quest 2).
+const PODIUM_TOP_BEZEL = 0.044;
+const PODIUM_SIDE_BEZEL = 0.048;
+const PODIUM_BEZEL_RIM_HEIGHT = 0.114;
+const WING_WIDTH = 0.88;
+const WING_HEIGHT = 0.74;
+const WING_FRAME_PAD = 0.036;
+const WING_HINGE_GAP = 0.014;
+const WING_HINGE_X = PODIUM_WIDTH_METERS * 0.5 + PODIUM_SIDE_BEZEL + WING_HINGE_GAP;
+const WING_CENTER_Y = (PODIUM_TOP_BEZEL - PODIUM_BEZEL_RIM_HEIGHT) * 0.5;
+const WING_HINGE_YAW_RAD = (22 * Math.PI) / 180;
+const TELEMETRY_WIDTH = 0.44;
+const TELEMETRY_HEIGHT = 0.368;
+const TELEMETRY_CURVE_DEPTH = 0.016;
+const NOOP_RAYCAST: THREE.Object3D["raycast"] = () => {};
 
 const CANVAS_W = 1024;
 const CANVAS_H = 856;
@@ -302,85 +323,86 @@ function paintGlassCardBase(
 ): void {
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
 
-  // Subtle ambient drop halo behind the frosted glass card
-  ctx.save();
-  drawRoundedRectPath(ctx, 18, 22, CANVAS_W - 36, CANVAS_H - 36, 44);
-  ctx.fillStyle = "rgba(15, 23, 42, 0.14)";
-  ctx.fill();
-  ctx.restore();
+  // Dark anodized recessed CNC keybed tray (matches DraftingPodium lower bezel keybed)
+  const bedGrad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  bedGrad.addColorStop(0, "#1e293b");
+  bedGrad.addColorStop(0.55, "#172033");
+  bedGrad.addColorStop(1, "#0f172a");
 
-  // Main light frosted studio glass card (rgba(248, 250, 252, 0.94))
-  const cardGrad = ctx.createLinearGradient(0, 16, 0, CANVAS_H - 16);
-  cardGrad.addColorStop(0, "rgba(255, 255, 255, 0.96)");
-  cardGrad.addColorStop(0.5, "rgba(248, 250, 252, 0.94)");
-  cardGrad.addColorStop(1, "rgba(241, 245, 249, 0.94)");
-
-  drawRoundedRectPath(ctx, 16, 16, CANVAS_W - 32, CANVAS_H - 32, 42);
-  ctx.fillStyle = cardGrad;
+  drawRoundedRectPath(ctx, 10, 10, CANVAS_W - 20, CANVAS_H - 20, 30);
+  ctx.fillStyle = bedGrad;
   ctx.fill();
 
-  // Crisp luminous white specular glass edge + subtle outer slate hairline
+  // Machined inner chamfer highlight + outer slate rim
   ctx.lineWidth = 4;
-  ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+  ctx.strokeStyle = "rgba(203, 213, 225, 0.36)";
   ctx.stroke();
 
-  drawRoundedRectPath(ctx, 16, 16, CANVAS_W - 32, CANVAS_H - 32, 42);
+  drawRoundedRectPath(ctx, 18, 18, CANVAS_W - 36, CANVAS_H - 36, 24);
   ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(148, 163, 184, 0.42)";
+  ctx.strokeStyle = "rgba(2, 6, 23, 0.55)";
   ctx.stroke();
 
-  // Header accent dot
+  // Header accent LED dot
   ctx.beginPath();
-  ctx.arc(68, 76, 11, 0, Math.PI * 2);
+  ctx.arc(64, 72, 11, 0, Math.PI * 2);
   ctx.fillStyle = accentColor;
   ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+  ctx.stroke();
 
-  // Header title
-  ctx.fillStyle = "#0f172a";
+  // Header title (crisp high-contrast instrument label)
+  ctx.fillStyle = "#f8fafc";
   ctx.font = `800 32px ${TABLET_FONT_FAMILY}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText(title, 94, 77);
+  ctx.fillText(title, 90, 73);
 
   // Header right status pill badge
   if (badgeText.length > 0) {
-    ctx.font = `700 22px ${TABLET_FONT_FAMILY}`;
+    ctx.font = `800 22px ${TABLET_FONT_FAMILY}`;
     const textW = ctx.measureText(badgeText).width;
-    const pillW = Math.min(340, Math.max(116, textW + 44));
+    const pillW = Math.min(340, Math.max(120, textW + 44));
     const pillH = 44;
-    const pillX = CANVAS_W - 52 - pillW;
-    const pillY = 76 - pillH / 2;
+    const pillX = CANVAS_W - 50 - pillW;
+    const pillY = 72 - pillH / 2;
 
-    drawRoundedRectPath(ctx, pillX, pillY, pillW, pillH, 22);
-    ctx.fillStyle = "#e0f2fe";
+    drawRoundedRectPath(ctx, pillX, pillY, pillW, pillH, 16);
+    ctx.fillStyle = "#0f172a";
     ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "rgba(2, 132, 199, 0.28)";
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.55)";
     ctx.stroke();
 
-    ctx.fillStyle = "#0369a1";
+    ctx.fillStyle = "#e0f2fe";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(truncateText(badgeText, 22), pillX + pillW / 2, 77);
+    ctx.fillText(truncateText(badgeText, 22), pillX + pillW / 2, 73);
   }
 
-  // Clean hairline divider below header
+  // Machined hairline divider below header
   ctx.beginPath();
-  ctx.moveTo(52, 124);
-  ctx.lineTo(CANVAS_W - 52, 124);
+  ctx.moveTo(46, 120);
+  ctx.lineTo(CANVAS_W - 46, 120);
   ctx.lineWidth = 2;
-  ctx.strokeStyle = "rgba(15, 23, 42, 0.09)";
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.24)";
   ctx.stroke();
 }
 
 function paintSectionEyebrow(ctx: CanvasRenderingContext2D, text: string, y: number): void {
-  ctx.fillStyle = "#475569";
-  ctx.font = `700 21px ${TABLET_FONT_FAMILY}`;
+  ctx.fillStyle = "#cbd5e1";
+  ctx.font = `800 22px ${TABLET_FONT_FAMILY}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 54, y);
 }
 
+/**
+ * Paints a tactile raised keycap matching `DraftingPodium`'s lower-bezel `BezelKeycapButton`:
+ * bright frosted white-to-light-slate face, top specular highlight strip, crisp rim border,
+ * vivid active fill + bottom-center glowing LED bar, and bold high-contrast typography.
+ */
 function paintPill(
   ctx: CanvasRenderingContext2D,
   opts: {
@@ -397,30 +419,63 @@ function paintPill(
     radius?: number | undefined;
   },
 ): void {
-  const { x, y, w, h, label, active, hovered, activeBg, dotColor, fontSize = 29, radius = 22 } = opts;
+  const { x, y, w, h, label, active, hovered, activeBg, dotColor, fontSize = 29, radius = 18 } = opts;
+  const r = Math.min(radius, 18);
 
-  drawRoundedRectPath(ctx, x, y, w, h, radius);
+  // Subtle recessed keycap drop shadow into the dark anodized keybed
+  drawRoundedRectPath(ctx, x, y + 3, w, h, r);
+  ctx.fillStyle = "rgba(2, 6, 23, 0.52)";
+  ctx.fill();
+
+  // Keycap face gradient (mirrors DraftingPodium BezelKeycapButton)
+  const grad = ctx.createLinearGradient(x, y, x, y + h);
   if (active) {
-    ctx.fillStyle = activeBg;
-    ctx.fill();
+    grad.addColorStop(0, activeBg);
+    grad.addColorStop(1, activeBg === "#0284c7" ? "#0369a1" : activeBg);
+  } else if (hovered) {
+    grad.addColorStop(0, "#e0f2fe");
+    grad.addColorStop(1, "#bae6fd");
   } else {
-    ctx.fillStyle = hovered ? "#cbd5e1" : "#e2e8f0";
+    grad.addColorStop(0, "#ffffff");
+    grad.addColorStop(1, "#f1f5f9");
+  }
+
+  drawRoundedRectPath(ctx, x, y, w, h, r);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Subtle darkening shade on bottom half of active colored keycaps for physical depth
+  if (active && activeBg !== "#0284c7") {
+    const shade = ctx.createLinearGradient(x, y, x, y + h);
+    shade.addColorStop(0, "rgba(255, 255, 255, 0.12)");
+    shade.addColorStop(1, "rgba(2, 6, 23, 0.24)");
+    drawRoundedRectPath(ctx, x, y, w, h, r);
+    ctx.fillStyle = shade;
     ctx.fill();
   }
 
-  // Focus/hover highlight ring for unmistakable bare-hand pinch targeting in Quest 2
-  if (hovered) {
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = active ? "#0f172a" : "#0284c7";
-    ctx.stroke();
-  } else {
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = active ? "rgba(255, 255, 255, 0.45)" : "rgba(15, 23, 42, 0.08)";
-    ctx.stroke();
+  // Top specular highlight strip (signature tactile BezelKeycapButton detail)
+  const specH = Math.max(8, Math.min(12, Math.round(h * 0.17)));
+  drawRoundedRectPath(ctx, x + 8, y + 5, Math.max(12, w - 16), specH, 6);
+  ctx.fillStyle = active ? "rgba(255, 255, 255, 0.24)" : "rgba(255, 255, 255, 0.78)";
+  ctx.fill();
+
+  // Crisp keycap rim border (bold sky glow on hover for unmistakable Quest 2 ray/pinch lock)
+  drawRoundedRectPath(ctx, x, y, w, h, r);
+  ctx.lineWidth = hovered ? 4.5 : active ? 3.2 : 2.2;
+  ctx.strokeStyle = hovered ? "#38bdf8" : active ? "rgba(224, 242, 254, 0.72)" : "#cbd5e1";
+  ctx.stroke();
+
+  // Active bottom-center glowing LED indicator bar (mirrors BezelKeycapButton)
+  if (active) {
+    const ledW = Math.min(64, Math.max(28, Math.round(w * 0.32)));
+    ctx.fillStyle = "#e0f2fe";
+    drawRoundedRectPath(ctx, x + w * 0.5 - ledW * 0.5, y + h - 10, ledW, 4, 2);
+    ctx.fill();
   }
 
-  const cy = y + h / 2 + 1;
-  ctx.font = `700 ${fontSize}px ${TABLET_FONT_FAMILY}`;
+  const cy = y + h / 2 + (active ? -1 : 1);
+  ctx.font = `800 ${fontSize}px ${TABLET_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
 
   if (dotColor) {
@@ -495,29 +550,27 @@ function paintSliderTrack(
   const trackW = trackRight - trackLeft;
   const thumbX = trackLeft + norm * trackW;
 
-  // Label + live value readout
-  ctx.fillStyle = dimmed ? "#94a3b8" : "#475569";
-  ctx.font = `700 21px ${TABLET_FONT_FAMILY}`;
+  // High-contrast label + live instrument readout on dark anodized keybed
+  ctx.fillStyle = dimmed ? "#64748b" : "#cbd5e1";
+  ctx.font = `800 22px ${TABLET_FONT_FAMILY}`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText(label, 54, labelY);
 
-  ctx.fillStyle = dimmed ? "#94a3b8" : activeColor;
+  ctx.fillStyle = dimmed ? "#64748b" : activeColor === "#0284c7" ? "#38bdf8" : "#fbbf24";
   ctx.font = `800 28px ${TABLET_FONT_FAMILY}`;
   ctx.textAlign = "right";
   ctx.fillText(readout, CANVAS_W - 54, labelY);
 
-  // Soft track groove
+  // Recessed machined groove track
   const trackY = trackCenterY - trackHeight / 2;
   drawRoundedRectPath(ctx, trackLeft, trackY, trackW, trackHeight, trackHeight / 2);
-  ctx.fillStyle = hovered || dragging ? "#cbd5e1" : "#e2e8f0";
+  ctx.fillStyle = hovered || dragging ? "#0f172a" : "#090f1d";
   ctx.fill();
 
-  if (hovered || dragging) {
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = dimmed ? "#94a3b8" : activeColor;
-    ctx.stroke();
-  }
+  ctx.lineWidth = hovered || dragging ? 3.5 : 2;
+  ctx.strokeStyle = hovered || dragging ? (dimmed ? "#94a3b8" : "#38bdf8") : "#334155";
+  ctx.stroke();
 
   // Optional center tick for bipolar cut-offset slider
   if (bipolar) {
@@ -527,36 +580,39 @@ function paintSliderTrack(
     ctx.moveTo(zeroX, trackY - 8);
     ctx.lineTo(zeroX, trackY + trackHeight + 8);
     ctx.lineWidth = 3;
-    ctx.strokeStyle = "#94a3b8";
+    ctx.strokeStyle = "#64748b";
     ctx.stroke();
 
     const fillStart = Math.min(zeroX, thumbX);
     const fillW = Math.abs(thumbX - zeroX);
     if (fillW > 2) {
       drawRoundedRectPath(ctx, fillStart, trackY, fillW, trackHeight, trackHeight / 2);
-      ctx.fillStyle = dimmed ? "#94a3b8" : activeColor;
+      ctx.fillStyle = dimmed ? "#475569" : activeColor;
       ctx.fill();
     }
   } else {
     const fillW = Math.max(trackHeight, thumbX - trackLeft);
     drawRoundedRectPath(ctx, trackLeft, trackY, Math.min(trackW, fillW), trackHeight, trackHeight / 2);
-    ctx.fillStyle = dimmed ? "#94a3b8" : activeColor;
+    ctx.fillStyle = dimmed ? "#475569" : activeColor;
     ctx.fill();
   }
 
-  // Tactile Vision-OS circular thumb knob
-  const thumbRadius = dragging ? 26 : hovered ? 24 : 22;
+  // Tactile frosted-white keycap-style thumb knob
+  const thumbRadius = dragging ? 27 : hovered ? 25 : 23;
   ctx.beginPath();
-  ctx.arc(thumbX, trackCenterY + 2, thumbRadius + 2, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(15, 23, 42, 0.16)";
+  ctx.arc(thumbX, trackCenterY + 3, thumbRadius + 2, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(2, 6, 23, 0.52)";
   ctx.fill();
 
+  const thumbGrad = ctx.createLinearGradient(thumbX, trackCenterY - thumbRadius, thumbX, trackCenterY + thumbRadius);
+  thumbGrad.addColorStop(0, "#ffffff");
+  thumbGrad.addColorStop(1, "#e2e8f0");
   ctx.beginPath();
   ctx.arc(thumbX, trackCenterY, thumbRadius, 0, Math.PI * 2);
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = thumbGrad;
   ctx.fill();
-  ctx.lineWidth = 5;
-  ctx.strokeStyle = dimmed ? "#94a3b8" : activeColor;
+  ctx.lineWidth = 4.5;
+  ctx.strokeStyle = dimmed ? "#64748b" : hovered || dragging ? "#38bdf8" : activeColor;
   ctx.stroke();
 }
 
@@ -582,9 +638,12 @@ function mapSliderZoneValue(zone: TabletHitZone, canvasX: number): number {
 
 interface CurvedGlassTabletProps {
   name: string;
+  side: "left" | "right";
   position: [number, number, number];
   yawRad: number;
   tiltRad?: number | undefined;
+  showHinges?: boolean | undefined;
+  isInXr?: boolean | undefined;
   geometry: THREE.PlaneGeometry;
   hitZones: readonly TabletHitZone[];
   paint: (ctx: CanvasRenderingContext2D, hoveredId: string | null, draggingId: string | null) => void;
@@ -602,15 +661,18 @@ function matchesBindingPointer(binding: XrPointerBinding | null, e: ThreeEvent<P
 }
 
 /**
- * Single sleek curved frosted-glass Vision-OS tablet backed by ONE high-DPI
- * `CanvasTexture` (1024×856) + ONE transparent ray/pinch hit plane (2 meshes total).
+ * Podium-docked CNC aluminum side-console wing backed by ONE high-DPI
+ * `CanvasTexture` (1024×856) + ONE transparent ray/pinch hit plane.
  * Repaints ONLY on semantic state or hover changes — ZERO per-frame repaints.
  */
 function CurvedGlassTablet({
   name,
+  side,
   position,
   yawRad,
   tiltRad = 0,
+  showHinges = true,
+  isInXr = false,
   geometry,
   hitZones,
   paint,
@@ -638,7 +700,7 @@ function CurvedGlassTablet({
   });
   const tmpLocalPtRef = useRef(new THREE.Vector3());
 
-  // Allocate ONE high-DPI CanvasTexture per tablet with mipmaps & high anisotropy for oblique crispness
+  // Allocate ONE high-DPI CanvasTexture per wing with mipmaps & Quest-2-safe anisotropy
   useEffect(() => {
     if (typeof document === "undefined") return undefined;
     const canvas = document.createElement("canvas");
@@ -650,7 +712,7 @@ function CurvedGlassTablet({
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.generateMipmaps = true;
-    tex.anisotropy = Math.min(8, gl.capabilities.getMaxAnisotropy());
+    tex.anisotropy = isInXr ? 4 : Math.min(8, gl.capabilities.getMaxAnisotropy());
 
     canvasRef.current = canvas;
     textureRef.current = tex;
@@ -662,7 +724,7 @@ function CurvedGlassTablet({
       setTexture(null);
       tex.dispose();
     };
-  }, [gl]);
+  }, [gl, isInXr]);
 
   // Repaint tablet ONLY when `paint` inputs, hover, or drag state change
   useEffect(() => {
@@ -889,11 +951,40 @@ function CurvedGlassTablet({
     [releaseDrag],
   );
 
+  const sideSign = side === "left" ? -1 : 1;
+  const panelOffsetX = sideSign * (WING_WIDTH * 0.5 + WING_FRAME_PAD * 0.5);
+
   return (
     <group name={name} position={position} rotation={[0, yawRad, 0]}>
-      <group rotation={[-tiltRad, 0, 0]}>
-        {/* Visual frosted-glass curved tablet mesh (1 draw call) */}
-        <mesh geometry={geometry}>
+      {/* Dual CNC aluminum hinge knuckles bridging the podium side rail to the wing frame */}
+      {showHinges && (
+        <>
+          <mesh position={[-sideSign * (WING_HINGE_GAP * 0.5), WING_HEIGHT * 0.28, -0.014]} raycast={NOOP_RAYCAST}>
+            <boxGeometry args={[WING_HINGE_GAP + 0.032, 0.044, 0.02]} />
+            <meshStandardMaterial color="#b4c0ce" metalness={0.82} roughness={0.3} />
+          </mesh>
+          <mesh position={[-sideSign * (WING_HINGE_GAP * 0.5), -WING_HEIGHT * 0.28, -0.014]} raycast={NOOP_RAYCAST}>
+            <boxGeometry args={[WING_HINGE_GAP + 0.032, 0.044, 0.02]} />
+            <meshStandardMaterial color="#b4c0ce" metalness={0.82} roughness={0.3} />
+          </mesh>
+        </>
+      )}
+
+      <group position={[panelOffsetX, 0, 0]} rotation={[-tiltRad, 0, 0]}>
+        {/* CNC brushed-aluminum outer console chassis matching DraftingPodium */}
+        <mesh position={[0, 0, -0.015]} raycast={NOOP_RAYCAST}>
+          <boxGeometry args={[WING_WIDTH + WING_FRAME_PAD, WING_HEIGHT + WING_FRAME_PAD, 0.022]} />
+          <meshStandardMaterial color="#9aa7b8" metalness={0.8} roughness={0.34} />
+        </mesh>
+
+        {/* Dark anodized recessed keybed surround */}
+        <mesh position={[0, 0, -0.003]} raycast={NOOP_RAYCAST}>
+          <boxGeometry args={[WING_WIDTH + 0.01, WING_HEIGHT + 0.01, 0.006]} />
+          <meshStandardMaterial color="#1e293b" metalness={0.35} roughness={0.55} />
+        </mesh>
+
+        {/* High-contrast tactile keycap console face (1 draw call) */}
+        <mesh position={[0, 0, 0.001]} geometry={geometry}>
           {texture ? (
             <meshBasicMaterial
               key="tablet-tex"
@@ -901,14 +992,14 @@ function CurvedGlassTablet({
               map={texture}
               transparent={true}
               toneMapped={false}
-              side={THREE.DoubleSide}
+              side={THREE.FrontSide}
             />
           ) : (
             <meshBasicMaterial
               key="tablet-fallback"
-              color="#f8fafc"
+              color="#1e293b"
               transparent={true}
-              opacity={0.92}
+              opacity={0.96}
               toneMapped={false}
             />
           )}
@@ -917,7 +1008,7 @@ function CurvedGlassTablet({
         {/* Transparent interactive ray/pinch hit plane (1 mesh) */}
         <mesh
           ref={hitMeshRef}
-          position={[0, 0, 0.003]}
+          position={[0, 0, 0.004]}
           geometry={geometry}
           onPointerOver={handlePointerOver}
           onPointerMove={handlePointerMove}
@@ -935,9 +1026,9 @@ function CurvedGlassTablet({
 }
 
 /**
- * Left & Right Vision-OS Style Frosted-Glass Floating Tool Tablets.
- * Uses exactly 2 `CanvasTexture`s and 4 meshes total for razor-sharp Quest 2 legibility,
- * effortless bare-hand pinching, and zero per-frame texture repaints.
+ * Left & Right Podium-Docked CNC Side-Console Wings.
+ * Bolted onto the flanks of the Drafting Podium with matching brushed-aluminum frames
+ * and raised frosted-white BezelKeycapButton styling for razor-sharp Quest 2 legibility.
  */
 export function FloatingToolWings({
   state,
@@ -957,14 +1048,37 @@ export function FloatingToolWings({
   isArSession = false,
   onExitVr,
   onSelectEnvironment,
+  deskScale = DEFAULT_DESK_SCALE,
+  deskHeightY = null,
+  podiumTiltDeg = DEFAULT_PODIUM_TILT_DEG,
+  podiumVisible = true,
 }: FloatingToolWingsProps): React.ReactElement | null {
-  const tabletGeometry = useMemo(() => createCurvedTabletGeometry(WING_WIDTH, WING_HEIGHT, WING_CURVE_DEPTH), []);
+  const wingsDeskGroupRef = useRef<THREE.Group | null>(null);
+  const deskLayout = useMemo(() => resolveDeskLayout(deskScale, deskHeightY), [deskScale, deskHeightY]);
+  const targetTiltRad = -(clampNumber(podiumTiltDeg, 0, 85) * Math.PI) / 180;
+
+  // Flat 2-triangle console face sits flush inside the CNC aluminum bezel frame
+  const wingFaceGeometry = useMemo(() => new THREE.PlaneGeometry(WING_WIDTH, WING_HEIGHT, 1, 1), []);
+  // Overhead telemetry HUD keeps its gentle curved geometry
+  const telemetryGeometry = useMemo(
+    () => createCurvedTabletGeometry(TELEMETRY_WIDTH, TELEMETRY_HEIGHT, TELEMETRY_CURVE_DEPTH),
+    [],
+  );
 
   useEffect(() => {
     return () => {
-      tabletGeometry.dispose();
+      wingFaceGeometry.dispose();
+      telemetryGeometry.dispose();
     };
-  }, [tabletGeometry]);
+  }, [wingFaceGeometry, telemetryGeometry]);
+
+  // Smoothly synchronize wing tilt with DraftingPodium's articulated tilt yoke
+  useFrame((_state, delta) => {
+    const group = wingsDeskGroupRef.current;
+    if (!group) return;
+    const alpha = 1 - Math.exp(-Math.min(delta, 0.05) * 10);
+    group.rotation.x += (targetTiltRad - group.rotation.x) * alpha;
+  });
 
   const hasScenarioCycle = Boolean(onCycleScenario);
   const showExitVrButton = Boolean(isInXr && onExitVr);
@@ -1026,6 +1140,7 @@ export function FloatingToolWings({
 
   const rightHitZones = useMemo<readonly TabletHitZone[]>(
     () => [
+      { id: "studio:stockroom", x: 472, y: 38, w: 286, h: 62, kind: "button" },
       { ...RIGHT_LAYOUT.prevBtn, kind: "button" },
       { ...RIGHT_LAYOUT.nextBtn, kind: "button" },
       {
@@ -1081,11 +1196,11 @@ export function FloatingToolWings({
         y: 38,
         w: 286,
         h: 62,
-        label: state.diagramEditorEnabled ? "✦ 3D Diagram ON" : "✦ 3D Diagram",
+        label: state.diagramEditorEnabled ? "✦ Diagram Mode" : "◈ 3D Model Mode",
         active: state.diagramEditorEnabled,
         hovered: hoveredId === "studio:diagram3d",
         activeBg: "#0284c7",
-        fontSize: 24,
+        fontSize: 23,
         radius: 18,
       });
 
@@ -1167,15 +1282,28 @@ export function FloatingToolWings({
 
       const paintExitVrPill = (x: number, y: number, w: number, h: number) => {
         const isHovered = hoveredId === "xr:exit";
-        drawRoundedRectPath(ctx, x, y, w, h, 22);
-        ctx.fillStyle = isHovered ? "#dc2626" : "#b91c1c";
+        drawRoundedRectPath(ctx, x, y + 3, w, h, 18);
+        ctx.fillStyle = "rgba(2, 6, 23, 0.52)";
         ctx.fill();
+
+        const exitGrad = ctx.createLinearGradient(x, y, x, y + h);
+        exitGrad.addColorStop(0, isHovered ? "#ef4444" : "#dc2626");
+        exitGrad.addColorStop(1, isHovered ? "#b91c1c" : "#991b1b");
+        drawRoundedRectPath(ctx, x, y, w, h, 18);
+        ctx.fillStyle = exitGrad;
+        ctx.fill();
+
+        drawRoundedRectPath(ctx, x + 8, y + 5, w - 16, 10, 5);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.24)";
+        ctx.fill();
+
+        drawRoundedRectPath(ctx, x, y, w, h, 18);
         ctx.lineWidth = isHovered ? 4 : 2.5;
-        ctx.strokeStyle = "#fca5a5";
+        ctx.strokeStyle = isHovered ? "#fecaca" : "#fca5a5";
         ctx.stroke();
 
         ctx.fillStyle = "#ffffff";
-        ctx.font = `800 26px ${TABLET_FONT_FAMILY}`;
+        ctx.font = `800 27px ${TABLET_FONT_FAMILY}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(isArSession ? "Exit MR" : "Exit VR", x + w / 2, y + h / 2 + 1);
@@ -1185,19 +1313,19 @@ export function FloatingToolWings({
         const isHovered = hoveredId === "scenario:cycle";
         const { x, y, h } = SCENARIO_PILL_RECT;
         const w = showExitVrButton ? 636 : SCENARIO_PILL_RECT.w;
-        drawRoundedRectPath(ctx, x, y, w, h, 22);
-        ctx.fillStyle = isHovered ? "#bae6fd" : "#e0f2fe";
-        ctx.fill();
-        ctx.lineWidth = isHovered ? 4 : 2.5;
-        ctx.strokeStyle = "#0284c7";
-        ctx.stroke();
-
         const scenarioText = `Scenario: ${truncateText(activeScenarioLabel || "All Showcase", showExitVrButton ? 18 : 28)}  ↻`;
-        ctx.fillStyle = "#0369a1";
-        ctx.font = `800 26px ${TABLET_FONT_FAMILY}`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(scenarioText, x + w / 2, y + h / 2 + 1);
+        paintPill(ctx, {
+          x,
+          y,
+          w,
+          h,
+          label: scenarioText,
+          active: false,
+          hovered: isHovered,
+          activeBg: "#0284c7",
+          fontSize: 26,
+          radius: 18,
+        });
 
         if (showExitVrButton) {
           paintExitVrPill(x + 652, y, 268, h);
@@ -1206,11 +1334,11 @@ export function FloatingToolWings({
         const { x, y, w, h } = SCENARIO_PILL_RECT;
         paintExitVrPill(x, y, w, h);
       } else {
-        ctx.fillStyle = "#64748b";
-        ctx.font = `600 21px ${TABLET_FONT_FAMILY}`;
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = `700 21px ${TABLET_FONT_FAMILY}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("Pinch any pill to switch world, studio toggles, or physics overlay", CANVAS_W / 2, 780);
+        ctx.fillText("Tap any keycap to switch world, studio toggles, or physics overlay", CANVAS_W / 2, 780);
       }
     },
     [
@@ -1233,7 +1361,20 @@ export function FloatingToolWings({
     (ctx: CanvasRenderingContext2D, hoveredId: string | null, draggingId: string | null) => {
       const safeIndex = modelCount > 0 ? Math.min(modelCount, state.activeModelIndex + 1) : 0;
       const counterBadge = modelCount > 0 ? `${safeIndex} / ${modelCount}` : "";
-      paintGlassCardBase(ctx, "MODEL & INSPECT", counterBadge, "#0284c7");
+      paintGlassCardBase(ctx, "MODEL & INSPECT", counterBadge, "#38bdf8");
+
+      paintPill(ctx, {
+        x: 472,
+        y: 38,
+        w: 286,
+        h: 62,
+        label: state.wristPaletteOpen ? "✕ Close Vault" : "＋ Stockroom",
+        active: state.wristPaletteOpen,
+        hovered: hoveredId === "studio:stockroom",
+        activeBg: "#0284c7",
+        fontSize: 23,
+        radius: 18,
+      });
 
       // 1. Model Paging Row: [◀ Prev]  [Model Title + 1/10]  [Next ▶]
       paintPill(ctx, {
@@ -1243,25 +1384,25 @@ export function FloatingToolWings({
         hovered: hoveredId === RIGHT_LAYOUT.prevBtn.id,
         activeBg: "#0284c7",
         fontSize: 28,
-        radius: 20,
+        radius: 18,
       });
 
       const plate = RIGHT_LAYOUT.modelPlate;
-      drawRoundedRectPath(ctx, plate.x, plate.y, plate.w, plate.h, 20);
-      ctx.fillStyle = "#ffffff";
+      drawRoundedRectPath(ctx, plate.x, plate.y, plate.w, plate.h, 16);
+      ctx.fillStyle = "#090f1d";
       ctx.fill();
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "rgba(148, 163, 184, 0.45)";
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = "#334155";
       ctx.stroke();
 
-      ctx.fillStyle = "#0f172a";
+      ctx.fillStyle = "#f8fafc";
       ctx.font = `800 26px ${TABLET_FONT_FAMILY}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(truncateText(activeModelTitle || "Engineering Assembly", 22), plate.x + plate.w / 2, plate.y + 30);
 
-      ctx.fillStyle = "#0284c7";
-      ctx.font = `700 21px ${TABLET_FONT_FAMILY}`;
+      ctx.fillStyle = "#38bdf8";
+      ctx.font = `800 21px ${TABLET_FONT_FAMILY}`;
       ctx.fillText(
         modelCount > 0 ? `Model ${safeIndex}/${modelCount}` : "Active Model",
         plate.x + plate.w / 2,
@@ -1358,8 +1499,8 @@ export function FloatingToolWings({
           });
         }
       } else {
-        ctx.fillStyle = "#64748b";
-        ctx.font = `600 20px ${TABLET_FONT_FAMILY}`;
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = `700 20px ${TABLET_FONT_FAMILY}`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("Select Pelagos OC-8 or an articulated CAD model for subsystem solo chips", CANVAS_W / 2, 568);
@@ -1429,6 +1570,7 @@ export function FloatingToolWings({
       state.isolatedSubsystemId,
       state.scaleMode,
       state.isPlaying,
+      state.wristPaletteOpen,
     ],
   );
 
@@ -1496,6 +1638,11 @@ export function FloatingToolWings({
 
   const handleRightPress = useCallback(
     (zoneId: string) => {
+      if (zoneId === "studio:stockroom") {
+        dispatch({ type: "toggleWristPalette" });
+        onPlayCue?.("snap");
+        return;
+      }
       if (zoneId === "isolate:hero") {
         dispatch({ type: "setIsolatedSubsystem", subsystemId: null });
         onPlayCue?.("snap");
@@ -1580,33 +1727,48 @@ export function FloatingToolWings({
 
   return (
     <group name="rotunda-floating-tool-wings">
-      <CurvedGlassTablet
-        name="rotunda-left-wing"
-        position={LEFT_WING_POS}
-        yawRad={WING_YAW_RAD}
-        tiltRad={WING_TILT_RAD}
-        geometry={tabletGeometry}
-        hitZones={leftHitZones}
-        paint={paintLeftTablet}
-        onPressZone={handleLeftPress}
-      />
+      {/* Podium-docked CNC side-console wings synchronized to desk position, scale & tilt */}
+      <group
+        ref={wingsDeskGroupRef}
+        name="rotunda-podium-wings-frame"
+        position={deskLayout.center}
+        rotation={[targetTiltRad, 0, 0]}
+        scale={deskLayout.scale}
+      >
+        <CurvedGlassTablet
+          name="rotunda-left-wing"
+          side="left"
+          position={[-WING_HINGE_X, WING_CENTER_Y, 0.002]}
+          yawRad={WING_HINGE_YAW_RAD}
+          tiltRad={0}
+          showHinges={podiumVisible}
+          isInXr={isInXr}
+          geometry={wingFaceGeometry}
+          hitZones={leftHitZones}
+          paint={paintLeftTablet}
+          onPressZone={handleLeftPress}
+        />
 
-      <CurvedGlassTablet
-        name="rotunda-right-wing"
-        position={RIGHT_WING_POS}
-        yawRad={-WING_YAW_RAD}
-        tiltRad={WING_TILT_RAD}
-        geometry={tabletGeometry}
-        hitZones={rightHitZones}
-        paint={paintRightTablet}
-        onPressZone={handleRightPress}
-        onSliderChange={handleRightSliderChange}
-        onSliderDetent={handleSliderDetent}
-      />
+        <CurvedGlassTablet
+          name="rotunda-right-wing"
+          side="right"
+          position={[WING_HINGE_X, WING_CENTER_Y, 0.002]}
+          yawRad={-WING_HINGE_YAW_RAD}
+          tiltRad={0}
+          showHinges={podiumVisible}
+          isInXr={isInXr}
+          geometry={wingFaceGeometry}
+          hitZones={rightHitZones}
+          paint={paintRightTablet}
+          onPressZone={handleRightPress}
+          onSliderChange={handleRightSliderChange}
+          onSliderDetent={handleSliderDetent}
+        />
+      </group>
 
       {telemetrySpec && state.telemetryWingEnabled && (
         <DiegeticTelemetryWing
-          geometry={tabletGeometry}
+          geometry={telemetryGeometry}
           spec={telemetrySpec}
           provider={telemetryProvider ?? null}
           simulationTime={state.simulationTime}

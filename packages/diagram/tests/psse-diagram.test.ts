@@ -74,7 +74,7 @@ test("PSS/E Diagram: Builds X6 graph model with buses, branches, generators, loa
 
   const gen101 = diag.cells.find((c) => c.id === "gen_101_1");
   assert.ok(gen101);
-  assert.equal(gen101.shape, "circle");
+  assert.equal(gen101.shape, "rect");
 
   const load103 = diag.cells.find((c) => c.id === "load_103_1");
   assert.ok(load103);
@@ -200,8 +200,20 @@ test("PSCAD Scale: Viewport frustum culling and LOD mode in buildPscadDiagram", 
         { id: "c2", definitionName: "master:xfmr-3p2w", position: { x: 5100, y: 5000 }, parameters: {} },
       ],
       wires: [
-        { id: "w1", vertices: [{ x: 100, y: 100 }, { x: 120, y: 100 }] },
-        { id: "w2", vertices: [{ x: 5000, y: 5000 }, { x: 5100, y: 5000 }] },
+        {
+          id: "w1",
+          vertices: [
+            { x: 100, y: 100 },
+            { x: 120, y: 100 },
+          ],
+        },
+        {
+          id: "w2",
+          vertices: [
+            { x: 5000, y: 5000 },
+            { x: 5100, y: 5000 },
+          ],
+        },
       ],
     },
   };
@@ -213,4 +225,3 @@ test("PSCAD Scale: Viewport frustum culling and LOD mode in buildPscadDiagram", 
   assert.equal(culled.metadata.nodeCount, 2);
   assert.equal(culled.metadata.edgeCount, 1);
 });
-

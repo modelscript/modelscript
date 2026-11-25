@@ -97,6 +97,8 @@ export interface TurntableCarouselProps {
   autoTurntable?: boolean | undefined;
   isInXr?: boolean | undefined;
   dark?: boolean | undefined;
+  /** When false (3D Diagram mode active), hides the central plinth & hero models without tearing down shaders. */
+  visible?: boolean | undefined;
   onSelectSubsystem?: ((subsystemId: string) => void) | undefined;
   onPageModel: (delta: number) => void;
   onSelectModelIndex: (index: number) => void;
@@ -858,6 +860,7 @@ export function TurntableCarousel({
   autoTurntable = false,
   isInXr = false,
   dark = true,
+  visible = true,
   onSelectSubsystem,
   onPageModel,
   onSelectModelIndex,
@@ -993,6 +996,7 @@ export function TurntableCarousel({
   // Interactive Rim Grab-to-Spin pointer handlers (supports both Desktop Mouse & WebXR 3D ray/hand/grab)
   const handleRimPointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      if (!visible) return;
       e.stopPropagation();
       rimCleanupRef.current?.();
 
@@ -1070,8 +1074,16 @@ export function TurntableCarousel({
         window.addEventListener("pointercancel", handleUp);
       }
     },
-    [gl],
+    [gl, visible],
   );
+
+  useEffect(() => {
+    if (!visible) {
+      rimCleanupRef.current?.();
+      rimCleanupRef.current = null;
+      setRimHovered(false);
+    }
+  }, [visible]);
 
   const handleRimPointerMove = useCallback((e: ThreeEvent<PointerEvent>) => {
     const session = rimDragRef.current;
@@ -1132,6 +1144,7 @@ export function TurntableCarousel({
 
   // Main per-frame spring dynamics: scaleMode transition, orbital carousel damping, rim inertia, LED halo, & world clipping plane
   useFrame((state, rawDelta) => {
+    if (!visible) return;
     const delta = Math.min(rawDelta, 0.1);
 
     // 1. Plinth Hero <-> Tabletop <-> 1:1 Real-Scale spring interpolation
@@ -1251,10 +1264,11 @@ export function TurntableCarousel({
     }
   });
 
-  // Determine the 1..3 unwrapped integer orbital steps to keep mounted around carouselStep
+  // Determine the 1..3 unwrapped integer orbital steps to keep mounted around carouselStep.
+  // In WebXR (Quest 2/3), render ONLY the active hero slot to cut stereo draw calls & triangles by ~60%.
   const visibleSlots = useMemo(() => {
     if (models.length === 0) return [];
-    const offsets = models.length === 1 ? [0] : [-1, 0, 1];
+    const offsets = isInXr || models.length === 1 ? [0] : [-1, 0, 1];
     return offsets.map((offset) => {
       const step = carouselStep + offset;
       const modelIdx = wrapIndex(activeModelIndex + offset, models.length);
@@ -1263,7 +1277,7 @@ export function TurntableCarousel({
         model: models[modelIdx]!,
       };
     });
-  }, [models, carouselStep, activeModelIndex]);
+  }, [models, carouselStep, activeModelIndex, isInXr]);
 
   const mountPresentation = mountPresentationRef.current;
   const initialPos = mountPresentation.center;
@@ -1271,7 +1285,13 @@ export function TurntableCarousel({
   const initialShadowLocalY = (0.005 - initialPos[1]) / (initialScale * mountPresentation.plinthHeightScale);
 
   return (
-    <group ref={plinthRootRef} name="rotunda-turntable-carousel" position={initialPos} scale={initialScale}>
+    <group
+      ref={plinthRootRef}
+      name="rotunda-turntable-carousel"
+      visible={visible}
+      position={initialPos}
+      scale={initialScale}
+    >
       {/* ── Circular Metrology Plinth Stage (CNC Machined Brushed Titanium) ── */}
       <group
         ref={plinthVisualRef}

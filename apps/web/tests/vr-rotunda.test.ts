@@ -17,6 +17,7 @@ import { extractCadComponents } from "@modelscript/editor/workbench/cad-viewer/p
 import { getLanguageInfo } from "@modelscript/editor/workbench/constants.js";
 import { CURATED_OPEN_MODELS } from "@modelscript/editor/workbench/openModelCatalog.js";
 import {
+  AMBIENT_SOUNDSCAPE_PROFILES,
   boardBoundsToPlaneBounds,
   buildDeskSpatialPlane,
   buildPodiumSpatialPlane,
@@ -65,6 +66,7 @@ import {
   ROTUNDA_ENVIRONMENTS,
   ROTUNDA_SHOWCASE_MODELS,
   ROTUNDA_SHOWCASE_SCENARIOS,
+  RotundaAmbientSoundscape,
   rotundaReducer,
   sampleCaeFieldRgb,
   sampleOctopusTelemetryChannel,
@@ -79,6 +81,7 @@ import {
   enterXrSession,
   exitXrSession,
   formatXrSessionError,
+  playRotundaCue,
   pulseXrHaptics,
   SHARED_XR_STORE_CONFIG,
 } from "@modelscript/editor/workbench/vr-rotunda/xr-session.js";
@@ -1820,5 +1823,42 @@ describe("Engineering Rotunda — Environments, Reducer, Geometry, Carousel, SSR
         `Expected focused tile title '${doc.tiles[tid]!.title}' in full-screen header`,
       );
     }
+  });
+
+  test("AMBIENT_SOUNDSCAPE_PROFILES covers all 6 environments and RotundaAmbientSoundscape / SFX are SSR-safe", () => {
+    for (const env of ROTUNDA_ENVIRONMENTS) {
+      const profile = AMBIENT_SOUNDSCAPE_PROFILES[env.id];
+      assert.ok(profile, `Missing ambient soundscape profile for '${env.id}'`);
+      assert.equal(profile.id, env.id);
+      assert.ok(profile.noiseCutoffHz > 40 && Number.isFinite(profile.noiseCutoffHz));
+      assert.ok(profile.noiseGain > 0 && profile.noiseGain <= 0.1);
+      assert.equal(profile.droneFrequenciesHz.length, 3);
+      for (const hz of profile.droneFrequenciesHz) {
+        assert.ok(hz > 30 && Number.isFinite(hz), `Invalid drone frequency ${hz} for '${env.id}'`);
+      }
+      assert.ok(profile.masterGain > 0 && profile.masterGain <= 1);
+      assert.ok(profile.accentIntervalMs[0] > 0 && profile.accentIntervalMs[1] >= profile.accentIntervalMs[0]);
+    }
+
+    const soundscape = new RotundaAmbientSoundscape();
+    assert.equal(soundscape.isMuted(), false);
+    assert.doesNotThrow(() => {
+      soundscape.start("atrium");
+      soundscape.setEnvironment("outdoors");
+      soundscape.setEnvironment("dark-lab");
+      soundscape.setMuted(true);
+      assert.equal(soundscape.isMuted(), true);
+      soundscape.setMuted(false);
+      assert.equal(soundscape.isMuted(), false);
+      assert.equal(soundscape.getActiveEnvironment(), "dark-lab");
+      soundscape.dispose();
+    });
+
+    assert.doesNotThrow(() => {
+      playRotundaCue("arena-rotate");
+      playRotundaCue("stockroom-open");
+      playRotundaCue("materialize");
+      playRotundaCue("magnet-lock");
+    });
   });
 });

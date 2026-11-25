@@ -97,6 +97,8 @@ export interface XrLocomotionRigProps {
   scaleMode: RotundaScaleMode;
   onCue: (kind: RotundaCueKind) => void;
   maxTeleportRadius?: number | undefined;
+  /** When true, yields thumbsticks exclusively to Matrix Stockroom infinite shelf scrolling. */
+  stockroomOpen?: boolean | undefined;
   children?: React.ReactNode | undefined;
 }
 
@@ -108,9 +110,11 @@ export function XrLocomotionRig({
   scaleMode,
   onCue,
   maxTeleportRadius = DEFAULT_MAX_TELEPORT_RADIUS,
+  stockroomOpen = false,
   children,
 }: XrLocomotionRigProps): React.ReactElement {
   const originRef = useRef<THREE.Group | null>(null);
+  const locomotionTargetRef = useRef<THREE.Group | null>(null);
   const [originPos, setOriginPos] = useState<[number, number, number]>(DEFAULT_ORIGIN_POS);
 
   // Subtle glowing cyan teleport destination ring animation state
@@ -121,13 +125,29 @@ export function XrLocomotionRig({
   const ringTimerRef = useRef(0);
   const ringPosRef = useRef<[number, number, number]>(DEFAULT_ORIGIN_POS);
 
-  const translationOptions = useMemo(() => ({ speed: scaleMode === "real-scale" ? 2.4 : 1.4 }), [scaleMode]);
+  // Detach XROrigin from locomotion whenever Matrix Stockroom is open so thumbsticks ONLY scroll shelves
+  useEffect(() => {
+    locomotionTargetRef.current = stockroomOpen ? null : originRef.current;
+  }, [stockroomOpen]);
+
+  const translationOptions = useMemo(
+    () => (stockroomOpen ? (false as const) : { speed: scaleMode === "real-scale" ? 2.4 : 1.4 }),
+    [scaleMode, stockroomOpen],
+  );
   const rotationOptions = useMemo(
-    () => (scaleMode === "real-scale" ? { type: "snap" as const, degrees: 45 } : (false as const)),
-    [scaleMode],
+    () => (!stockroomOpen && scaleMode === "real-scale" ? { type: "snap" as const, degrees: 45 } : (false as const)),
+    [scaleMode, stockroomOpen],
   );
 
-  useXRControllerLocomotion(originRef, translationOptions, rotationOptions, "left");
+  useXRControllerLocomotion(locomotionTargetRef, translationOptions, rotationOptions, "left");
+
+  const handleOriginRef = useCallback(
+    (node: THREE.Group | null) => {
+      originRef.current = node;
+      locomotionTargetRef.current = stockroomOpen ? null : node;
+    },
+    [stockroomOpen],
+  );
 
   const handleTeleport = useCallback(
     (pt: THREE.Vector3) => {
@@ -178,7 +198,7 @@ export function XrLocomotionRig({
 
   return (
     <>
-      <XROrigin ref={originRef} position={originPos}>
+      <XROrigin ref={handleOriginRef} position={originPos}>
         {children}
       </XROrigin>
 
@@ -295,6 +315,10 @@ export interface XrControllerBindingsProps {
   modelCount: number;
   explodeFactor: number;
   scaleMode?: RotundaScaleMode | undefined;
+  /** True when the central stage is in 3D Diagram mode (B/Y toggles Matrix Stockroom). */
+  diagramEditorEnabled?: boolean | undefined;
+  /** True when the Matrix Stockroom is open (yields thumbsticks exclusively to shelf scrolling). */
+  stockroomOpen?: boolean | undefined;
   onCue: (kind: RotundaCueKind) => void;
   twoHandSensitivity?: number | undefined;
   /** Shared ref reporting active 3D diagram editor interaction lock (suspends explode/carousel when active). */
@@ -303,10 +327,10 @@ export interface XrControllerBindingsProps {
 
 /**
  * Native WebXR Controller & Quest 2 Bare-Hand Tracking Gesture Bindings:
- *  - Right thumbstick X flick (`|x| > 0.72`, 380ms debounce + Schmitt reset `< 0.3`): pages Orbital Carousel in tabletop mode (yields to 45° snap-turn in 1:1 real-scale mode or active 3D diagram grabs).
- *  - Right thumbstick Y (`|y| > 0.25`): smoothly adjusts central plinth zoom.
+ *  - Right thumbstick X flick (`|x| > 0.72`, 380ms debounce + Schmitt reset `< 0.3`): pages Orbital Carousel in tabletop mode (yields to 45° snap-turn in 1:1 real-scale mode, Matrix Stockroom scrolling, or active 3D diagram grabs).
+ *  - Right thumbstick Y (`|y| > 0.25`): smoothly adjusts central plinth zoom (yields when Matrix Stockroom is open).
  *  - Dual-controller squeeze pull-apart (`xr-standard-squeeze` on both hands): explodes/collapses CAD assembly with haptic detents (yields while 3D diagram editor interaction lock is held).
- *  - Face buttons (`a-button`/`x-button` toggle play/pause; `b-button`/`y-button` toggle tabletop ↔ 1:1 real-scale).
+ *  - Face buttons (`a-button`/`x-button` toggle play/pause; `b-button`/`y-button` toggle Matrix Stockroom in 3D Diagram mode, or scale mode in 3D Model mode).
  *  - Two-hand bare-hand index-pinch pull-apart: smoothly drives CAD `explodeFactor` (`0..1`) with detent ticks.
  *  - Right-hand middle-finger pinch (rising edge, 450ms cooldown): pages Orbital Carousel (`+1`).
  *  - Left-hand middle-finger pinch (rising edge, 550ms cooldown): toggles Tabletop ↔ 1:1 Real-Scale.
@@ -316,6 +340,8 @@ export function XrControllerBindings({
   modelCount,
   explodeFactor,
   scaleMode = "tabletop",
+  diagramEditorEnabled = false,
+  stockroomOpen = false,
   onCue,
   twoHandSensitivity = DEFAULT_TWO_HAND_SENSITIVITY,
   interactionLockRef,
@@ -396,34 +422,37 @@ export function XrControllerBindings({
     const nowMs = typeof performance !== "undefined" ? performance.now() : Date.now();
 
     if (hasController) {
-      // 1. Right thumbstick X flick (Orbital Carousel paging in tabletop mode) & Y (smooth Plinth Zoom)
-      const rightStick = rightController?.gamepad["xr-standard-thumbstick"];
-      const rightX = rightStick?.xAxis ?? 0;
-      const rightY = rightStick?.yAxis ?? 0;
+      // 1. Right thumbstick X flick (Orbital Carousel paging) & Y (Plinth Zoom) — yield while Matrix Stockroom or 3D Diagram is open
+      if (!stockroomOpen && !diagramEditorEnabled) {
+        const rightStick = rightController?.gamepad["xr-standard-thumbstick"];
+        const rightX = rightStick?.xAxis ?? 0;
+        const rightY = rightStick?.yAxis ?? 0;
 
-      if (scaleMode !== "real-scale") {
-        if (Math.abs(rightX) < PAGE_SCHMITT_RESET) {
-          pageArmedRef.current = true;
-        } else if (
-          Math.abs(rightX) > PAGE_FLICK_THRESHOLD &&
-          pageArmedRef.current &&
-          nowMs - lastPageMsRef.current >= PAGE_DEBOUNCE_MS &&
-          modelCount > 0
-        ) {
-          pageArmedRef.current = false;
-          lastPageMsRef.current = nowMs;
-          dispatch({ type: "pageModel", delta: rightX > 0 ? 1 : -1, modelCount });
-          onCue("page");
+        if (scaleMode !== "real-scale") {
+          if (Math.abs(rightX) < PAGE_SCHMITT_RESET) {
+            pageArmedRef.current = true;
+          } else if (
+            Math.abs(rightX) > PAGE_FLICK_THRESHOLD &&
+            pageArmedRef.current &&
+            nowMs - lastPageMsRef.current >= PAGE_DEBOUNCE_MS &&
+            modelCount > 0
+          ) {
+            pageArmedRef.current = false;
+            lastPageMsRef.current = nowMs;
+            dispatch({ type: "pageModel", delta: rightX > 0 ? 1 : -1, modelCount });
+            onCue("page");
+          }
+        }
+
+        if (Math.abs(rightY) > ZOOM_DEADZONE) {
+          dispatch({ type: "adjustZoom", delta: -rightY * delta * ZOOM_SPEED });
         }
       }
 
-      if (Math.abs(rightY) > ZOOM_DEADZONE) {
-        dispatch({ type: "adjustZoom", delta: -rightY * delta * ZOOM_SPEED });
-      }
-
-      // 2. Two-Hand Squeeze Pull-Apart Gesture -> CAD Radial Explode
-      const leftSqueezed = leftController?.gamepad["xr-standard-squeeze"]?.state === "pressed";
-      const rightSqueezed = rightController?.gamepad["xr-standard-squeeze"]?.state === "pressed";
+      // 2. Two-Hand Squeeze Pull-Apart Gesture -> CAD Radial Explode (3D Model mode only)
+      const leftSqueezed = !diagramEditorEnabled && leftController?.gamepad["xr-standard-squeeze"]?.state === "pressed";
+      const rightSqueezed =
+        !diagramEditorEnabled && rightController?.gamepad["xr-standard-squeeze"]?.state === "pressed";
 
       if (leftSqueezed && rightSqueezed && leftController?.object && rightController?.object) {
         leftController.object.getWorldPosition(leftWorldPosRef.current);
@@ -457,7 +486,7 @@ export function XrControllerBindings({
         prevTwoHandDistRef.current = null;
       }
 
-      // 3. Primary (A/X -> Play/Pause) & Secondary (B/Y -> Tabletop <-> 1:1 Real-Scale) edge detection
+      // 3. Primary (A/X -> Play/Pause) & Secondary (B/Y -> Stockroom in 3D Diagram mode, or Scale Mode in 3D Model mode)
       const aPressed = rightController?.gamepad["a-button"]?.state === "pressed";
       const xPressed = leftController?.gamepad["x-button"]?.state === "pressed";
       const bPressed = rightController?.gamepad["b-button"]?.state === "pressed";
@@ -469,8 +498,13 @@ export function XrControllerBindings({
         onCue("click");
       }
       if ((bPressed && !prev.b) || (yPressed && !prev.y)) {
-        dispatch({ type: "toggleScaleMode" });
-        onCue("snap");
+        if (diagramEditorEnabled || stockroomOpen) {
+          dispatch({ type: "toggleWristPalette" });
+          onCue("snap");
+        } else {
+          dispatch({ type: "toggleScaleMode" });
+          onCue("snap");
+        }
       }
 
       prev.a = Boolean(aPressed);

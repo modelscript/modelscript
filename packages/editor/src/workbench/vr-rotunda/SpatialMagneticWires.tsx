@@ -47,17 +47,19 @@ export interface SpatialMagneticWiresProps {
 /** Local axis of the live connector plug mesh that points into the target port. */
 const PLUG_AXIS = new THREE.Vector3(0, 1, 0);
 
-/** Creates a stereo-safe floating badge sprite texture showing live magnetic wire lock status. */
-function createWireStatusBadgeTexture(
+/** No-op raycaster so non-interactive live wire visuals never intercept controller lasers. */
+const NOOP_RAYCAST: THREE.Object3D["raycast"] = () => {
+  /* intentionally empty */
+};
+
+/** Paints a stereo-safe floating badge canvas showing live magnetic wire lock status. */
+function paintWireStatusBadge(
+  canvas: HTMLCanvasElement,
   text: string,
   variant: "searching" | "locked" | "rejected",
-): THREE.CanvasTexture | null {
-  if (typeof document === "undefined") return null;
-  const canvas = document.createElement("canvas");
-  canvas.width = 480;
-  canvas.height = 84;
+): void {
   const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
+  if (!ctx) return;
 
   const bg =
     variant === "locked"
@@ -92,11 +94,6 @@ function createWireStatusBadgeTexture(
   ctx.textBaseline = "middle";
   const clipped = text.length > 34 ? `${text.slice(0, 33)}…` : text;
   ctx.fillText(clipped, canvas.width * 0.5, canvas.height * 0.5);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  return tex;
 }
 
 /** Resolves a port's live stage-local position and outward normal from its node's live `THREE.Group`. */
@@ -485,24 +482,36 @@ export function SpatialMagneticWires({
   const plugDir = useRef(new THREE.Vector3());
   const tipTanScratch = useRef<[number, number, number]>([0, 1, 0]);
 
-  const badgeInfo = useMemo(() => {
-    if (!activeWireDrag) return null;
-    const src = `${activeWireDrag.sourcePort.nodeId}.${activeWireDrag.sourcePort.portId}`;
-    if (activeWireDrag.snappedTarget) {
-      const tgt = `${activeWireDrag.snappedTarget.port.nodeId}.${activeWireDrag.snappedTarget.port.portId}`;
-      return { text: `${src} ⇄ ${tgt} ✓`, variant: "locked" as const };
-    }
-    if (activeWireDrag.rejectedTarget) {
-      return { text: activeWireDrag.rejectedTarget.reason, variant: "rejected" as const };
-    }
-    return { text: `${src} → Drag to Port`, variant: "searching" as const };
-  }, [activeWireDrag]);
+  const badgeText = activeWireDrag
+    ? activeWireDrag.snappedTarget
+      ? `${activeWireDrag.sourcePort.nodeId}.${activeWireDrag.sourcePort.portId} ⇄ ${activeWireDrag.snappedTarget.port.nodeId}.${activeWireDrag.snappedTarget.port.portId} ✓`
+      : activeWireDrag.rejectedTarget
+        ? activeWireDrag.rejectedTarget.reason
+        : `${activeWireDrag.sourcePort.nodeId}.${activeWireDrag.sourcePort.portId} → Drag to Port`
+    : null;
+  const badgeVariant: "searching" | "locked" | "rejected" = activeWireDrag?.snappedTarget
+    ? "locked"
+    : activeWireDrag?.rejectedTarget
+      ? "rejected"
+      : "searching";
 
-  const badgeTexture = useMemo(
-    () => (badgeInfo ? createWireStatusBadgeTexture(badgeInfo.text, badgeInfo.variant) : null),
-    [badgeInfo],
-  );
-  useEffect(() => () => badgeTexture?.dispose(), [badgeTexture]);
+  // Allocate ONE persistent offscreen badge canvas & texture on mount (zero mid-XR-drag texture creation/disposal)
+  const badgeBundle = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = 480;
+    canvas.height = 84;
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return { canvas, tex };
+  }, []);
+  useEffect(() => () => badgeBundle?.tex.dispose(), [badgeBundle]);
+
+  useEffect(() => {
+    if (!badgeBundle || !badgeText) return;
+    paintWireStatusBadge(badgeBundle.canvas, badgeText, badgeVariant);
+    badgeBundle.tex.needsUpdate = true;
+  }, [badgeBundle, badgeText, badgeVariant]);
 
   useFrame((state, rawDelta) => {
     if (!activeWireDrag) return;
@@ -537,13 +546,22 @@ export function SpatialMagneticWires({
       pTipLocal.current.copy(activeWireDrag.tipWorldPosRef.current).applyMatrix4(invStageMat.current);
     }
 
+    if (
+      !Number.isFinite(pStart.current.x) ||
+      !Number.isFinite(pTipLocal.current.x) ||
+      !Number.isFinite(pTipLocal.current.y) ||
+      !Number.isFinite(pTipLocal.current.z)
+    ) {
+      return;
+    }
+
     // Step physical Verlet rope with gravity sag, hand inertia, and socket strain-relief
     const ropePositions = liveVerlet.step(
       [pStart.current.x, pStart.current.y, pStart.current.z],
       [nStart.current.x, nStart.current.y, nStart.current.z],
       [pTipLocal.current.x, pTipLocal.current.y, pTipLocal.current.z],
       hasEndNormal ? [nEndLocal.current.x, nEndLocal.current.y, nEndLocal.current.z] : null,
-      Math.min(rawDelta, 0.05),
+      Math.max(1 / 240, Math.min(rawDelta, 0.05)),
     );
 
     const liveStyle = getDomainCableStyle(activeWireDrag.sourcePort.domain);
@@ -602,55 +620,46 @@ export function SpatialMagneticWires({
         />
       ))}
 
-      {/* Active Physical Verlet-Simulated Magnetic Drag Wire */}
-      {activeWireDrag && (
-        <group name="spatial-live-extending-wire">
-          <mesh geometry={liveTube.geometry}>
-            <meshStandardMaterial
-              color={liveColor}
-              emissive={liveColor}
-              emissiveIntensity={activeWireDrag.snappedTarget ? 1.05 : 0.72}
-              roughness={0.22}
-              metalness={0.32}
-              toneMapped={false}
-            />
+      {/* Active Physical Verlet-Simulated Magnetic Drag Wire (pre-mounted & toggled via visible for zero Quest 2 mid-grab shader stalls) */}
+      <group name="spatial-live-extending-wire" visible={Boolean(activeWireDrag)}>
+        <mesh geometry={liveTube.geometry} raycast={NOOP_RAYCAST} frustumCulled={false}>
+          <meshBasicMaterial color={liveColor} toneMapped={false} />
+        </mesh>
+
+        <group ref={liveTipOrbRef}>
+          {/* Strain-relief boot */}
+          <mesh position={[0, -0.016, 0]} raycast={NOOP_RAYCAST}>
+            <cylinderGeometry args={[0.0042, 0.006, 0.012, 12]} />
+            <meshBasicMaterial color="#1e293b" />
           </mesh>
-
-          <group ref={liveTipOrbRef}>
-            {/* Strain-relief boot */}
-            <mesh position={[0, -0.016, 0]}>
-              <cylinderGeometry args={[0.0042, 0.006, 0.012, 14]} />
-              <meshStandardMaterial color="#1e293b" roughness={0.65} metalness={0.05} />
-            </mesh>
-            {/* Machined connector body */}
-            <mesh position={[0, -0.004, 0]}>
-              <cylinderGeometry args={[0.0072, 0.0072, 0.014, 18]} />
-              <meshStandardMaterial color="#d6d9dc" roughness={0.25} metalness={0.92} />
-            </mesh>
-            {/* Domain-colored collar */}
-            <mesh position={[0, 0.0045, 0]}>
-              <cylinderGeometry args={[0.0078, 0.0078, 0.0028, 18]} />
-              <meshStandardMaterial color={liveColor} emissive={liveColor} emissiveIntensity={0.9} toneMapped={false} />
-            </mesh>
-            {/* Contact pin */}
-            <mesh position={[0, 0.0095, 0]}>
-              <cylinderGeometry args={[0.0022, 0.0026, 0.008, 10]} />
-              <meshBasicMaterial color={liveColor} toneMapped={false} />
-            </mesh>
-          </group>
-
-          <mesh ref={liveMagnetRingRef} visible={false}>
-            <torusGeometry args={[0.022, 0.0024, 10, 28]} />
-            <meshBasicMaterial color="#10b981" toneMapped={false} />
+          {/* Machined connector body */}
+          <mesh position={[0, -0.004, 0]} raycast={NOOP_RAYCAST}>
+            <cylinderGeometry args={[0.0072, 0.0072, 0.014, 14]} />
+            <meshBasicMaterial color="#cbd5e1" />
           </mesh>
-
-          {badgeTexture && (
-            <sprite ref={liveBadgeRef} scale={[0.21, 0.037, 1]}>
-              <spriteMaterial map={badgeTexture} transparent depthTest={false} depthWrite={false} />
-            </sprite>
-          )}
+          {/* Domain-colored collar */}
+          <mesh position={[0, 0.0045, 0]} raycast={NOOP_RAYCAST}>
+            <cylinderGeometry args={[0.0078, 0.0078, 0.0028, 14]} />
+            <meshBasicMaterial color={liveColor} toneMapped={false} />
+          </mesh>
+          {/* Contact pin */}
+          <mesh position={[0, 0.0095, 0]} raycast={NOOP_RAYCAST}>
+            <cylinderGeometry args={[0.0022, 0.0026, 0.008, 10]} />
+            <meshBasicMaterial color={liveColor} toneMapped={false} />
+          </mesh>
         </group>
-      )}
+
+        <mesh ref={liveMagnetRingRef} visible={false} raycast={NOOP_RAYCAST}>
+          <torusGeometry args={[0.022, 0.0024, 10, 24]} />
+          <meshBasicMaterial color="#10b981" toneMapped={false} />
+        </mesh>
+
+        {badgeBundle && (
+          <sprite ref={liveBadgeRef} scale={[0.21, 0.037, 1]} visible={Boolean(badgeText)} raycast={NOOP_RAYCAST}>
+            <spriteMaterial map={badgeBundle.tex} transparent depthTest={false} depthWrite={false} />
+          </sprite>
+        )}
+      </group>
     </group>
   );
 }
