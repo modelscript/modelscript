@@ -400,12 +400,14 @@ jobs:
       - name: Run Build
         run: |
           if [ "${{ github.event_name }}" = "schedule" ]; then
-            npx nx run-many -t build --parallel=2
+            npx nx run-many -t build --parallel=2 --exclude=@modelscript/web
+            npx nx run @modelscript/web:build
           else
             if [ -z "$NX_BASE" ] || ! git rev-parse --verify "$NX_BASE" >/dev/null 2>&1; then
               export NX_BASE="HEAD~1"
             fi
-            npx nx affected -t build --parallel=2
+            npx nx affected -t build --parallel=2 --exclude=@modelscript/web
+            npx nx affected -t build --projects=@modelscript/web
           fi
       - name: Verify Dist & Exports Integrity
         run: npm run verify:dist
