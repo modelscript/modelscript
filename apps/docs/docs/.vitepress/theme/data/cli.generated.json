@@ -353,6 +353,87 @@
     "subcommands": []
   },
   {
+    "name": "ansatz",
+    "specs": [
+      "ansatz"
+    ],
+    "aliases": [],
+    "describe": "Launch the dual-editor DSL workbench",
+    "positionals": [
+      {
+        "name": "lang",
+        "aliases": [],
+        "type": "string",
+        "description": "Language ID or directory (e.g. olga, psse, fea, epanet) to open in lightweight UI ansatz mode"
+      }
+    ],
+    "options": [
+      {
+        "name": "grammar",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Launch the legacy dual-editor grammar-DSL workbench",
+        "default": false
+      },
+      {
+        "name": "port",
+        "aliases": [
+          "p"
+        ],
+        "type": "number",
+        "description": "Dev server port (default: 5179 for language ansatz, 3002 for grammar workbench)"
+      },
+      {
+        "name": "file",
+        "aliases": [
+          "f"
+        ],
+        "type": "string",
+        "description": "Initial source file to load in language ansatz mode"
+      },
+      {
+        "name": "mode",
+        "aliases": [
+          "m"
+        ],
+        "type": "string",
+        "description": "Initial host mode (workbench | inspector | artifact)",
+        "choices": [
+          "workbench",
+          "inspector",
+          "artifact"
+        ]
+      },
+      {
+        "name": "theme",
+        "aliases": [
+          "t"
+        ],
+        "type": "string",
+        "description": "Initial color theme (dark | light)",
+        "choices": [
+          "dark",
+          "light"
+        ]
+      },
+      {
+        "name": "open",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Open browser automatically",
+        "default": false
+      },
+      {
+        "name": "ansatz",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Launch the full Ansatz web editor locked to this single language (?lang=<id>&single=1)",
+        "default": false
+      }
+    ],
+    "subcommands": []
+  },
+  {
     "name": "archive",
     "specs": [
       "archive [action] [users..]"
@@ -8118,87 +8199,6 @@
     "subcommands": []
   },
   {
-    "name": "ansatz",
-    "specs": [
-      "ansatz"
-    ],
-    "aliases": [],
-    "describe": "Launch the dual-editor DSL workbench",
-    "positionals": [
-      {
-        "name": "lang",
-        "aliases": [],
-        "type": "string",
-        "description": "Language ID or directory (e.g. olga, psse, fea, epanet) to open in lightweight UI ansatz mode"
-      }
-    ],
-    "options": [
-      {
-        "name": "grammar",
-        "aliases": [],
-        "type": "boolean",
-        "description": "Launch the legacy dual-editor grammar-DSL workbench",
-        "default": false
-      },
-      {
-        "name": "port",
-        "aliases": [
-          "p"
-        ],
-        "type": "number",
-        "description": "Dev server port (default: 5179 for language ansatz, 3002 for grammar workbench)"
-      },
-      {
-        "name": "file",
-        "aliases": [
-          "f"
-        ],
-        "type": "string",
-        "description": "Initial source file to load in language ansatz mode"
-      },
-      {
-        "name": "mode",
-        "aliases": [
-          "m"
-        ],
-        "type": "string",
-        "description": "Initial host mode (workbench | inspector | artifact)",
-        "choices": [
-          "workbench",
-          "inspector",
-          "artifact"
-        ]
-      },
-      {
-        "name": "theme",
-        "aliases": [
-          "t"
-        ],
-        "type": "string",
-        "description": "Initial color theme (dark | light)",
-        "choices": [
-          "dark",
-          "light"
-        ]
-      },
-      {
-        "name": "open",
-        "aliases": [],
-        "type": "boolean",
-        "description": "Open browser automatically",
-        "default": false
-      },
-      {
-        "name": "ansatz",
-        "aliases": [],
-        "type": "boolean",
-        "description": "Launch the full Ansatz web editor locked to this single language (?lang=<id>&single=1)",
-        "default": false
-      }
-    ],
-    "subcommands": []
-  },
-  {
     "name": "plcopen",
     "specs": [
       "plcopen <action> [files..]"
@@ -11904,6 +11904,19 @@
         "type": "string",
         "description": "Override SysML attribute inputs (e.g. --param GridStrengthGate.ibrRatedMw=350)",
         "array": true
+      },
+      {
+        "name": "seasonal",
+        "aliases": [],
+        "type": "boolean",
+        "description": "Execute SysML v2 seasonal variation / multi-tool powerflow verification sweep",
+        "default": false
+      },
+      {
+        "name": "variant",
+        "aliases": [],
+        "type": "string",
+        "description": "Filter seasonal sweep to a specific SysML v2 variant name (e.g. SummerPeak)"
       },
       {
         "name": "bundle",

@@ -9,8 +9,17 @@ import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const mcpSrcDir = path.resolve(here, "../../../packages/mcp/src");
+const toolsSubdir = path.join(mcpSrcDir, "tools");
+const modularToolFiles = fs.existsSync(toolsSubdir)
+  ? fs
+      .readdirSync(toolsSubdir)
+      .filter((f) => f.endsWith(".ts"))
+      .sort()
+      .map((f) => path.join(toolsSubdir, f))
+  : [];
 const toolSourceFiles = [
   path.join(mcpSrcDir, "tools.ts"),
+  ...modularToolFiles,
   path.join(mcpSrcDir, "alm-tools.ts"),
   path.join(mcpSrcDir, "magicdraw-tools.ts"),
   path.join(mcpSrcDir, "uq-tools.ts"),

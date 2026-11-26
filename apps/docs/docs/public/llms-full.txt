@@ -8978,6 +8978,8 @@ Options:
   - `--json <boolean>`: Emit machine-readable JSON results (default: false)
   - `--timeout <number>`: Watchdog timeout in milliseconds per kernel (default: 10000)
   - `--param <string>`: Override SysML attribute inputs (e.g. --param GridStrengthGate.ibrRatedMw=350)
+  - `--seasonal <boolean>`: Execute SysML v2 seasonal variation / multi-tool powerflow verification sweep (default: false)
+  - `--variant <string>`: Filter seasonal sweep to a specific SysML v2 variant name (e.g. SummerPeak)
   - `--bundle <string>`: Write a PSI 21 Digital Data Package (.ddp.zip) provenance bundle to this path
   - `--sign-key <string>`: Optional Ed25519 private key PEM file used to sign the DDP verification report
 
