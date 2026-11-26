@@ -555,18 +555,18 @@ jobs:
       - name: Rebuild Unified Site & Docs with PDF Manual
         if: steps.check-affected.outputs.run_docker == 'true'
         run: npx nx build @modelscript/docs
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: steps.check-affected.outputs.run_docker == 'true'
       - name: Log in to GHCR
         if: steps.check-affected.outputs.run_docker == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push EE & CE Docker images
         if: steps.check-affected.outputs.run_docker == 'true'
-        uses: docker/bake-action@5be5f02ff8819ecd3092ea6b2e6261c31774f2b4 # v6
+        uses: docker/bake-action@59cb1203cd42bcefd40a1b6d73b589e48c86040e # v7.5.0
         with:
           source: .
           files: docker-compose.yml
