@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildPlot3dCleanroomSchemas } from "../src/catalog/plot3d-std-schemas.ts";
 
-const plot3dDir = new URL("..", import.meta.url).pathname;
+const plot3dDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(plot3dDir, "assets", "plot3d-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

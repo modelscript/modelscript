@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildMagicDrawCleanroomSchemas } from "../src/catalog/magicdraw-std-schemas.ts";
 
-const magicdrawDir = new URL("..", import.meta.url).pathname;
+const magicdrawDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(magicdrawDir, "assets", "magicdraw-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

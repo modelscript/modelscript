@@ -221,7 +221,7 @@ export class SysML2DiagramBackend implements DiagramBackend {
 
   applyEdits(params: DiagramApplyEditsParams): DiagramApplyEditsResult {
     const docText = this.deps.getDocumentText(params.uri);
-    if (!docText) return { seq: params.seq, edits: [], renderHint: "none" };
+    if (docText === null || docText === undefined) return { seq: params.seq, edits: [], renderHint: "none" };
 
     const allEdits: TextEdit[] = [];
     let needsRender: "none" | "immediate" | "debounced" = "none";

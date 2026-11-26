@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildEndf6CleanroomSchemas } from "../src/catalog/endf6-std-schemas.ts";
 
-const endf6Dir = new URL("..", import.meta.url).pathname;
+const endf6Dir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(endf6Dir, "assets", "endf6-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

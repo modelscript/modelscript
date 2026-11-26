@@ -134,6 +134,7 @@ export interface AnsatzEditorProps {
   onRenameProjectFile?: ((oldName: string, newName: string) => void) | undefined;
   onMoveProjectFile?: ((fileName: string, targetDir: string) => void) | undefined;
   dirtyFiles?: string[] | Set<string> | undefined;
+  simulationResetKey?: number | undefined;
 }
 
 const isSplit = (v: View) => v === View.SPLIT_COLUMNS || v === View.SPLIT_ROWS;
@@ -894,6 +895,14 @@ export default function AnsatzEditor(props: AnsatzEditorProps) {
       props.onSimulationStatus(simulationStatus, localSimulationData);
     }
   }, [simulationStatus, localSimulationData, props.onSimulationStatus]);
+
+  useEffect(() => {
+    if (!props.simulationResetKey) return;
+    setLocalSimulationData(null);
+    setSimulationStatus(null);
+    setSimulationVariables([]);
+    setSelectedSimulationVariables([]);
+  }, [props.simulationResetKey]);
 
   useEffect(() => {
     props.onParametersChange?.(parameterOverrides);

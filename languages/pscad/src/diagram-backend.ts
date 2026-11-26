@@ -37,8 +37,8 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
   const createDropBatchState = () => backends.crossLanguageDrop?.createDropBatchState?.() ?? {};
   const mergeCoincidentInsertEdits = (edits: TextEdit[]) =>
     backends.crossLanguageDrop?.mergeCoincidentInsertEdits?.(edits) ?? edits;
-  const computePscadComponentDropEdits = (opts: unknown): TextEdit[] =>
-    backends.crossLanguageDrop?.computePscadComponentDropEdits?.(opts) ?? [];
+  const computePscadComponentDropEdits = (opts: unknown): TextEdit[] | null =>
+    backends.crossLanguageDrop?.computePscadComponentDropEdits?.(opts) ?? null;
 
   const readPscxSource = async (targetUri: string): Promise<string | null> => {
     const memText = getHostDocumentText(backends, targetUri);
@@ -379,10 +379,43 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
       try {
         const text = await readPscxSource(params.uri);
-        if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
+        if (text === null || text === undefined) return { seq: params.seq, edits: [], renderHint: "none" };
         const { getMasterComponentSchema, planDiagramActions } = await import("@modelscript/pscad");
+        const { parseXmlSync } = await import("@modelscript/dsl/xml");
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const dropBatchState = createDropBatchState();
+
+        const hasSchematicElement = (el: { name: string; children?: unknown[] } | null): boolean => {
+          if (!el) return false;
+          if (el.name.toLowerCase() === "schematic") return true;
+          return (el.children ?? []).some((c) => hasSchematicElement(c as { name: string; children?: unknown[] }));
+        };
+        const hasAddComponent = params.actions.some((a) => a.type === "addComponent");
+        const hasSchematic = text.trim().length > 0 && hasSchematicElement(parseXmlSync(text).root);
+        let workingText = text;
+        let didScaffold = false;
+        if (hasAddComponent && !hasSchematic) {
+          const base =
+            params.uri
+              .split("/")
+              .pop()
+              ?.replace(/\.[^.]+$/, "")
+              .replace(/[^A-Za-z0-9_]/g, "_") || "Main";
+          const projName = /^[A-Za-z_]/.test(base) ? base : `P_${base}`;
+          workingText = [
+            `<project name="${projName}" version="5.0.2">`,
+            `  <definitions>`,
+            `    <Definition name="Main" classid="UserCmpDefn">`,
+            `      <schematic>`,
+            `      </schematic>`,
+            `    </Definition>`,
+            `  </definitions>`,
+            `</project>`,
+            "",
+          ].join("\n");
+          didScaffold = true;
+        }
+
         const foreignEdits: TextEdit[] = [];
         const nativeActions: DiagramApplyEditsParams["actions"] = [];
 
@@ -394,7 +427,7 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
               : rawAction;
           if (action.type === "addComponent") {
             const dropEdits = computePscadComponentDropEdits({
-              docText: text,
+              docText: workingText,
               rawClassName: action.className,
               x: action.x,
               y: action.y,
@@ -415,16 +448,42 @@ export function createPscadDiagramBackend(backends: DiagramBackendHost): Diagram
 
         const nativeResult =
           nativeActions.length > 0
-            ? planDiagramActions(text, nativeActions as never)
+            ? planDiagramActions(workingText, nativeActions as never)
             : { edits: [], renderHint: "none" as const, unresolved: [] };
 
         const renderHint: "none" | "immediate" | "debounced" =
           foreignEdits.length > 0 || nativeResult.renderHint === "immediate" ? "immediate" : nativeResult.renderHint;
-        const allEdits: TextEdit[] = [...(nativeResult.edits as TextEdit[]), ...foreignEdits];
+        const allEdits: TextEdit[] = deduplicateAndSort(
+          mergeCoincidentInsertEdits([...(nativeResult.edits as TextEdit[]), ...foreignEdits]),
+        );
+
+        if (didScaffold) {
+          // Apply edits in-memory onto workingText, then emit a single full-document edit against `text`
+          const wLines = workingText.split("\n");
+          const toOff = (p: { line: number; character: number }) =>
+            wLines.slice(0, p.line).reduce((acc, l) => acc + l.length + 1, 0) + p.character;
+          let finalText = workingText;
+          for (const ed of [...allEdits].sort((a, b) => toOff(b.range.start) - toOff(a.range.start))) {
+            finalText = finalText.slice(0, toOff(ed.range.start)) + ed.newText + finalText.slice(toOff(ed.range.end));
+          }
+          const origLines = text.split("\n");
+          const lastLine = Math.max(0, origLines.length - 1);
+          const lastChar = origLines[lastLine]?.length ?? 0;
+          return {
+            seq: params.seq,
+            edits: [
+              {
+                range: { start: { line: 0, character: 0 }, end: { line: lastLine, character: lastChar } },
+                newText: finalText,
+              },
+            ],
+            renderHint: "immediate",
+          };
+        }
 
         return {
           seq: params.seq,
-          edits: deduplicateAndSort(mergeCoincidentInsertEdits(allEdits)),
+          edits: allEdits,
           renderHint,
         };
       } catch {

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildSimpackCleanroomSchemas } from "../src/catalog/simpack-std-schemas.ts";
 
-const simpackDir = new URL("..", import.meta.url).pathname;
+const simpackDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(simpackDir, "assets", "simpack-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

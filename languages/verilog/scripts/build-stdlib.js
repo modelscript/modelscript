@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildVerilogCleanroomSchemas } from "../src/catalog/verilog-std-schemas.ts";
 
-const verilogDir = new URL("..", import.meta.url).pathname;
+const verilogDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(verilogDir, "assets", "verilog-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

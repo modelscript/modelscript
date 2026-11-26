@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildIhexCleanroomSchemas } from "../src/catalog/ihex-std-schemas.ts";
 
-const ihexDir = new URL("..", import.meta.url).pathname;
+const ihexDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(ihexDir, "assets", "ihex-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

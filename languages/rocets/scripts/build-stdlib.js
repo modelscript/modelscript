@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildRocetsCleanroomSchemas } from "../src/catalog/rocets-std-schemas.ts";
 
-const rocetsDir = new URL("..", import.meta.url).pathname;
+const rocetsDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(rocetsDir, "assets", "rocets-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

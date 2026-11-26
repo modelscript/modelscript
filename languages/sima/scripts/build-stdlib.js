@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildSimaCleanroomSchemas } from "../src/catalog/sima-std-schemas.ts";
 
-const simaDir = new URL("..", import.meta.url).pathname;
+const simaDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(simaDir, "assets", "sima-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

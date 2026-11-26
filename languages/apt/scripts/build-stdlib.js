@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildAptCleanroomSchemas } from "../src/catalog/apt-std-schemas.ts";
 
-const aptDir = new URL("..", import.meta.url).pathname;
+const aptDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(aptDir, "assets", "apt-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

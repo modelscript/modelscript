@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildGamsCleanroomSchemas } from "../src/catalog/gams-std-schemas.ts";
 
-const gamsDir = new URL("..", import.meta.url).pathname;
+const gamsDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(gamsDir, "assets", "gams-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

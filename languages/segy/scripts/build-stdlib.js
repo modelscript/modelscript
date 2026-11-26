@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildSegyCleanroomSchemas } from "../src/catalog/segy-std-schemas.ts";
 
-const segyDir = new URL("..", import.meta.url).pathname;
+const segyDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(segyDir, "assets", "segy-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

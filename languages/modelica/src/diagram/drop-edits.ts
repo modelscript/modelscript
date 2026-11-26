@@ -278,8 +278,15 @@ export function buildModelicaComponentDropEdits<
     }
     bodyLines.push(`  ${resolved.className} ${compName} ${formatPlacementAnnotation(x, y, effectiveIconCoord)};`);
     const scaffold = `model ${modelName}\n${bodyLines.join("\n")}\nequation\nend ${modelName};\n`;
-    const pos = { line: 0, character: 0 };
-    return [{ range: { start: pos, end: pos }, newText: scaffold }];
+    if (!docText || docText.trim().length === 0) {
+      const pos = { line: 0, character: 0 };
+      return [{ range: { start: pos, end: pos }, newText: scaffold }];
+    }
+    const lines = docText.split("\n");
+    const lastLine = Math.max(0, lines.length - 1);
+    const endPos = { line: lastLine, character: (lines[lastLine] ?? "").length };
+    const prefix = docText.endsWith("\n") ? "" : "\n";
+    return [{ range: { start: endPos, end: endPos }, newText: `${prefix}${scaffold}` }];
   }
 
   const compEdits: ModelicaDropTextEdit[] = computeComponentInsert

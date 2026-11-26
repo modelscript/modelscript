@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildMlxtranCleanroomSchemas } from "../src/catalog/mlxtran-std-schemas.ts";
 
-const mlxtranDir = new URL("..", import.meta.url).pathname;
+const mlxtranDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(mlxtranDir, "assets", "mlxtran-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

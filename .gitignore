@@ -6,6 +6,7 @@ dist/
 build/
 !scripts/build/
 .build/
+packages/native/build-*/
 as-gen/
 packages/dsl/src/src-gen/
 build-parser.ts

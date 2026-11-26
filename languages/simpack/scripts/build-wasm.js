@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { fileURLToPath } from "node:url";
 import { runLanguageWasmBuild } from "../../../scripts/build/build-language-wasm.js";
 
 runLanguageWasmBuild({
   langName: "simpack",
-  dir: new URL("..", import.meta.url).pathname,
+  dir: fileURLToPath(new URL("..", import.meta.url)),
   entryFile: "assembly/kinematics.ts",
   outWasmFile: "dist/kinematics.wasm",
   binaryTsFile: "src/kinematics/wasm-binary.ts",

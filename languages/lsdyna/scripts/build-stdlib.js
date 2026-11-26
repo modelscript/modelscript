@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildLsDynaCleanroomSchemas } from "../src/catalog/lsdyna-std-schemas.ts";
 
-const lsdynaDir = new URL("..", import.meta.url).pathname;
+const lsdynaDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(lsdynaDir, "assets", "lsdyna-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

@@ -8,6 +8,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface ManifestEntry {
   name: string;
@@ -16,7 +17,7 @@ interface ManifestEntry {
   callers: string[];
 }
 
-const pscadDir = path.resolve(new URL("..", import.meta.url).pathname);
+const pscadDir = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const runtimeDir = path.join(pscadDir, "assets", "pscad-master-lib", "src", "runtime");
 const manifestPath = path.join(runtimeDir, "subroutine-manifest.json");
 const outPath = path.join(runtimeDir, "subroutines.ts");

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildMolfileCleanroomSchemas } from "../src/catalog/molfile-std-schemas.ts";
 
-const molfileDir = new URL("..", import.meta.url).pathname;
+const molfileDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(molfileDir, "assets", "molfile-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

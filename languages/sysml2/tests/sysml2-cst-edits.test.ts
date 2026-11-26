@@ -248,4 +248,44 @@ describe("SysML v2 CST-Guided Concrete Syntax Rewriting", () => {
     assert.strictEqual(edits[0]!.range.start.line, 1);
     assert.ok(edits[0]!.newText.includes("doc /* Ground transportation unit */"));
   });
+
+  it("scaffolds package on blank .sysml files and closes unclosed blocks on broken files", async () => {
+    const { SysML2DiagramBackend } = await import("../src/diagram-backend.js");
+    const { computeSysML2ElementInsert } = await import("../src/diagram/edits.js");
+
+    const blankEdits = computeSysML2ElementInsert("", "PartUsage", "engine");
+    assert.strictEqual(blankEdits.length, 1);
+    assert.ok(blankEdits[0]!.newText.includes("package Model {"), "blank insert should scaffold package Model");
+    assert.ok(blankEdits[0]!.newText.includes("part engine"), "blank insert should include part engine");
+
+    const brokenText = "package Broken {\n";
+    const brokenEdits = computeSysML2ElementInsert(brokenText, "PartUsage", "wheel");
+    assert.strictEqual(brokenEdits.length, 1);
+    assert.ok(brokenEdits[0]!.newText.includes("}"), "broken unclosed package should be closed with }");
+
+    const uri = "file:///tmp/blank.sysml";
+    const backend = new SysML2DiagramBackend({
+      getDocumentText: (u) => (u === uri ? "" : undefined),
+      getLayout: () => null,
+      setLayout: () => {},
+      createEmptyLayout: () => ({ version: 1, positions: {} }),
+      updateElementPositions: (l) => l,
+      buildDiagramData: () => null,
+      computeConnectionInsert: () => [],
+      computeConnectionDelete: () => [],
+      computeElementInsert: computeSysML2ElementInsert,
+      computeElementDelete: () => [],
+      generateUniqueName: (_t, base) => `${base}1`,
+      computeNameEdit: () => [],
+      computeDescriptionEdit: () => [],
+      computeParameterEdit: () => [],
+    });
+    const res = backend.applyEdits({
+      uri,
+      seq: 1,
+      actions: [{ type: "addComponent", className: "PartUsage", x: 100, y: 100 }],
+    });
+    assert.strictEqual(res.renderHint, "immediate");
+    assert.ok(res.edits.length >= 1, "SysML2DiagramBackend.applyEdits must not bail out on empty string");
+  });
 });

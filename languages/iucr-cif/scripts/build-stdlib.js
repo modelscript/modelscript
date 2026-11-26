@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildIucrCifCleanroomSchemas } from "../src/catalog/iucr-cif-std-schemas.ts";
 
-const pkgDir = new URL("..", import.meta.url).pathname;
+const pkgDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(pkgDir, "assets", "iucr-cif-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

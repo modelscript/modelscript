@@ -609,8 +609,8 @@ export function buildPsseDiagram(
   orderRowsByBarycenter(rows, neighbors);
 
   const startY = 180;
-  const rowSpacingY = 300;
-  const busSpacingX = 380;
+  const rowSpacingY = 340;
+  const busSpacingX = 480;
 
   const busGridPos = new Map<number, { row: number; col: number }>();
 

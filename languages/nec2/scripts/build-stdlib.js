@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildNec2CleanroomSchemas } from "../src/catalog/nec2-std-schemas.ts";
 
-const nec2Dir = new URL("..", import.meta.url).pathname;
+const nec2Dir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(nec2Dir, "assets", "nec2-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

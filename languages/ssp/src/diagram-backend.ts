@@ -135,7 +135,7 @@ export function createSspDiagramBackend(backends: DiagramBackendHost): DiagramBa
           return { seq: params.seq, edits: [], renderHint: "none" };
         }
         const text = await readSsdSource(params.uri);
-        if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
+        if (text === null || text === undefined) return { seq: params.seq, edits: [], renderHint: "none" };
         const rawEdits = applySspDiagramEdits(
           text,
           params.actions as unknown as Parameters<typeof applySspDiagramEdits>[1],

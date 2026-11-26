@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildEdifCleanroomSchemas } from "../src/catalog/edif-std-schemas.ts";
 
-const edifDir = new URL("..", import.meta.url).pathname;
+const edifDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(edifDir, "assets", "edif-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

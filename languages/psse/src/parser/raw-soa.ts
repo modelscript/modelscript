@@ -140,11 +140,27 @@ export function parseRawToSoa(sourceText: string): PsseSoaTables {
   let lineIdx = 0;
 
   while (lineIdx < lines.length && lines[lineIdx]!.isCommentOrBlank) lineIdx++;
-  const hLine = lines[lineIdx++];
+  const isSectionBoundary = (info: (typeof lines)[number]): boolean => {
+    if (info.isCommentOrBlank) return false;
+    const f = extractFieldsFromCstTokens(info.tokens, sourceText, "delimited");
+    return f.length === 1 && isPsseSectionTerminator(f) !== null;
+  };
+  const isBusLine = (info: (typeof lines)[number]): boolean => {
+    if (info.isCommentOrBlank) return false;
+    const f = extractFieldsFromCstTokens(info.tokens, sourceText, "delimited");
+    const maybeBus = Number(f[0]?.value);
+    const maybeIde = Number(f[3]?.value);
+    return f.length >= 7 && Number.isInteger(maybeBus) && maybeBus > 0 && maybeIde >= 1 && maybeIde <= 4;
+  };
+
+  const firstCandidate = lineIdx < lines.length ? lines[lineIdx]! : undefined;
+  const hLine =
+    firstCandidate && !isSectionBoundary(firstCandidate) && !isBusLine(firstCandidate) ? lines[lineIdx++] : undefined;
   const hToks = hLine ? extractFieldsFromCstTokens(hLine.tokens, sourceText, "delimited").map((f) => f.value) : [];
   const hCommentUpper = (hLine?.commentText ?? "").toUpperCase();
-  const inferredRev =
-    hToks[2] !== undefined && hToks[2] !== ""
+  const inferredRev = !hLine
+    ? 33
+    : hToks[2] !== undefined && hToks[2] !== ""
       ? numField(hToks[2], 33)
       : hToks.length <= 2
         ? /PSS\/E[- ]*26|\bREV\s*26\b|\bV26\b/.test(hCommentUpper)
@@ -158,18 +174,15 @@ export function parseRawToSoa(sourceText: string): PsseSoaTables {
     basfrq: numField(hToks[5], 60.0),
   };
 
-  // Skip up to 2 optional title lines unless bus records start immediately
-  for (let t = 0; t < 2 && lineIdx < lines.length; t++) {
-    const l = lines[lineIdx]!;
-    if (l.isCommentOrBlank) {
+  // Skip up to 2 optional title lines within 2 rows of the header unless section/bus/metadata records start immediately
+  if (hLine) {
+    const headerRow = hLine.row;
+    for (let t = 0; t < 2 && lineIdx < lines.length; t++) {
+      const l = lines[lineIdx]!;
+      if (l.row > headerRow + 2) break;
+      if (l.line.trimStart().startsWith("@!") || isSectionBoundary(l) || isBusLine(l)) break;
       lineIdx++;
-      continue;
     }
-    const f = extractFieldsFromCstTokens(l.tokens, sourceText, "delimited");
-    const maybeBus = Number(f[0]?.value);
-    const maybeIde = Number(f[3]?.value);
-    if (f.length >= 7 && Number.isInteger(maybeBus) && maybeBus > 0 && maybeIde >= 1 && maybeIde <= 4) break;
-    lineIdx++;
   }
 
   const busId = new GrowableInt32(128);

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildTrnsysCleanroomSchemas } from "../src/catalog/trnsys-std-schemas.ts";
 
-const trnsysDir = new URL("..", import.meta.url).pathname;
+const trnsysDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(trnsysDir, "assets", "trnsys-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildJcampDxCleanroomSchemas } from "../src/catalog/jcamp-dx-std-schemas.ts";
 
-const jcampDir = new URL("..", import.meta.url).pathname;
+const jcampDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(jcampDir, "assets", "jcamp-dx-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

@@ -101,16 +101,47 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
     nextLine();
   }
 
-  // 1. Header (Case Identification)
-  const headerLineInfo = nextLine();
+  function isSectionBoundaryLine(info: PsseCstLine): boolean {
+    if (info.isCommentOrBlank) return false;
+    const fields = extractFieldsFromCstTokens(info.tokens, text, "delimited");
+    if (fields.length !== 1) return false;
+    return isPsseSectionTerminator(fields) !== null;
+  }
+
+  function isLikelyBusRecord(info: PsseCstLine): boolean {
+    if (info.isCommentOrBlank) return false;
+    const fields = extractFieldsFromCstTokens(info.tokens, text, "delimited");
+    if (fields.length < 7) return false;
+    const busNum = Number(fields[0]!.value);
+    const baseKv = Number(fields[2]!.value);
+    const ide = Number(fields[3]!.value);
+    return (
+      Number.isInteger(busNum) &&
+      busNum > 0 &&
+      Number.isFinite(baseKv) &&
+      baseKv >= 0 &&
+      (ide === 1 || ide === 2 || ide === 3 || ide === 4)
+    );
+  }
+
+  function isNonTitleLine(info: PsseCstLine): boolean {
+    return info.line.trimStart().startsWith("@!") || isSectionBoundaryLine(info) || isLikelyBusRecord(info);
+  }
+
+  // 1. Header (Case Identification) — only consume if the first non-comment line is not a section marker or bus record
+  const firstCandidate = lineIdx < lines.length ? lines[lineIdx]! : null;
+  const headerLineInfo =
+    firstCandidate && !isSectionBoundaryLine(firstCandidate) && !isLikelyBusRecord(firstCandidate) ? nextLine() : null;
   const headerTokens = fieldsOf(headerLineInfo);
   const headerCommentUpper = (headerLineInfo?.commentText ?? "").toUpperCase();
   let inferredRev = 33;
-  if (headerTokens[2] !== undefined && headerTokens[2] !== "") {
-    inferredRev = parseNum(headerTokens[2], 33);
-  } else if (headerTokens.length <= 2) {
-    // Pre-v30 PSS/E RAW files (v26–v29) only have `IC, SBASE` on line 1 (no REV column)
-    inferredRev = /PSS\/E[- ]*26|\bREV\s*26\b|\bV26\b/.test(headerCommentUpper) ? 26 : 29;
+  if (headerLineInfo) {
+    if (headerTokens[2] !== undefined && headerTokens[2] !== "") {
+      inferredRev = parseNum(headerTokens[2], 33);
+    } else if (headerTokens.length <= 2) {
+      // Pre-v30 PSS/E RAW files (v26–v29) only have `IC, SBASE` on line 1 (no REV column)
+      inferredRev = /PSS\/E[- ]*26|\bREV\s*26\b|\bV26\b/.test(headerCommentUpper) ? 26 : 29;
+    }
   }
   const header: CaseIdentification = {
     ic: parseNum(headerTokens[0], 0),
@@ -130,34 +161,21 @@ export function parseRaw(text: string, precomputedCstDoc?: PsseCstDocument): Pss
       : undefined,
   };
 
-  function isLikelyBusRecord(info: PsseCstLine): boolean {
-    if (info.isCommentOrBlank) return false;
-    const fields = extractFieldsFromCstTokens(info.tokens, text, "delimited");
-    if (fields.length < 7) return false;
-    const busNum = Number(fields[0]!.value);
-    const baseKv = Number(fields[2]!.value);
-    const ide = Number(fields[3]!.value);
-    return (
-      Number.isInteger(busNum) &&
-      busNum > 0 &&
-      Number.isFinite(baseKv) &&
-      baseKv >= 0 &&
-      (ide === 1 || ide === 2 || ide === 3 || ide === 4)
-    );
-  }
-
-  // 2. Title Line 1 (unless the file omits title lines and starts Bus Data immediately)
+  // 2. Title Line 1 (only when immediately following the Case Identification header and not a section/data line)
   let title1 = "";
-  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
-    const t1 = nextLine();
-    title1 = t1 ? t1.line.trim() : "";
-  }
-
-  // 3. Title Line 2 (unless Bus Data starts on line 3)
   let title2 = "";
-  if (lineIdx < lines.length && !isLikelyBusRecord(lines[lineIdx]!)) {
-    const t2 = nextLine();
-    title2 = t2 ? t2.line.trim() : "";
+  if (headerLineInfo) {
+    const headerRow = headerLineInfo.row;
+    if (lineIdx < lines.length && lines[lineIdx]!.row === headerRow + 1 && !isNonTitleLine(lines[lineIdx]!)) {
+      const t1 = nextLine();
+      title1 = t1 ? t1.line.trim() : "";
+    }
+
+    // 3. Title Line 2 (only within 2 rows of the header and not a section/data line)
+    if (lineIdx < lines.length && lines[lineIdx]!.row <= headerRow + 2 && !isNonTitleLine(lines[lineIdx]!)) {
+      const t2 = nextLine();
+      title2 = t2 ? t2.line.trim() : "";
+    }
   }
 
   const buses = new Map<number, BusRecord>();

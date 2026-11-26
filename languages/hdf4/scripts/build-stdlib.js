@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildHdf4CleanroomSchemas } from "../src/catalog/hdf4-std-schemas.ts";
 
-const hdf4Dir = new URL("..", import.meta.url).pathname;
+const hdf4Dir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(hdf4Dir, "assets", "hdf4-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

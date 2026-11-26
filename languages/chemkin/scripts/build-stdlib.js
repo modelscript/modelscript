@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildChemkinCleanroomSchemas } from "../src/catalog/chemkin-std-schemas.ts";
 
-const chemkinDir = new URL("..", import.meta.url).pathname;
+const chemkinDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(chemkinDir, "assets", "chemkin-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

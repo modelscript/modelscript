@@ -349,6 +349,24 @@ viewModeGroupEl?.addEventListener("click", (e) => {
   if (mode) setViewMode(mode);
 });
 
+const simViewTabsEl = document.getElementById("sim-view-tabs");
+simViewTabsEl?.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest("button.sim-view-tab") as HTMLElement | null;
+  const tabId = btn?.getAttribute("data-sim-tab");
+  if (!tabId) return;
+  simViewTabsEl.querySelectorAll("button.sim-view-tab").forEach((b) => {
+    const active = b === btn;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll(".sim-tab-panel").forEach((panel) => {
+    panel.classList.toggle("active", panel.id === `sim-tab-${tabId}`);
+  });
+  if (tabId === "waveforms") {
+    requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
+  }
+});
+
 [selectCpX, selectCpY, selectCpColor, checkboxCpRegression, selectHistVar, selectHistBins].forEach((el) => {
   el?.addEventListener("change", () => {
     syncCanvasPlotConfig();

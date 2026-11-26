@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildDynamoCleanroomSchemas } from "../src/catalog/dynamo-std-schemas.ts";
 
-const dynamoDir = new URL("..", import.meta.url).pathname;
+const dynamoDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(dynamoDir, "assets", "dynamo-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

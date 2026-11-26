@@ -14,12 +14,13 @@
 import type { DiagramComponentSpec, LibrarySymbolStub } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { generateCleanroomSvgIcon, type CleanroomPortSpec } from "../assets/pscad-master-lib/src/icons/primitives.js";
 import { EXTRA_MASTER_PORT_LAYOUTS } from "../src/catalog/master-port-layouts.js";
 import { readDefinitionForm } from "../src/model/definition-form.js";
 import { attr, buildProjectModel, type ModelDefinition } from "../src/model/pscad-model.js";
 
-const pscadDir = path.resolve(new URL("..", import.meta.url).pathname);
+const pscadDir = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const masterLibSrc = path.join(pscadDir, "assets", "pscad-master-lib", "src");
 const pslxPath = process.argv[2] ?? process.env["PSCAD_MASTER_LIB_PATH"] ?? "/home/omar/Downloads/master.pslx";
 

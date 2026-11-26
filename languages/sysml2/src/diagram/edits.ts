@@ -360,6 +360,21 @@ export function computeSysML2ElementInsert(
     }
   }
 
+  if (docText.trim().length === 0 && elementType !== "Package") {
+    const pkgIndent = INDENT;
+    const pkgSnippet = resolvedType
+      ? `${pkgIndent}${options?.usageKind === "port" || options?.usageKind === "attribute" || options?.usageKind === "item" ? options.usageKind : "part"} ${elementName} : ${resolvedType};`
+      : (() => {
+          const g = template!(elementName, pkgIndent);
+          return g.endsWith("\n") ? g.slice(0, -1) : g;
+        })();
+    const normImport = options?.importPath ? normalizeSysmlTypePath(options.importPath) : undefined;
+    const pkgImport = normImport ? `${pkgIndent}import ${normImport};` : undefined;
+    const pkgStub = options?.stubBlock ? indentBlockLines(options.stubBlock, pkgIndent) : undefined;
+    const inner = [pkgImport, pkgStub, pkgSnippet].filter((c): c is string => Boolean(c)).join("\n");
+    return [TextEdit.insert({ line: 0, character: 0 }, `package Model {\n${inner}\n}\n`)];
+  }
+
   let snippet: string;
   if (resolvedType) {
     const kw = options?.usageKind ?? "part";
@@ -378,6 +393,7 @@ export function computeSysML2ElementInsert(
   const edits: TextEdit[] = [];
   const openBraceLine = findEnclosingOpenBraceLine(lines, Math.max(0, targetLine - 1));
   const targetLineText = lines[targetLine] ?? "";
+  const closingSuffix = targetLine === lines.length && openBraceLine >= 0 ? "}\n" : "";
 
   if (
     openBraceLine === -1 &&
@@ -403,12 +419,12 @@ export function computeSysML2ElementInsert(
   } else if (importStmt) {
     // No separate enclosing header line — include import right before stub/snippet
     const chunks = [importStmt, stubText, snippet].filter((c): c is string => Boolean(c));
-    edits.push(TextEdit.insert({ line: targetLine, character: 0 }, `${chunks.join("\n")}\n`));
+    edits.push(TextEdit.insert({ line: targetLine, character: 0 }, `${chunks.join("\n")}\n${closingSuffix}`));
     return edits;
   }
 
   const bodyChunks = [stubText, snippet].filter((c): c is string => Boolean(c));
-  edits.push(TextEdit.insert({ line: targetLine, character: 0 }, `${bodyChunks.join("\n")}\n`));
+  edits.push(TextEdit.insert({ line: targetLine, character: 0 }, `${bodyChunks.join("\n")}\n${closingSuffix}`));
   return edits;
 }
 

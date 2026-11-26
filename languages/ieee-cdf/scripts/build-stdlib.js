@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildIeeeCdfCleanroomSchemas } from "../src/catalog/ieee-cdf-std-schemas.ts";
 
-const ieeeCdfDir = new URL("..", import.meta.url).pathname;
+const ieeeCdfDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(ieeeCdfDir, "assets", "ieee-cdf-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

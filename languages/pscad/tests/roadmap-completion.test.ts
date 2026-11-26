@@ -200,4 +200,28 @@ describe("PSCAD Roadmap Completion (M6063 zonotopes, editing ergonomics, ULM pas
     assert.equal(defaultSim.metrics.luFactorizations, 1, "Expected native WASM single coupled LU factorization");
     assert.ok(pscadLanguage.actions?.some((a) => a.id === "run_mrun_sweep"));
   });
+
+  it("scaffolds minimal .pscx project XML when dropping components onto blank or broken files", async () => {
+    const { createPscadDiagramBackend } = await import("../src/diagram-backend.js");
+    const { parsePscx } = await import("../src/parser/pscx-parser.js");
+
+    for (const initial of ["", '<project name="Broken">']) {
+      let doc = initial;
+      const uri = "file:///tmp/blank-pscad.pscx";
+      const backend = createPscadDiagramBackend({ getDocumentText: (u) => (u === uri ? doc : undefined) });
+      const res = await backend.applyEdits!({
+        uri,
+        seq: 1,
+        actions: [{ type: "addComponent", className: "master:resistor", x: 180, y: 120 }],
+      });
+      assert.equal(res.renderHint, "immediate");
+      assert.equal(res.edits.length, 1);
+      doc = res.edits[0]!.newText;
+      const parsed = parsePscx(doc);
+      assert.ok(
+        parsed.rootModule.components.length >= 1,
+        `expected component after scaffolding from ${JSON.stringify(initial)}`,
+      );
+    }
+  });
 });

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildEclipseCleanroomSchemas } from "../src/catalog/eclipse-std-schemas.ts";
 
-const eclipseDir = new URL("..", import.meta.url).pathname;
+const eclipseDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(eclipseDir, "assets", "eclipse-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

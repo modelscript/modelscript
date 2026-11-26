@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildGensysCleanroomSchemas } from "../src/catalog/gensys-std-schemas.ts";
 
-const gensysDir = new URL("..", import.meta.url).pathname;
+const gensysDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(gensysDir, "assets", "gensys-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildCeaCleanroomSchemas } from "../src/catalog/cea-std-schemas.ts";
 
-const ceaDir = new URL("..", import.meta.url).pathname;
+const ceaDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(ceaDir, "assets", "cea-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

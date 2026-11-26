@@ -1394,10 +1394,52 @@ export class SimulationPanel {
     #chart-container {
       flex: 1;
       min-width: 0;
+      min-height: 0;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       position: relative;
       container-type: inline-size;
+    }
+    #sim-view-tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 12px 0;
+      border-bottom: 1px solid var(--vscode-panel-border, #333);
+      background: var(--vscode-editor-background, #1e1e1e);
+      flex: 0 0 auto;
+    }
+    #sim-view-tabs button.sim-view-tab {
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--vscode-descriptionForeground, #888);
+      padding: 6px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #sim-view-tabs button.sim-view-tab.active {
+      color: var(--vscode-foreground, #ccc);
+      border-bottom-color: var(--vscode-focusBorder, #007fd4);
+      font-weight: 600;
+    }
+    .sim-tab-panel {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+      position: relative;
+      overflow: hidden;
+    }
+    .sim-tab-panel.active {
+      display: flex;
+    }
+    .sim-tab-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 16px;
     }
     canvas {
       flex: 1;
@@ -1829,6 +1871,12 @@ export class SimulationPanel {
       </div>
     </div>
     <div id="chart-container">
+      <div id="sim-view-tabs" role="tablist" aria-label="Simulation View Tabs">
+        <button class="sim-view-tab active" data-sim-tab="waveforms" role="tab" aria-selected="true">Waveforms</button>
+        <button class="sim-view-tab" data-sim-tab="phasor-fft" role="tab" aria-selected="false">Phasor &amp; FFT</button>
+        <button class="sim-view-tab" data-sim-tab="ieee2800" role="tab" aria-selected="false">IEEE 2800</button>
+      </div>
+      <div id="sim-tab-waveforms" class="sim-tab-panel active" role="tabpanel">
       <div id="toolbar">
         <div class="status-indicator live-only" id="live-status"></div>
         <span class="status-text live-only" id="live-status-text">Disconnected</span>
@@ -1919,6 +1967,17 @@ export class SimulationPanel {
         <div class="empty-title">No results yet</div>
         <div>Run a simulation to see results</div>
         <button id="btn-empty-simulate">Simulate <kbd>Ctrl+Enter</kbd></button>
+      </div>
+      </div>
+      <div id="sim-tab-phasor-fft" class="sim-tab-panel" role="tabpanel">
+        <div class="sim-tab-scroll" id="phasor-fft-container">
+          <div style="color: var(--vscode-descriptionForeground, #888); font-size: 13px;">Run a simulation to inspect Phasor &amp; FFT analysis.</div>
+        </div>
+      </div>
+      <div id="sim-tab-ieee2800" class="sim-tab-panel" role="tabpanel">
+        <div class="sim-tab-scroll" id="ieee2800-container">
+          <div style="color: var(--vscode-descriptionForeground, #888); font-size: 13px;">Run IEEE 2800-2022 verification to view ride-through compliance results.</div>
+        </div>
       </div>
     </div>
   </div>

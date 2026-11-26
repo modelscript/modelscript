@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { fileURLToPath } from "node:url";
 import { runLanguageWasmBuild } from "../../../scripts/build/build-language-wasm.js";
 
 runLanguageWasmBuild({
   langName: "sima",
-  dir: new URL("..", import.meta.url).pathname,
+  dir: fileURLToPath(new URL("..", import.meta.url)),
   entryFile: "assembly/catenary.ts",
   outWasmFile: "dist/catenary.wasm",
   binaryTsFile: "src/solver/wasm-binary.ts",

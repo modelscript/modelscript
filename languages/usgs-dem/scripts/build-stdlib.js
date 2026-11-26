@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildUsgsDemCleanroomSchemas } from "../src/catalog/usgs-dem-std-schemas.ts";
 
-const usgsDemDir = new URL("..", import.meta.url).pathname;
+const usgsDemDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(usgsDemDir, "assets", "usgs-dem-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildEasy5CleanroomSchemas } from "../src/catalog/easy5-std-schemas.ts";
 
-const easy5Dir = new URL("..", import.meta.url).pathname;
+const easy5Dir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(easy5Dir, "assets", "easy5-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

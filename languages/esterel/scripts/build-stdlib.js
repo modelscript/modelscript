@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildEsterelCleanroomSchemas } from "../src/catalog/esterel-std-schemas.ts";
 
-const esterelDir = new URL("..", import.meta.url).pathname;
+const esterelDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(esterelDir, "assets", "esterel-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

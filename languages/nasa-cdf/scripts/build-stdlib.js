@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildNasaCdfCleanroomSchemas } from "../src/catalog/nasa-cdf-std-schemas.ts";
 
-const nasaCdfDir = new URL("..", import.meta.url).pathname;
+const nasaCdfDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(nasaCdfDir, "assets", "nasa-cdf-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

@@ -1009,22 +1009,42 @@ export const AnsatzApp: React.FC = () => {
           </div>
 
           <div className="pg-drawer">
-            <div className="pg-tabs">
-              <button className="pg-tab" data-active={drawerTab === "cst"} onClick={() => setDrawerTab("cst")}>
-                WASM CST{" "}
-                {cstSummary.status === "ready" && cstSummary.parseMs !== undefined
-                  ? `(${cstSummary.parseMs.toFixed(1)}ms${cstSummary.errorCount ? `, ${cstSummary.errorCount} err` : ""})`
-                  : ""}
+            <div className="pg-tabs" role="tablist" aria-label="Inspector drawer">
+              <button
+                className="pg-tab"
+                role="tab"
+                aria-selected={drawerTab === "cst"}
+                data-active={drawerTab === "cst"}
+                onClick={() => setDrawerTab("cst")}
+              >
+                WASM CST
+                {cstSummary.status === "ready" && cstSummary.parseMs !== undefined && (
+                  <span className="pg-tab-badge" data-tone={cstSummary.errorCount ? "danger" : "success"}>
+                    {cstSummary.parseMs.toFixed(1)}ms{cstSummary.errorCount ? ` · ${cstSummary.errorCount} err` : ""}
+                  </span>
+                )}
               </button>
               <button
                 className="pg-tab"
+                role="tab"
+                aria-selected={drawerTab === "diagnostics"}
                 data-active={drawerTab === "diagnostics"}
                 onClick={() => setDrawerTab("diagnostics")}
               >
-                Diagnostics ({diagnostics.length})
+                Diagnostics
+                <span className="pg-tab-badge" data-tone={diagnostics.length ? "danger" : undefined}>
+                  {diagnostics.length}
+                </span>
               </button>
-              <button className="pg-tab" data-active={drawerTab === "events"} onClick={() => setDrawerTab("events")}>
-                Host Events ({events.length})
+              <button
+                className="pg-tab"
+                role="tab"
+                aria-selected={drawerTab === "events"}
+                data-active={drawerTab === "events"}
+                onClick={() => setDrawerTab("events")}
+              >
+                Host Events
+                <span className="pg-tab-badge">{events.length}</span>
               </button>
             </div>
             <div className="pg-drawer-body">

@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildBufrCleanroomSchemas } from "../src/catalog/bufr-std-schemas.ts";
 
-const bufrDir = new URL("..", import.meta.url).pathname;
+const bufrDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(bufrDir, "assets", "bufr-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

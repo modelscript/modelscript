@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildIrig106CleanroomSchemas } from "../src/catalog/irig106-std-schemas.ts";
 
-const irig106Dir = new URL("..", import.meta.url).pathname;
+const irig106Dir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(irig106Dir, "assets", "irig106-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

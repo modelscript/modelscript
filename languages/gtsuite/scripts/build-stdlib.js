@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildGtSuiteCleanroomSchemas } from "../src/catalog/gtsuite-std-schemas.ts";
 
-const gtsuiteDir = new URL("..", import.meta.url).pathname;
+const gtsuiteDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(gtsuiteDir, "assets", "gtsuite-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

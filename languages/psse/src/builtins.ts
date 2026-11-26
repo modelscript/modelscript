@@ -1138,7 +1138,27 @@ export function indexPsseDocument(ctx: DslIndexFileContext): void {
     });
   }
 
+  for (const s of parsedCase.fixedShunts) {
+    children.push({
+      name: `Shunt_${s.i}_${s.id}`,
+      kind: "Component",
+      ruleName: "psse_component",
+      startOffset: s.span?.startOffset ?? 0,
+      endOffset: s.span?.endOffset ?? 0,
+      metadata: {
+        busNumber: s.i,
+        shuntId: s.id,
+        gl: s.gl,
+        bl: s.bl,
+        status: s.status,
+      },
+    });
+  }
+
   const rawTitle = parsedCase.title1?.trim();
+  if (!parsedCase.header.span && !rawTitle && children.length === 0) {
+    return;
+  }
   const caseName = rawTitle
     ? rawTitle
         .replace(/[^A-Za-z0-9_]+/g, "_")

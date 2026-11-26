@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildCymeCleanroomSchemas } from "../src/catalog/cyme-std-schemas.ts";
 
-const cymeDir = new URL("..", import.meta.url).pathname;
+const cymeDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(cymeDir, "assets", "cyme-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

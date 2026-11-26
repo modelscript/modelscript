@@ -234,26 +234,61 @@
 
 .pg-tabs {
   display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 4px 8px 0;
+  align-items: stretch;
+  gap: 0;
+  padding: 0 6px;
+  min-height: 36px;
   background: var(--ms-bg-alt);
   border-bottom: 1px solid var(--ms-border);
   overflow-x: auto;
   flex-shrink: 0;
+  scrollbar-width: none;
+}
+
+.pg-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .pg-tab {
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 5px 5px 0 0;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 5px 1px 0;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px 6px 0 0;
   background: transparent;
   color: var(--ms-text-2);
-  padding: 5px 10px;
+  font: inherit;
   font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1;
   cursor: pointer;
   white-space: nowrap;
-  font-family: inherit;
+  user-select: none;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
+}
+
+/* Animated underline indicator */
+.pg-tab::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--ms-brand, var(--color-accent-emphasis));
+  transform: scaleX(0);
+  opacity: 0;
+  transform-origin: center;
+  transition:
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 140ms ease;
 }
 
 .pg-tab:hover {
@@ -261,11 +296,71 @@
   background: var(--ms-surface-hover);
 }
 
+.pg-tab:hover::after {
+  transform: scaleX(0.4);
+  opacity: 0.35;
+}
+
+.pg-tab:active {
+  background: var(--ms-surface-selected);
+}
+
+.pg-tab:focus-visible {
+  outline: 2px solid var(--ms-brand, var(--color-accent-emphasis));
+  outline-offset: -2px;
+}
+
 .pg-tab[data-active="true"] {
-  background: var(--ms-bg);
   color: var(--ms-text-1);
-  border-color: var(--ms-border);
   font-weight: 600;
+  background: linear-gradient(to bottom, transparent, var(--ms-surface-hover));
+}
+
+.pg-tab[data-active="true"]::after {
+  transform: scaleX(1);
+  opacity: 1;
+}
+
+/* Count / status badge inside a tab */
+.pg-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--ms-surface-hover);
+  color: var(--ms-text-2);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+.pg-tab[data-active="true"] .pg-tab-badge {
+  background: var(--ms-surface-selected);
+  color: var(--ms-text-1);
+}
+
+.pg-tab-badge[data-tone="danger"] {
+  background: color-mix(in srgb, var(--ms-danger) 20%, transparent);
+  color: var(--ms-danger);
+}
+
+.pg-tab-badge[data-tone="success"] {
+  background: color-mix(in srgb, var(--ms-success) 18%, transparent);
+  color: var(--ms-success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-tab,
+  .pg-tab::after,
+  .pg-tab-badge {
+    transition: none;
+  }
 }
 
 .pg-stencils {

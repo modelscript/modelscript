@@ -194,7 +194,7 @@ export function createSpiceDiagramBackend(backends: DiagramBackendHost): Diagram
     async applyEdits(params: DiagramApplyEditsParams): Promise<DiagramApplyEditsResult> {
       try {
         const text = await readSpiceSource(params.uri);
-        if (!text) return { seq: params.seq, edits: [], renderHint: "none" };
+        if (text === null || text === undefined) return { seq: params.seq, edits: [], renderHint: "none" };
         const unifiedIndex = getUnifiedIndexFromDeps(backends);
         const batchState = createDropBatchState();
         const eol = text.includes("\r\n") ? "\r\n" : "\n";

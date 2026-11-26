@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildRinexCleanroomSchemas } from "../src/catalog/rinex-std-schemas.ts";
 
-const rinexDir = new URL("..", import.meta.url).pathname;
+const rinexDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(rinexDir, "assets", "rinex-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

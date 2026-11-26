@@ -531,4 +531,25 @@ end TwoHunks;`;
     assert.strictEqual(edits.length, 2, "Should split top declaration insert and bottom equation insert into 2 hunks");
     assert.strictEqual(applyEditsToText(before, edits), after);
   });
+
+  it("scaffolds a valid Modelica model when dropping components onto blank or broken .mo files", async () => {
+    const { processDiagramEditBatch } = await import("../src/diagram/diagram-backend.js");
+    for (const initial of ["", "model Broken\n  Real x ="]) {
+      const res = processDiagramEditBatch(
+        {
+          uri: "file:///tmp/BlankModel.mo",
+          seq: 1,
+          actions: [{ type: "addComponent", className: "Modelica.Electrical.Analog.Basic.Resistor", x: 20, y: -10 }],
+        },
+        null,
+        initial,
+      );
+      assert.strictEqual(res.renderHint, "immediate");
+      assert.ok(res.edits.length >= 1, `expected edits for ${JSON.stringify(initial)}`);
+      const next = applyEditsToText(initial, res.edits);
+      assert.ok(next.includes("model BlankModel"), "should scaffold model BlankModel");
+      assert.ok(next.includes("end BlankModel;"), "should close model BlankModel");
+      assert.ok(next.includes("Modelica.Electrical.Analog.Basic.Resistor"), "should insert dropped component");
+    }
+  });
 });

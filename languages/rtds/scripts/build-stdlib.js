@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildRtdsCleanroomSchemas } from "../src/catalog/rtds-std-schemas.ts";
 
-const rtdsDir = new URL("..", import.meta.url).pathname;
+const rtdsDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(rtdsDir, "assets", "rtds-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

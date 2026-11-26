@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildLustreCleanroomSchemas } from "../src/catalog/lustre-std-schemas.ts";
 
-const lustreDir = new URL("..", import.meta.url).pathname;
+const lustreDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(lustreDir, "assets", "lustre-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

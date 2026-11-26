@@ -2454,10 +2454,34 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
     return `${sourceText}${sep}${busNum} '${modelName}' 1 5.0 0.05 0.1 5.0 0.5 1.8 1.7 0.3 0.5 0.25 0.1 0.3 / /* ${modelName} */${posTag ? ` ${posTag}` : ""}\n`;
   }
 
-  const psseCase = parseRaw(sourceText);
+  let workingText = sourceText;
+  const firstNonCommentLine = workingText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((t) => t.length > 0 && !t.startsWith("/") && !t.startsWith("@!"));
+  const hasRawHeader = Boolean(firstNonCommentLine) && !/^(?:0(?:\s*\/.*)?|Q(?:\s*\/.*)?)$/i.test(firstNonCommentLine!);
+  if (!hasRawHeader) {
+    if (!firstNonCommentLine) {
+      const sep = workingText.length === 0 || workingText.endsWith("\n") ? "" : "\n";
+      workingText = `${workingText}${sep}0, 100.00, 33, 0, 1, 60.00 / PSS/E-33.0\nNEW PSS/E CASE\n\n0 / END OF BUS DATA\nQ\n`;
+    } else {
+      workingText = `0, 100.00, 33, 0, 1, 60.00 / PSS/E-33.0\nNEW PSS/E CASE\n\n0 / END OF BUS DATA\n${workingText}`;
+    }
+  }
+
+  const psseCase = parseRaw(workingText);
   const existingBusIds = [...psseCase.buses.keys()];
-  const maxBusId = existingBusIds.length > 0 ? Math.max(...existingBusIds) : 0;
+  let maxBusId = existingBusIds.length > 0 ? Math.max(...existingBusIds) : 0;
   const defaultBusId = existingBusIds[existingBusIds.length - 1] ?? 1;
+
+  const ensureBus = (ide: 1 | 2 | 3, bx: number, by: number): number => {
+    const newId = ++maxBusId;
+    const busPos = hasPos ? ` / @pos(${Math.round(bx)}, ${Math.round(by)})` : "";
+    const busRec = `${newId}, '${`BUS ${newId}`.padEnd(12)}', 230.0, ${ide}, 1, 1, 1, 1.0000, 0.0000${busPos}`;
+    workingText = insertRawRecordInSection(workingText, "BUS", /BEGIN BUS/i, /END OF BUS/i, busRec, true);
+    existingBusIds.push(newId);
+    return newId;
+  };
 
   const findNearestBus = (predicate?: (busId: number) => boolean): number => {
     const candidates = predicate ? existingBusIds.filter(predicate) : existingBusIds;
@@ -2497,26 +2521,27 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
     const baseKv = psseCase.buses.get(defaultBusId)?.baseKv || 230.0;
     const posSuffix = posTag ? ` / ${posTag}` : "";
     const record = `${newBusId}, '${`BUS ${newBusId}`.padEnd(12)}', ${baseKv.toFixed(1)}, ${ide}, 1, 1, 1, 1.0000, 0.0000${posSuffix}`;
-    return insertRawRecordInSection(sourceText, "BUS", /BEGIN BUS/i, /END OF BUS/i, record, true);
+    return insertRawRecordInSection(workingText, "BUS", /BEGIN BUS/i, /END OF BUS/i, record, true);
   }
 
   if (lower === "psse:load" || lower === "load") {
-    const targetBus = findNearestBus((id) => psseCase.buses.get(id)?.ide === 1);
+    const targetBus =
+      existingBusIds.length > 0 ? findNearestBus((id) => psseCase.buses.get(id)?.ide === 1) : ensureBus(1, rx, ry - 82);
     const existingIds = new Set(psseCase.loads.filter((l) => l.i === targetBus).map((l) => l.id.trim()));
     let ckt = 1;
     while (existingIds.has(String(ckt))) ckt++;
     const posSuffix = posTag ? ` / ${posTag}` : "";
     const record = `${targetBus}, '${String(ckt).padEnd(2)}', 1, 1, 1, 50.0, 15.0, 0.0, 0.0, 0.0, 0.0, 1, 1, 0${posSuffix}`;
-    return insertRawRecordInSection(sourceText, "LOAD", /BEGIN LOAD/i, /END OF LOAD/i, record);
+    return insertRawRecordInSection(workingText, "LOAD", /BEGIN LOAD/i, /END OF LOAD/i, record);
   }
 
   if (lower === "psse:fixed_shunt" || lower === "fixed_shunt" || lower.includes("svc") || lower.includes("shunt")) {
-    const targetBus = findNearestBus();
+    const targetBus = existingBusIds.length > 0 ? findNearestBus() : ensureBus(1, rx, ry - 82);
     if (lower === "psse:switched_shunt" || lower === "switched_shunt") {
       const posSuffix = posTag ? ` / ${posTag}` : "";
       const record = `${targetBus}, 1, 1, 1, 1.0200, 0.9800, 0, 100.0, '', 0.000, 1, 25.000${posSuffix}`;
       return insertRawRecordInSection(
-        sourceText,
+        workingText,
         "SWITCHED SHUNT",
         /BEGIN SWITCHED SHUNT/i,
         /END OF SWITCHED SHUNT/i,
@@ -2529,10 +2554,13 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
     const comment = !lower.startsWith("psse:") ? ` /* ${cleanClass} */` : "";
     const posSuffix = posTag ? ` / ${posTag}` : "";
     const record = `${targetBus}, '${String(ckt).padEnd(2)}', 1, 0.000, 25.000${posSuffix}${comment}`;
-    return insertRawRecordInSection(sourceText, "FIXED SHUNT", /BEGIN FIXED SHUNT/i, /END OF FIXED SHUNT/i, record);
+    return insertRawRecordInSection(workingText, "FIXED SHUNT", /BEGIN FIXED SHUNT/i, /END OF FIXED SHUNT/i, record);
   }
 
   if (lower === "psse:branch" || lower === "branch") {
+    while (existingBusIds.length < 2) {
+      ensureBus(existingBusIds.length === 0 ? 3 : 1, rx + (existingBusIds.length === 0 ? -100 : 100), ry);
+    }
     const near = findNearestBuses(2);
     const busA = near[0] ?? 1;
     const busB = near[1] ?? busA + 1;
@@ -2543,7 +2571,7 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
     while (existingCkts.has(String(ckt))) ckt++;
     const record = `${busA}, ${busB}, '${String(ckt).padEnd(2)}', 0.01000, 0.05000, 0.02000, 100.00, 120.00, 140.00, 0.00000, 0.00000, 0.00000, 0.00000, 1, 1, 0.00`;
     return insertRawRecordInSection(
-      sourceText,
+      workingText,
       "BRANCH",
       /BEGIN (?:NON-TRANSFORMER )?BRANCH/i,
       /END OF (?:NON-TRANSFORMER )?BRANCH/i,
@@ -2552,7 +2580,13 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
   }
 
   if (lower === "psse:xfmr_2w" || lower === "psse:xfmr_3w") {
-    const near = findNearestBuses(lower === "psse:xfmr_3w" ? 3 : 2);
+    const needed = lower === "psse:xfmr_3w" ? 3 : 2;
+    while (existingBusIds.length < needed) {
+      const offset = existingBusIds.length === 0 ? -100 : existingBusIds.length === 1 ? 100 : 0;
+      const offsetY = existingBusIds.length === 2 ? 120 : 0;
+      ensureBus(existingBusIds.length === 0 ? 3 : 1, rx + offset, ry + offsetY);
+    }
+    const near = findNearestBuses(needed);
     const busA = near[0] ?? 1;
     const busB = near[1] ?? busA + 1;
     const busK = lower === "psse:xfmr_3w" ? (near[2] ?? busB + 1) : 0;
@@ -2566,7 +2600,7 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
       recordLines.push(`1.00000, 0.000`);
     }
     return insertRawRecordInSection(
-      sourceText,
+      workingText,
       "TRANSFORMER",
       /BEGIN TRANSFORMER/i,
       /END OF TRANSFORMER/i,
@@ -2575,17 +2609,20 @@ export function addPsseDiagramComponent(sourceText: string, className: string, x
   }
 
   // Default for `psse:generator` or any PSSEDynamics.* model: add a generator on the nearest Slack/PV bus
-  const targetBus = findNearestBus((id) => {
-    const ide = psseCase.buses.get(id)?.ide;
-    return ide === 3 || ide === 2;
-  });
+  const targetBus =
+    existingBusIds.length > 0
+      ? findNearestBus((id) => {
+          const ide = psseCase.buses.get(id)?.ide;
+          return ide === 3 || ide === 2;
+        })
+      : ensureBus(3, rx, ry + 82);
   const existingIds = new Set(psseCase.generators.filter((g) => g.i === targetBus).map((g) => g.id.trim()));
   let ckt = 1;
   while (existingIds.has(String(ckt))) ckt++;
   const modelComment = !lower.startsWith("psse:") ? ` /* ${cleanClass} */` : "";
   const posSuffix = posTag ? ` / ${posTag}` : "";
   const record = `${targetBus}, '${String(ckt).padEnd(2)}', 100.000, 0.000, 50.000, -50.000, 1.0000, 0, 100.00, 0.00000, 0.20000, 0.00000, 0.00000, 1.0000, 1, 100.0, 200.000, 0.000${posSuffix}${modelComment}`;
-  return insertRawRecordInSection(sourceText, "GENERATOR", /BEGIN GENERATOR/i, /END OF GENERATOR/i, record);
+  return insertRawRecordInSection(workingText, "GENERATOR", /BEGIN GENERATOR/i, /END OF GENERATOR/i, record);
 }
 
 /**

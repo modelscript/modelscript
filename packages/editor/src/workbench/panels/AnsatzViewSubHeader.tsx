@@ -11,7 +11,7 @@ import {
   TableIcon,
   WorkflowIcon,
 } from "@primer/octicons-react";
-import { Breadcrumbs, IconButton, SegmentedControl } from "@primer/react";
+import { Breadcrumbs, IconButton } from "@primer/react";
 import React from "react";
 import styled from "styled-components";
 import type { AnsatzLanguageInfo } from "../constants";
@@ -20,87 +20,191 @@ import { LanguageToolbarButtons } from "./LanguageToolbarButtons";
 const ViewTabsWrapper = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
+`;
 
-  ul[data-size="small"] {
-    background: var(--bgColor-inset, var(--ms-bg-inset, #f1f5f9));
-    border: 1px solid var(--borderColor-muted, var(--ms-divider));
-    border-radius: 10px;
-    padding: 2px;
-    gap: 2px;
-    height: 30px;
-    box-sizing: border-box;
+const TabTrack = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 3px;
+  box-sizing: border-box;
+  border-radius: 11px;
+  background: var(--bgColor-inset, var(--ms-bg-inset, rgba(15, 23, 42, 0.05)));
+  border: 1px solid var(--borderColor-muted, var(--ms-divider, rgba(15, 23, 42, 0.08)));
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.05);
+`;
+
+const TabIndicator = styled.span`
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  border-radius: 8px;
+  pointer-events: none;
+  background: var(--ms-bg-elv, var(--bgColor-default, #ffffff));
+  border: 1px solid var(--ms-border, rgba(15, 23, 42, 0.1));
+  box-shadow:
+    0 1px 3px rgba(15, 23, 42, 0.12),
+    0 0 0 1px color-mix(in srgb, var(--ms-brand, #0891b2) 8%, transparent);
+  transition:
+    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    width 260ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 120ms ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
+`;
 
-  li {
-    margin: 0 !important;
-  }
+const TabButton = styled.button`
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 11px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fgColor-muted, var(--ms-text-2));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
 
-  li::after {
-    display: none !important;
-  }
-
-  ul[data-size="small"] button,
-  li button {
-    border: 1px solid transparent !important;
-    outline: none !important;
-    border-radius: 8px !important;
-    font-size: 12px !important;
-    font-weight: 500 !important;
+  svg {
+    flex-shrink: 0;
+    opacity: 0.75;
     transition:
-      background-color 0.15s ease,
-      color 0.15s ease,
-      border-color 0.15s ease !important;
-    height: 100% !important;
-    padding: 0 10px !important;
-    box-sizing: border-box !important;
+      color 160ms ease,
+      fill 160ms ease,
+      opacity 160ms ease;
   }
 
-  ul[data-size="small"] button span,
-  ul[data-size="small"] button [class*="Content"],
-  ul[data-size="small"] button [class*="Content"] * {
-    border: none !important;
-    border-color: transparent !important;
-    outline: none !important;
-    box-shadow: none !important;
+  &:hover:not([aria-selected="true"]) {
+    color: var(--fgColor-default, var(--ms-text-1));
+    background: var(--ms-surface-hover, rgba(15, 23, 42, 0.05));
   }
 
-  ul[data-size="small"] button [class*="Content"] {
-    padding: 0 !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 5px !important;
+  &:active {
+    transform: scale(0.97);
   }
 
-  /* Primer marks the selected segment with aria-pressed (older versions used aria-current). */
-  button[aria-pressed="true"],
-  button[aria-current="true"] {
-    background-color: var(--ms-bg-elv, var(--bgColor-default, #ffffff)) !important;
-    color: var(--fgColor-default, var(--ms-text-1)) !important;
-    font-weight: 600 !important;
-    border: 1px solid var(--ms-border, rgba(15, 23, 42, 0.12)) !important;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) !important;
+  &:focus-visible {
+    outline: 2px solid var(--ms-brand, #0891b2);
+    outline-offset: 1px;
   }
 
-  button[aria-pressed="true"] svg,
-  button[aria-current="true"] svg {
-    color: var(--ms-brand, #0891b2) !important;
-    fill: var(--ms-brand, #0891b2) !important;
+  &[aria-selected="true"] {
+    color: var(--fgColor-default, var(--ms-text-1));
+    font-weight: 600;
   }
 
-  button:not([aria-pressed="true"]):not([aria-current="true"]):hover {
-    background-color: color-mix(in srgb, var(--bgColor-default, #ffffff) 60%, transparent) !important;
-    color: var(--fgColor-default, var(--ms-text-1)) !important;
+  &[aria-selected="true"] svg {
+    color: var(--ms-brand, #0891b2);
+    fill: var(--ms-brand, #0891b2);
+    opacity: 1;
   }
 
   @media (max-width: 960px) {
-    ul[data-size="small"] button,
-    li button {
-      padding: 0 8px !important;
+    padding: 0 8px;
+    gap: 0;
+
+    /* Collapse to icon-only on narrow screens, keep the active tab labelled. */
+    span.tab-label {
+      display: none;
+    }
+    &[aria-selected="true"] span.tab-label {
+      display: inline;
+      margin-left: 6px;
     }
   }
 `;
+
+interface ViewTabListProps {
+  tabs: Array<{ id: string; label: string; icon: React.ElementType; title: string; onClick: () => void }>;
+  activeIndex: number;
+  ariaLabel: string;
+}
+
+/**
+ * Accessible tablist with a sliding selection indicator and roving-tabindex
+ * arrow-key navigation (Left/Right/Home/End).
+ */
+const ViewTabList: React.FC<ViewTabListProps> = ({ tabs, activeIndex, ariaLabel }) => {
+  const trackRef = React.useRef<HTMLDivElement>(null);
+  const buttonRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
+  const [indicator, setIndicator] = React.useState<{ x: number; w: number } | null>(null);
+
+  const measure = React.useCallback(() => {
+    const btn = buttonRefs.current[activeIndex];
+    if (btn) setIndicator({ x: btn.offsetLeft, w: btn.offsetWidth });
+  }, [activeIndex]);
+
+  React.useLayoutEffect(() => {
+    measure();
+    const track = trackRef.current;
+    if (!track || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(track);
+    buttonRefs.current.forEach((b) => b && ro.observe(b));
+    return () => ro.disconnect();
+  }, [measure, tabs.length]);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const last = tabs.length - 1;
+    let next = -1;
+    if (e.key === "ArrowRight") next = activeIndex >= last ? 0 : activeIndex + 1;
+    else if (e.key === "ArrowLeft") next = activeIndex <= 0 ? last : activeIndex - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = last;
+    if (next < 0) return;
+    e.preventDefault();
+    tabs[next]?.onClick();
+    buttonRefs.current[next]?.focus();
+  };
+
+  return (
+    <TabTrack ref={trackRef} role="tablist" aria-label={ariaLabel} onKeyDown={onKeyDown}>
+      {indicator && (
+        <TabIndicator aria-hidden style={{ width: indicator.w, transform: `translateX(${indicator.x}px)` }} />
+      )}
+      {tabs.map((tab, idx) => {
+        const Icon = tab.icon;
+        const selected = idx === activeIndex;
+        return (
+          <TabButton
+            key={tab.id}
+            ref={(el) => {
+              buttonRefs.current[idx] = el;
+            }}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-label={tab.label}
+            tabIndex={selected ? 0 : -1}
+            title={tab.title}
+            onClick={tab.onClick}
+          >
+            <Icon size={14} />
+            <span className="tab-label">{tab.label}</span>
+          </TabButton>
+        );
+      })}
+    </TabTrack>
+  );
+};
 
 const SplitToggleButton = styled.button<{ $active?: boolean }>`
   display: inline-flex;
@@ -405,27 +509,11 @@ export const AnsatzViewSubHeader: React.FC<AnsatzViewSubHeaderProps> = ({
           maxPrimary={activeTabId === "icon" ? 6 : 2}
         />
 
-        <SegmentedControl
-          size="small"
-          aria-label="Workbench View"
-          onChange={(idx) => {
-            const target = viewTabs[idx];
-            if (target) target.onClick();
-          }}
-        >
-          {viewTabs.map((tab, idx) => (
-            <SegmentedControl.Button
-              key={tab.id}
-              selected={idx === (selectedIndex !== -1 ? selectedIndex : 0)}
-              leadingVisual={tab.icon}
-              title={tab.title}
-              aria-label={tab.label}
-              onClick={tab.onClick}
-            >
-              {tab.label}
-            </SegmentedControl.Button>
-          ))}
-        </SegmentedControl>
+        <ViewTabList
+          tabs={viewTabs}
+          activeIndex={selectedIndex !== -1 ? selectedIndex : 0}
+          ariaLabel="Workbench View"
+        />
 
         {onToggleSplit && (
           <SplitToggleButton

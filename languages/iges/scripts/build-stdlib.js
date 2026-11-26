@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildIgesCleanroomSchemas } from "../src/catalog/iges-std-schemas.ts";
 
-const igesDir = new URL("..", import.meta.url).pathname;
+const igesDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(igesDir, "assets", "iges-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

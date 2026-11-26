@@ -719,29 +719,29 @@ export function processDiagramEditBatch(
     currentInstance: ModelicaClassInstance | null | undefined,
   ): TextEdit[] => {
     const execWithInstance = (ci: ModelicaClassInstance | null | undefined): TextEdit[] => {
-      if (!ci) return [];
+      if (!ci && action.type !== "addComponent") return [];
       switch (action.type) {
         case "move": {
           const isIconLayer = request.diagramType === "icon";
           const items = isIconLayer ? action.items.map((it) => ({ ...it, isIconLayer: true })) : action.items;
-          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, items) : [];
+          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci!, items) : [];
         }
         case "resize":
         case "rotate": {
           const item = request.diagramType === "icon" ? { ...action.item, isIconLayer: true } : action.item;
-          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci, [item]) : [];
+          return ops.computePlacementEdits ? ops.computePlacementEdits(currentText, ci!, [item]) : [];
         }
         case "moveEdge": {
           const lines = currentText.split("\n");
-          return ops.computeEdgePointEdits ? ops.computeEdgePointEdits(lines, ci, action.edges) : [];
+          return ops.computeEdgePointEdits ? ops.computeEdgePointEdits(lines, ci!, action.edges) : [];
         }
         case "connect":
           return ops.computeConnectInsert
-            ? ops.computeConnectInsert(currentText, ci, action.source, action.target, action.points, action.color)
+            ? ops.computeConnectInsert(currentText, ci!, action.source, action.target, action.points, action.color)
             : [];
         case "disconnect":
           return ops.computeConnectRemove
-            ? ops.computeConnectRemove(currentText, ci, action.source, action.target)
+            ? ops.computeConnectRemove(currentText, ci!, action.source, action.target)
             : [];
         case "addComponent": {
           const fallbackShort = action.className.split(".").pop() || "comp";
@@ -758,9 +758,9 @@ export function processDiagramEditBatch(
           let uniqueName = action.name || baseName + "1";
           let counter = 1;
 
-          const existingNames = new Set<string>(Array.from(ci.components || []).map((c) => c.name));
+          const existingNames = new Set<string>(Array.from(ci?.components || []).map((c) => c.name));
           if (typeof ops.scanModelicaClassLayout === "function") {
-            const scanned = ops.scanModelicaClassLayout(currentText, targetClassName || ci.name);
+            const scanned = ops.scanModelicaClassLayout(currentText, targetClassName || ci?.name);
             for (const c of scanned?.components ?? []) {
               existingNames.add(c.name);
             }
@@ -774,37 +774,65 @@ export function processDiagramEditBatch(
           }
           createdComponentNames.add(uniqueName);
           const componentIconCoord = dropIconOptions?.resolveComponentIconCoord?.(action.className) ?? null;
-          return (
-            dropIconOptions?.crossLanguageDrop?.computeModelicaComponentDropEdits?.({
-              docText: currentText,
-              uri: request.uri,
-              rawClassName: action.className,
-              x: action.x,
-              y: action.y,
-              classInstance: ci,
-              computeComponentInsert: ops.computeComponentInsert,
-              unifiedIndex,
-              instanceName: uniqueName,
+          if (dropIconOptions?.crossLanguageDrop?.computeModelicaComponentDropEdits) {
+            return (
+              dropIconOptions.crossLanguageDrop.computeModelicaComponentDropEdits({
+                docText: currentText,
+                uri: request.uri,
+                rawClassName: action.className,
+                x: action.x,
+                y: action.y,
+                classInstance: ci ?? null,
+                computeComponentInsert: ops.computeComponentInsert,
+                unifiedIndex,
+                instanceName: uniqueName,
+                componentIconCoord,
+                getResourceText: dropIconOptions?.getResourceText,
+              }) ?? []
+            );
+          }
+          if (ci && ops.computeComponentInsert) {
+            return ops.computeComponentInsert(
+              ci,
+              resolved.className,
+              uniqueName,
+              action.x,
+              action.y,
+              currentText,
               componentIconCoord,
-              getResourceText: dropIconOptions?.getResourceText,
-            }) ?? []
-          );
+            );
+          }
+          const rawBase =
+            request.uri
+              .split("/")
+              .pop()
+              ?.replace(/\.[^.]+$/, "")
+              .replace(/[^A-Za-z0-9_]/g, "_") || "Model";
+          const modelName = /^[A-Za-z_]/.test(rawBase) ? rawBase : `M_${rawBase}`;
+          const scaffold = `model ${modelName}\n  ${resolved.className} ${uniqueName} annotation(Placement(transformation(origin={${Math.round(action.x)},${-Math.round(action.y)}}, extent={{-10,-10},{10,10}})));\nequation\nend ${modelName};\n`;
+          const lines = currentText.split("\n");
+          const endPos =
+            currentText.trim().length === 0
+              ? { line: 0, character: 0 }
+              : { line: Math.max(0, lines.length - 1), character: (lines[lines.length - 1] ?? "").length };
+          const prefix = currentText.trim().length === 0 || currentText.endsWith("\n") ? "" : "\n";
+          return [{ range: { start: endPos, end: endPos }, newText: `${prefix}${scaffold}` }];
         }
         case "deleteComponents":
-          return ops.computeComponentsDelete ? ops.computeComponentsDelete(currentText, ci, action.names) : [];
+          return ops.computeComponentsDelete ? ops.computeComponentsDelete(currentText, ci!, action.names) : [];
         case "updateName":
-          return ops.computeNameEdit ? ops.computeNameEdit(ci, action.oldName, action.newName, currentText) : [];
+          return ops.computeNameEdit ? ops.computeNameEdit(ci!, action.oldName, action.newName, currentText) : [];
         case "updateDescription":
           return ops.computeDescriptionEdit
-            ? ops.computeDescriptionEdit(currentText, ci, action.name, action.description)
+            ? ops.computeDescriptionEdit(currentText, ci!, action.name, action.description)
             : [];
         case "updateParameter":
           return ops.computeParameterEdit
-            ? ops.computeParameterEdit(ci, action.name, action.parameter, action.value, currentText)
+            ? ops.computeParameterEdit(ci!, action.name, action.parameter, action.value, currentText)
             : [];
         case "updateProperty":
           return ops.computeParameterEdit
-            ? ops.computeParameterEdit(ci, action.name, action.key, String(action.value), currentText)
+            ? ops.computeParameterEdit(ci!, action.name, action.key, String(action.value), currentText)
             : [];
         default:
           return [];

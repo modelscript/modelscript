@@ -532,4 +532,78 @@ describe("PSS/E LSP Services & DAE Lowering (@modelscript/psse)", () => {
     const parsedAfter = parseRaw(currentDoc);
     assert.equal(parsedAfter.branches[0]?.st, 0, "branch_1_2_1 should be disabled (st=0)");
   });
+
+  it("scaffolds header and bus when dropping ABBSVC1 or other components onto a blank .raw file", async () => {
+    const { createPsseDiagramBackend } = await import("../src/diagram-backend.js");
+
+    const afterSvc = addPsseDiagramComponent("", "psse:ABBSVC1", 1600, 552);
+    const parsedSvc = parseRaw(afterSvc);
+    assert.equal(parsedSvc.buses.size, 1, "blank drop of ABBSVC1 should create Bus 1");
+    assert.equal(parsedSvc.fixedShunts.length, 1, "blank drop of ABBSVC1 should create 1 fixed shunt");
+
+    const uri = "file:///tmp/blank-drop.raw";
+    const backend = createPsseDiagramBackend({ getDocumentText: (u) => (u === uri ? afterSvc : undefined) });
+    const diag = await backend.getData({ uri });
+    assert.ok(diag, "diagram data should be non-null after dropping ABBSVC1 onto blank file");
+    const nodeIds = new Set(diag.nodes.map((n) => n.id));
+    assert.ok(nodeIds.has("bus_1"), "diagram should include bus_1");
+    assert.ok(nodeIds.has("shunt_1_1"), "diagram should include shunt_1_1");
+
+    const afterBus = addPsseDiagramComponent("", "psse:bus_pq", 200, 200);
+    assert.equal(parseRaw(afterBus).buses.size, 1, "blank drop of bus_pq should create 1 bus");
+
+    const afterLoad = addPsseDiagramComponent("", "psse:load", 300, 300);
+    const parsedLoad = parseRaw(afterLoad);
+    assert.equal(parsedLoad.buses.size, 1);
+    assert.equal(parsedLoad.loads.length, 1);
+
+    const afterGen = addPsseDiagramComponent("", "psse:generator", 400, 400);
+    const parsedGen = parseRaw(afterGen);
+    assert.equal(parsedGen.buses.size, 1);
+    assert.equal(parsedGen.generators.length, 1);
+
+    const afterBranch = addPsseDiagramComponent("", "psse:branch", 500, 500);
+    const parsedBranch = parseRaw(afterBranch);
+    assert.equal(parsedBranch.buses.size, 2);
+    assert.equal(parsedBranch.branches.length, 1);
+  });
+
+  it("does not misparse section-marker fragments as title1 or emit phantom library symbols for empty .raw files", async () => {
+    const { UnifiedWorkspace } = await import("@modelscript/runtime");
+    const { psseLanguage } = await import("../src/language.js");
+
+    // 1. Headerless fragment starting with a section marker
+    const fragment = [
+      "0 / BEGIN FIXED SHUNT DATA",
+      "1, '1 ', 1, 0.000, 25.000 / @pos(1600, 552)",
+      "0 / END OF FIXED SHUNT DATA",
+    ].join("\n");
+    const parsedFrag = parseRaw(fragment);
+    assert.equal(parsedFrag.title1, "", "section-marker fragment must not consume data line as title1");
+    assert.equal(parsedFrag.title2, "", "section-marker fragment must not consume terminator as title2");
+    assert.equal(parsedFrag.fixedShunts.length, 1, "fixed shunt record must be parsed");
+    assert.equal(parsedFrag.fixedShunts[0]?.bl, 25);
+    assert.deepEqual(parsedFrag.fixedShunts[0]?.position, { x: 1600, y: 552 });
+
+    const ws = new UnifiedWorkspace(psseLanguage);
+    ws.setDocument("file:///tmp/frag.raw", fragment);
+    const fragSymbols = [...ws.getIndex().symbols.values()].filter((s) => s.resourceId === "file:///tmp/frag.raw");
+    const classSym = fragSymbols.find((s) => s.kind === "Class");
+    assert.equal(classSym?.name, "PsseCase", "symbol name must fall back to PsseCase, not sanitized data line");
+    assert.ok(
+      fragSymbols.some((s) => s.name === "Shunt_1_1"),
+      "fixed shunt should be indexed as a child component",
+    );
+
+    // 2. Standard header with blank title2 line must not consume '0 / END OF BUS DATA' as title2
+    const blankTitle2 = "0, 100.00, 33, 0, 1, 60.00 / PSS/E-33.0\nNEW PSS/E CASE\n\n0 / END OF BUS DATA\nQ\n";
+    const parsedBlankTitle2 = parseRaw(blankTitle2);
+    assert.equal(parsedBlankTitle2.title1, "NEW PSS/E CASE");
+    assert.equal(parsedBlankTitle2.title2, "");
+
+    // 3. Completely empty .raw file must not emit a phantom Class symbol
+    ws.setDocument("file:///tmp/empty.raw", "");
+    const emptySymbols = [...ws.getIndex().symbols.values()].filter((s) => s.resourceId === "file:///tmp/empty.raw");
+    assert.equal(emptySymbols.length, 0, "empty .raw file should emit zero symbols");
+  });
 });

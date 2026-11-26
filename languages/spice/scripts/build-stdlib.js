@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildSpiceCleanroomSchemas } from "../src/catalog/spice-std-schemas.ts";
 
-const spiceDir = new URL("..", import.meta.url).pathname;
+const spiceDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(spiceDir, "assets", "spice-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

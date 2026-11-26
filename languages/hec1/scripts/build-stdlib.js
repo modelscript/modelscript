@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildHec1CleanroomSchemas } from "../src/catalog/hec1-std-schemas.ts";
 
-const hec1Dir = new URL("..", import.meta.url).pathname;
+const hec1Dir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(hec1Dir, "assets", "hec1-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });

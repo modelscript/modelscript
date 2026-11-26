@@ -3,10 +3,11 @@
 import { cleanroomSchemasToLibraryPayloads } from "@modelscript/runtime";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildCleanroomStdLib } from "../../../scripts/build/build-cleanroom-stdlib.js";
 import { buildGaussianCleanroomSchemas } from "../src/catalog/gaussian-std-schemas.ts";
 
-const gaussianDir = new URL("..", import.meta.url).pathname;
+const gaussianDir = fileURLToPath(new URL("..", import.meta.url));
 const stdLibDir = path.join(gaussianDir, "assets", "gaussian-std-lib");
 const stdLibSrc = path.join(stdLibDir, "src");
 fs.mkdirSync(stdLibSrc, { recursive: true });
