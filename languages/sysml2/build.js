@@ -36,5 +36,9 @@ if (isSnapshotUpToDate()) {
   console.log("[sysml2] KerML snapshot is up to date, skipping snapshot generation.");
 } else {
   console.log("[sysml2] Generating KerML stdlib pre-compiled snapshot...");
-  execFileSync("npx", ["tsx", "scripts/generate-kerml-snapshot.ts"], { stdio: "inherit", cwd: import.meta.dirname });
+  execFileSync("npx", ["tsx", "scripts/generate-kerml-snapshot.ts"], {
+    stdio: "inherit",
+    cwd: import.meta.dirname,
+    shell: process.platform === "win32",
+  });
 }
