@@ -1,7 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 project(modelscript_native LANGUAGES C CXX)
 
-set(CMAKE_C_STANDARD 11)
+if(NOT MSVC)
+  set(CMAKE_C_STANDARD 11)
+endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
