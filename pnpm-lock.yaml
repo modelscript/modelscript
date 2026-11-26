@@ -1028,21 +1028,36 @@ importers:
       '@webgpu/types':
         specifier: ^0.1.74
         version: 0.1.74
+      katex:
+        specifier: ^0.19.1
+        version: 0.19.1
       markdown-it-mathjax3:
         specifier: ^4.3.2
         version: 4.3.2
+      marked:
+        specifier: ^14.0.0
+        version: 14.1.4
       mermaid:
         specifier: ^11.16.1
         version: 11.17.2
       monaco-editor:
         specifier: ^0.55.1
         version: 0.55.1
+      playwright:
+        specifier: ^1.65.1
+        version: 1.65.1
+      shiki:
+        specifier: ^2.5.0
+        version: 2.5.0
       three:
         specifier: ^0.184.0
         version: 0.184.0
       vitepress:
         specifier: ^1.1.4
         version: 1.6.4(@algolia/client-search@5.65.0)(@types/node@25.9.9)(@types/react@19.3.0)(axios@1.21.1)(jiti@2.7.0)(lightningcss@1.33.0)(markdown-it-mathjax3@4.3.2)(postcss@8.5.33)(qrcode@1.5.4)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(search-insights@2.17.3)(tsx@4.23.15)(typescript@5.9.3)(yaml@2.9.1)
+      vue:
+        specifier: ^3.5.44
+        version: 3.5.46(typescript@5.9.3)
 
   apps/ide:
     dependencies:
@@ -5111,6 +5126,9 @@ importers:
       papaparse:
         specifier: ^5.5.3
         version: 5.7.1
+      parse-data-url:
+        specifier: ^6.0.0
+        version: 6.0.0
       react-dom:
         specifier: ^19.2.7
         version: 19.3.1(react@19.3.1)

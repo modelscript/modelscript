@@ -66,6 +66,7 @@
     "mqtt": "^5.10.0",
     "pako": "^2.1.0",
     "papaparse": "^5.5.3",
+    "parse-data-url": "^6.0.0",
     "react-dom": "^19.2.7",
     "react-dropzone": "^15.0.0",
     "react-markdown": "^10.1.0",

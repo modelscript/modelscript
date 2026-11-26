@@ -166,7 +166,7 @@ describe("PSS/E LSP Integration Suite (@modelscript/lsp)", () => {
       actions: [{ type: "updateProperty", name: "gen_2_1", key: "pg", value: 55.5 }],
     });
     assert.equal(editRes.seq, 7);
-    assert.equal(editRes.renderHint, "immediate");
+    assert.equal(editRes.renderHint, "none");
     assert.equal(editRes.edits.length, 1);
     assert.equal(editRes.edits[0]!.range.start.line, 16);
     assert.ok(editRes.edits[0]!.newText.includes("55.500"));

@@ -30,11 +30,16 @@
     "@modelscript/diagram": "workspace:*",
     "@types/three": "^0.184.0",
     "@webgpu/types": "^0.1.74",
+    "katex": "^0.19.1",
     "markdown-it-mathjax3": "^4.3.2",
+    "marked": "^14.0.0",
     "mermaid": "^11.16.1",
     "monaco-editor": "^0.55.1",
+    "playwright": "^1.65.1",
+    "shiki": "^2.5.0",
     "three": "^0.184.0",
-    "vitepress": "^1.1.4"
+    "vitepress": "^1.1.4",
+    "vue": "^3.5.44"
   },
   "modelscript": {
     "tier": "beta",

@@ -71,7 +71,7 @@ jobs:
             .cache/node-lib-*
           key: ${{ runner.os }}-${{ matrix.target }}-native-deps-v2
 
-      - name: Download Node.js import library (Windows MSVC N-API)
+      - name: Download Node.js headers & import library (Windows MSVC N-API)
         if: ${{ runner.os == 'Windows' }}
         shell: bash
         run: |
@@ -80,7 +80,12 @@ jobs:
           if [ ! -f ".cache/node-lib-${NODE_VER}/node.lib" ]; then
             curl -fsSL "https://nodejs.org/dist/${NODE_VER}/win-x64/node.lib" -o ".cache/node-lib-${NODE_VER}/node.lib"
           fi
-          echo "NODE_LIB_FILE=$(pwd)/.cache/node-lib-${NODE_VER}/node.lib" >> "$GITHUB_ENV"
+          if [ ! -f ".cache/node-lib-${NODE_VER}/include/node/node_api.h" ]; then
+            curl -fsSL "https://nodejs.org/dist/${NODE_VER}/node-${NODE_VER}-headers.tar.gz" | tar -xz --strip-components=1 -C ".cache/node-lib-${NODE_VER}"
+          fi
+          CACHE_WIN_DIR="$(cygpath -m "$(pwd)")/.cache/node-lib-${NODE_VER}"
+          echo "NODE_LIB_FILE=${CACHE_WIN_DIR}/node.lib" >> "$GITHUB_ENV"
+          echo "NODE_INCLUDE_DIR=${CACHE_WIN_DIR}/include/node" >> "$GITHUB_ENV"
 
       - name: Fetch prebuilt Dawn WebGPU (with graceful fallback)
         if: ${{ inputs.enable_dawn }}
