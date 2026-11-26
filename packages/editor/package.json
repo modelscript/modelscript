@@ -53,6 +53,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mlc-ai/web-llm": "^0.2.85",
     "@monaco-editor/react": "^4.7.0",
     "@primer/octicons-react": "^19.23.1",
     "@primer/react": "^38.14.0",
